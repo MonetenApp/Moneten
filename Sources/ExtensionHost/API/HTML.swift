@@ -201,32 +201,26 @@ enum HTMLDocument {
 		}
 	}
 
-	/// `click()` on a link gives "GET" and its URL; on a submit or image button, the request of its form.
+	/// `click()` on a link gives "GET" and its URL; on a submit or image button, the request of its form. On an
+	/// empty list or another element it returns nothing, because published scripts test the result for nil, as
+	/// when a page has no logout link.
 	private static let click: clua_Function = { L in
 		withList(L) { stack, list in
-			guard let node = list.nodes.first else {
-				stack.pushMessage("elements:click needs a link or a button, but the list is empty.")
-				return -1
-			}
+			guard let node = list.nodes.first else { return 0 }
 			if node.tag == "a", let href = node.attribute("href") {
 				stack.pushString("GET")
 				stack.pushString(href)
 				return 2
 			}
-			guard case .button(_, submits: true, _) = Field(node), let form = node.ancestor("form") else {
-				stack.pushMessage("elements:click needs a link, or a submit or image button in a form.")
-				return -1
-			}
+			guard case .button(_, submits: true, _) = Field(node), let form = node.ancestor("form") else { return 0 }
 			return push(stack, Form.request(form, submitter: node, encoding: list.tree.encoding))
 		}
 	}
 
+	/// `submit()` on a form gives its request without a button, and nothing on an empty list or another element.
 	private static let submit: clua_Function = { L in
 		withList(L) { stack, list in
-			guard let form = list.nodes.first, form.tag == "form" else {
-				stack.pushMessage("elements:submit needs a form.")
-				return -1
-			}
+			guard let form = list.nodes.first, form.tag == "form" else { return 0 }
 			return push(stack, Form.request(form, submitter: nil, encoding: list.tree.encoding))
 		}
 	}

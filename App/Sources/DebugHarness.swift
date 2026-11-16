@@ -52,7 +52,7 @@ final class DebugHarness {
 		guard shared == nil, let path = requestedPath else { return }
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
-		model.extensions.log = { [weak harness] in harness?.log($0) }
+		model.extensions.log = { [weak harness] line in harness?.log(line) }
 		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.moneten.debug"), object: nil, queue: .main) { note in
 			if let target = note.object as? String, target != path { return }
 			let command = note.userInfo?["command"] as? String ?? ""
@@ -67,16 +67,22 @@ final class DebugHarness {
 		try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
 	}
 
-	func log(_ text: String) {
+	/// Appends a line to `debug.log`. Only a `LogLine` gets there, so every line follows the rule of `LogLine`:
+	/// values the app defines, never a value from the user, the database, a file, a bank, or an extension.
+	func log(_ line: LogLine) {
 		let url = folder.appendingPathComponent("debug.log")
-		let line = Data((text + "\n").utf8)
+		let data = Data((line.text + "\n").utf8)
 		if let h = try? FileHandle(forWritingTo: url) {
 			h.seekToEndOfFile()
-			h.write(line)
+			h.write(data)
 			try? h.close()
 		} else {
-			try? line.write(to: url)
+			try? data.write(to: url)
 		}
+	}
+
+	func log(_ event: StaticString, _ values: (StaticString, LogValue)...) {
+		log(LogLine(event, values: values))
 	}
 
 	func run(_ command: String, _ argument: String) {
@@ -96,13 +102,13 @@ final class DebugHarness {
 				frames: mode == "private" ? [.init(binaryName: personal, binaryUUID: personal, offset: 42)] :
 					(0..<(mode == "long" ? 500 : 3)).map { .init(binaryName: "Moneten", binaryUUID: "70B89F27-1634-3580-A695-57CDB41D7743", offset: UInt64(4096 + $0 * 16)) })
 			model.crashes.receive(.init(date: date, diagnostic: diagnostic))
-			log("crash inject frames=\(diagnostic.frames.count) pending=\(model.crashes.pending != nil) timeMatches=\(model.crashes.pending?.date == date)")
+			log("crash inject", ("frames", .count(diagnostic.frames.count)), ("pending", .flag(model.crashes.pending != nil)), ("timeMatches", .flag(model.crashes.pending?.date == date)))
 		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
-			log("crash status pending=\(model.crashes.pending != nil) fallback=\(model.crashes.pending?.fallback != nil) received=\(model.crashes.receivedCount) failures=\(model.crashes.failureCount)")
+			log("crash status", ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
 		#endif
 		case "crashdecision":
-			guard let pending = model.crashes.pending else { return log("crash decision pending=false") }
+			guard let pending = model.crashes.pending else { return log("crash decision", ("pending", .flag(false))) }
 			let decision: PendingCrashReport.Decision
 			switch argument {
 			case "copy": decision = .copy
@@ -111,7 +117,7 @@ final class DebugHarness {
 			}
 			let expected = pending.report
 			model.crashes.decide(decision)
-			log("crash decision pending=\(model.crashes.pending != nil) copied=\(decision == .copy && NSPasteboard.general.string(forType: .string) == expected)")
+			log("crash decision", ("pending", .flag(model.crashes.pending != nil)), ("copied", .flag(decision == .copy && NSPasteboard.general.string(forType: .string) == expected)))
 		case "crashurl":
 			guard let pending = model.crashes.pending else { return }
 			let report = pending.report
@@ -119,7 +125,7 @@ final class DebugHarness {
 			do {
 				try url.absoluteString.write(to: folder.appendingPathComponent("crash-url.txt"), atomically: true, encoding: .utf8)
 				try report.write(to: folder.appendingPathComponent("crash-report.txt"), atomically: true, encoding: .utf8)
-				log("crash url characters=\(url.absoluteString.count) frames=\(pending.diagnostic.frames.count)")
+				log("crash url", ("characters", .count(url.absoluteString.count)), ("frames", .count(pending.diagnostic.frames.count)))
 			} catch { log("crash url failed") }
 		case "crash":
 			log("crash intentional")
@@ -128,21 +134,21 @@ final class DebugHarness {
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
-		case "unlock": log("unlock \(model.unlock(password: argument))")
+		case "unlock": log("unlock", ("", .flag(model.unlock(password: argument))))
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
 		case "importsheetsnapshot":
 			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
 			reading.index = 1
-			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: "\(argument)-reading")
+			offscreenSnapshot(FileImportSheet(run: reading).environment(model), width: 480, name: argument, kind: "reading")
 			let storing = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
 			storing.storing = 300_000
-			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: "\(argument)-storing")
+			offscreenSnapshot(FileImportSheet(run: storing).environment(model), width: 480, name: argument, kind: "storing")
 		case "settingssnapshot":
-			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: "\(argument)-security")
-			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: "\(argument)-general")
-		case "storepassword": log("storepassword \((try? model.vault.storePassword(argument)) != nil)")
+			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
+			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
+		case "storepassword": log("storepassword", ("", .flag((try? model.vault.storePassword(argument)) != nil)))
 		case "removepassword": try? model.vault.removeStoredPassword()
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
@@ -152,9 +158,9 @@ final class DebugHarness {
 		case "setup": setup(argument)
 		// "<account name>": "Look for New Accounts..." and "Edit Login Data..." on the account with a bank access, which "setup" then drives.
 		case "lookfornew", "editlogin":
-			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("\(command) no account") }
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("", .word("no account"))) }
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
-			log("\(command) setup=\(model.setup != nil)")
+			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -184,16 +190,18 @@ final class DebugHarness {
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "down" ? 125 : 126) {
 				sheet.sendEvent(event)
-				log("key \(argument) highlighted=\(model.setup?.highlighted ?? -1)")
+				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
-		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does.
+		// "return", "escape", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
 		case "key":
+			let keys: [StaticString] = ["return", "escape", "cmd+", "cmd-"]
+			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
 			let command = argument.hasPrefix("cmd")
 			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; default: String(argument.dropFirst(3)) }
 			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : 24) {
-				log("key \(argument) handled=\(sheet.performKeyEquivalent(with: event))")
+				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(sheet.performKeyEquivalent(with: event))))
 			}
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
@@ -202,12 +210,13 @@ final class DebugHarness {
 			}
 			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
 			let editable = fields(in: view)
-			guard editable.indices.contains(position) else { return log("focusfield count=\(editable.count)") }
+			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
 			NSApp.activate()
 			sheet.makeKeyAndOrderFront(nil)
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
-			log("focusfield count=\(editable.count) position=\(position) editor=\(sheet.firstResponder is NSTextView)")
+			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
+		// Inserts text into the focused editor of this app's sheet without global key events.
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
@@ -220,14 +229,20 @@ final class DebugHarness {
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
-				log("status #\(position) \(a.kind) refreshing=\(model.sync.refreshingAccounts.contains(a.id)) refreshedAt=\(a.refreshedAt.map { "\($0)" } ?? "-") error=\(Self.label(a.refreshError)) waitsForUser=\(a.refreshError?.waitsForUser ?? false) interval=\(a.refreshInterval.rawValue) balance=\(a.bankBalanceMinor.map(String.init) ?? "-") rows=\(model.ledger.transactions(ofAccount: a.id).count) new=\(model.ledger.newTransactionCounts[a.id] ?? 0) historyStart=\(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { "\(day)" } else { nil } } ?? "-") noTransactions=\(model.bankHistories[a.id] == .noTransactions)")
+				log("status", ("account", .position(position)), ("kind", .state(a.kind)), ("refreshing", .flag(model.sync.refreshingAccounts.contains(a.id))),
+					("refreshedAt", .presence(a.refreshedAt != nil)), ("error", Self.code(of: a.refreshError)), ("waitsForUser", .flag(a.refreshError?.waitsForUser ?? false)),
+					("interval", .state(a.refreshInterval)), ("balance", .presence(a.bankBalanceMinor != nil)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
+					("new", .count(model.ledger.newTransactionCounts[a.id] ?? 0)),
+					("historyStart", .day(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { day } else { nil } })),
+					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)))
 			}
-			log("status line=\(model.refreshStatus ?? "-") accesses=\(model.accesses.count) bankNotices=\(model.bankNotices.waiting.count)")
+			// Whether the status line shows a text, without the text, which names the bank of an access.
+			log("status", ("line", .presence(model.refreshStatus != nil)), ("accesses", .count(model.accesses.count)), ("bankNotices", .count(model.bankNotices.waiting.count)))
 		// "closemain" closes the main window as its close button does; both log the scenes of the visible windows.
 		case "closemain", "windows":
 			if command == "closemain" { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }?.performClose(nil) }
 			DispatchQueue.main.async { [weak self] in
-				self?.log("windows \(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map { $0.identifier?.rawValue ?? "-" })")
+				self?.log("windows", ("scenes", .list(NSApp.windows.filter { $0.isVisible && $0.frame.width > 50 }.map(Self.scene))))
 			}
 		// Opens the main window as a click on a notification does.
 		case "openmain": model.openMainWindow()
@@ -236,7 +251,7 @@ final class DebugHarness {
 		// "off" or "on": whether the display is awake, so that a check can run the automatic refresh while the display of the Mac sleeps.
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
-		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument)
+		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -246,8 +261,8 @@ final class DebugHarness {
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
 				let edit: (() -> Void)? = error.suggestsEditLoginData && model.fintsAccess(of: accounts[position].id) != nil ? {} : nil
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352,
-					name: "error-\(position)-\(accounts[position].kind)")
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352, name: "\(position)", kind: "error",
+					("account", .position(position)), ("kind", .state(accounts[position].kind)))
 			}
 		case "extrun": runExtension(argument)
 		case "escape":
@@ -257,7 +272,7 @@ final class DebugHarness {
 					characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53) else { return log("escape no sheet") }
 			NSApp.sendEvent(event)
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-				self?.log("escape open=\(self?.model?.sync.broker.current.map { "\($0.request.kind)" } ?? "none")")
+				self?.log("escape", ("open", .state(self?.model?.sync.broker.current?.request.kind)))
 			}
 		case "alert":
 			// Logs the title of the alert on screen and closes it, as its OK button does.
@@ -265,7 +280,8 @@ final class DebugHarness {
 				log("alert Transaction Import")
 				result.window.sheetParent?.endSheet(result.window)
 			} else {
-				log("alert \(model.alert?.title ?? "none")")
+				// The hash of the title, which can quote the name of a file.
+				log("alert", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)))
 				model.alert = nil
 			}
 		case "extanswer":
@@ -281,13 +297,14 @@ final class DebugHarness {
 		case "extmethod": answer { .tanMethod(argument) }
 		case "extcancel": if let prompt = model.sync.broker.current { model.sync.broker.cancel(prompt.id) }
 		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
-		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in self?.log("extjs \(error.map { "error=\($0.localizedDescription)" } ?? "ok")") }
+		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
 		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
-		case "extstate": logExtensionState()
+		// The state of each access and account. "extstate <minor units>" logs whether a balance is that amount.
+		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
-		case "menucommands": log("menucommands enabled=\(AppCommands(model: model).unlocked)")
+		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
@@ -309,7 +326,7 @@ final class DebugHarness {
 				return log("ext error=extfixture needs <id>|<fixture>")
 			}
 			model.extensions.fixtures[parts[0]] = fixture
-			log("ext fixture \(parts[0])")
+			log("ext fixture", ("extension", .hash(parts[0])))
 		// Clicks the default button of the question in the Extensions window, such as "Install Update".
 		case "extconfirm":
 			guard let question = model.extensions.question else { return log("extconfirm no question") }
@@ -317,9 +334,11 @@ final class DebugHarness {
 			model.extensions.confirm(question)
 		case "extlist":
 			let library = model.extensions
-			log("ext list index=\(library.index?.version ?? 0) reachable=\(library.reachable) problem=\(library.problem ?? "-") question=\(library.question?.id ?? "-")")
+			log("ext list", ("index", .count(library.index?.version ?? 0)), ("reachable", .flag(library.reachable)), ("problem", .presence(library.problem != nil)),
+				("question", library.question.map { .hash($0.id) } ?? .presence(false)))
 			for item in library.items {
-				log("ext item \(item.id) section=\(item.section) badge=\(item.badge ?? "-") action=\(item.action.map { "\($0)" } ?? "-") note=\(item.note ?? "-")")
+				log("ext item", ("extension", .hash(item.id)), ("section", .state(item.section)), ("badge", item.badge.map { .hash($0) } ?? .presence(false)),
+					("action", .state(item.action)), ("note", .presence(item.note != nil)))
 			}
 		case "groupbyaccount":
 			if var g = model.ledger.groups.first(where: { $0.name == argument }) {
@@ -337,7 +356,7 @@ final class DebugHarness {
 		case "cancelimport": model.fileImport?.cancel()
 		case "importstate":
 			let run = model.fileImport
-			log("importstate phase=\(run == nil ? "none" : run?.storing == nil ? "reading" : "storing") canceled=\(run?.isCanceled ?? false)")
+			log("importstate", ("phase", .word(run == nil ? "none" : run?.storing == nil ? "reading" : "storing")), ("canceled", .flag(run?.isCanceled ?? false)))
 
 		case "importanswer":
 			guard let question = model.fileImport?.question else { return log("importanswer no question") }
@@ -345,8 +364,8 @@ final class DebugHarness {
 			case "selected": model.fileImport?.answer(.selected)
 			case "named": model.fileImport?.answer(.named)
 			default:
-				let kind = switch question.named { case .iban: "iban"; case .number: "number" }
-				log("importanswer kind=\(kind) fileIndex=\(model.fileImport?.index ?? -1) selectedPosition=\(question.selected.position) otherPosition=\(question.other?.position ?? -1)")
+				log("importanswer", ("kind", .state(question.named)), ("fileIndex", .position(model.fileImport?.index)), ("selectedPosition", .position(question.selected.position)),
+					("otherPosition", .position(question.other?.position)))
 			}
 		case "csvhandoff":
 			switch argument {
@@ -359,19 +378,25 @@ final class DebugHarness {
 #if DEBUG
 			case "confirm": model.fileImport?.confirm(named: .number(bankCode: nil, account: "88776655"))
 #endif
+			// "state <sum of amounts> <sum of days>": whether the stored rows have these sums, "ok" or "differs",
+			// so the log never holds an amount.
 			default:
 				do {
 					guard let store = model.store else { return log("csvhandoff error=locked") }
 					let stored = try store.loadLedger()
 					let accounts = stored.accounts.filter { $0.accountNumber == "88776655" && $0.currency == "JPY" }
 					let rows = accounts.flatMap { stored.transactions(ofAccount: $0.id) }
-					log("csvhandoff accounts=\(accounts.count) count=\(rows.count) amountSum=\(rows.reduce(Int64(0)) { $0 + $1.amountMinor }) dateSum=\(rows.reduce(0) { $0 + $1.bookingDate.rawValue })")
+					let expected = argument.split(separator: " ").dropFirst().map { Int64($0) } + [nil, nil]
+					let amounts = rows.reduce(Int64(0)) { $0 + $1.amountMinor }
+					let days = Int64(rows.reduce(0) { $0 + $1.bookingDate.rawValue })
+					log("csvhandoff", ("accounts", .count(accounts.count)), ("count", .count(rows.count)),
+						("amounts", .word(expected[0] == amounts ? "ok" : "differs")), ("days", .word(expected[1] == days ? "ok" : "differs")))
 				} catch { log("csvhandoff error=store") }
 			}
 		// Changes the CSV preview on screen: "column <n>=<field or none>", "date <order>", "encoding <name>",
 		// "decimal comma|point|detect", "skip", "profile <name>" to apply a saved profile, "name <name>" to
 		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
-		// counts of the preview, or "rows", which logs its first rows.
+		// counts of the preview, or "rows", which logs the count and the days of its first rows.
 		case "csv": csvPreview(argument)
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
@@ -381,13 +406,14 @@ final class DebugHarness {
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
 			}
+		// The rows of an account by their day and flags, and whether the bank sent a balance, without amounts.
 		case "rows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.review != nil }
 				for t in rows {
-					log("row \(t.bookingDate) \(t.amountMinor)\(t.isPending ? " pending" : "")\(t.isNew ? " new" : "")\(t.review.map { " review " + $0.rawValue } ?? "")")
+					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
 				}
-				log("rows \(rows.count) new=\(model.ledger.newTransactionCounts[account.id] ?? 0) balance=\(account.bankBalanceMinor.map(String.init) ?? "-")")
+				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
 			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
@@ -404,12 +430,12 @@ final class DebugHarness {
 				model.save(category: c)
 			}
 		case "symbolsnapshot":
-			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: "\(argument)-symbols")
+			offscreenSnapshot(SymbolGrid(selection: "cart.fill", color: .green, isGroup: false) { _ in }, width: 360, name: argument, kind: "symbols")
 		// "<name>": the help of the bank step of "Add Account", drawn offscreen.
-		case "bankstephelpsnapshot": offscreenSnapshot(BankStepHelp(), width: 332, name: argument)
+		case "bankstephelpsnapshot": offscreenSnapshot(BankStepHelp(), width: 332, name: argument, kind: "bankstephelp")
 		case "rulehelpsnapshot":
-			offscreenSnapshot(RuleHelp(), width: 420, name: "\(argument)-rulehelp")
-			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: "\(argument)-rulehelp-end")
+			offscreenSnapshot(RuleHelp(), width: 420, name: argument, kind: "rulehelp")
+			offscreenSnapshot(RuleHelp().defaultScrollAnchor(.bottom), width: 420, name: argument, kind: "rulehelp-end")
 		case "piesnapshot":
 			// The pie of withdrawals with the pointer on its first slice.
 			let rows = model.visibleTransactions
@@ -417,7 +443,7 @@ final class DebugHarness {
 			let slices = CategoryPie.slices(of: ChartCurrency.rows(rows, in: ChartCurrency.current(ranked, picked: nil), of: ranked), in: model).withdrawals
 			offscreenSnapshot(PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices, outside: .leading, hovered: slices.first?.id).frame(height: 230)
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
-				.environment(model), width: 520, name: "\(argument)-pie")
+				.environment(model), width: 520, name: argument, kind: "pie")
 		case "portfolio":
 			// "<group> <euros>" adds a portfolio with that bank balance to a group.
 			let parts = argument.split(separator: " ")
@@ -445,7 +471,7 @@ final class DebugHarness {
 				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: false)
 				let hovered = bars.dropLast(7).last?.id
 				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
-					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: "\(argument)-bars")
+					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: argument, kind: "bars")
 			}
 		case "history": Task { await DemoData.history(model); log("history done") }
 		case "bulk":
@@ -462,7 +488,7 @@ final class DebugHarness {
 					tableNumbers.setObject(NSNumber(value: nextTableNumber), forKey: table)
 					nextTableNumber += 1
 				}
-				log("table number=\(tableNumbers.object(forKey: table)?.intValue ?? 0) rows=\(table.numberOfRows)")
+				log("table", ("number", .count(tableNumbers.object(forKey: table)?.intValue ?? 0)), ("rows", .count(table.numberOfRows)))
 			}
 		case "columnwidth":
 			// "<title> <width>" sets a column of the transaction table, "" logs every width.
@@ -472,7 +498,7 @@ final class DebugHarness {
 					column.width = width
 					NotificationCenter.default.post(name: NSTableView.columnDidResizeNotification, object: table, userInfo: ["NSTableColumn": column, "NSOldWidth": width])
 				}
-				log("columnwidth " + table.tableColumns.map { "\($0.title)=\(Int($0.width))" }.joined(separator: " "))
+				log("columnwidth", ("widths", .list(table.tableColumns.map { .count(Int($0.width)) })))
 			}
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
@@ -491,9 +517,9 @@ final class DebugHarness {
 			if command == "amount" {
 				let range = Format.isReadableAmount(ends[0]) && Format.isReadableAmount(ends[1]) ? CustomAmountView.range(min: ends[0], max: ends[1]) : nil
 				if let range { model.filter.amount = range }
-				log("amount applied=\(range != nil) visible=\(model.visibleTransactions.count)")
+				log("amount", ("applied", .flag(range != nil)), ("visible", .count(model.visibleTransactions.count)))
 			} else {
-				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "amount")
+				offscreenSnapshot(CustomAmountView(min: ends[0], max: ends[1]).environment(model), width: 300, name: "", kind: "amount")
 			}
 		case "period":
 			switch argument {
@@ -522,19 +548,19 @@ final class DebugHarness {
 		case "exportall":
 			Task {
 				await model.saveAllData(to: URL(filePath: argument))
-				log("exportall \(model.alert?.title == "All data has been exported." ? "done" : "error=set")")
+				log("exportall", ("", .word(model.alert?.title == "All data has been exported." ? "done" : "error=set")))
 			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
-		case "importall": Task { log("importall \(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused")") }
+		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
 		case "exportcsv":
 			model.export(model.rowsToExport, to: URL(filePath: argument))
-			log("exportcsv rows=\(model.rowsToExport.count)")
+			log("exportcsv", ("rows", .count(model.rowsToExport.count)))
 		case "exportcontextcsv":
 			guard let account = model.selectedAccount else { return }
 			let rows = model.rowsToExport(of: .account(account.id))
 			model.export(rows, to: URL(filePath: argument))
-			log("exportcontextcsv rows=\(rows.count)")
-		case "exportstatus": log("exportstatus running=\(model.exportTask != nil) sheet=\(model.sheet?.trailName ?? "none")")
+			log("exportcontextcsv", ("rows", .count(rows.count)))
+		case "exportstatus": log("exportstatus", ("running", .flag(model.exportTask != nil)), ("sheet", .state(model.sheet)))
 		case "cancelexport": model.cancelExport()
 		case "sheet":
 			switch argument {
@@ -566,7 +592,8 @@ final class DebugHarness {
 			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else { return log("rule not found") }
 			c.rule = parts[1]
 			model.save(category: c)
-			log("rule error=\(c.ruleError.map { "\($0)" } ?? "none")")
+			// The position only: the message of the error repeats a part of the rule, which can be a name or an IBAN.
+			if let error = c.ruleError { log("rule error=RuleSyntaxError", ("position", .position(error.position + 1))) } else { log("rule error=none") }
 		// "<category>": what "Apply to all transactions." in the category settings does with the saved rule.
 		case "applyrule":
 			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("applyrule not found") }
@@ -586,13 +613,15 @@ final class DebugHarness {
 			}
 			Task {
 				let saved = await model.replaceParts(of: row.id, with: parts)
-				log("split saved=\(saved) parts=\(saved ? parts.count : 0) transactions=\(model.ledger.transactions.count)")
+				log("split", ("saved", .flag(saved)), ("parts", .count(saved ? parts.count : 0)), ("transactions", .count(model.ledger.transactions.count)))
 			}
 		case "checkrows": model.setChecked(true, for: model.visibleSelection)
 		case "splitstate":
 			let rows = model.visibleTransactions
 			let originals = Set(rows.map { model.ledger.part($0.id)?.transactionID ?? $0.id }).compactMap { model.ledger.transaction($0) }
-			log("splitstate parts=\(rows.filter { model.ledger.part($0.id) != nil }.count) pending=\(rows.filter(\.isPending).count) selected=\(model.visibleSelection.count) checked=\(originals.filter(\.isChecked).count) review=\(originals.first?.review?.rawValue ?? "none") sheet=\(model.sheet?.trailName ?? "none")")
+			log("splitstate", ("parts", .count(rows.filter { model.ledger.part($0.id) != nil }.count)), ("pending", .count(rows.filter(\.isPending).count)),
+				("selected", .count(model.visibleSelection.count)), ("checked", .count(originals.filter(\.isChecked).count)),
+				("review", originals.first?.review.map { .state($0) } ?? .word("none")), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
@@ -602,7 +631,8 @@ final class DebugHarness {
 				let hover = model.acceptsDrag(on: c), accepted = model.canDrop(item?.ids ?? [], on: c)
 				model.endDrag()
 				model.drop(item?.ids ?? [], on: c)
-				log("droprows category=\(Self.sidebarPosition(c.id, in: model.ledger)) hover=\(hover) accepted=\(accepted) afterwards=\(model.acceptsDrag(on: c)) visible=\(model.visibleTransactions.count)")
+				log("droprows", ("category", Self.sidebarPosition(c.id, in: model.ledger)), ("hover", .flag(hover)), ("accepted", .flag(accepted)),
+					("afterwards", .flag(model.acceptsDrag(on: c))), ("visible", .count(model.visibleTransactions.count)))
 			}
 		// "Name|Group": what a drop of the category on the row of the group does.
 		case "dropcategory":
@@ -614,7 +644,7 @@ final class DebugHarness {
 				model.endDrag()
 				if hover, let item { model.drop(category: item.id, on: group) }
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-					log("dropcategory hover=\(hover) \(Self.place(of: c.id, in: model))")
+					log(LogLine("dropcategory", values: [("hover", .flag(hover))] + Self.place(of: c.id, in: model)))
 				}
 			}
 		// "Name|Group|index", with an empty group for the top level: what a drop of the category between two rows does.
@@ -629,7 +659,7 @@ final class DebugHarness {
 				model.move(category: item.id, into: parent?.id, at: index)
 				// A move that changes the rows of the open view waits a drawing for its new table.
 				DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-					log("movecategory \(Self.place(of: c.id, in: model))")
+					log(LogLine("movecategory", values: Self.place(of: c.id, in: model)))
 				}
 			}
 		// "table" puts the focus in the transaction table, as a click on it does. "down", "up", "return", "escape",
@@ -641,57 +671,55 @@ final class DebugHarness {
 		case "filterbar": filterBar(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
-			log("phase=\(model.phase.trailName) accounts=\(model.ledger.accounts.count) transactions=\(model.ledger.transactions.count) visible=\(model.visibleTransactions.count) selection=\(String(describing: model.selection)) selected=\(model.selectedAccount.map { "\($0.kind)" } ?? "-")")
-			log("pin=\(model.isFilterBarPinned) period=\(model.period.trailName) status=\(model.filter.status) amount=\(model.filter.amount) filter=\(model.filter.trailName) category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all") saved=\(savedFilter == SavedFilterBar(period: model.period, filter: model.filter))")
+			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
+				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
+			// The case of the amount filter, without the ends of a custom range.
+			log(LogLine("", values: [("pin", .flag(model.isFilterBarPinned)), ("period", .state(model.period)), ("status", .state(model.filter.status)),
+				("amount", .state(model.filter.amount)), ("filter", .list(model.filter.activeKinds.map { .word($0) }))] + Self.filterTargets(model)
+				+ [("saved", .flag(savedFilter == SavedFilterBar(period: model.period, filter: model.filter)))]))
 			logChart()
 		// Whether the selected account proposes a calibration, without amounts.
 		case "calibration":
-			log("calibration proposed=\(model.selectedAccount.flatMap(model.proposedCalibration) != nil)")
+			log("calibration", ("proposed", .flag(model.selectedAccount.flatMap(model.proposedCalibration) != nil)))
 		case "quit": NSApp.terminate(nil)
-		default: log("unknown command \(command)")
+		// Without the name, which arrives from outside the app and can be anything.
+		default: log("unknown command")
 		}
 	}
 
-	/// The state of the bank lookup without the entry, which can hold an IBAN or a login name typed by mistake.
-	private static func label(_ state: BankLookup.State) -> String {
-		switch state {
-		case .none: "none"
-		case .searching: "searching"
-		case let .matches(banks): "matches(\(banks.map(\.code).joined(separator: ",")))"
-		case let .found(bank): "found(\(bank.code))"
-		case .failed: "failed"
+	/// The state of the bank lookup and the bank codes it found, without the entry, which can hold an IBAN or a
+	/// login name typed by mistake.
+	private static func lookup(_ state: BankLookup.State) -> [(StaticString, LogValue)] {
+		let codes: [String] = switch state {
+		case let .matches(banks): banks.map(\.code)
+		case let .found(bank): [bank.code]
+		case .none, .searching, .failed: []
 		}
+		return [("lookup", .state(state)), ("banks", .list(codes.map { .bankCode($0) }))]
 	}
 
-	/// The return code of the bank, which a text of the bank can hide a name or an IBAN in.
-	private static func label(_ error: RefreshError?) -> String {
-		guard let error else { return "-" }
-		return error.code ?? "set"
+	/// The return code of the bank, "set" for an error without one, or "-". A text of the bank can hide a name or an IBAN.
+	private static func code(of error: RefreshError?) -> LogValue {
+		guard let error else { return .presence(false) }
+		return error.code.map { .returnCode($0) } ?? .presence(true)
 	}
 
 	/// The case of a refresh state, and of a failure its case and the return code of the bank, without a text.
-	private static func label(_ state: SyncState) -> String {
-		guard case let .failed(failure) = state else { return caseName(state) }
-		return (["failed", caseName(failure)] + [failure.bankMessage?.code].compactMap { $0 }).joined(separator: ":")
+	private static func sync(_ state: SyncState) -> [(StaticString, LogValue)] {
+		guard case let .failed(failure) = state else { return [("state", .state(state))] }
+		return [("state", .state(state)), ("failure", .state(failure)), ("code", failure.bankMessage?.code.map { .returnCode($0) } ?? .presence(false))]
 	}
 
-	private static func caseName(_ value: Any) -> String {
-		String(String(describing: value).prefix { $0 != "(" })
+	/// The scene of a window by the id of the app, such as "main", or "other".
+	private static func scene(_ window: NSWindow) -> LogValue {
+		.choice(String((window.identifier?.rawValue ?? "").prefix { $0 != "-" }), of: ["main", "extensions", "notice"], otherwise: "other")
 	}
 
-	/// Whether a message is shown, without its text, which can repeat the login name or an IBAN.
-	private static func isSet(_ message: String?) -> String {
-		message == nil ? "-" : "set"
-	}
-
-	/// The match of a listed account by the kind of the account in the app, without its name.
-	private static func label(_ match: SetupMatch) -> String {
-		switch match {
-		case .new: "new"
-		case let .present(a): "present(\(a.kind))"
-		case let .connects(a): "connects(\(a.kind))"
-		case let .choice(accounts): "choice(\(accounts.count))"
-		}
+	/// The category and the account of the filter by their positions, or "all".
+	private static func filterTargets(_ model: AppModel) -> [(StaticString, LogValue)] {
+		let ledger = model.ledger
+		return [("category", model.filter.categoryID.map { sidebarPosition($0, in: ledger) } ?? .word("all")),
+			("account", model.filter.accountID.map { id in .position(ledger.accounts.firstIndex { $0.id == id }) } ?? .word("all"))]
 	}
 
 	private func setup(_ argument: String) {
@@ -720,9 +748,15 @@ final class DebugHarness {
 		case "cancel": model.closeAccountSetup()
 		default: break
 		}
-		log("setup service=\(setup.service?.title ?? "-") other=\(setup.otherServices.map(\.title)) error=\(Self.isSet(setup.serviceError))")
-		log("setup purpose=\(Self.caseName(setup.purpose)) listing=\(setup.isListing) message=\(Self.isSet(setup.listingMessage))")
-		log("setup step=\(setup.step) entry=\(!setup.entry.isEmpty) login=\(!setup.loginName.isEmpty) highlighted=\(setup.highlighted) lookup=\(Self.label(setup.lookup.state)) error=\(Self.isSet(setup.loginError)) saveError=\(Self.isSet(setup.saveError)) dialog=\(model.sync.broker.current != nil) candidates=\(setup.candidates.count) [\(setup.candidates.map { "\($0.account.kind):\(Self.label($0.match))" }.joined(separator: ", "))] selected=\(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) })")
+		// The service of an extension by its hash, because an extension names its services.
+		log("setup", ("service", setup.service.map { .hash($0.title) } ?? .presence(false)), ("other", .count(setup.otherServices.count)),
+			("error", .presence(setup.serviceError != nil)))
+		log("setup", ("purpose", .state(setup.purpose)), ("listing", .flag(setup.isListing)), ("message", .presence(setup.listingMessage != nil)))
+		log(LogLine("setup", values: [("step", .state(setup.step)), ("entry", .flag(!setup.entry.isEmpty)), ("login", .flag(!setup.loginName.isEmpty)),
+			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
+			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
+			("kinds", .list(setup.candidates.map { .state($0.account.kind) })), ("matches", .list(setup.candidates.map { .state($0.match) })),
+			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) }))]))
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -743,14 +777,16 @@ final class DebugHarness {
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 			let editor = sheet.firstResponder as? NSTextView
-			self.log("securefield class=\(type(of: field)) contentType=\(field.contentType?.rawValue ?? "nil") focused=\(editor != nil)"
-				+ " completion=\(editor?.isAutomaticTextCompletionEnabled ?? false) active=\(NSApp.isActive) keyWindow=\(NSApp.keyWindow.map { "\(type(of: $0))" } ?? "none")")
-			self.log("securefield windows=\(NSApp.windows.filter(\.isVisible).map { "\(type(of: $0))" }.joined(separator: ","))")
+			self.log("securefield", ("class", .type(of: field)),
+				("contentType", field.contentType.map { .choice($0.rawValue, of: ["username", "password", "newPassword", "oneTimeCode"], otherwise: "other") } ?? .word("nil")),
+				("focused", .flag(editor != nil)), ("completion", .flag(editor?.isAutomaticTextCompletionEnabled ?? false)), ("active", .flag(NSApp.isActive)),
+				("keyWindow", NSApp.keyWindow.map { .type(of: $0) } ?? .word("none")))
+			self.log("securefield", ("windows", .list(NSApp.windows.filter(\.isVisible).map { .type(of: $0) })))
 		}
 	}
 
-	/// The euro balance chart of the selected account or group: its first and last bar and the total
-	/// in the title, which the last bar of a daily chart equals.
+	/// The euro balance chart of the selected account or group: the days of its first and last bar, and
+	/// whether the last bar equals the total in the title, without the amounts.
 	private func logChart() {
 		guard let model else { return }
 		let ids: Set<UUID>
@@ -766,7 +802,8 @@ final class DebugHarness {
 		}
 		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
 		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
-		log("chart bars=\(bars.count) first=\(bars.first.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") last=\(bars.last.map { "\($0.start) \($0.money.minorUnits)" } ?? "-") total=\(total.map(String.init) ?? "-")")
+		log("chart", ("bars", .count(bars.count)), ("first", .day(bars.first?.start)), ("last", .day(bars.last?.start)),
+			("lastIsTotal", bars.last.flatMap { last in total.map { .flag($0 == last.money.minorUnits) } } ?? .presence(false)))
 	}
 
 	private func mainKey(_ name: String) {
@@ -774,7 +811,9 @@ final class DebugHarness {
 		let target = topSheet ?? main
 		let keys: [String: (String, UInt16)] = ["down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125), "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
 			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
-		var handledBy = "-"
+		let names: [StaticString] = ["table", "down", "up", "return", "escape", "cmd+k"]
+		guard names.contains(where: { "\($0)" == name }) else { return log("mainkey rejected") }
+		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
 			NSApp.activate()
@@ -799,9 +838,10 @@ final class DebugHarness {
 			let order = ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.map(\.id)
 			// Category names are typed by the user, so the log names a category by its place in the sidebar.
 			let categories = model.selectedTransactions.compactMap { ledger.row($0) }
-				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map(String.init) ?? "default" }
-			self.log("mainkey \(name) handled=\(handledBy) sheet=\(model.sheet?.trailName ?? "none") tablefocus=\(table.window?.firstResponder === table) key=\(NSApp.keyWindow === table.window) row=\(table.selectedRow) "
-				+ "category=\(categories.joined(separator: ","))")
+				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map { LogValue.position($0) } ?? .word("default") }
+			self.log("mainkey", ("", .choice(name, of: names)), ("handled", .word(handledBy)), ("sheet", .state(model.sheet)),
+				("tablefocus", .flag(table.window?.firstResponder === table)), ("key", .flag(NSApp.keyWindow === table.window)), ("row", .position(table.selectedRow)),
+				("category", .list(categories)))
 		}
 	}
 
@@ -825,7 +865,7 @@ final class DebugHarness {
 	func scrollTables(to row: (Int) -> Int) {
 		for table in transactionTables() where table.numberOfRows > 0 {
 			table.scrollRowToVisible(row(table.numberOfRows))
-			log("scrolltable rows=\(table.numberOfRows)")
+			log("scrolltable", ("rows", .count(table.numberOfRows)))
 		}
 	}
 
@@ -838,16 +878,16 @@ final class DebugHarness {
 			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			let fixture = try parts.count > 2 && !parts[2].isEmpty ? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[2]))) : nil
 			let access = Access(source: .extension(id: package.name), bankName: package.name, loginName: "")
-			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] in self?.log($0) }
+			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] line in self?.log(line) }
 			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
 		} catch {
-			log("ext error=\(error)")
+			log("ext", ("error", .type(of: error)))
 		}
 	}
 
 	private func extensionAccess(_ command: String, _ argument: String) {
 		let parts = argument.components(separatedBy: "|")
-		guard let model, parts.count >= 2, model.store != nil else { return log("ext error=\(command) needs <package>|<fixture>|<service> and an open database") }
+		guard let model, parts.count >= 2, model.store != nil else { return log("ext error=needs <package>|<fixture>|<service> and an open database", ("command", .choice(command, of: ["extaccess", "extrefresh"]))) }
 		do {
 			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
 			// An id without a slash names an installed extension, which runs only after its check.
@@ -865,9 +905,9 @@ final class DebugHarness {
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
 			}
-			ExtensionWebDebug.log = { [weak self] in self?.log($0) }
-			let log: @Sendable (HostLog) -> Void = { [weak self, package, madeUp = fixture != nil] line in
-				Task { @MainActor in self?.log(line.debugLine(package.name, madeUp: madeUp)) }
+			ExtensionWebDebug.log = { [weak self] line in self?.log(line) }
+			let log: @Sendable (HostLog) -> Void = { [weak self, package] line in
+				Task { @MainActor in self?.log(line.debugLine(package.name)) }
 			}
 			if command == "extaccess" {
 				model.addExtensionAccess(package: package, service: parts.count > 2 ? parts[2] : package.name, fixture: fixture, log: log)
@@ -875,7 +915,7 @@ final class DebugHarness {
 				model.refreshExtensionAccesses(package: package, fixture: fixture, attended: !(parts.count > 2 && parts[2] == "auto"), log: log)
 			}
 		} catch {
-			log("ext error=\(error)")
+			log("ext", ("error", .type(of: error)))
 		}
 	}
 
@@ -889,9 +929,9 @@ final class DebugHarness {
 		Task {
 			let status = await Notices.authorizationStatus()
 			let delivered = await Notices.delivered()
-			self.log("notices authorization=\(status.rawValue) delivered=\(delivered.count)")
+			self.log("notices", ("authorization", .count(status.rawValue)), ("delivered", .count(delivered.count)))
 			for note in delivered {
-				self.log("notice \(note.title) accounts=\(note.accounts.count) sound=\(note.hasSound)")
+				self.log("notice delivered", ("title", .hash(note.title)), ("accounts", .count(note.accounts.count)), ("sound", .flag(note.hasSound)))
 			}
 		}
 	}
@@ -900,30 +940,36 @@ final class DebugHarness {
 	private func logPrompt() {
 		guard let prompt = model?.sync.broker.current else { return log("ext prompt none") }
 		switch prompt.request {
-		case let .login(request): log("ext prompt login \(request.service) fields=\(request.fields.map(\.label).joined(separator: ","))")
-		case let .allowHost(request): log("ext prompt host \(request.host)")
+		case let .login(request): log("ext prompt login", ("service", .hash(request.service)), ("fields", .count(request.fields.count)))
+		case let .allowHost(request): log("ext prompt host", ("host", .hash(request.host)))
 		case .pin: log("ext prompt pin")
 		case let .secondFactor(request):
 			switch request.challenge {
-			case let .enterTAN(text, image): log("ext prompt tan label=\(Self.isSet(request.field.label)) text=\(Self.isSet(text)) image=\(image != nil)")
-			case let .approveInApp(text, app, image, _): log("ext prompt approve app=\(app ?? "-") text=\(Self.isSet(text)) image=\(image != nil)")
-			case let .chooseTANMethod(methods, current): log("ext prompt methods \(methods.map { "\($0.id)\($0.unavailable == nil ? "" : " (unavailable)")" }.joined(separator: ", ")) current=\(current ?? "-")")
-			case let .openBrowser(approval): log("ext prompt browser \(approval.url.host() ?? "")")
-			case let .captcha(captcha): log("ext prompt captcha \(captcha.provider.rawValue) page=\(captcha.page?.host() ?? "-")")
+			case let .enterTAN(text, image): log("ext prompt tan", ("label", .presence(request.field.label != nil)), ("text", .presence(text != nil)), ("image", .flag(image != nil)))
+			case let .approveInApp(text, app, image, _): log("ext prompt approve", ("app", .presence(app != nil)), ("text", .presence(text != nil)), ("image", .flag(image != nil)))
+			case let .chooseTANMethod(methods, current): log("ext prompt methods", ("count", .count(methods.count)), ("unavailable", .count(methods.filter { $0.unavailable != nil }.count)),
+					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
+			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))
+			case let .captcha(captcha): log("ext prompt captcha", ("provider", .state(captcha.provider)), ("page", captcha.page?.host().map { .hash($0) } ?? .presence(false)))
 			case .chooseTANMedium, .flickerCode: log("ext prompt other")
 			}
 		}
 	}
 
-	/// The state of every bank access and the failure of each of its accounts.
-	private func logExtensionState() {
+	/// The state of every bank access and the failure of each of its accounts. The balance of an account is
+	/// "ok" when it is the amount in minor units that the command expects, "differs" when not, and "set" without one.
+	private func logExtensionState(expecting expected: String) {
 		guard let model else { return }
-		for access in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }) {
-			log("ext access \(access.bankName) state=\(Self.label(model.sync.states[access.id] ?? .idle))")
+		// An access by its position and its source, never by its bank name, which a full import or an extension sets.
+		for (position, access) in model.accesses.values.sorted(by: { $0.bankName < $1.bankName }).enumerated() {
+			log(LogLine("ext access", values: [("", .position(position)), ("source", .state(access.source))] + Self.sync(model.sync.states[access.id] ?? .idle)))
 			for account in model.ledger.accounts where account.accessID == access.id {
 				let rows = model.ledger.transactions.filter { $0.accountID == account.id }
-				let failure = account.refreshError.map { " failed=\(Self.label($0))" } ?? ""
-				log("ext account \(account.kind) rows=\(rows.count) balance=\(model.ledger.balance(of: account).minorUnits)\(failure)")
+				let balance = model.ledger.balance(of: account).minorUnits
+				let matches: StaticString = Int64(expected).map { $0 == balance ? "ok" : "differs" } ?? "set"
+				var values: [(StaticString, LogValue)] = [("", .state(account.kind)), ("rows", .count(rows.count)), ("balance", .word(matches))]
+				if let error = account.refreshError { values.append(("failed", Self.code(of: error))) }
+				log(LogLine("ext account", values: values))
 			}
 		}
 	}
@@ -949,9 +995,9 @@ final class DebugHarness {
 			let days = value.split(separator: " ").compactMap { Int($0) }.map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
 			if days.count == 2 { model.choose(period: .custom(days[0], days[1])) }
 		case "pin": model.isFilterBarPinned = value == "on"
-		default: break
+		default: return log("filterbar rejected")
 		}
-		log("filterbar \(parts.first ?? "") category=\(model.filter.categoryID?.uuidString ?? "all") account=\(model.filter.accountID?.uuidString ?? "all")")
+		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
 	}
 
 	private func csvPreview(_ argument: String) {
@@ -971,25 +1017,29 @@ final class DebugHarness {
 		case "name": preview.profileName = value
 		case "delete": preview.deleteProfile()
 		case "createcategories": preview.layout.createsCategories = value == "on"
-		// The log holds kinds, counts, and positions, never a name or a purpose (#159), so a row is its day and amount.
+		// A row of the file holds a name, a purpose, and an amount, so the log holds only the count and the days of the first rows.
 		case "rows":
-			let rows = preview.preview?.transactions.prefix(10).map { "\($0.bookingDate) \($0.amountMinor)" }.joined(separator: ";") ?? "-"
-			log("csv rows \(rows)")
+			let rows = preview.preview?.transactions.prefix(10) ?? []
+			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })))
 		default:
-			let columns = preview.layout.columns.sorted { $0.value < $1.value }.map { "\($0.value)=\($0.key.rawValue)" }.joined(separator: ",")
-			let problem: String = switch preview.preview?.problem {
-			case let .line(n, _): "line \(n)"
-			case .empty: "empty"
-			case .unsupported: "unsupported"
-			case .noHeader: "noHeader"
-			case .severalAccounts: "severalAccounts"
-			case .encoding: "encoding"
-			case nil: preview.problem == nil ? "-" : "encoding"
+			// The field of each column from 0, or "-" for a column without one.
+			let fields = Dictionary(preview.layout.columns.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+			let columns = fields.keys.max().map { last in (0...last).map { LogValue.state(fields[$0] as Any) } } ?? []
+			let (problem, line): (StaticString, Int?) = switch preview.preview?.problem {
+			case let .line(n, _): ("line", n)
+			case .empty: ("empty", nil)
+			case .unsupported: ("unsupported", nil)
+			case .noHeader: ("noHeader", nil)
+			case .severalAccounts: ("severalAccounts", nil)
+			case .encoding: ("encoding", nil)
+			case nil: (preview.problem == nil ? "-" : "encoding", nil)
 			}
-			log("csv state columns=\(columns) date=\(preview.layout.dateOrder.rawValue) uncertain=\(preview.isDateOrderUncertain) encoding=\(preview.layout.encoding.rawValue)"
-				+ " missing=\(preview.layout.missing.map(\.rawValue)) count=\(preview.preview?.transactions.count ?? -1) canImport=\(preview.chosen != nil) problem=\(problem)"
-				+ " profile=\(preview.profile == nil ? "none" : "applied") name=\(preview.profileName.isEmpty ? "empty" : "typed")"
-				+ " createsCategories=\(preview.layout.createsCategories) profiles=\(preview.profiles.count)")
+			log("csv state", ("columns", .list(columns)), ("date", .state(preview.layout.dateOrder)), ("uncertain", .flag(preview.isDateOrderUncertain)),
+				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
+				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
+				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("profiles", .count(preview.profiles.count)))
 		}
 	}
 
@@ -1024,7 +1074,8 @@ final class DebugHarness {
 				menu = v.menu(for: event)
 				view = v.superview
 			}
-			log("contextmenu row \(index) \(menu?.items.map { ($0.isAlternate ? "alt:" : "") + $0.title } ?? [])")
+			// Each item by the hash of its title, because an item can name an account, a group, or a category.
+			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
 				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
 				submenu.update()
@@ -1032,25 +1083,25 @@ final class DebugHarness {
 					return log("contextmenu move refused")
 				}
 				submenu.performActionForItem(at: choice[1])
-				log("contextmenu move row=\(index) item=\(choice[1]) count=\(submenu.items.count)")
+				log("contextmenu move", ("row", .position(index)), ("item", .position(choice[1])), ("count", .count(submenu.items.count)))
 				return
 			}
 		}
 	}
 
 	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
-	private static func sidebarPosition(_ id: UUID, in ledger: Ledger) -> String {
-		ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.firstIndex { $0.id == id }.map(String.init) ?? "default"
+	private static func sidebarPosition(_ id: UUID, in ledger: Ledger) -> LogValue {
+		ledger.categoriesInSidebarOrder.filter { !$0.isDefault }.firstIndex { $0.id == id }.map { .position($0) } ?? .word("default")
 	}
 
 	/// Where a category is after a move: its position, its parent's position or "top", its index among the
 	/// children of that parent, the rows of its tree, and the rows of the open view.
-	private static func place(of id: UUID, in model: AppModel) -> String {
+	private static func place(of id: UUID, in model: AppModel) -> [(StaticString, LogValue)] {
 		let ledger = model.ledger
-		guard let c = ledger.category(id) else { return "not found" }
-		let index = ledger.childCategories(of: c.parentID).firstIndex { $0.id == id } ?? -1
-		return "position=\(sidebarPosition(id, in: ledger)) parent=\(c.parentID.map { sidebarPosition($0, in: ledger) } ?? "top") index=\(index) "
-			+ "rows=\(ledger.rows(in: .category(id)).rows.count) visible=\(model.visibleTransactions.count)"
+		guard let c = ledger.category(id) else { return [("position", .word("none"))] }
+		return [("position", sidebarPosition(id, in: ledger)), ("parent", c.parentID.map { sidebarPosition($0, in: ledger) } ?? .word("top")),
+			("index", .position(ledger.childCategories(of: c.parentID).firstIndex { $0.id == id })), ("rows", .count(ledger.rows(in: .category(id)).rows.count)),
+			("visible", .count(model.visibleTransactions.count))]
 	}
 
 	/// Sends a drag payload through an item provider and back, as the system hands it from a drag to a drop.
@@ -1067,11 +1118,12 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: "\(name)-sidebar")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: name, kind: "sidebar")
 	}
 
-	/// Draws a view in a window outside the screen, as tall as the view wants to be.
-	private func offscreenSnapshot(_ view: some View, width: CGFloat, name: String) {
+	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file
+	/// "<name>-<kind>.png". The log names only the kind, because the name comes from outside the app.
+	private func offscreenSnapshot(_ view: some View, width: CGFloat, name: String, kind: StaticString, _ details: (StaticString, LogValue)...) {
 		let host = NSHostingView(rootView: view.frame(width: width).background(.windowBackground))
 		let size = host.fittingSize
 		let window = NSWindow(contentRect: NSRect(x: -5000, y: -5000, width: width, height: size.height), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -1081,10 +1133,10 @@ final class DebugHarness {
 			host.layoutSubtreeIfNeeded()
 			if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
 				host.cacheDisplay(in: host.bounds, to: rep)
-				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name).png"))
+				try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("\(name.isEmpty ? "\(kind)" : "\(name)-\(kind)").png"))
 			}
 			window.orderOut(nil)
-			self.log("snapshot \(name) \(Int(host.bounds.width))x\(Int(host.bounds.height))")
+			self.log(LogLine("snapshot", values: [("", .word(kind))] + details + [("width", .count(Int(host.bounds.width))), ("height", .count(Int(host.bounds.height)))]))
 		}
 	}
 
@@ -1116,9 +1168,11 @@ final class DebugHarness {
 					web.image.draw(in: frame)
 					NSGraphicsContext.restoreGraphicsState()
 				}
-				let file = folder.appendingPathComponent("\(name)-\(i)\(String(repeating: "-sheet", count: j)).png")
-				try? rep.representation(using: .png, properties: [:])?.write(to: file)
-				log("snapshot \(file.lastPathComponent) \(w.identifier?.rawValue ?? "-") \(Int(view.bounds.width))x\(Int(view.bounds.height))")
+				let suffix = "\(i)\(String(repeating: "-sheet", count: j))"
+				try? rep.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("\(name)-\(suffix).png"))
+				// The window by its position, without the name of the file, which comes from outside the app.
+				log("snapshot window", ("", .position(i)), ("sheets", .count(j)), ("scene", Self.scene(w)), ("width", .count(Int(view.bounds.width))),
+					("height", .count(Int(view.bounds.height))))
 			}
 		}
 	}
@@ -1309,13 +1363,13 @@ enum DemoData {
 }
 
 extension HostLog {
-	/// The line of `debug.log`. A text of the extension is written only with a fixture, whose data is made up.
-	/// Without one the extension talks to the real service, and its texts can hold names, IBANs, or tokens.
-	func debugLine(_ name: String, madeUp: Bool) -> String {
+	/// The line of `debug.log`: the extension by the hash of its name and the size of its text, never the text,
+	/// not even with a fixture. The name of a local extension is the name of its file.
+	func debugLine(_ name: String) -> LogLine {
 		switch self {
-		case let .print(text): madeUp ? "ext print \(name): \(text)" : "ext print \(name) (\(text.count) characters)"
-		case let .status(text): madeUp ? "ext status \(name): \(text)" : "ext status \(name) (\(text.count) characters)"
-		case let .sent(request): "ext sent \(request)"
+		case let .print(text): LogLine("ext print", ("extension", .hash(name)), ("characters", .count(text.count)))
+		case let .status(text): LogLine("ext status", ("extension", .hash(name)), ("characters", .count(text.count)))
+		case let .sent(request): LogLine("ext sent", ("request", .hash(request)))
 		}
 	}
 }

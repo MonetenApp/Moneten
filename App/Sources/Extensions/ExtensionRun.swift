@@ -11,7 +11,7 @@ struct ExtensionRun: BankConnector {
 	let function: String
 	let fixture: Fixture?
 	let store: Store
-	let log: @MainActor (String) -> Void
+	let log: @MainActor (LogLine) -> Void
 
 	func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		do {
@@ -23,40 +23,32 @@ struct ExtensionRun: BankConnector {
 				}
 				try store.save(decision, host: host, of: package.name)
 				return decision
-			}, log: { [package, log, madeUp = fixture != nil] line in
-				Task { @MainActor in log(line.debugLine(package.name, madeUp: madeUp)) }
+			}, log: { [package, log] line in
+				Task { @MainActor in log(line.debugLine(package.name)) }
 			})
-			await log("ext pid=\(client.processIdentifier) session_start_ms=\((ContinuousClock.now - started) / .milliseconds(1)) load_ms=\(loadTime)")
+			await log(LogLine("ext", ("pid", .count(Int(client.processIdentifier))), ("session_start_ms", .count(Int((ContinuousClock.now - started) / .milliseconds(1)))),
+				("load_ms", .count(Int(loadTime.rounded())))))
 			let result: Result<LuaValue, any Error>
 			do { result = .success(try await client.call(function)) } catch { result = .failure(error) }
 			await client.end()
-			await log("ext ended pid=\(client.processIdentifier)")
+			await log(LogLine("ext ended", ("pid", .count(Int(client.processIdentifier)))))
 			let value = try result.get()
-			if fixture == nil {
-				await log("ext result \(Self.kind(of: value))")
-			} else {
-				let encoder = JSONEncoder()
-				encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-				await log("ext result=\(String(decoding: try encoder.encode(value), as: UTF8.self))")
-			}
+			await log(Self.line(of: value))
 			return ConnectorReport(outcomes: [:])
 		} catch {
-			await log("ext error=\(fixture == nil ? "\(type(of: error))" : "\(error)")")
+			await log(LogLine("ext", ("error", .type(of: error))))
 			throw SyncFailure.unsupported("\(error)")
 		}
 	}
 
-	/// The kind and the size of a value that came from a real service, without its content.
-	private static func kind(of value: LuaValue) -> String {
+	/// The kind and the size of the result, without its content, which comes from the extension.
+	private static func line(of value: LuaValue) -> LogLine {
 		switch value {
-		case let .string(text): "string count=\(text.count)"
-		case let .bytes(data): "bytes count=\(data.count)"
-		case let .array(items): "array count=\(items.count)"
-		case let .object(fields): "object count=\(fields.count)"
-		case .null: "null"
-		case .boolean: "boolean"
-		case .integer: "integer"
-		case .number: "number"
+		case let .string(text): LogLine("ext result string", ("count", .count(text.count)))
+		case let .bytes(data): LogLine("ext result bytes", ("count", .count(data.count)))
+		case let .array(items): LogLine("ext result array", ("count", .count(items.count)))
+		case let .object(fields): LogLine("ext result object", ("count", .count(fields.count)))
+		case .null, .boolean, .integer, .number: LogLine("ext result", ("", .state(value)))
 		}
 	}
 }
