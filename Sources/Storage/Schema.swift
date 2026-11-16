@@ -390,8 +390,41 @@ enum Schema {
 			for table in ["account", "bankTransaction", "deletedTransaction"] {
 				try db.execute(sql: "UPDATE \(table) SET currency = upper(currency) WHERE currency <> upper(currency)")
 			}
+			// The file identity of a row from a file holds the currency too, and two pending rows with different file
+			// identities never pair, so the same pending CAMT row would come in a second time.
+			for table in ["bankTransaction", "deletedTransaction"] {
+				for row in try Row.fetchAll(db, sql: "SELECT rowid, fileIdentity FROM \(table) WHERE fileIdentity IS NOT NULL") {
+					let identity: String = row["fileIdentity"]
+					guard let upper = upperCasingCurrency(inFileIdentity: identity), upper != identity else { continue }
+					try db.execute(sql: "UPDATE \(table) SET fileIdentity = ? WHERE rowid = ?", arguments: [upper, row["rowid"] as Int64])
+				}
+			}
 		}
 		return m
+	}
+
+	/// The file identity with its currency in upper case, or nil when it does not read. A file identity is "file:1:"
+	/// and then booking day, amount, currency, and further fields, each as its length in UTF-8 bytes, a colon, and the
+	/// value. A currency code is ASCII, so changing only a to z keeps every length.
+	private static func upperCasingCurrency(inFileIdentity identity: String) -> String? {
+		let prefix = Array("file:1:".utf8)
+		var bytes = Array(identity.utf8)
+		guard bytes.starts(with: prefix) else { return nil }
+		var i = prefix.count
+		for field in 0..<3 {
+			var length = 0
+			while i < bytes.count, (0x30...0x39).contains(bytes[i]) {
+				length = length * 10 + Int(bytes[i] - 0x30)
+				i += 1
+			}
+			guard i < bytes.count, bytes[i] == 0x3A, i + 1 + length <= bytes.count else { return nil }
+			i += 1
+			if field == 2 {
+				for j in i..<(i + length) where (0x61...0x7A).contains(bytes[j]) { bytes[j] -= 0x20 }
+			}
+			i += length
+		}
+		return String(decoding: bytes, as: UTF8.self)
 	}
 
 	/// The state of a FinTS access with marks, as a debug build before v21 wrote it: JSON with the passport of the
