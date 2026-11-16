@@ -28,10 +28,25 @@ struct FinTSConnectorTests {
 		}
 	}
 
-	/// A connector whose helper is `/bin/sh -c script`. `$R` in the script is the file `record`.
-	func connector(_ script: String, productID: String? = "TESTPRODUCT", inactivity: TimeInterval = 30, grace: TimeInterval = 5) -> FinTSConnector {
+	/// The line that a script writes into `record` when SIGTERM ends it, with the time by the clock of
+	/// the helper, in seconds since 1970. It also ends the `sleep 60 &` of the script, which would
+	/// otherwise hold stdout open for 60 seconds.
+	static let terminatedTrap = #"trap 'echo "{\"type\":\"terminated\",\"at\":$(date +%s)}" >> "$R"; kill $! 2>/dev/null; exit 1' TERM"#
+
+	/// The seconds from `start` until the trap of `terminatedTrap` ran. A test of a timeout measures
+	/// this instead of the end of the run: the run also waits for a thread of Swift concurrency, and on
+	/// a runner of CI the CPU-bound tests of other suites hold those threads for more than 30 seconds.
+	func secondsToTermination(since start: Date) -> Double? {
+		recorded.first { $0["type"] == "terminated" }?["at"].flatMap(Double.init).map { $0 - start.timeIntervalSince1970 }
+	}
+
+	/// A connector whose helper is `/bin/sh -c script`. `$R` in the script is the file `record`. A
+	/// terminated helper gets 30 seconds before SIGKILL, so that the trap of a script runs also when a
+	/// loaded runner of CI holds up the shell for more than the 2 seconds of the app.
+	func connector(_ script: String, productID: String? = "TESTPRODUCT", inactivity: TimeInterval = 30, grace: TimeInterval = 5,
+		killAfter: TimeInterval = 30) -> FinTSConnector {
 		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "R='\(record.path)'\n" + script]), productID: productID, version: "0.0.1",
-			inactivity: inactivity, grace: grace)
+			inactivity: inactivity, grace: grace, killAfter: killAfter)
 	}
 
 	func refresh(_ script: String, accounts: [AccountRequest] = [giro], enforced: Bool = false, session: Session = Session()) async throws -> ConnectorReport {
@@ -289,13 +304,14 @@ struct FinTSConnectorTests {
 	@Test("A canceled refresh sends cancel, and the helper ends")
 	func cancel() async throws {
 		let session = Session()
-		let grace: TimeInterval = 30
+		// Far above the 40 seconds that a run on CI can wait for a thread of Swift concurrency.
+		let grace: TimeInterval = 120
 		let task = Task {
 			try await connector("""
 				read cmd
 				echo '{"type":"progress","done":0,"of":1}'
 				read line; printf '%s\\n' "$line" >> "$R"
-				""", grace: grace).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
+				""", inactivity: 300, grace: grace).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
 		}
 		await until { session.events.contains(.progress(.fetching(done: 0, of: 1))) }
 		let canceled = ContinuousClock.now
@@ -310,20 +326,21 @@ struct FinTSConnectorTests {
 	func cancelIgnored() async throws {
 		let session = Session()
 		let task = Task {
-			try await refresh("""
+			try await connector("""
 				read cmd
 				echo '{"type":"progress","done":0,"of":1}'
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				\(Self.terminatedTrap)
 				read line; printf '%s\\n' "$line" >> "$R"
+				echo "{\\"type\\":\\"waiting\\",\\"at\\":$(date +%s)}" >> "$R"
 				sleep 60 & wait
-				""", session: session)
+				""", inactivity: 300).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), session)
 		}
 		await until { session.events.contains(.progress(.fetching(done: 0, of: 1))) }
 		let canceled = ContinuousClock.now
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled >= .seconds(5))
-		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
+		#expect(recorded.map { $0["type"] } == ["cancel", "waiting", "terminated"], "\(recorded)")
 	}
 
 	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds")
@@ -331,7 +348,7 @@ struct FinTSConnectorTests {
 		// A state far larger than the buffer of a pipe, to a helper that never reads it.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let task = Task {
-			try await connector(#"trap 'echo "{\"type\":\"terminated\"}" >> "$R"; exit 1' TERM; sleep 60 & wait"#).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector("\(Self.terminatedTrap); sleep 60 & wait", inactivity: 300).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		try await Task.sleep(for: .milliseconds(300))
 		let canceled = ContinuousClock.now
@@ -343,11 +360,11 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["terminated"])
 	}
 
-	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(1)))
+	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(3)))
 	func cancelIgnoresTerm() async throws {
 		let grace: TimeInterval = 1
 		let task = Task {
-			try await connector("trap '' TERM; read cmd; exec sleep 600", grace: grace).listAccounts(of: Self.access, state: nil, session: Session())
+			try await connector("trap '' TERM; read cmd; exec sleep 600", inactivity: 300, grace: grace, killAfter: 2).listAccounts(of: Self.access, state: nil, session: Session())
 		}
 		try await Task.sleep(for: .milliseconds(300))
 		let canceled = ContinuousClock.now
@@ -364,7 +381,7 @@ struct FinTSConnectorTests {
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
 			try await connector("""
 				read cmd
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				\(Self.terminatedTrap)
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
 				""", inactivity: inactivity, grace: grace).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
@@ -373,39 +390,41 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 	}
 
-	@Test("A helper that sends a line and then stays silent fails with a timeout", .timeLimit(.minutes(1)))
+	// The limit only ends a run that hangs because the watchdog never fired: the helper waits in `read` before its `sleep 60`.
+	@Test("A helper that sends a line and then stays silent fails with a timeout", .timeLimit(.minutes(3)))
 	func timeoutAfterLine() async throws {
 		// The line counts until the run has handled it. Afterwards the silence must time out, as when
 		// the helper reported that it sent a message and the bank never answers.
-		let start = ContinuousClock.now
+		let start = Date.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
 			try await connector("""
 				read cmd
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				\(Self.terminatedTrap)
 				echo '{"type":"alive"}'
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
 				""", inactivity: 1, grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
-		// The helper would end on its own after 60 seconds.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		// The helper would end on its own after 60 seconds; termination ends it after about 2.
+		#expect(try #require(secondsToTermination(since: start)) < 30)
 	}
 
-	@Test("A helper that closes its output but keeps running gets the cancel and ends", .timeLimit(.minutes(1)))
+	@Test("A helper that closes its output but keeps running gets the cancel and ends")
 	func outputClosedEarly() async throws {
 		let run = Task {
 			try? await connector("""
 				read cmd
 				exec >&-
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				\(Self.terminatedTrap)
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
 				""", grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
-		// Without the cancel, the run would wait for the helper without end and could not be awaited.
+		// Without the cancel, the run would wait for the helper until its sleep ends and could not be
+		// awaited soon. The deadline lies far above the 40 seconds that the run can wait on CI for a thread.
 		let start = ContinuousClock.now
-		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(30) {
+		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) {
 			try await Task.sleep(for: .milliseconds(100))
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
@@ -416,12 +435,16 @@ struct FinTSConnectorTests {
 	@Test("A helper that does not read a large state fails with a timeout")
 	func timeoutBlockedWrite() async throws {
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
-		let start = ContinuousClock.now
+		let start = Date.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
-			try await connector("exec sleep 60", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
+			// The helper never reads its input, so the write of the command blocks.
+			try await connector("""
+				\(Self.terminatedTrap)
+				sleep 60 & wait
+				""", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		#expect(try #require(secondsToTermination(since: start)) < 30)
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
@@ -683,6 +706,9 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"zwölf","pending":false}]},"errors":[]}"#,
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
+		// An amount whose minor units do not fit would otherwise turn into another amount.
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-92233720368547758.08","pending":false}]},"errors":[]}"#,
+			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,

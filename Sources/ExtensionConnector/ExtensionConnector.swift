@@ -59,6 +59,15 @@ public struct ExtensionConnector: BankConnector {
 	/// The text that `credentials[2]` holds, which a script returns to end the login after the last poll.
 	static let cancelMessage = "The authorization was canceled."
 
+	/// The time on the clock of the script: the start of a recording or a replay, else the current time.
+	/// A replay of `ext test` then gives the same `balanceDate` every time.
+	var scriptNow: Date {
+		switch developer?.capture {
+		case let .record(start)?, let .replay(start, _)?: Date(timeIntervalSince1970: start)
+		case nil: Date()
+		}
+	}
+
 	/// The labels of the login fields: those of the manifest for the service, else "Username" and "Password".
 	func loginFields(for service: String) -> [LoginRequest.Field] {
 		guard let fields = package.manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
@@ -76,7 +85,9 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
-				guard let table = state.accounts[account.remoteID], let listed = ListedAccount(table) else {
+				guard let table = state.accounts[account.remoteID],
+					let listed = ListedAccount(table)?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: scriptNow)
+				else {
 					outcomes[account.accountID] = .failed(.unsupported("\(package.name) does not know the account \(account.remoteID). Set up the access again."))
 					continue
 				}
@@ -115,7 +126,8 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for index in accounts.indices {
 				await session.report(.fetching(done: index, of: accounts.count))
-				let outcome = try await run.refreshAccount(accounts[index].listed, since: nil, known: [:])
+				let new = accounts[index].listed.forRefresh(balance: nil, refreshedAt: nil, comment: nil, now: scriptNow)
+				let outcome = try await run.refreshAccount(new, since: nil, known: [:])
 				accounts[index].outcome = outcome.result
 				if outcome.endsSession { break }
 			}
@@ -149,6 +161,14 @@ public struct NewAccount: Sendable {
 	init(_ listed: ListedAccount, outcome: AccountOutcome) {
 		self.listed = listed
 		self.outcome = outcome
+	}
+
+	/// An account table without the fields that the app adds for `RefreshAccount`, so that `ext` finds the
+	/// account of a call by its table of `ListAccounts`.
+	public static func withoutRefreshFields(_ table: LuaValue) -> LuaValue {
+		guard case var .object(fields) = table else { return table }
+		for key in ["balance", "balanceDate", "comment", "attributes"] { fields[key] = nil }
+		return .object(fields)
 	}
 
 	public var name: String { listed.name }
@@ -194,6 +214,8 @@ private final class ScriptRun {
 	let session: SyncSession
 	let access: Access
 	let mapping: (SecondFactorRequest.Purpose) -> ChallengeMapping
+	/// The hosts that a browser login of this run may load.
+	private let hosts: AllowedHosts
 	private(set) var tanMethod: String?
 	private var loggedIn = false
 	let loginName: String
@@ -210,9 +232,11 @@ private final class ScriptRun {
 		self.session = session
 		self.access = access
 		tanMethod = remembered
+		self.hosts = hosts
 		mapping = { purpose in
 			ChallengeMapping(purpose: purpose, qrCodeName: connector.environment.language == "de" ? "QR-Code" : "QR Code", hosts: hosts.current,
-				rememberedMethod: remembered, validity: connector.challengeValidity, newState: { UUID().uuidString.lowercased() })
+				asksForHosts: connector.package.manifest?.hosts == nil, deniedHosts: hosts.denied, rememberedMethod: remembered, validity: connector.challengeValidity,
+				newState: { UUID().uuidString.lowercased() })
 		}
 	}
 
@@ -231,19 +255,22 @@ private final class ScriptRun {
 		let decisions = try await connector.services.hostDecisions()
 		let package = connector.package
 		// A stored answer can name a host that the host process now refuses, such as one under `local`.
-		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed && HostName(exactly: $0.key) != nil }.map(\.key))
+		let hosts = AllowedHosts(package.manifest?.hosts?.map(\.value) ?? decisions.filter { $0.value == .allowed && HostName(exactly: $0.key) != nil }.map(\.key),
+			denied: decisions.filter { $0.value == .denied }.map(\.key))
 		let setup = HostSetup(package: connector.package, decisions: decisions, fixture: connector.fixture, environment: connector.environment, storage: state.storage,
 			developer: connector.developer)
 		let services = connector.services
 		let client: ExtensionHostClient
 		do {
 			client = try await ExtensionHostClient.start(setup, executable: connector.executable, arguments: connector.arguments, ask: { host in
+				// The user allowed the host for its login page earlier in this run.
+				if hosts.current.contains(host) { return .allowed }
 				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: package.name, host: host))) else {
 					throw CancellationError()
 				}
 				try await services.saveDecision(decision, host)
 				// A browser login or a captcha on this host may follow in the same run.
-				if decision == .allowed { hosts.insert(host) }
+				decision == .allowed ? hosts.insert(host) : hosts.deny(host)
 				return decision
 			}, log: services.log, trace: services.trace).client
 		} catch {
@@ -329,7 +356,7 @@ private final class ScriptRun {
 	func refreshAccount(_ account: ListedAccount, since: Day?, known: [String: LuaValue]) async throws -> (result: AccountOutcome, endsSession: Bool) {
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = connector.timeZone
-		let seconds = account.kind == .portfolio ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
+		let seconds = account.holdsSecurities ? 0 : since.map { Int64($0.date(in: calendar).timeIntervalSince1970) } ?? 0
 		let answer: (value: LuaValue, challenged: Bool)
 		do {
 			answer = try await resolve(credentials: [], purpose: .download) { [session] step, credentials in
@@ -378,6 +405,18 @@ private final class ScriptRun {
 				throw SyncFailure.bank(BankMessage(text: error.message))
 			}
 			switch interaction {
+			case let .allowHost(host):
+				guard case let .host(decision) = try await session.ask(.allowHost(HostPermissionRequest(extensionName: connector.package.name, host: host))) else {
+					throw CancellationError()
+				}
+				try await connector.services.saveDecision(decision, host)
+				guard decision == .allowed else {
+					hosts.deny(host)
+					throw SyncFailure.bank(BankMessage(text: "The login page \(host) is not a host that the extension may contact."))
+				}
+				hosts.insert(host)
+				// The same table, now with the host allowed, opens the browser window.
+				pending = value
 			case let .answer(request, increment):
 				guard case let .tan(secret) = try await session.ask(.secondFactor(request)) else { throw CancellationError() }
 				credentials = [.string(secret.value), .string(ExtensionConnector.cancelMessage)]
@@ -543,18 +582,24 @@ private final class EndLimit: Sendable {
 }
 
 /// The hosts that a browser login or a captcha page of one run may use: those of the manifest, or
-/// those the user allowed, also during the run.
+/// those the user allowed, also during the run. `denied` keeps the hosts the user refused, so the app
+/// does not ask for them again: the host process keeps its own copy of a "Deny" for the whole run.
 private final class AllowedHosts: Sendable {
-	private let hosts: Mutex<Set<String>>
+	private let hosts: Mutex<(allowed: Set<String>, denied: Set<String>)>
 
-	init(_ hosts: some Sequence<String>) {
-		self.hosts = Mutex(Set(hosts))
+	init(_ hosts: some Sequence<String>, denied: some Sequence<String>) {
+		self.hosts = Mutex((Set(hosts), Set(denied)))
 	}
 
-	var current: Set<String> { hosts.withLock { $0 } }
+	var current: Set<String> { hosts.withLock { $0.allowed } }
+	var denied: Set<String> { hosts.withLock { $0.denied } }
 
 	func insert(_ host: String) {
-		hosts.withLock { _ = $0.insert(host) }
+		hosts.withLock { _ = $0.allowed.insert(host) }
+	}
+
+	func deny(_ host: String) {
+		hosts.withLock { _ = $0.denied.insert(host) }
 	}
 }
 
