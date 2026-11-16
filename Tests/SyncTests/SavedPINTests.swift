@@ -212,6 +212,24 @@ struct SavedPINTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("A new PIN from Edit Login Data or from the setup forgets the answer of the bank to the old one", arguments: [true, false])
+	func rejectionForgottenWithNewPIN(edited: Bool) async throws {
+		_ = refresh([.ask(Self.pin), .fail(.pinRejected(BankMessage(code: "9931", text: "PIN falsch. Noch 1 Fehlversuch bis zur Sperrung.")))])
+		await until { broker.current != nil }
+		answer(.pin(Secret("11111")))
+		await until { !coordinator.isRefreshing }
+
+		if edited { broker.adopt(Secret("22222"), for: Self.bank.id, saved: false) } else { try broker.remember(Secret("22222"), for: Self.bank.id, save: false) }
+		// The refresh with the new PIN fails for another cause, so the PIN is forgotten and the next refresh asks.
+		_ = refresh([.ask(Self.pin), .fail(.offline)], attended: false)
+		await until { !coordinator.isRefreshing }
+		_ = refresh([.ask(Self.pin)])
+		await until { broker.current != nil }
+		#expect(broker.current?.request == Self.pin)
+		broker.cancel(broker.current!.id)
+		await until { !coordinator.isRefreshing }
+	}
+
 	@Test("A saved PIN stays after a failure that is not about the PIN")
 	func savedAfterOtherFailure() async throws {
 		try store.savePIN(Secret("12345"), for: Self.bank.id)

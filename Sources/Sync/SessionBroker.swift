@@ -201,17 +201,20 @@ public final class SessionBroker {
 
 	/// Keeps the PIN that the setup of a new access logged in with, so that its first refresh does not
 	/// ask again. The bank accepted it, so it is saved at once when the user asked to save it, and it
-	/// replaces a PIN that is saved for the access already.
+	/// replaces a PIN that is saved for the access already. The answer of the bank to an older PIN no longer applies.
 	public func remember(_ pin: Secret, for access: UUID, save: Bool) throws {
 		pins[access] = pin
+		rejections[access] = nil
 		if save || savedPINs.contains(access) { try writeSavedPIN(pin, of: access) }
 	}
 
 	/// Keeps the PIN of a login that "Edit Login Data..." just stored, together with the saved PIN of the
 	/// access, in the database: `saved` says whether that saved the PIN or deleted the saved one. Nothing is
 	/// written here, so the marks in memory always follow the database, and a later rejection deletes a saved PIN.
+	/// The answer of the bank to the old PIN no longer applies.
 	public func adopt(_ pin: Secret, for access: UUID, saved: Bool) {
 		pins[access] = pin
+		rejections[access] = nil
 		toSave.remove(access)
 		undeleted.remove(access)
 		if saved { savedPINs.insert(access) } else { savedPINs.remove(access) }
