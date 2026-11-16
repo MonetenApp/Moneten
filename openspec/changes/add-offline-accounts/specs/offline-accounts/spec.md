@@ -203,7 +203,7 @@ The app SHALL show a hint in an offline account without transactions. The hint a
 
 ### Requirement: Create an offsetting entry
 
-The app SHALL offer "Create Offsetting Entry" in the context menu of a transaction, with one entry for each offline account other than the account of the transaction. A choice adds one transaction to that offline account for each selected transaction, with the same amount in the opposite sign and in the same currency. The source transaction stays unchanged, and no link joins the two.
+The app SHALL offer "Create Offsetting Entry" in the context menu of a transaction, with one entry for each open offline account other than the account of the transaction. A choice adds one booked transaction to that offline account for each selected transaction, with the same amount in the opposite sign and in the same currency. The source transaction stays unchanged, and no link joins the two.
 
 #### Scenario: Cash withdrawal
 
@@ -218,9 +218,34 @@ The app SHALL offer "Create Offsetting Entry" in the context menu of a transacti
 - **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
 - **THEN** "Wallet" gets 3 new transactions
 
+#### Scenario: Part of a split transaction
+
+- **GIVEN** a transaction of -80,00 € in the account "Giro", split into a part of -40,00 € in the category "Cash" and a part of -40,00 € in the category "Groceries"
+- **WHEN** the user selects the part in the view of the category "Cash", chooses "Create Offsetting Entry", and then "Wallet"
+- **THEN** "Wallet" gets a transaction of 40,00 €
+- **AND** the split transaction and its parts are unchanged
+
+#### Scenario: Pending source
+
+- **GIVEN** a pending transaction of -200,00 € "Geldautomat" in the account "Giro"
+- **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
+- **THEN** "Wallet" gets a booked transaction of 200,00 €, because no refresh books a transaction of an offline account
+
+#### Scenario: Closed offline account
+
+- **GIVEN** the open offline account "Wallet" and the closed offline account "Old Wallet"
+- **WHEN** the user opens "Create Offsetting Entry"
+- **THEN** the submenu shows "Wallet" and not "Old Wallet"
+
+#### Scenario: Amount without an opposite amount
+
+- **GIVEN** an imported transaction whose amount is the smallest amount the app stores
+- **WHEN** the user chooses "Create Offsetting Entry" and then "Wallet"
+- **THEN** "Wallet" gets no transaction, and the app says that the amount has no opposite amount
+
 #### Scenario: No offline account
 
-- **GIVEN** no offline account exists
+- **GIVEN** no open offline account exists
 - **WHEN** the user opens "Create Offsetting Entry"
 - **THEN** the submenu shows only the disabled line "No offline accounts available"
 

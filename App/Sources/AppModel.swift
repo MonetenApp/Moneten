@@ -812,6 +812,18 @@ final class AppModel {
 		}
 	}
 
+	/// "Create Offsetting Entry": one manual transaction in the offline account for each row.
+	/// The rows are those the list shows, so a part of a split gives an entry with the amount of the part.
+	func createOffsettingEntries(of ids: Set<UUID>, in accountID: UUID) {
+		guard let target = ledger.account(accountID) else { return }
+		do {
+			commit((transactions: try ledger.offsettingEntries(of: ids.compactMap { ledger.row($0) }, into: target), parts: []))
+		} catch {
+			alert = AlertMessage(title: "Could not create the offsetting entries.",
+				message: "The amount of a selected transaction has no opposite amount that the app can store.")
+		}
+	}
+
 	func delete(transactions ids: Set<UUID>) {
 		guard let store else { return }
 		let accounts = ledger.keepingBankBalance(replacing: ids.compactMap { ledger.transaction($0) }, with: [])
