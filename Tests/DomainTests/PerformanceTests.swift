@@ -63,7 +63,7 @@ struct PerformanceTests {
 		var rangeCount = 0
 		let amountRange = fastest { rangeCount = ledger.rows(in: .category(categories[60].id), filter: range).rows.count }
 		var amounts: [UUID: Money] = [:]
-		let sidebar = fastest { amounts = ledger.sidebarAmounts(today: Day(year: 2022, month: 9, day: 15)) }
+		let sidebar = fastest(runs: 15) { amounts = ledger.sidebarAmounts(today: Day(year: 2022, month: 9, day: 15)) }
 		let imported = (0..<2_000).map { i in
 			Transaction(accountID: accounts[i % accounts.count].id, bookingDate: Day(year: 2026, month: 11, day: 1 + i % 28), amountMinor: -Int64(i),
 				name: "Neu \(i)", purpose: "Import \(i)")
@@ -75,7 +75,7 @@ struct PerformanceTests {
 		#expect(updated.rows(in: .accountGroup(everything.id)).rows.filter(\.isChecked).count == 200)
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_355)
 		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
@@ -86,6 +86,7 @@ struct PerformanceTests {
 		// A debug build runs several times slower than the app and depends on the load of the machine,
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
+		// The sidebar amounts take a few milliseconds, so `budget(_:)` gives a runner that GitHub hosts more time for them.
 		#if !DEBUG
 		#expect(search < .milliseconds(150))
 		#expect(wildcard < .milliseconds(150))
@@ -102,7 +103,7 @@ struct PerformanceTests {
 		#expect(regex < .milliseconds(200))
 		#expect(category < .milliseconds(100))
 		#expect(amountRange < .milliseconds(100))
-		#expect(sidebar < .milliseconds(20))
+		#expect(sidebar < budget(.milliseconds(20)))
 		#expect(build < .seconds(1))
 		#expect(update < .milliseconds(300))
 		#endif
@@ -175,19 +176,30 @@ struct PerformanceTests {
 		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: today.adding(days: -299))))
 		let rules = Categorizer(ledger: Ledger(accounts: [account]))
 		var result = Reconciliation()
-		let elapsed = fastest { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
 		#expect(result.skipped == 300 && result.updated.count == 300)
 		#expect(result.added.isEmpty && result.booked.isEmpty && result.dropped.isEmpty && result.marked.isEmpty)
-		print("booked file refresh 50,000/300 \(elapsed), skipped=\(result.skipped), updated=\(result.updated.count)")
+		print("booked file refresh 50,000/300 \(elapsed), budget \(budget(.milliseconds(20))), skipped=\(result.skipped), updated=\(result.updated.count)")
 		#if !DEBUG
-		#expect(elapsed < .milliseconds(20))
+		#expect(elapsed < budget(.milliseconds(20)))
 		#endif
 	}
 
-	/// The fastest of three runs. A shared CI machine sometimes stalls one run for longer than the
+	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
-	private func fastest(_ work: () -> Void) -> Duration {
+	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.
+	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
-		return (0..<3).map { _ in clock.measure(work) }.min()!
+		return (0..<runs).map { _ in clock.measure(work) }.min()!
+	}
+
+	/// The budget of a step of a few milliseconds on a Mac, or one and a half times as much on a runner
+	/// that GitHub hosts. Such a runner shares its host and takes nine to ten times as long as a current Mac
+	/// for the sidebar amounts and the booked refresh. Their usual time there is 18 to 20 ms, so a budget of
+	/// 20 ms failed one run in four. With 30 ms, twice the usual time still fails. GitHub sets
+	/// `RUNNER_ENVIRONMENT` to `github-hosted` on its own runners only, so a developer Mac and a
+	/// self-hosted runner keep the budget of a Mac. The longer steps keep their budget everywhere.
+	private func budget(_ onAMac: Duration) -> Duration {
+		ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? onAMac * 1.5 : onAMac
 	}
 }
