@@ -45,7 +45,7 @@ import Testing
 			end
 			function RefreshAccount(account, since) print("RefreshAccount " .. account.accountNumber .. " " .. since) return {balance = 1, transactions = {}} end
 			""")), session)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession2 1 erika geheim true 0 refresh", "RefreshAccount A 0", "RefreshAccount B 0", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "InitializeSession2 1 erika geheim true 0 refresh", "RefreshAccount A 0", "RefreshAccount B 0", "EndSession"])
 		#expect(report.outcomes[ids[0]]?.balance == 100)
 		#expect(report.outcomes[ids[1]]?.balance == 100)
 	}
@@ -185,7 +185,7 @@ import Testing
 				end
 				""")), session)
 		}
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "interactive false"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "interactive false"])
 		#expect(session.asked.withLock { $0.map(\.kind) } == [.login])
 	}
 
@@ -269,7 +269,7 @@ import Testing
 				return {balance = 42.5, transactions = {{bookingDate = 1325764800, purpose = "Hello World!", amount = 42.00}}}
 			end
 			""")).setUp(Self.access, session)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "session new account", "known 0", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "session new account", "known 0", "EndSession"])
 		#expect(setup.accounts.map(\.name) == ["Premium Account"])
 		#expect(setup.accounts.first?.kind == .giro)
 		#expect(setup.accounts.first?.outcome.rows == [Row(Day(year: 2012, month: 1, day: 5), 4200, "", "Hello World!", nil)])
@@ -288,7 +288,7 @@ import Testing
 			function ListAccounts() print("ListAccounts") return {{accountNumber = "A", name = "Giro A"}, {accountNumber = "B", name = "Giro B"}} end
 			function RefreshAccount(account) print("RefreshAccount " .. account.accountNumber) return {balance = 1, transactions = {}} end
 			""")), session, state: state)
-		#expect(session.printed == ["SupportsBank ProtocolWebBanking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
+		#expect(session.printed == ["SupportsBank Web Banking Demo", "InitializeSession", "ListAccounts", "RefreshAccount A", "RefreshAccount B", "EndSession"])
 		#expect(report.outcomes[ids[1]]?.balance == 100)
 		#expect(ExtensionState(report.state).accounts["B EUR"] == .object(["accountNumber": .string("B"), "name": .string("Giro B")]))
 	}

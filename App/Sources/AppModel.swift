@@ -795,8 +795,8 @@ final class AppModel {
 		commit(ledger.changes(from: ids.compactMap { ledger.row($0) }.map { var t = $0; t.comment = value.isEmpty ? nil : value; return t }))
 	}
 
-	func save(transaction t: Transaction) {
-		var changed = ledger.changes(from: [t])
+	func save(transaction t: Transaction, adding: Bool) {
+		var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
 		let categorizer = Categorizer(ledger: ledger)
 		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
 			categorizer.categorize(&changed.transactions[i])
@@ -1374,6 +1374,7 @@ final class AppModel {
 			let kept = Set(Holding.identify(delivered, stored: shown).map(\.id))
 			return shown.contains { !kept.contains($0.id) }
 		}
+		let ledger = self.ledger
 		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }
 	}
 

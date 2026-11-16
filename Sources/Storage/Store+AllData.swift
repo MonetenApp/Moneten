@@ -30,7 +30,7 @@ extension Store {
 				},
 				csvProfiles: try Row.fetchAll(db, sql: "SELECT name, version, payload FROM csvProfile ORDER BY rowid").map {
 					CSVProfileData(name: $0["name"], version: $0["version"], payload: $0["payload"])
-				})
+				}, splitParts: try SplitPart.order(Column.rowID).fetchAll(db))
 		}
 	}
 
@@ -66,6 +66,7 @@ extension Store {
 	/// An access arrives without its state and without a PIN, so its first refresh asks for the PIN.
 	public func importAllData(_ data: AllData, replacing starters: [UUID] = []) throws {
 		try data.validateParentLinks()
+		try data.validateSplitParts()
 		do { try write(data, replacing: starters) } catch let error as DatabaseError where error.extendedResultCode == .SQLITE_CONSTRAINT_FOREIGNKEY {
 			throw AllData.ReadError.damaged("an object refers to another object that the file does not contain")
 		} catch let error as DatabaseError where error.resultCode == .SQLITE_CONSTRAINT {
@@ -89,6 +90,7 @@ extension Store {
 			for a in data.accounts { try a.insert(db) }
 			for c in data.categories { try c.insert(db) }
 			for t in data.transactions { try t.insert(db) }
+			for part in data.splitParts { try part.insert(db) }
 			for d in data.deletedTransactions { try d.insert(db) }
 			for v in data.portfolioValues { try v.insert(db) }
 			for h in data.holdings { try HoldingRecord(h).insert(db) }

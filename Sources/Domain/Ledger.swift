@@ -548,7 +548,7 @@ public struct Ledger: Sendable {
 				if row.isNew != original.isNew { t.isNew = row.isNew }
 				if row.review != original.review { t.review = row.review }
 				if t != original { changed[t.id] = t }
-			} else if partsByTransaction[row.id] == nil, row != transaction(row.id) {
+			} else if partsByTransaction[row.id] == nil, let stored = transaction(row.id), row != stored {
 				changed[row.id] = row
 			}
 		}
