@@ -545,6 +545,68 @@ struct CategorizerTests {
 		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - countStart) / 1_000_000 < 1_600)
 	}
 
+	/// Six rules that hang on every text, and six that are slow on texts of 18 "a", above a normal rule and a catch-all.
+	static func stoppingRules() -> [String] {
+		(0..<6).map { "purpose:/^+?4\($0)/" } + (1...6).map { "purpose:/(a+)+$|^z\($0)$/" }
+	}
+
+	@Test("Twelve rules that stop leave a normal regular expression its rows, which it tests once, and the batch stays bounded", .timeLimit(.minutes(1)))
+	func stoppingRulesKeepNormalRule() {
+		let slow = Self.stoppingRules().enumerated().map { Domain.Category(position: $0.offset, name: "Slow \($0.offset)", rule: $0.element) }
+		let traders = Domain.Category(position: 20, name: "Haendler", rule: "/Haendler1/")
+		let rest = Domain.Category(position: 21, name: "Rest", rule: "true")
+		let day = Day(year: 2026, month: 11, day: 3)
+		let rows = (0..<2_000).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -Int64(i), name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i)") }
+			// Different amounts, so each row is a text of its own, which the results of the batch do not repeat.
+			+ (0..<4).map { i in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -10_000 - Int64(i), name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
+		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer) {
+			let rules = Categorizer(ledger: ledger(categories))
+			return (rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }, rules)
+		}
+		let alone = run([traders, rest])
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let mixed = run(slow + [traders, rest])
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		print("twelve stopping rules over 2,004 rows: \(milliseconds) ms")
+		#expect(milliseconds < 2_500)
+		let expected = alone.rows.map(\.categoryID)
+		#expect(expected.count(where: { $0 == traders.id }) == 319)
+		#expect(mixed.rows.map(\.categoryID) == expected)
+		let rules = Dictionary(uniqueKeysWithValues: mixed.rules.entries.map { ($0.categoryID, $0.rule) })
+		#expect(slow.allSatisfy { rules[$0.id]?.stoppedRegexPosition != nil })
+		#expect(rules[traders.id]?.stoppedRegexPosition == nil)
+		// The repeat after the stops reads the results of the normal rule, so it runs as often as without the slow rules.
+		let aloneRules = Dictionary(uniqueKeysWithValues: alone.rules.entries.map { ($0.categoryID, $0.rule) })
+		#expect(rules[traders.id]?.regexCalls == aloneRules[traders.id]?.regexCalls)
+	}
+
+	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
+	func batchLimit() {
+		// Forty rules that each hang for about 100 ms before they stop.
+		let slow = (0..<40).map { Domain.Category(position: $0, name: "Slow \($0)", rule: "purpose:/^+?\($0 % 10)\($0 / 10)/") }
+		let traders = Domain.Category(position: 50, name: "Haendler", rule: "/Haendler1/")
+		let rules = Categorizer(ledger: ledger(slow + [traders]))
+		let row = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Haendler1", purpose: "Rechnung 1")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let t = rules.allOrNothing { var t = row; rules.categorize(&t); return t }
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(milliseconds < 3_600)
+		#expect(rules.entries.allSatisfy { $0.rule.stoppedRegexPosition != nil })
+		#expect(t.categoryID == nil)
+	}
+
+	@Test("A cancelled count of matches stops at once")
+	func cancelledCount() async throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/(a+)+$/")
+		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
+		let l = ledger([phone], rows)
+		let rule = try Rule(parsing: phone.rule)
+		let task = Task.detached { RuleApplier.matchCount(category: phone, rule: rule, ledger: l) }
+		task.cancel()
+		#expect(await task.value == 0)
+		#expect(rule.regexCalls == 0)
+	}
+
 	@Test("A rule that a row changed during the run stops saves nothing", .timeLimit(.minutes(1)))
 	func rebaseOfStoppedRule() throws {
 		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)

@@ -159,7 +159,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
-	@ObservationIgnored private var ledgerRevision = 0
+	@ObservationIgnored private(set) var ledgerRevision = 0
 	var exportTask: Task<Void, Never>?
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
@@ -1460,6 +1460,10 @@ final class AppModel {
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		guard !run.isCancelled else { return }
+		if changed.isEmpty, let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+			return
+		}
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }

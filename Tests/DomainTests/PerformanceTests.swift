@@ -184,9 +184,6 @@ struct PerformanceTests {
 		#endif
 	}
 
-	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
-	/// budget, which made this test fail at random; a slow change still makes every run slow.
-	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.
 	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
 	func regexRuleBudgets() throws {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
@@ -209,7 +206,20 @@ struct PerformanceTests {
 			let rules = Categorizer(ledger: ledger)
 			sorted = rules.allOrNothing { ts.reduce(0) { $0 + (rules.category(for: $1) == traders.id ? 1 : 0) } }
 		}
-		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows)")
+		// Twelve rules above it that stop, six at once and six on texts of 18 "a", leave it its rows, and the batch ends soon.
+		let stopping = (0..<6).map { "purpose:/^+?4\($0)/" } + (1...6).map { "purpose:/(a+)+$|^z\($0)$/" }
+		let slow = stopping.enumerated().map { Domain.Category(position: $0.offset, name: "Slow \($0.offset)", rule: $0.element) }
+		let mixedRows = ts + (0..<4).map { i in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -10_000 - Int64(i), name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!")
+		}
+		let mixed = Ledger(accounts: [account], categories: slow.map { var c = $0; c.position -= 20; return c } + [traders, rest], transactions: mixedRows)
+		var kept = 0
+		let withStops = fastest {
+			let rules = Categorizer(ledger: mixed)
+			kept = rules.allOrNothing { mixedRows.reduce(0) { var t = $1; rules.categorize(&t); return $0 + (t.categoryID == traders.id ? 1 : 0) } }
+		}
+		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows), with twelve rules that stop \(withStops) (\(kept) rows)")
+		#expect(kept == 7_865)
 		// Haendler1 and Haendler10 to Haendler19: 11 of each 70 rows.
 		#expect(count == 7_865)
 		#expect(sorted == 7_865)
@@ -219,9 +229,13 @@ struct PerformanceTests {
 		#if !DEBUG
 		#expect(counting < budget(.seconds(1)))
 		#expect(categorizing < budget(.seconds(1)))
+		#expect(withStops < budget(.seconds(3)))
 		#endif
 	}
 
+	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
+	/// budget, which made this test fail at random; a slow change still makes every run slow.
+	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!

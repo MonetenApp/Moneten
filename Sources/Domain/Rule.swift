@@ -138,16 +138,24 @@ public struct RegexBox: @unchecked Sendable {
 	}
 }
 
-/// The position of the first regular expression of one parsed rule that ran too long, and the processor time that its
-/// regular expressions spent. The categorizer can test one rule on more than one thread, so both are atomic.
+/// The position of the first regular expression of one parsed rule that ran too long, the processor time that its
+/// regular expressions spent, and the number of their calls. The categorizer can test one rule on more than one
+/// thread, so all are atomic.
 private final class RegexStop: Sendable {
 	private let stopped = Atomic<Int>(-1)
 	private let nanoseconds = Atomic<UInt64>(0)
+	private let slowNanoseconds = Atomic<UInt64>(0)
+	private let count = Atomic<UInt64>(0)
 
 	var spent: UInt64 { nanoseconds.load(ordering: .relaxed) }
+	/// The time of the calls that took `Rule.slowCall` or more each.
+	var slow: UInt64 { slowNanoseconds.load(ordering: .relaxed) }
+	var calls: UInt64 { count.load(ordering: .relaxed) }
 
 	func add(_ elapsed: UInt64) {
 		nanoseconds.wrappingAdd(elapsed, ordering: .relaxed)
+		if elapsed >= Rule.slowCall { slowNanoseconds.wrappingAdd(elapsed, ordering: .relaxed) }
+		count.wrappingAdd(1, ordering: .relaxed)
 	}
 
 	var position: Int? {
@@ -194,12 +202,41 @@ public struct Rule: Sendable {
 	/// tests. A pattern that takes 30 ms on each text never reaches the limit of one call, and 200 such texts would
 	/// otherwise take 6 seconds.
 	static let runLimit: UInt64 = 1_000_000_000
+	/// A regular expression on the text of a bank takes a few microseconds. A call of `slowCall` or more is a pattern that
+	/// backtracks without end, so such calls stop the rule once they took `slowLimit` together. A pattern that is slow on
+	/// some texts then costs about 50 ms, not 1 second, also when it is fast on all other texts.
+	static let slowCall: UInt64 = 1_000_000
+	static let slowLimit: UInt64 = 50_000_000
 
 	/// The position of the regular expression that ran too long, counted from 0, or nil. It ran too long when one call
-	/// took about 100 ms, or when all calls of this parsed rule took `runLimit`. ICU never finishes some patterns, such
-	/// as `^+?49`, so after the first stop this parsed rule matches no further transaction. A new parse starts without a
-	/// stop, so the stop lasts one run: one pass of `Categorizer`, one run of `RuleApplier`, or one count of matches.
+	/// took about 100 ms, when its slow calls took `slowLimit` together, or when all calls of this parsed rule
+	/// took `runLimit`. ICU never finishes some patterns, such as `^+?49`, so after the first stop this parsed rule
+	/// matches no further transaction. A new parse starts without a stop, so the stop lasts one run: one batch of
+	/// `Categorizer` with all its repeats, one run of `RuleApplier`, or one count of matches.
 	public var stoppedRegexPosition: Int? { stop?.position }
+
+	/// The rule has a regular expression, so it can stop.
+	var hasRegex: Bool { stop != nil }
+
+	/// The processor time that the regular expressions of this parsed rule spent, and the number of their calls.
+	var regexSpent: UInt64 { stop?.spent ?? 0 }
+	var regexCalls: UInt64 { stop?.calls ?? 0 }
+
+	/// Stops the rule at its first regular expression, when the rules of one batch together ran too long.
+	func stopAtFirstRegex() {
+		guard let stop, let position = Self.firstRegexPosition(expression) else { return }
+		stop.record(position)
+	}
+
+	private static func firstRegexPosition(_ e: RuleExpression) -> Int? {
+		switch e {
+		case let .regex(box, _): box.position
+		case .phrase, .amount, .constant: nil
+		case let .not(a): firstRegexPosition(a)
+		case let .and(a, b), let .or(a, b):
+			[firstRegexPosition(a), firstRegexPosition(b)].compactMap { $0 }.min()
+		}
+	}
 
 	public func matches(_ subject: RuleSubject) -> Bool {
 		if stop?.position != nil { return false }
@@ -221,6 +258,7 @@ public struct Rule: Sendable {
 			let found = watch.firstMatch(box.regex, text) != nil
 			stop?.add(watch.budget.spent - before)
 			if watch.gaveUp || watch.budget.gaveUp { stop?.record(box.position) }
+			if let stop, stop.slow >= Rule.slowLimit { stop.record(box.position) }
 			return found
 		}
 	}

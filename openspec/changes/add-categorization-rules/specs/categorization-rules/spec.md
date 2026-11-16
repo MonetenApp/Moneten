@@ -321,7 +321,7 @@ The app SHALL treat text between two slashes as a regular expression and match i
 
 ### Requirement: A regular expression in a rule that does not end
 
-The app SHALL stop a rule when one of its regular expressions takes about 100 ms of processor time on one text, or when its regular expressions take 1 second of processor time in all within one run. A run is the categorization of one account's refresh or one account's import, of one entry, or of one migration, one application of a rule to existing transactions, or one count of matches in the category settings.
+The app SHALL stop a rule when one of its regular expressions takes about 100 ms of processor time on one text, when its calls that took 1 ms or more each add up to 50 ms, or when its regular expressions take 1 second of processor time in all within one run. A run is the categorization of one account's refresh or one account's import, of one entry, or of one migration, one application of a rule to existing transactions, or one count of matches in the category settings.
 
 #### Scenario: Refresh with a rule that does not end
 
@@ -334,7 +334,17 @@ The app SHALL stop a rule when one of its regular expressions takes about 100 ms
 
 - **GIVEN** the category "Phone" with the rule `purpose:/(a+)+$/`
 - **WHEN** the rule tests 200 transactions whose purpose is 18 times "a" and then "!"
-- **THEN** the rule stops after about 1 second of processor time and matches none of them
+- **THEN** the rule stops after about 50 ms of processor time and matches none of them
+
+### Requirement: The rules of one run stop together after 3 seconds
+
+The app SHALL stop every rule with a regular expression when the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
+
+#### Scenario: Many slow rules above a normal one
+
+- **GIVEN** twelve categories whose rules stop, above "Traders" with the rule `/Haendler1/`
+- **WHEN** a migration categorizes 50,000 transactions, of which 7,865 have a name that starts with "Haendler1"
+- **THEN** the 7,865 transactions are in "Traders", and the categorization ends within a few seconds
 
 ### Requirement: A stopped rule matches nothing in its run
 

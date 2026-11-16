@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// Assigns categories to transactions with the rules of all categories.
 ///
@@ -13,6 +14,14 @@ public struct Categorizer: Sendable {
 
 	let entries: [Entry]
 	let accountsByID: [UUID: Account]
+	/// The results of the rules with a regular expression for each text of a row, so a repeat of `allOrNothing` reads them
+	/// instead of running the regular expressions again, and a rule that did not stop pays for each text once.
+	private let results = Results()
+
+	/// The processor time that the regular expressions of all rules of one categorizer may spend together. Each rule also
+	/// stops by its own limits, so this bounds a batch with many slow rules: twelve rules of one second each would
+	/// otherwise take twelve seconds.
+	static let batchLimit: UInt64 = 3_000_000_000
 
 	public init(ledger: Ledger) {
 		accountsByID = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
@@ -22,16 +31,70 @@ public struct Categorizer: Sendable {
 		}
 	}
 
+	/// The fields of a row that a rule reads. Two rows with the same fields give every rule the same result.
+	private struct Texts: Hashable {
+		let accountID: UUID
+		let name: String
+		let purpose: String
+		let bookingText: String?
+		let endToEndReference: String?
+		let mandateReference: String?
+		let creditorID: String?
+		let comment: String?
+		let counterpartyIBAN: String?
+		let currency: String
+		let amountMinor: Int64
+
+		init(_ t: Transaction) {
+			accountID = t.accountID
+			name = t.name
+			purpose = t.purpose
+			bookingText = t.bookingText
+			endToEndReference = t.endToEndReference
+			mandateReference = t.mandateReference
+			creditorID = t.creditorID
+			comment = t.comment
+			counterpartyIBAN = t.counterpartyIBAN
+			currency = t.currency
+			amountMinor = t.amountMinor
+		}
+	}
+
+	private struct ResultKey: Hashable {
+		let entry: Int
+		let texts: Texts
+	}
+
+	private final class Results: Sendable {
+		let known = Mutex<[ResultKey: Bool]>([:])
+	}
+
 	/// The first category whose rule matches, and whether a stopped rule stood before it, which could have matched first.
 	private func decision(for t: Transaction) -> (category: UUID?, passedStop: Bool) {
 		let subject = RuleSubject(t, account: accountsByID[t.accountID])
+		var texts: Texts?
 		var passedStop = false
-		for e in entries {
+		for (i, e) in entries.enumerated() {
 			if let accounts = e.accounts, !accounts.contains(t.accountID) { continue }
-			if e.rule.matches(subject) { return (e.categoryID, passedStop) }
+			if matches(e.rule, i, subject, t, &texts) { return (e.categoryID, passedStop) }
 			if e.rule.stoppedRegexPosition != nil { passedStop = true }
 		}
 		return (nil, passedStop)
+	}
+
+	private func matches(_ rule: Rule, _ entry: Int, _ subject: RuleSubject, _ t: Transaction, _ texts: inout Texts?) -> Bool {
+		guard rule.hasRegex else { return rule.matches(subject) }
+		guard rule.stoppedRegexPosition == nil else { return false }
+		let key = ResultKey(entry: entry, texts: texts ?? Texts(t))
+		texts = key.texts
+		if let known = results.known.withLock({ $0[key] }) { return known }
+		let found = rule.matches(subject)
+		if entries.reduce(0, { $0 + $1.rule.regexSpent }) >= Self.batchLimit {
+			for e in entries where e.rule.hasRegex { e.rule.stopAtFirstRegex() }
+		}
+		guard rule.stoppedRegexPosition == nil else { return false }
+		results.known.withLock { $0[key] = found }
+		return found
 	}
 
 	/// Sets the category of a transaction that has none, or whose category came from a rule.
@@ -52,7 +115,8 @@ public struct Categorizer: Sendable {
 
 	/// Runs one batch of categorization, such as the merge of one refresh. When a rule stops during the batch, the rows
 	/// before the stop could have taken its category, so the batch runs again, and the stopped rule then matches none of
-	/// its rows. The result never depends on the order of the rows. `body` must start from its inputs each time.
+	/// its rows. The result never depends on the order of the rows. `body` must start from its inputs each time. A repeat
+	/// reads the results of the rules that did not stop, so it adds no time to their limits.
 	public func allOrNothing<T>(_ body: () throws -> T) rethrows -> T {
 		var stops = stopCount
 		while true {
@@ -113,11 +177,13 @@ public enum RuleApplier {
 		return changed
 	}
 
-	/// The number of transactions that the rule matches, or 0 when its regular expression stopped.
+	/// The number of transactions that the rule matches, or 0 when its regular expression stopped or the task was cancelled.
 	public static func matchCount(category: Category, rule: Rule, ledger: Ledger) -> Int {
 		let restriction = ledger.allowedAccounts(of: category)
 		var count = 0
-		for transaction in ledger.transactions {
+		for (i, transaction) in ledger.transactions.enumerated() {
+			// The category settings count again on every change of the rule and drop the count they no longer need.
+			if i % 1_000 == 0, Task.isCancelled { return 0 }
 			guard ledger.parts(of: transaction.id).isEmpty, restriction.map({ $0.contains(transaction.accountID) }) ?? true else { continue }
 			if rule.matches(RuleSubject(transaction, account: ledger.account(transaction.accountID))) { count += 1 }
 			if rule.stoppedRegexPosition != nil { return 0 }

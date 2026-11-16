@@ -142,12 +142,18 @@ struct CategorySettingsSheet: View {
 	/// What the count of matches depends on.
 	private struct MatchKey: Hashable {
 		let rule: String
-		// The synthesized Hashable conformance reads it, which Periphery cannot see.
+		// The synthesized Hashable conformance reads these, which Periphery cannot see.
 		// periphery:ignore
 		let restriction: UUID?
+		/// A refresh while the sheet is open changes the ledger, and the count follows it.
+		// periphery:ignore
+		let ledgerRevision: Int
 	}
 
-	private var matchKey: MatchKey? { category.map { MatchKey(rule: $0.rule, restriction: $0.restrictedToID) } }
+	// The body reads the ledger for the pickers, so a change of the ledger evaluates this again.
+	private var matchKey: MatchKey? {
+		category.map { MatchKey(rule: $0.rule, restriction: $0.restrictedToID, ledgerRevision: model.ledgerRevision) }
+	}
 
 	/// Counts the matches away from the main actor, because a slow rule may take up to its limit of processor time.
 	/// Typing changes the rule on every key, so the count waits for a pause first.
@@ -156,10 +162,12 @@ struct CategorySettingsSheet: View {
 		try? await Task.sleep(for: .milliseconds(250))
 		guard !Task.isCancelled else { return }
 		let ledger = model.ledger
-		let count = await Task.detached(priority: .userInitiated) {
+		let worker = Task.detached(priority: .userInitiated) {
 			let count = RuleApplier.matchCount(category: c, rule: rule, ledger: ledger)
 			return rule.stoppedRegexPosition.map(MatchCount.stopped) ?? .count(count)
-		}.value
+		}
+		// A new key cancels this task, and the count it no longer needs stops too.
+		let count = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
 		guard !Task.isCancelled else { return }
 		matches = (key, count)
 	}
