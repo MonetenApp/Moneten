@@ -34,8 +34,10 @@ extension Day {
 		var parts = text.trimmingCharacters(in: .whitespaces).split(omittingEmptySubsequences: false) { ".-/, ".contains($0) }
 		// A trailing separator, as in "20.12.", ends the date.
 		if parts.count > 1, parts.last?.isEmpty == true { parts.removeLast() }
-		guard (1...3).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }) else { return nil }
-		let numbers = parts.map { Int($0)! }
+		// A part has at most the four digits of a year, so a pasted long number never reaches `Int`.
+		guard (1...3).contains(parts.count), parts.allSatisfy({ (1...4).contains($0.count) && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }) else { return nil }
+		let numbers = parts.compactMap { Int($0) }
+		guard numbers.count == parts.count else { return nil }
 		let short = parts.map { $0.count <= 2 }
 
 		let completed: Day?
