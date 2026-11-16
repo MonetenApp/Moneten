@@ -4,6 +4,7 @@ import SwiftUI
 /// The error indicator of an account whose last refresh failed, or of a collapsed group with such accounts. It
 /// opens the error popover of each failed account.
 struct RefreshErrorButton: View {
+	@Environment(AppModel.self) private var model
 	let accounts: [Account]
 	var help = "The last refresh failed"
 	@State private var shown = false
@@ -20,7 +21,12 @@ struct RefreshErrorButton: View {
 			VStack(alignment: .leading, spacing: 0) {
 				ForEach(Array(accounts.enumerated()), id: \.element.id) { i, account in
 					if i > 0 { Divider() }
-					if let error = account.refreshError { RefreshErrorPopover(account: account, error: error) }
+					if let error = account.refreshError {
+						RefreshErrorPopover(account: account, error: error, editLoginData: error.suggestsEditLoginData && model.fintsAccess(of: account.id) != nil ? {
+							shown = false
+							model.editLoginData(account: account.id)
+						} : nil)
+					}
 				}
 			}
 		}
@@ -32,6 +38,8 @@ struct RefreshErrorButton: View {
 struct RefreshErrorPopover: View {
 	let account: Account
 	let error: RefreshError
+	/// Opens "Edit Login Data..." when the failure can mean that the bank wants the access set up again.
+	var editLoginData: (() -> Void)?
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 8) {
@@ -43,6 +51,12 @@ struct RefreshErrorPopover: View {
 				.textSelection(.enabled)
 			Text(error.date.formatted(date: .numeric, time: .shortened))
 				.foregroundStyle(.secondary)
+			if let editLoginData {
+				Divider()
+				Text("If the bank asks to set up the access again, for example after a new TAN method or an aborted authentication, choose “Edit Login Data...” and confirm the login data.")
+					.fixedSize(horizontal: false, vertical: true)
+				Button("Edit Login Data...", action: editLoginData)
+			}
 			if !error.notices.isEmpty {
 				Divider()
 				Text("Notice of the bank").font(.subheadline.weight(.semibold))
@@ -73,6 +87,7 @@ struct AccountRefreshLine: View {
 				Button { model.refresh(.account(account.id)) } label: { Image(systemName: "arrow.clockwise") }
 					.buttonStyle(.plain)
 					.help("Refresh Account")
+					.accessibilityLabel("Refresh Account")
 					.disabled(!model.canRefresh(.account(account.id)))
 			}
 			if account.refreshError != nil {

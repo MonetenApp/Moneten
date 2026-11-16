@@ -61,6 +61,25 @@ struct BankNoticesTests {
 		#expect(notices.waiting == [BankNotice(bankName: "Beispielbank", text: "Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr")])
 	}
 
+	@Test("A notice that the setup showed under the error of its failed login never waits, and a canceled login shows none")
+	func shownAfterFailedSetupLogin() {
+		var notices = BankNotices()
+		let maintenance = BankMessage(text: "Wartungsarbeiten bis 5 Uhr")
+		let failure = SyncFailure.bank(BankMessage(code: "9800", text: "Dialog abgebrochen"))
+		let failed = notices.setupFailed(FailureWithNotices(failure, notices: [maintenance]), from: "Musterbank")
+		#expect(failed.failure as? SyncFailure == failure)
+		#expect(failed.notices == [maintenance])
+		notices.add([maintenance], from: "Musterbank")
+		#expect(notices.waiting.isEmpty)
+
+		let prices = BankMessage(text: "Neue Preise ab 01.01.2027")
+		let canceled = notices.setupFailed(FailureWithNotices(CancellationError(), notices: [prices]), from: "Musterbank")
+		#expect(canceled.failure is CancellationError)
+		#expect(canceled.notices.isEmpty)
+		notices.add([prices], from: "Musterbank")
+		#expect(notices.waiting == [BankNotice(bankName: "Musterbank", text: "Neue Preise ab 01.01.2027")])
+	}
+
 	@Test("A notice about one account keeps the account and the code, and each account has a notice of its own")
 	func aboutOneAccount() {
 		var notices = BankNotices()

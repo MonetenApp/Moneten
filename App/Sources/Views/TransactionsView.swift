@@ -12,7 +12,7 @@ struct TransactionsView: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let result = model.transactions(for: key)
+		let result = model.rows(for: key)
 		let rows = result.rows
 		VStack(spacing: 0) {
 			// As in MoneyMoney: one slate band behind the title and the chart.
@@ -167,6 +167,8 @@ struct HeaderIcon: View {
 		}
 		.font(.title2)
 		.frame(width: 28, height: 28)
+		// The title beside it names the view.
+		.accessibilityHidden(true)
 	}
 }
 
@@ -187,6 +189,7 @@ struct FilterBar: View {
 			.buttonStyle(.borderless)
 			.hoverHighlight()
 			.help("Save filter bar")
+			.accessibilityLabel("Save filter bar")
 			separator
 			filterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
@@ -523,11 +526,12 @@ struct TransactionCell: View {
 			HStack(spacing: 4) {
 				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
-					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment)
+					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
 				}
-				if transaction.needsReview {
+				if let review = transaction.review {
 					Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
-						.help("Several transactions could belong together. Check the rows and delete the ones you don't need.")
+						.help(review.note)
+						.accessibilityLabel(review.note)
 				}
 				// MoneyMoney adds a third line, which made the selected row taller and moved the rows
 				// below it. At the end of the first line the row keeps its height.
@@ -571,7 +575,7 @@ struct DateCell: View {
 				.padding(.top, 1)
 				.overlay(alignment: .leading) {
 					if transaction.isNew {
-						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction")
+						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction").accessibilityLabel("New transaction")
 					}
 				}
 			// The ribbon is wider than the column and reaches into the gap before the name. As an
@@ -625,6 +629,9 @@ struct CategoryRibbon: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
+		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? "Uncategorized")
+		.accessibilityHint("Assign Category")
 	}
 }
 
@@ -789,7 +796,7 @@ struct CategoryChoices: View {
 	let ids: Set<UUID>
 
 	var body: some View {
-		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		let transactions = ids.compactMap { model.ledger.row($0) }
 		ForEach(model.ledger.categoriesInSidebarOrder) { c in
 			let current = transactions.allSatisfy { model.ledger.effectiveCategoryID(of: $0) == c.id }
 			Button {
@@ -807,7 +814,7 @@ struct CategoryChoices: View {
 	@MainActor
 	static func popUp(model: AppModel, ids: Set<UUID>) {
 		let ledger = model.ledger
-		let transactions = ids.compactMap { ledger.transaction($0) }
+		let transactions = ids.compactMap { ledger.row($0) }
 		let menu = NSMenu()
 		menu.autoenablesItems = false
 		for c in ledger.categoriesInSidebarOrder {
@@ -856,7 +863,7 @@ struct TransactionMenu: View {
 	let ids: Set<UUID>
 
 	var body: some View {
-		let transactions = ids.compactMap { model.ledger.transaction($0) }
+		let transactions = ids.compactMap { model.ledger.row($0) }
 		if let first = transactions.first {
 			if !first.name.isEmpty {
 				Button("Search for “\(first.name)”") { model.filter.searchText = TransactionFilter.searchText(for: first.name) }
@@ -940,7 +947,7 @@ struct StatusLine: View {
 				HStack(spacing: 12) {
 					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 						.foregroundStyle(Palette.detail)
-					Text("Sum: \(sums.isEmpty ? Format.money(0, shown.first?.currency ?? model.selectedCurrency ?? "EUR") : Format.sums(sums))")
+					Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)))")
 						.monospacedDigit()
 						.textSelection(.enabled)
 				}

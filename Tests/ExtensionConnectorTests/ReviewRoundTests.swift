@@ -154,13 +154,50 @@ extension ExtensionConnectorTests {
 		#expect(session.printed.dropLast().allSatisfy { $0 == "poll 1 true" })
 	}
 
+	/// An extension without a list of hosts returns its login page before it contacted the host, so the app asks first.
+	@Test func loginPageOnANewHostAsksFirst() async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .host(.allowed), .tan(Secret("4711"))])
+		let saved = Mutex<[String: HostDecision]>([:])
+		let connector = session.connector(demo(Self.calls + """
+			function InitializeSession2(protocol, bankCode, step, credentials)
+				if step == 1 then return {challenge = "https://auth.bank.example/authorize?state=s1", state = "s1"} end
+				print("code " .. credentials[1])
+				Connection():post("https://auth.bank.example/token", "code=" .. credentials[1])
+			end
+			function RefreshAccount() return {balance = 0, transactions = {}} end
+			"""), fixture: network([("POST", "https://auth.bank.example/token", "{}")]), save: { decision, host in saved.withLock { $0[host] = decision } })
+		_ = try await Self.refresh(connector, session)
+		#expect(session.printed.contains("code 4711"))
+		#expect(saved.withLock { $0 } == ["auth.bank.example": .allowed])
+		let asked = session.asked.withLock { $0 }
+		guard asked.count == 3, case let .allowHost(question) = asked[1], case let .secondFactor(factor) = asked[2],
+			case let .openBrowser(approval) = factor.challenge else {
+			Issue.record("The app did not ask for the host before it opened the login page: \(asked)")
+			return
+		}
+		#expect(question.host == "auth.bank.example")
+		#expect(approval.hosts == ["auth.bank.example"])
+	}
+
 	@Test func hostNotAllowedNamesTheHost() async throws {
-		let session = TestSession()
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .host(.denied)])
 		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login page evil.example is not a host that the extension may contact."))) {
 			_ = try await Self.refresh(session.connector(demo(Self.calls + """
 				function InitializeSession2() return {challenge = "https://evil.example/login"} end
 				""")), session)
 		}
+		#expect(!session.asked.withLock { $0 }.contains { if case .secondFactor = $0 { true } else { false } })
+	}
+
+	/// A stored "Deny" stays the answer: the app does not ask again and opens no window.
+	@Test func deniedLoginPageIsNotAskedAgain() async throws {
+		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
+		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login page auth.bank.example is not a host that the extension may contact."))) {
+			_ = try await Self.refresh(session.connector(demo(Self.calls + """
+				function InitializeSession2() return {challenge = "https://auth.bank.example/authorize"} end
+				"""), decisions: ["auth.bank.example": .denied]), session)
+		}
+		#expect(!session.asked.withLock { $0 }.contains { if case .allowHost = $0 { true } else { false } })
 	}
 
 	@Test func secretFirstFieldIsNoLoginName() async throws {

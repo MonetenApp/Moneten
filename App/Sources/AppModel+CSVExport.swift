@@ -18,8 +18,8 @@ extension AppModel {
 
 	func rowsToExport(of target: SidebarSelection) -> [Transaction] {
 		navigate(to: target)
-		if case .account = target { return ledger.transactions(in: target.scope).rows }
-		return transactions(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)).rows
+		if case .account = target { return ledger.rows(in: target.scope).rows }
+		return rows(for: TableKey(selection: target, filter: filter, portfolios: selectedPortfolios)).rows
 	}
 
 	func exportTransactions(ids: Set<UUID>) {
@@ -62,6 +62,16 @@ extension AppModel {
 	}
 
 	private func askExportFile(for rows: [Transaction]) -> URL? {
+		let panel = exportPanel(for: rows)
+		#if DEBUG || PERF_HARNESS
+		// The debug harness answers the panel, which needs a screen, and logs what the user would see.
+		if let answer = DebugHarness.shared?.savePanelAnswer { return answer(panel) }
+		#endif
+		guard panel.runModal() == .OK else { return nil }
+		return panel.url
+	}
+
+	private func exportPanel(for rows: [Transaction]) -> NSSavePanel {
 		let panel = NSSavePanel()
 		panel.title = "Export Transactions"
 		panel.allowedContentTypes = [.commaSeparatedText]
@@ -74,8 +84,7 @@ extension AppModel {
 		let row = NSStackView(views: [label, format])
 		row.edgeInsets = NSEdgeInsets(top: 8, left: 20, bottom: 8, right: 20)
 		panel.accessoryView = row
-		guard panel.runModal() == .OK else { return nil }
-		return panel.url
+		return panel
 	}
 
 	private var exportName: String {

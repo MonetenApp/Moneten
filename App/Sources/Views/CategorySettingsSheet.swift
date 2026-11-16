@@ -121,7 +121,7 @@ struct CategorySettingsSheet: View {
 
 	private func matchCount(_ c: Domain.Category) -> Int {
 		guard let rule = try? Rule(parsing: c.rule) else { return 0 }
-		return model.ledger.transactions.reduce(0) { $0 + (rule.matches(RuleSubject($1, account: model.ledger.account($1.accountID))) ? 1 : 0) }
+		return RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
 	}
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.

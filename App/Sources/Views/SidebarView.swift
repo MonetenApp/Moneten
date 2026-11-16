@@ -73,6 +73,7 @@ struct AddMenuButton: View {
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
 		.help("Add item")
+		.accessibilityLabel("Add item")
 	}
 }
 
@@ -229,11 +230,20 @@ struct AccountRow: View {
 				ForEach(model.ledger.groups) { g in Button(g.name) { model.move(account: account.id, toGroup: g.id) } }
 			}
 			Button("Remove...") { model.confirmRemove(.account(account.id)) }
-			Button("Refresh Account") { model.refresh(.account(account.id)) }
-				.modifierKeyAlternate(.option) {
-					Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
-				}
-				.disabled(!model.canRefresh(.account(account.id)))
+			// An offline account has nothing to refresh.
+			if account.accessID != nil {
+				Button("Refresh Account") { model.refresh(.account(account.id)) }
+					.modifierKeyAlternate(.option) {
+						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
+					}
+					.disabled(!model.canRefresh(.account(account.id)))
+				// An extension asks for its login data in its own dialog, and its setup adds only new accounts.
+				let isFinTS = model.fintsAccess(of: account.id) != nil
+				Button("Edit Login Data...") { model.editLoginData(account: account.id) }
+					.disabled(!isFinTS)
+				Button("Look for New Accounts...") { model.lookForNewAccounts(account: account.id) }
+					.disabled(!isFinTS)
+			}
 			Divider()
 			Button("Settings...") { model.sheet = .accountSettings(account.id) }
 		}
@@ -292,26 +302,33 @@ struct CategoryRow: View {
 			}
 		}
 		.onDrop(of: [.monetenTransactions, .monetenCategory], delegate: CategoryDrop(model: model, category: category))
-		.contextMenu {
-			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
-			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		.contextMenu { CategoryContextMenu(category: category) }
+	}
+}
+
+private struct CategoryContextMenu: View {
+	@Environment(AppModel.self) private var model
+	let category: Domain.Category
+
+	var body: some View {
+		Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
+		Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		Divider()
+		Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
+			.disabled(model.isTransferringTransactions)
+		if !category.isDefault {
 			Divider()
-			Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
-				.disabled(model.isTransferringTransactions)
-			if !category.isDefault {
-				Divider()
-				Menu("Move to Group") {
-					Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
-						.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
-					ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
-						Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
-					}
+			Menu("Move to Group") {
+				Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
+					.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
+				ForEach(model.ledger.destinationGroups(forCategory: category.id)) { g in
+					Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
 				}
-				Button("Remove...") { model.confirmRemove(.category(category.id)) }
 			}
-			Divider()
-			Button("Settings...") { model.sheet = .categorySettings(category.id) }
+			Button("Remove...") { model.confirmRemove(.category(category.id)) }
 		}
+		Divider()
+		Button("Settings...") { model.sheet = .categorySettings(category.id) }
 	}
 }
 
