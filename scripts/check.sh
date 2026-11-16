@@ -15,6 +15,7 @@ for scheme in Moneten ext; do
 done
 periphery scan --skip-build --index-store-path .build/periphery/Index.noindex/DataStore
 scripts/test.sh
+python3 scripts/test-symbolicate-crash.py
 scripts/check-export-sync.sh
 swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
 for extension in "permanent-tsb-business/Permanent TSB Business.lua" monzo/Monzo.lua amazon-bestellungen/amazon-bestellungen.lua; do
