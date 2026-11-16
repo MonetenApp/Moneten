@@ -29,6 +29,77 @@ struct AllDataTests {
 		#expect(imported.deletedTransactions.map(\.fileIdentity) == ["file:1:8:202612086:-800003:EUR4:rent16:name:vermieter a0:0:"])
 	}
 
+	@Test("A split round trip keeps literal amounts, categories, comments, VAT, and review reasons")
+	func splitRoundTrip() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let source = try emptyStore("split-source")
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 100_000)
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let household = Domain.Category(position: 1, name: "Household")
+		let drinks = Domain.Category(position: 2, name: "Drinks")
+		try source.save(accounts: [account], categories: [groceries, household, drinks])
+		let original = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -11900,
+			name: "Example Market", comment: "Invoice", categoryID: groceries.id, categorizedBy: .manual, review: .unclearBooking)
+		let corrected = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -8500,
+			name: "Example Shop", review: .splitUndone)
+		try source.save([original, corrected])
+		let parts = [
+			SplitPart(transactionID: original.id, position: 0, amountMinor: -10000, categoryID: household.id, comment: "Net goods", vat: VATShare(role: .net, rate: VATRate(hundredths: 1900))),
+			SplitPart(transactionID: original.id, position: 1, amountMinor: -1900, categoryID: drinks.id, comment: "Tax", vat: VATShare(role: .tax, rate: VATRate(hundredths: 1900)))]
+		try source.replaceParts(of: original.id, with: parts)
+		let file = try source.exportAllData(at: exportedAt).json()
+		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
+		#expect(json["version"] as? Int == 2)
+		let entries = json["splitParts"] as? [[String: Any]] ?? []
+		#expect(entries.compactMap { $0["amount"] as? String } == ["-100.00", "-19.00"])
+		#expect(entries.compactMap { ($0["vat"] as? [String: Any])?["rate"] as? Int } == [1900, 1900])
+		let rows = try #require(json["transactions"] as? [[String: Any]])
+		#expect(rows.compactMap { $0["review"] as? String } == ["unclearBooking", "splitUndone"])
+		#expect(rows.allSatisfy { $0["needsReview"] == nil })
+		let target = try emptyStore("split-target")
+		try target.importAllData(try AllData(json: file))
+		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("split-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let ledger = try reopened.loadLedger()
+		#expect(ledger.transactions.count == 2)
+		#expect(ledger.transaction(original.id) == original)
+		#expect(ledger.transaction(corrected.id) == corrected)
+		let saved = ledger.parts(of: original.id)
+		#expect(saved.map(\.id) == parts.map(\.id))
+		#expect(saved.map(\.transactionID) == [original.id, original.id])
+		#expect(saved.map(\.position) == [0, 1])
+		#expect(saved.map(\.amountMinor) == [-10000, -1900])
+		#expect(saved.map(\.categoryID) == [household.id, drinks.id])
+		#expect(saved.map(\.comment) == ["Net goods", "Tax"])
+		#expect(saved.map { $0.vat?.role } == [.net, .tax])
+		#expect(saved.map { $0.vat?.rate.hundredths } == [1900, 1900])
+		#expect(ledger.rows(in: .account(account.id)).rows.allSatisfy { $0.currency == "EUR" })
+		#expect(ledger.computedBalance(of: account).minorUnits == 79600)
+	}
+
+	@Test("A v1 file with needsReview true imports as unclearBooking")
+	func v1Review() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let file = Data(#"""
+		{"format":"moneten-export","version":1,"exportedAt":"2026-11-14T23:46:40.000Z",
+		"accountGroups":[],"accesses":[],"categories":[],"deletedTransactions":[],"portfolioValues":[],"holdings":[],
+		"accounts":[{"id":"00000000-0000-0000-0000-000000000001","position":0,"name":"Giro","kind":"giro","source":"offline","currency":"EUR","initialBalance":"0.00","initialBalanceIsSet":true,"isClosed":false,"refreshInterval":"onlyManually"}],
+		"transactions":[
+		{"id":"00000000-0000-0000-0000-000000000002","accountID":"00000000-0000-0000-0000-000000000001","bookingDate":"2026-11-03","amount":"-20.00","currency":"EUR","name":"Example A","purpose":"","isChecked":false,"isPending":true,"categorizedBy":"none","isNew":false,"needsReview":true,"isFetched":false,"createdAt":"2026-11-14T23:46:40.000Z"},
+		{"id":"00000000-0000-0000-0000-000000000003","accountID":"00000000-0000-0000-0000-000000000001","bookingDate":"2026-11-04","amount":"-30.00","currency":"EUR","name":"Example B","purpose":"","isChecked":false,"isPending":false,"categorizedBy":"none","isNew":false,"needsReview":false,"isFetched":false,"createdAt":"2026-11-14T23:46:40.000Z"}]}
+		"""#.utf8)
+		let target = try emptyStore("v1-target")
+		try target.importAllData(try AllData(json: file))
+		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("v1-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let ledger = try reopened.loadLedger()
+		let pending = try #require(ledger.transactions.first { $0.isPending })
+		let booked = try #require(ledger.transactions.first { !$0.isPending })
+		#expect(pending.amountMinor == -2000)
+		#expect(pending.review == .unclearBooking)
+		#expect(booked.amountMinor == -3000)
+		#expect(booked.review == nil)
+		#expect(ledger.parts(of: pending.id).isEmpty && ledger.parts(of: booked.id).isEmpty)
+	}
+
 	let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)")
 	let exportedAt = Date(timeIntervalSince1970: 1_794_700_000)
 
