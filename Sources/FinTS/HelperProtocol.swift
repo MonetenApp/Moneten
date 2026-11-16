@@ -22,11 +22,13 @@ struct Command: Encodable {
 
 /// The answer of the user to a request of the helper. `method` in place of `value` changes the TAN
 /// method of a challenge on screen, and the helper then requests a new challenge with that method.
+/// `skip` cancels a challenge for older transactions, and the helper then fetches the last 90 days.
 struct Answer: Encodable {
 	var type = "answer"
 	let id: Int
 	var value: String?
 	var method: String?
+	var skip: Bool?
 }
 
 /// A line from the helper.
@@ -122,6 +124,9 @@ struct Ask: Decodable {
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
+	/// The challenge comes while the refresh asks for the full history of an account, so the bank may ask
+	/// for it because of transactions older than 90 days.
+	let history: Bool?
 
 	struct Rules: Decodable {
 		let minLength: Int?
@@ -178,7 +183,7 @@ struct Ask: Decodable {
 
 	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current))
+			method: current, olderTransactions: history == true))
 	}
 }
 
@@ -310,15 +315,21 @@ struct AccountResult: Decodable {
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: account) }, from: try t.from.map(Self.day))
 		}
 		let transactionFailure = shownError?.failure
+		// Older transactions may be missing when the answer starts after the last successful fetch: the 90 days of a
+		// normal refresh after a long pause, or a canceled challenge for older transactions. The start that the
+		// request asked for is no measure, because it reaches 14 days or a pending row back. A mark from before
+		// is the account's own, and the merge keeps it until a full history.
+		let missesOlder = fetched?.from.map { from in account.lastFetched.map { $0 < from } ?? true } ?? false
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
-			holdings: try holdings?.map { try $0.holding(of: account) })
+			holdings: try holdings?.map { try $0.holding(of: account) }, missesOlder: missesOlder)
 		let notices = errors.map { BankMessage(code: $0.code, text: $0.text, accountName: account.name) }
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
 
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		Money(try decimal(amount), currency: currency)
+		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.unreadable }
+		return money
 	}
 
 	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The

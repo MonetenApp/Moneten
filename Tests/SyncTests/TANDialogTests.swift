@@ -152,4 +152,19 @@ struct TANDialogTests {
 		}
 		#expect(condition(), sourceLocation: sourceLocation)
 	}
+
+	@Test("Canceling a challenge for older transactions ends only that request, and the refresh of the access goes on")
+	func cancelOlderTransactions() async throws {
+		let request = UserRequest.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
+			challenge: .enterTAN(prompt: "Bitte geben Sie die TAN ein.", image: nil), olderTransactions: true))
+		var canceled: [UUID] = []
+		broker.onUserCancel = { canceled.append($0) }
+		let broker = broker
+		let asked = Task { try await broker.ask(request, for: Self.musterbank, accountNames: ["Giro"], attended: true) }
+		await until { broker.current?.request == request }
+		broker.cancel(try #require(broker.current).id)
+		await #expect(throws: OlderTransactionsSkipped()) { try await asked.value }
+		#expect(canceled.isEmpty)
+		#expect(broker.current == nil)
+	}
 }

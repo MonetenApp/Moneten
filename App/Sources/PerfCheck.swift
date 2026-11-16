@@ -2,7 +2,9 @@
 import AppKit
 import Domain
 import ExtensionCatalog
+import FinTS
 import Foundation
+import SwiftUI
 import Synchronization
 
 /// The UI performance check of `scripts/perf-check.sh`. Each scenario drives the real app on
@@ -65,6 +67,37 @@ struct PerfScenario {
 				guard var category = c.model.ledger.categories.first(where: { $0.name == "Uncategorized" }) else { return c.fail("no category Uncategorized") }
 				category.sidebarAmount = .currentMonth
 				c.model.save(category: category)
+			}),
+		PerfScenario(name: "split-row-in-open-view", budget: halfSecond,
+			setUp: { c in
+				await c.select("Bulk")
+				guard var row = c.model.visibleTransactions.first else { return c.fail("no split row") }
+				row.amountMinor = -8000
+				c.model.save(transaction: row, adding: false)
+				c.model.selectedTransactions = [row.id]
+				await c.settle()
+				await c.checkStaleSplitWrites(row)
+			},
+			run: { c in
+				guard c.model.ledger.transactions.count == 50000,
+					let row = c.model.visibleTransactions.first, row.amountMinor == -8000,
+					let account = c.model.ledger.account(row.accountID),
+					let table = c.harness.transactionTables().first, table.numberOfRows == 50000 else {
+					return c.fail("the split did not start in a drawn view of 50000 rows")
+				}
+				let balance = c.model.ledger.computedBalance(of: account)
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+					return c.fail("split failed")
+				}
+				await c.settle()
+				let parts = c.model.ledger.parts(of: row.id)
+				if parts.map(\.amountMinor) != [-2500, -5500] || c.model.visibleTransactions.count != 50001
+					|| c.model.selectedTransactions != Set(parts.map(\.id)) || c.model.ledger.row(row.id) != nil
+					|| c.model.ledger.computedBalance(of: account) != balance {
+					c.fail("split rows, selection, or balance differ")
+				}
+				if c.harness.transactionTables().first === table { c.fail("split removed a shown row in place") }
+				if c.harness.transactionTables().first?.selectedRowIndexes.count != 2 { c.fail("split parts were not selected in the table") }
 			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
@@ -385,6 +418,41 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
+		// "Supported Banks..." on a directory of 2,700 banks, as many as the bank directory of the helper has with a
+		// FinTS address. The window used a `List`, and its rows are now a lazy stack (add-account-setup, task 1.21).
+		PerfScenario(name: "open-supported-banks", budget: halfSecond,
+			setUp: { _ in
+				SupportedBanksPerf.directory = SupportedBanksPerf.load()
+				SupportedBanksList.lastShown = nil
+			},
+			run: { c in
+				guard let directory = SupportedBanksPerf.directory else { return }
+				let window = NSWindow(contentViewController: NSHostingController(rootView: SupportedBanksList(directory: .success(directory)).environment(c.model)))
+				window.title = "Supported Banks Perf"
+				window.setContentSize(NSSize(width: 560, height: 640))
+				window.isReleasedWhenClosed = false
+				window.makeKeyAndOrderFront(nil)
+				SupportedBanksPerf.window = window
+				await SupportedBanksPerf.expect(c, "open", banks: 2_700, first: "Musterbank Altstadt 1028")
+			}),
+		PerfScenario(name: "search-supported-banks", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.insertText("Sparkasse", replacementRange: NSRange(location: NSNotFound, length: 0))
+				await SupportedBanksPerf.expect(c, "search", banks: 540, first: "Sparkasse Beispielstadt 1015")
+			}),
+		PerfScenario(name: "clear-supported-banks-search", budget: halfSecond,
+			run: { c in
+				guard let field = SupportedBanksPerf.field else { return c.fail("the search field has no focus") }
+				SupportedBanksList.lastShown = nil
+				field.selectAll(nil)
+				field.deleteBackward(nil)
+				await SupportedBanksPerf.expect(c, "clear", banks: 2_700, first: "Musterbank Altstadt 1028")
+				await c.settle()
+				SupportedBanksPerf.window?.close()
+				SupportedBanksPerf.window = nil
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
@@ -421,6 +489,42 @@ struct PerfScenario {
 	}
 }
 
+/// The window and the made-up bank directory of the scenarios of "Supported Banks".
+@MainActor
+enum SupportedBanksPerf {
+	static var directory: BankDirectory?
+	static var window: NSWindow?
+
+	static var field: NSTextView? { window?.firstResponder as? NSTextView }
+
+	/// Waits up to five seconds for the rows that `step` expects: `banks` banks match, the list shows at most
+	/// 500 of them, and `first` is the first bank. A search that the list starts again for other reasons can
+	/// end first, so this waits for the expected rows and reports the last rows only when they never come.
+	static func expect(_ c: PerfContext, _ step: StaticString, banks: Int, first: String) async {
+		for _ in 0..<100 {
+			if let shown = SupportedBanksList.lastShown, shown.bankCount == banks, shown.banks.count == min(banks, 500),
+				shown.banks.first?.name == first { return }
+			try? await Task.sleep(for: .milliseconds(50))
+		}
+		// The log holds the counts and the hash of the first name, never a name.
+		let shown = SupportedBanksList.lastShown
+		c.fail("supported banks rows", ("step", .word(step)), ("rows", .presence(shown != nil)), ("banks", .count(shown?.bankCount ?? 0)),
+			("shown", .count(shown?.banks.count ?? 0)), ("first", .hash(shown?.banks.first?.name ?? "")))
+	}
+
+	/// 2,700 made-up banks, as many as the bank directory of the FinTS helper has with a FinTS address, one in
+	/// ten of a merged bank.
+	static func load() -> BankDirectory {
+		let places = ["Musterstadt", "Beispielstadt", "Altstadt", "Neustadt", "Bergdorf", "Talheim"]
+		let kinds = ["Sparkasse", "Volksbank", "Raiffeisenbank", "Musterbank", "Privatbank"]
+		return BankDirectory((0..<2_700).map { i in
+			let place = places[i % places.count]
+			return BankDirectory.Entry(code: String(10_000_000 + i * 3_217), city: place,
+				bank: FinTSBank(name: "\(kinds[i % kinds.count]) \(place) \(i)\(i % 10 == 0 ? " -alt-" : "")", bic: nil, url: URL(string: "https://fints.bank\(i).example/fints")))
+		})
+	}
+}
+
 @MainActor
 final class PerfProblems {
 	var list: [(problem: StaticString, values: [(StaticString, LogValue)])] = []
@@ -435,6 +539,54 @@ struct PerfContext {
 	let problems = PerfProblems()
 
 	func fail(_ problem: StaticString, _ values: (StaticString, LogValue)...) { problems.list.append((problem, values)) }
+
+	func checkStaleSplitWrites(_ original: Transaction) async {
+		var row = original
+		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await currencySplit.value
+			return fail("the currency race missed the drawing wait")
+		}
+		row.currency = "USD"
+		model.save(transaction: row, adding: false)
+		let currencySaved = await currencySplit.value
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored currency race") }
+			if currencySaved || model.ledger.transaction(row.id)?.currency != "USD"
+				|| stored.transaction(row.id)?.currency != "USD" || !stored.parts(of: row.id).isEmpty
+				|| !model.ledger.parts(of: row.id).isEmpty || model.selectedTransactions != [row.id] {
+				fail("a waiting split overwrote a currency correction")
+			}
+		} catch { return fail("the currency race could not be read") }
+		row.currency = "EUR"
+		model.save(transaction: row, adding: false)
+		guard let parts = try? model.ledger.splitting(row: row.id, off: [Money(minorUnits: -3000, currency: "EUR")]),
+			await model.replaceParts(of: row.id, with: parts) else { return fail("no parts for the edit race") }
+		await settle()
+		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await editedSplit.value
+			return fail("the part edit race missed the drawing wait")
+		}
+		guard let category = model.ledger.categories.first(where: { !$0.isGroup && !$0.isDefault && $0.id != parts[1].categoryID }) else {
+			_ = await editedSplit.value
+			return fail("no category for the part edit race")
+		}
+		model.assign(category: category.id, to: [parts[1].id])
+		let editSaved = await editedSplit.value
+		var expected = parts; expected[1].categoryID = category.id
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored part edit race") }
+			if editSaved || model.ledger.parts(of: row.id) != expected || stored.parts(of: row.id) != expected
+				|| model.selectedTransactions != Set(expected.map(\.id)) {
+				fail("a waiting split overwrote a newer part edit")
+			}
+		} catch { return fail("the part edit race could not be read") }
+		guard await model.replaceParts(of: row.id, with: []) else { return fail("the part edit race did not reset") }
+		await settle()
+	}
 
 	func select(_ name: String) async {
 		harness.select(name)

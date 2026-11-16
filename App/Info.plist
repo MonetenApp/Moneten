@@ -28,6 +28,8 @@
 	<string>public.app-category.finance</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>MonetenPreRelease</key>
+	<string>$(MONETEN_PRE_RELEASE)</string>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Moneten reads your accounts, categories, and transactions from MoneyMoney when you import them. It changes nothing in MoneyMoney.</string>
 	<key>NSHighResolutionCapable</key>
@@ -55,6 +57,16 @@
 			<string>io.github.moneten.category</string>
 			<key>UTTypeDescription</key>
 			<string>Moneten category</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.moneten.account</string>
+			<key>UTTypeDescription</key>
+			<string>Moneten account or account group</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

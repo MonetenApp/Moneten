@@ -206,7 +206,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay)
+			refreshInterval: .onceADay, missesOlderTransactions: true)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)
@@ -217,8 +217,13 @@ struct AllDataTests {
 				isChecked: true, categoryID: pets.id, categorizedBy: .manual, sourceID: "moneymoney:1", createdAt: Date(timeIntervalSince1970: 1_794_600_001.123), returnReason: "AC04"),
 			Transaction(accountID: migrated.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_000, name: "Kiosk", isPending: true,
 				categoryID: food.id, categorizedBy: .rule, isNew: true, review: .unclearBooking, sourceID: "moneymoney:2"),
-			Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
-				isFetched: true, sourceID: "bank-4711"),
+			{
+				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
+					isFetched: true, sourceID: "bank-4711")
+				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
+					name: "Diner", purpose: "Dinner with a client"))
+				return t
+			}(),
 			Transaction(accountID: offline.id, bookingDate: Day(year: 2026, month: 11, day: 6), amountMinor: -480, name: "Bäckerei Gutbrot"),
 		]
 		try store.save(rows)
@@ -251,6 +256,8 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
+			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
 		#expect(Set(after.accounts) == Set(before.accounts))
 		#expect(Set(after.groups) == Set(before.groups))
 		#expect(Set(after.categories) == Set(before.categories))
@@ -272,6 +279,27 @@ struct AllDataTests {
 		let imported = try target.loadLedger().transactions
 		#expect(imported.count == 3)
 		#expect(imported.allSatisfy { $0.returnReason == nil })
+	}
+
+	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")
+	func missingOlderTransactionsMark() throws {
+		let exported = try filledStore().exportAllData(at: exportedAt).json()
+		var json = try #require(try JSONSerialization.jsonObject(with: exported) as? [String: Any])
+		var accounts = try #require(json["accounts"] as? [[String: Any]])
+		// Every account carries the key, and only the giro account is marked.
+		let marks = accounts.map { $0["missesOlderTransactions"] as? Bool }
+		#expect(marks.allSatisfy { $0 != nil })
+		#expect(marks.filter { $0 == true }.count == 1)
+		let marked = try emptyStore("marked")
+		try marked.importAllData(try AllData(json: exported))
+		#expect(try marked.loadLedger().accounts.filter(\.missesOlderTransactions).map(\.name) == ["Girokonto"])
+		for i in accounts.indices { accounts[i].removeValue(forKey: "missesOlderTransactions") }
+		json["accounts"] = accounts
+		let older = try emptyStore("older")
+		try older.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let imported = try older.loadLedger().accounts
+		#expect(imported.count == 4)
+		#expect(imported.allSatisfy { !$0.missesOlderTransactions })
 	}
 
 	@Test("Amounts are decimal text with a currency, and nothing is rounded")
@@ -370,13 +398,18 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": 5}"#.utf8)) }
 	}
 
-	@Test("An amount at the bounds of the minor units reads exactly, and one beyond them is refused")
+	@Test("A transaction amount at the bounds of the minor units reads exactly, and one without a magnitude or beyond them is refused")
 	func amountBounds() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
 		var rows = json["transactions"] as! [[String: Any]]
+		rows[1]["amount"] = "-92233720368547758.07"
+		json["transactions"] = rows
+		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == -Int64.max)
 		rows[1]["amount"] = "-92233720368547758.08"
 		json["transactions"] = rows
-		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == Int64.min)
+		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is too large for a transaction")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 		rows[1]["amount"] = "92233720368547758.08"
 		json["transactions"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }

@@ -18,11 +18,17 @@ final class HelperProcess: @unchecked Sendable {
 	private let termination = Mutex<(end: (status: Int32, signal: Bool)?, waiter: CheckedContinuation<(status: Int32, signal: Bool), Never>?)>((nil, nil))
 	/// Writes the lines in order. A serial queue of its own runs on the overcommitting root queue of
 	/// Dispatch, so a helper that does not read its input blocks neither a thread of Swift concurrency nor
-	/// one of the global queue, where the timers of every run wait.
+	/// one of the global queue, nor the timers of the other runs.
 	private let writer = DispatchQueue(label: "io.github.moneten.fints.write")
+	/// Runs the timeout and the termination of every helper. The global queue of Dispatch gets a thread
+	/// only while fewer threads than the Mac has cores are busy, and busy threads of Swift concurrency
+	/// count too, so three CPU-bound tasks on three cores would hold up the end of a stuck helper. A
+	/// serial queue of its own runs on the overcommitting root queue, which always gets a thread.
+	static let timers = DispatchQueue(label: "io.github.moneten.fints.timers")
 	private let canceled = Mutex(false)
 	private let failure = Mutex<(any Error)?>(nil)
 	private let grace: TimeInterval
+	private let killAfter: TimeInterval
 	private let onLine: @Sendable (String) -> Void
 	private let onEnd: @Sendable () -> Void
 
@@ -33,8 +39,8 @@ final class HelperProcess: @unchecked Sendable {
 	/// `onLine` runs with each line when it arrives, before `lines` delivers it, also after `lines` ended
 	/// because the reading task was canceled. `onEnd` runs once when stdout ends
 	/// or the process ends, whichever comes first. `grace` is the time that the helper gets to end after
-	/// a cancel.
-	init(executable: URL, arguments: [String], grace: TimeInterval, onLine: @escaping @Sendable (String) -> Void = { _ in },
+	/// a cancel, and `killAfter` the time from SIGTERM to SIGKILL.
+	init(executable: URL, arguments: [String], grace: TimeInterval, killAfter: TimeInterval = 2, onLine: @escaping @Sendable (String) -> Void = { _ in },
 		onEnd: @escaping @Sendable () -> Void = {}) throws {
 		let stdin = Pipe(), stdout = Pipe()
 		process.executableURL = executable
@@ -52,6 +58,7 @@ final class HelperProcess: @unchecked Sendable {
 		let fd = output.fileDescriptor
 		_ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
 		self.grace = grace
+		self.killAfter = killAfter
 		self.onLine = onLine
 		self.onEnd = onEnd
 		(lines, received) = AsyncStream.makeStream(of: String.self)
@@ -129,16 +136,16 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	/// Asks the helper to end the dialog with the bank, and ends the process when it is still running
-	/// after `grace`, and kills it 2 seconds later, so a stuck JVM never keeps a refresh open. It
+	/// after `grace`, and kills it `killAfter` later, so a stuck JVM never keeps a refresh open. It
 	/// returns at once: a helper that does not read its input blocks only the queue of its writes.
 	func cancel() {
 		guard canceled.withLock({ was in defer { was = true }; return !was }) else { return }
 		// The timers hold the helper weakly: a run waits in `ended()` while the process runs, so they can
 		// reach it then, and a helper that ended is released at once instead of after the grace.
-		DispatchQueue.global().asyncAfter(deadline: .now() + grace) { [weak self] in
+		Self.timers.asyncAfter(deadline: .now() + grace) { [weak self] in
 			guard let self, process.isRunning else { return }
 			process.terminate()
-			DispatchQueue.global().asyncAfter(deadline: .now() + 2) { [weak self] in
+			Self.timers.asyncAfter(deadline: .now() + killAfter) { [weak self] in
 				guard let self, process.isRunning else { return }
 				kill(process.processIdentifier, SIGKILL)
 			}
