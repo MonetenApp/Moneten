@@ -174,7 +174,7 @@ struct SetupSessionTests {
 		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("12345"), replacing: Self.known.id)
 		let blocked = SyncFailure.accessBlocked(BankMessage(code: "9930", text: "Zugang gesperrt"))
 		let error = await #expect(throws: FailureWithNotices.self) {
-			try await session.logIn { _ -> Int in throw FailureWithNotices(blocked, notices: [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")]) }
+			try await session.logIn(holding: coordinator) { _ -> Int in throw FailureWithNotices(blocked, notices: [BankMessage(text: "Wartungsarbeiten bis 5 Uhr")]) }
 		}
 		#expect(error?.failure as? SyncFailure == blocked)
 		#expect(store.pins.isEmpty)

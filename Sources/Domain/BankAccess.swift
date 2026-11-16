@@ -293,8 +293,9 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	public var notices: [String]
 	/// Only the user can resolve the error, with a refresh command (`SyncFailure.waitsForUser`).
 	public var waitsForUser: Bool
-	/// The login of the whole access failed in a way that can mean that the bank wants it set up again, so
-	/// the error popover names "Edit Login Data..." (`SyncFailure.mayAskForNewSetup`).
+	/// The refresh of the whole access failed in a way that can mean that the bank wants it set up again, so
+	/// the error popover names "Edit Login Data..." (`SyncFailure.mayAskForNewSetup`). The failure can come
+	/// at the login or after it, so the command is a suggestion.
 	public var suggestsEditLoginData: Bool
 
 	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
