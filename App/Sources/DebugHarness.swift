@@ -278,6 +278,30 @@ final class DebugHarness {
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
+		#if DEBUG || PERF_HARNESS
+		// "click" clicks the menu bar icon, and "press <n>" clicks control number n of the popover, counted from 0: the account
+		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
+		// the popover, and the main window, after the app has drawn the change.
+		case "menubar": menuBar(argument)
+		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
+		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
+		// the notifications and the menu bar are allowed. The security settings stay out, because their toggles check the
+		// password and store it in the Keychain first. The line logs the position of the key in the list and the new value.
+		case "setting":
+			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
+				RefreshSettings.playsSoundKey, Preference.lockOnClose]
+			let parts = argument.split(separator: " ").map(String.init)
+			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
+			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
+		case "noticeclick":
+			Task {
+				guard let notice = await Notices.delivered().first else { return self.log("noticeclick none") }
+				model.notices.onOpen(notice.accounts)
+				self.log("noticeclick", ("accounts", .count(notice.accounts.count)), ("phase", .state(model.phase)))
+			}
+		#endif
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -1054,6 +1078,57 @@ final class DebugHarness {
 			log("ext", ("error", .type(of: error)))
 		}
 	}
+
+	#if DEBUG || PERF_HARNESS
+	private func menuBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		// The button of the icon in the menu bar of one of the displays. A removed icon keeps its window, which macOS no longer shows.
+		func button(in view: NSView) -> NSButton? { view as? NSButton ?? view.subviews.lazy.compactMap(button).first }
+		let icon = {
+			NSApp.windows.lazy.filter { $0.className == "NSStatusBarWindow" && $0.occlusionState.contains(.visible) }.compactMap { $0.contentView.flatMap(button) }.first
+		}
+		let popover = { NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") } }
+		let report: @MainActor () -> Void = { [weak self] in
+			self?.log("menubar", ("icon", .flag(icon() != nil)), ("symbol", .word(MenuBarIcon.symbol(of: model))), ("popover", .flag(popover() != nil)),
+				("main", .flag(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })), ("selected", .state(model.selectedAccount?.kind)))
+		}
+		switch parts.first ?? "" {
+		case "click":
+			guard let icon = icon() else { return log("menubar no icon") }
+			icon.performClick(nil)
+		case "press":
+			// The popover closes while another app is in front, so the press opens it first when it is closed.
+			if popover() == nil {
+				guard let icon = icon() else { return log("menubar no icon") }
+				icon.performClick(nil)
+			}
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(for: .milliseconds(500))
+				// SwiftUI gives the controls of the popover no accessibility elements until an assistive app asks, but a
+				// focus ring view for each, in the order of the view. The press is a click in the middle of control number n.
+				@MainActor func controls(in view: NSView) -> [NSView] {
+					String(describing: type(of: view)) == "_FocusRingView" ? [view] : view.subviews.flatMap(controls)
+				}
+				guard let window = popover(), let view = window.contentView else { self?.log("menubar no popover"); return }
+				let all = controls(in: view)
+				guard let n = number, all.indices.contains(n) else { self?.log("menubar", ("controls", .count(all.count))); return }
+				let point = all[n].convert(NSPoint(x: all[n].bounds.midX, y: all[n].bounds.midY), to: nil)
+				for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+					if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+						windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(event) }
+				}
+				self?.log("menubar pressed", ("control", .position(n)), ("controls", .count(all.count)))
+				try? await Task.sleep(for: .milliseconds(500))
+				report()
+			}
+			return
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { report() }
+	}
+	#endif
 
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
