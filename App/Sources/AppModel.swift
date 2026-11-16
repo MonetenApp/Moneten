@@ -351,7 +351,7 @@ final class AppModel {
 			if attended { self.showNotices() }
 		}
 		sync.noticed = { [weak self] access, messages in
-			// A setup runs with an access that is not stored, also when its login joins a stored one, so its service names the bank.
+			// A setup access is not stored, so its service names the bank.
 			guard let self else { return }
 			self.bankNotices.add(messages, from: self.accesses[access.id]?.bankName ?? access.bankName)
 		}
