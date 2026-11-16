@@ -22,6 +22,7 @@ jobs:
           node-version: 22
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
+      - run: scripts/test-forget-bundle.sh
       # The catalog keys of the app are the keys/*.pub of MonetenApp/moneten-extensions.
       - run: scripts/check-catalog-keys.sh
       - run: npm install -g @fission-ai/openspec

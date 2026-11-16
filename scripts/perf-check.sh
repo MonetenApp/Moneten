@@ -29,6 +29,9 @@ WORK="$(mktemp -d)"
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 BUNDLE_ID="$BUNDLE_ID.${WORK##*.}"
+# Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
+# Notifications settings. The end of the run deletes the domain again.
+defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"

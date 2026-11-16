@@ -57,6 +57,9 @@ finish() {
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
+# Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
+# Notifications settings. The end of the run deletes the domain again.
+defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 DATA="$WORK/Erika Mustermann"
