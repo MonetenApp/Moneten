@@ -187,6 +187,41 @@ struct PerformanceTests {
 	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.
+	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
+	func regexRuleBudgets() throws {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let ts = (0..<50_000).map { i in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i % 9_000),
+				name: "Haendler\(i % 70) Musterstadt", purpose: "Rechnung \(i) Kundennummer \(i * 7)", bookingText: "LASTSCHRIFT", endToEndReference: "E2E-\(i)")
+		}
+		let traders = Domain.Category(position: 0, name: "Haendler", rule: "/Haendler1/")
+		let rest = Domain.Category(position: 1, name: "Rest", rule: #""Rechnung""#)
+		let ledger = Ledger(accounts: [account], categories: [traders, rest], transactions: ts)
+		var count = 0
+		var stopped = false
+		let counting = fastest {
+			let rule = try! Rule(parsing: traders.rule)
+			count = RuleApplier.matchCount(category: traders, rule: rule, ledger: ledger)
+			stopped = stopped || rule.stoppedRegexPosition != nil
+		}
+		var sorted = 0
+		let categorizing = fastest {
+			let rules = Categorizer(ledger: ledger)
+			sorted = rules.allOrNothing { ts.reduce(0) { $0 + (rules.category(for: $1) == traders.id ? 1 : 0) } }
+		}
+		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows)")
+		// Haendler1 and Haendler10 to Haendler19: 11 of each 70 rows.
+		#expect(count == 7_865)
+		#expect(sorted == 7_865)
+		#expect(!stopped)
+		// Most of the time builds a `RuleSubject` for each row, about 390 ms. The watched regular expression takes about
+		// 130 ms of it, so the limit of a run, 1 second, leaves room for several times as many rows.
+		#if !DEBUG
+		#expect(counting < budget(.seconds(1)))
+		#expect(categorizing < budget(.seconds(1)))
+		#endif
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!

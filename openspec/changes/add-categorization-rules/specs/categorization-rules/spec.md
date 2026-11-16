@@ -321,7 +321,7 @@ The app SHALL treat text between two slashes as a regular expression and match i
 
 ### Requirement: A regular expression in a rule that does not end
 
-The app SHALL stop a regular expression in a rule after about 100 ms of processor time on one text, and the rule then matches no further transaction in that run. A run is the categorization of one refresh, one import, or one entry, one application of a rule to existing transactions, or one count of matches in the category settings. The rules of the other categories still run.
+The app SHALL stop a rule when one of its regular expressions takes about 100 ms of processor time on one text, or when its regular expressions take 1 second of processor time in all within one run. A run is the categorization of one account's refresh or one account's import, of one entry, or of one migration, one application of a rule to existing transactions, or one count of matches in the category settings.
 
 #### Scenario: Refresh with a rule that does not end
 
@@ -329,6 +329,33 @@ The app SHALL stop a regular expression in a rule after about 100 ms of processo
 - **WHEN** a refresh brings 1,000 transactions with the purpose "Telefon +49 170 1234567"
 - **THEN** the refresh ends within a few seconds
 - **AND** no transaction is in "Phone", and all 1,000 are in "Other"
+
+#### Scenario: Many texts that are each just under the limit
+
+- **GIVEN** the category "Phone" with the rule `purpose:/(a+)+$/`
+- **WHEN** the rule tests 200 transactions whose purpose is 18 times "a" and then "!"
+- **THEN** the rule stops after about 1 second of processor time and matches none of them
+
+### Requirement: A stopped rule matches nothing in its run
+
+The app SHALL treat a stopped rule as matching no transaction of its run, also none that it tested before the stop, and SHALL still run the rules of the other categories.
+
+#### Scenario: The order of the rows does not matter
+
+- **GIVEN** the category "Phone" above "Other", "Phone" with the rule `purpose:/ok|(a+)+$/`, and "Other" with the rule `true`
+- **WHEN** a refresh brings one transaction with the purpose "ok" and one whose purpose is 32 times "a" and then "!", in either order
+- **THEN** both transactions are in "Other"
+
+### Requirement: A stopped rule never moves a transaction that a rule sorted
+
+The app SHALL keep the category of a transaction that a rule assigned when a stopped rule stands above every rule that matches it, because the stopped rule could have matched it first.
+
+#### Scenario: A pending transaction is booked during the stop
+
+- **GIVEN** the category "Phone" above "Other", "Phone" with the rule `purpose:/ok|(a+)+$/`, "Other" with the rule `true`, and a pending transaction with the purpose "ok" that the rule put into "Phone"
+- **WHEN** a refresh books it and brings a transaction whose purpose is 32 times "a" and then "!"
+- **THEN** the booked transaction stays in "Phone"
+- **AND** the new transaction is in "Other"
 
 ### Requirement: A stopped rule is shown
 

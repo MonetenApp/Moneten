@@ -1,12 +1,19 @@
 import Foundation
 
-/// The processor time that the regex calls of one search, or of one test of a rule, share. They stop after 300 ms in all.
+/// The processor time that the regex calls of one search, or of one run of a rule, share. A search stops after 300 ms
+/// in all. A rule carries what it spent before into `spent`, so its limit holds for the whole run.
 final class RegexBudget {
-	var spent: UInt64 = 0
+	let limit: UInt64
+	var spent: UInt64
 	var gaveUp = false
 
+	init(limit: UInt64 = 300_000_000, spent: UInt64 = 0) {
+		self.limit = limit
+		self.spent = spent
+	}
+
 	func check(_ elapsed: UInt64) {
-		if spent + elapsed >= 300_000_000 { gaveUp = true }
+		if spent + elapsed >= limit { gaveUp = true }
 	}
 }
 

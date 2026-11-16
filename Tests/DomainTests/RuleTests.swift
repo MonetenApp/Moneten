@@ -249,6 +249,7 @@ struct RuleTests {
 			#expect(try matches("local_account:DE0?1203*", RuleSubject(localAccounts: [value])), "\(value)")
 		}
 		#expect(try !matches("local_account:DE0?1203*", RuleSubject(localAccounts: ["DE89370400440532013000"])))
+		#expect(Format.iban(iban) == "DE02 1203 0000 0000 2020 51")
 	}
 
 	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))
@@ -475,6 +476,91 @@ struct CategorizerTests {
 		let counted = try Rule(parsing: phone.rule)
 		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: l) == 0)
 		#expect(counted.stoppedRegexPosition == 0)
+	}
+
+	/// The rule of "Phone" ends at once on "ok" and runs far past its limit on a long run of "a" without an end.
+	static let slowRule = "purpose:/ok|(a+)+$/"
+	static let slowText = String(repeating: "a", count: 32) + "!"
+
+	func refresh(_ rows: [Transaction]) -> Delivery {
+		.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: Day(year: 2026, month: 11, day: 1))))
+	}
+
+	@Test("A rule that stops matches no row of the refresh, in either order of the rows", .timeLimit(.minutes(1)), arguments: [false, true])
+	func stoppedRuleIsAllOrNothing(okFirst: Bool) {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let other = Domain.Category(position: 1, name: "Other", rule: "true")
+		let l = ledger([phone, other])
+		let ok = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Telekom", purpose: "ok", sourceID: "TX-1")
+		let slow = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -2_000, name: "Kiosk", purpose: Self.slowText, sourceID: "TX-2")
+		let rows = okFirst ? [ok, slow] : [slow, ok]
+		let rules = Categorizer(ledger: l)
+		let r = rules.allOrNothing { reconcile(refresh(rows), into: giro, stored: [], deleted: [], rules: rules, now: Date()) }
+		#expect(Dictionary(uniqueKeysWithValues: r.added.map { ($0.sourceID!, $0.categoryID) }) == ["TX-1": other.id, "TX-2": other.id])
+		// The next refresh brings the same rows and changes nothing, although the rule then stops again.
+		var next = l
+		next.apply(r)
+		let again = Categorizer(ledger: next)
+		let second = again.allOrNothing { reconcile(refresh(rows), into: giro, stored: next.transactions(ofAccount: giro.id), deleted: [], rules: again, now: Date()) }
+		#expect(second.added == [] && second.updated == [] && second.booked == [] && second.skipped == 2)
+	}
+
+	@Test("A stopped rule never moves a row that a rule sorted, also when the bank books it", .timeLimit(.minutes(1)), arguments: [false, true])
+	func stoppedRuleKeepsRuleCategory(slowFirst: Bool) {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let other = Domain.Category(position: 1, name: "Other", rule: "true")
+		let pending = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Telekom", purpose: "ok",
+			isPending: true, categoryID: phone.id, categorizedBy: .rule, isFetched: true, sourceID: "TX-1")
+		var booked = pending
+		booked.isPending = false
+		booked.categoryID = nil
+		booked.categorizedBy = .none
+		let slow = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -2_000, name: "Kiosk", purpose: Self.slowText, sourceID: "TX-2")
+		let l = ledger([phone, other], [pending])
+		let rules = Categorizer(ledger: l)
+		let r = rules.allOrNothing { reconcile(refresh(slowFirst ? [slow, booked] : [booked, slow]), into: giro, stored: [pending], deleted: [], rules: rules, now: Date()) }
+		#expect(r.booked.map(\.id) == [pending.id])
+		#expect(r.booked.first?.isPending == false)
+		#expect(r.booked.first?.categoryID == phone.id && r.booked.first?.categorizedBy == .rule)
+		#expect(r.added.map(\.categoryID) == [other.id])
+	}
+
+	@Test("A rule stops when all its regex calls of one run add up to its limit", .timeLimit(.minutes(1)))
+	func cumulativeStop() throws {
+		// About 2^18 steps for each text: far below the limit of one call, and 200 texts took 6 seconds without a limit for the run.
+		let subject = RuleSubject(purpose: String(repeating: "a", count: 18) + "!")
+		let rule = try Rule(parsing: "purpose:/(a+)+$/")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect((0..<200).allSatisfy { _ in !rule.matches(subject) })
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(rule.stoppedRegexPosition == 8)
+		#expect(milliseconds < 1_600)
+		// The count of matches stops by the same limit.
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/(a+)+$/")
+		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Kiosk", purpose: subject.purpose) }
+		let counted = try Rule(parsing: phone.rule)
+		let countStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: ledger([phone], rows)) == 0)
+		#expect(counted.stoppedRegexPosition == 8)
+		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - countStart) / 1_000_000 < 1_600)
+	}
+
+	@Test("A rule that a row changed during the run stops saves nothing", .timeLimit(.minutes(1)))
+	func rebaseOfStoppedRule() throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let day = Day(year: 2026, month: 11, day: 3)
+		let ok = (0..<3).map { _ in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telekom", purpose: "ok") }
+		let snapshot = ledger([phone], ok)
+		let rule = try Rule(parsing: phone.rule)
+		let results = RuleApplier.apply(category: phone, rule: rule, to: snapshot.transactions, ledger: snapshot, mode: .all)
+		#expect(results.count == 3)
+		#expect(rule.stoppedRegexPosition == nil)
+		var current = snapshot
+		var changed = ok[0]
+		changed.purpose = Self.slowText
+		current.update([changed])
+		#expect(RuleApplier.rebase(results, from: snapshot, onto: current, category: phone, rule: rule, mode: .all) == [])
+		#expect(rule.stoppedRegexPosition == 8)
 	}
 
 	@Test("Apply only to uncategorized transactions, or to all")

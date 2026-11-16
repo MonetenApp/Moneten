@@ -138,10 +138,17 @@ public struct RegexBox: @unchecked Sendable {
 	}
 }
 
-/// The position of the first regular expression of one parsed rule that ran too long. The categorizer can test
-/// one rule on more than one thread, so the position is atomic.
+/// The position of the first regular expression of one parsed rule that ran too long, and the processor time that its
+/// regular expressions spent. The categorizer can test one rule on more than one thread, so both are atomic.
 private final class RegexStop: Sendable {
 	private let stopped = Atomic<Int>(-1)
+	private let nanoseconds = Atomic<UInt64>(0)
+
+	var spent: UInt64 { nanoseconds.load(ordering: .relaxed) }
+
+	func add(_ elapsed: UInt64) {
+		nanoseconds.wrappingAdd(elapsed, ordering: .relaxed)
+	}
 
 	var position: Int? {
 		let p = stopped.load(ordering: .relaxed)
@@ -183,9 +190,15 @@ public struct Rule: Sendable {
 		stop = expression.hasRegex ? RegexStop() : nil
 	}
 
-	/// The position of the regular expression that ran too long, counted from 0, or nil. ICU never finishes some
-	/// patterns, such as `^+?49`, so after the first stop this parsed rule matches no further transaction. A new parse
-	/// starts without a stop, so the stop lasts one run of `Categorizer` or `RuleApplier`.
+	/// The processor time that the regular expressions of one parsed rule may spend in all, over every transaction that it
+	/// tests. A pattern that takes 30 ms on each text never reaches the limit of one call, and 200 such texts would
+	/// otherwise take 6 seconds.
+	static let runLimit: UInt64 = 1_000_000_000
+
+	/// The position of the regular expression that ran too long, counted from 0, or nil. It ran too long when one call
+	/// took about 100 ms, or when all calls of this parsed rule took `runLimit`. ICU never finishes some patterns, such
+	/// as `^+?49`, so after the first stop this parsed rule matches no further transaction. A new parse starts without a
+	/// stop, so the stop lasts one run: one pass of `Categorizer`, one run of `RuleApplier`, or one count of matches.
 	public var stoppedRegexPosition: Int? { stop?.position }
 
 	public func matches(_ subject: RuleSubject) -> Bool {
@@ -202,9 +215,11 @@ public struct Rule: Sendable {
 		var regex: RegexWatch?
 
 		mutating func firstMatch(_ box: RegexBox, _ text: String) -> Bool {
-			let watch = regex ?? RegexWatch()
+			let watch = regex ?? RegexWatch(budget: RegexBudget(limit: Rule.runLimit, spent: stop?.spent ?? 0))
 			regex = watch
+			let before = watch.budget.spent
 			let found = watch.firstMatch(box.regex, text) != nil
+			stop?.add(watch.budget.spent - before)
 			if watch.gaveUp || watch.budget.gaveUp { stop?.record(box.position) }
 			return found
 		}

@@ -22,21 +22,31 @@ public struct Categorizer: Sendable {
 		}
 	}
 
-	/// The category whose rule matches first, or nil.
+	/// The category whose rule matches first, or nil. A rule whose regular expression stopped matches nothing.
 	public func category(for t: Transaction) -> UUID? {
+		decision(for: t).category
+	}
+
+	/// The first category whose rule matches, and whether a stopped rule stood before it, which could have matched first.
+	private func decision(for t: Transaction) -> (category: UUID?, passedStop: Bool) {
 		let subject = RuleSubject(t, account: accountsByID[t.accountID])
+		var passedStop = false
 		for e in entries {
 			if let accounts = e.accounts, !accounts.contains(t.accountID) { continue }
-			if e.rule.matches(subject) { return e.categoryID }
+			if e.rule.matches(subject) { return (e.categoryID, passedStop) }
+			if e.rule.stoppedRegexPosition != nil { passedStop = true }
 		}
-		return nil
+		return (nil, passedStop)
 	}
 
 	/// Sets the category of a transaction that has none, or whose category came from a rule.
-	/// A manual choice stays.
+	/// A manual choice stays. So does the category of a rule when a stopped rule stands before every match, because
+	/// the stopped rule could have matched: a stop never moves a transaction that a rule sorted.
 	public func categorize(_ t: inout Transaction) {
 		guard t.categorizedBy != .manual else { return }
-		if let c = category(for: t) {
+		let decision = decision(for: t)
+		if decision.passedStop, t.categorizedBy == .rule { return }
+		if let c = decision.category {
 			t.categoryID = c
 			t.categorizedBy = .rule
 		} else {
@@ -44,6 +54,22 @@ public struct Categorizer: Sendable {
 			t.categorizedBy = .none
 		}
 	}
+
+	/// Runs one batch of categorization, such as the merge of one refresh. When a rule stops during the batch, the rows
+	/// before the stop could have taken its category, so the batch runs again, and the stopped rule then matches none of
+	/// its rows. The result never depends on the order of the rows. `body` must start from its inputs each time.
+	public func allOrNothing<T>(_ body: () throws -> T) rethrows -> T {
+		var stops = stopCount
+		while true {
+			let result = try body()
+			// Each repetition stops at least one more rule, so this ends after at most one repetition for each rule.
+			let now = stopCount
+			if now == stops { return result }
+			stops = now
+		}
+	}
+
+	private var stopCount: Int { entries.count(where: { $0.rule.stoppedRegexPosition != nil }) }
 }
 
 /// How a changed rule is applied to transactions that already exist.
@@ -114,7 +140,9 @@ public enum RuleApplier {
 		}
 		let rechecked = Set(changedSince.map(\.id))
 		let kept = results.filter { !rechecked.contains($0.id) && current.transaction($0.id) != nil && current.parts(of: $0.id).isEmpty }
-		return kept + apply(category: category, rule: rule, to: changedSince, ledger: current, mode: mode)
+		let rows = kept + apply(category: category, rule: rule, to: changedSince, ledger: current, mode: mode)
+		// A row that changed during the run can stop the rule, and then the run saves nothing, as `apply` does.
+		return rule.stoppedRegexPosition == nil ? rows : []
 	}
 }
 

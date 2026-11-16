@@ -18,6 +18,8 @@ struct CategorySettingsSheet: View {
 	@State private var ruleError: String?
 	@State private var askApply = false
 	@State private var showHelp = false
+	/// The last count of matches and the rule that it counted.
+	@State private var matches: (key: MatchKey, count: MatchCount)?
 
 	var body: some View {
 		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
@@ -82,8 +84,8 @@ struct CategorySettingsSheet: View {
 							.foregroundStyle(.secondary)
 						} else if let ruleError {
 							Text(ruleError).foregroundStyle(Palette.red)
-						} else if !c.rule.isEmpty {
-							switch matchCount(c) {
+						} else if !c.rule.isEmpty, let matches, matches.key == matchKey {
+							switch matches.count {
 							case let .stopped(position):
 								Text(RuleStop.message(position: position)).foregroundStyle(Palette.red)
 							case let .count(count):
@@ -96,6 +98,7 @@ struct CategorySettingsSheet: View {
 			}
 		}
 		.interactiveDismissDisabled(isApplying)
+		.task(id: matchKey) { await countMatches(matchKey) }
 		.onAppear {
 			category = model.ledger.category(categoryID)
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
@@ -130,16 +133,33 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
-	private enum MatchCount {
+	private enum MatchCount: Sendable {
 		case count(Int)
 		/// The position of the regular expression that ran too long, counted from 0.
 		case stopped(Int)
 	}
 
-	private func matchCount(_ c: Domain.Category) -> MatchCount {
-		guard let rule = try? Rule(parsing: c.rule) else { return .count(0) }
-		let count = RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
-		return rule.stoppedRegexPosition.map(MatchCount.stopped) ?? .count(count)
+	/// What the count of matches depends on.
+	private struct MatchKey: Hashable {
+		let rule: String
+		let restriction: UUID?
+	}
+
+	private var matchKey: MatchKey? { category.map { MatchKey(rule: $0.rule, restriction: $0.restrictedToID) } }
+
+	/// Counts the matches away from the main actor, because a slow rule may take up to its limit of processor time.
+	/// Typing changes the rule on every key, so the count waits for a pause first.
+	private func countMatches(_ key: MatchKey?) async {
+		guard let key, let c = category, !key.rule.isEmpty, let rule = try? Rule(parsing: key.rule) else { return }
+		try? await Task.sleep(for: .milliseconds(250))
+		guard !Task.isCancelled else { return }
+		let ledger = model.ledger
+		let count = await Task.detached(priority: .userInitiated) {
+			let count = RuleApplier.matchCount(category: c, rule: rule, ledger: ledger)
+			return rule.stoppedRegexPosition.map(MatchCount.stopped) ?? .count(count)
+		}.value
+		guard !Task.isCancelled else { return }
+		matches = (key, count)
 	}
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.

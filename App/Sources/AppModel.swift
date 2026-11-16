@@ -969,10 +969,13 @@ final class AppModel {
 	}
 
 	func save(transaction t: Transaction, adding: Bool) {
-		var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
 		let categorizer = Categorizer(ledger: ledger)
-		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
-			categorizer.categorize(&changed.transactions[i])
+		let changed = categorizer.allOrNothing {
+			var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
+			for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
+				categorizer.categorize(&changed.transactions[i])
+			}
+			return changed
 		}
 		commit(changed)
 	}
@@ -1457,16 +1460,11 @@ final class AppModel {
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		guard !run.isCancelled else { return }
-		if let position = rule.stoppedRegexPosition {
-			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
-			return
-		}
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
+			// A stopped rule gives no rows, also when a row that changed during the run stopped it.
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
-			// A row that a refresh changed during the run can stop the rule too, and then nothing is saved.
-			guard rule.stoppedRegexPosition == nil else { return nil }
 			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
 		if let position = rule.stoppedRegexPosition {

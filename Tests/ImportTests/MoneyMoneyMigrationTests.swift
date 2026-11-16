@@ -1254,6 +1254,7 @@ struct MoneyMoneyMigrationTests {
 	func ibanAndBIC() {
 		#expect(MoneyMoneyMigration.isIBAN("DE02120300000000202051"))
 		#expect(MoneyMoneyMigration.isIBAN("DE02 1203 0000 0000 2020 51"))
+		#expect(MoneyMoneyMigration.isIBAN("DE02\u{00A0}1203\u{202F}0000 0000 2020 51"))
 		#expect(!MoneyMoneyMigration.isIBAN("DE03120300000000202051"))
 		#expect(!MoneyMoneyMigration.isIBAN("202051"))
 		#expect(MoneyMoneyMigration.isBIC("BYLADEM1001") && MoneyMoneyMigration.isBIC("BYLADEM1"))
