@@ -35,8 +35,9 @@ dmg_url() { echo "https://github.com/$REPO/releases/download/v$1/Moneten-$1.dmg"
 # The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
 # becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
 public_key() {
+	OPENSSL=${OPENSSL:-$(notes openssl)} || exit 1
 	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
-		| openssl pkey -inform DER -pubout -outform DER | tail -c 32 | base64
+		| "$OPENSSL" pkey -inform DER -pubout -outform DER | tail -c 32 | base64
 }
 
 # Fails unless the public update key $2 signed the feed $1 and every disk image in it lies in a
@@ -251,7 +252,7 @@ check_feeds() {
 	fi
 	refused "$WORK/changed.xml" "$KEY" "did not sign" "The changed feed passed the check of a current feed."
 	# Another key must not pass.
-	openssl genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
+	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
 	tail -c 32 "$WORK/other.der" | base64 > "$WORK/other.key"
 	refused "$OUT/appcast.xml" "$(public_key "$WORK/other.key")" "did not sign" "A feed of another key passed the check of a current feed."
 	# A disk image over http must not pass, even in a feed that the update key signed.
@@ -286,7 +287,7 @@ dry_run() {
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed; else package "$VERSION" unsigned; fi
 	# A throwaway update key: an Ed25519 seed, the private key format of Sparkle.
-	openssl genpkey -algorithm ed25519 -outform DER -out "$WORK/key.der"
+	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/key.der"
 	tail -c 32 "$WORK/key.der" | base64 > "$WORK/update.key"
 	MONETEN_UPDATE_KEY_FILE="$WORK/update.key" feed "$VERSION" first
 	check_feeds "$WORK/update.key"

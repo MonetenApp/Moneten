@@ -229,11 +229,16 @@ class ReleaseNotesTests(unittest.TestCase):
 
 	# check-feed
 
+	def openssl(self):
+		result = self.run_script("openssl")
+		self.assertEqual(result.returncode, 0, result.stderr)
+		return result.stdout.strip()
+
 	def key_pair(self, name):
 		"""An Ed25519 key as a PEM file for openssl, and its public key in Base64 as the app has it."""
 		private = self.dir / ("%s.pem" % name)
-		subprocess.run(["openssl", "genpkey", "-algorithm", "ed25519", "-out", str(private)], check=True, capture_output=True)
-		public = subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout", "-outform", "DER"], check=True, capture_output=True).stdout
+		subprocess.run([self.openssl(), "genpkey", "-algorithm", "ed25519", "-out", str(private)], check=True, capture_output=True)
+		public = subprocess.run([self.openssl(), "pkey", "-in", str(private), "-pubout", "-outform", "DER"], check=True, capture_output=True).stdout
 		return private, base64.b64encode(public[-32:]).decode()
 
 	def signed_feed(self, private, url=None, signed_length=None):
@@ -246,13 +251,17 @@ class ReleaseNotesTests(unittest.TestCase):
 			data = data.replace(b"https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg", url.encode())
 		signed = data[:signed_length] if signed_length is not None else data
 		(self.dir / "data").write_bytes(signed)
-		signature = subprocess.run(["openssl", "pkeyutl", "-sign", "-rawin", "-inkey", str(private), "-in", str(self.dir / "data")],
+		signature = subprocess.run([self.openssl(), "pkeyutl", "-sign", "-rawin", "-inkey", str(private), "-in", str(self.dir / "data")],
 			check=True, capture_output=True).stdout
 		feed.write_bytes(data + b"<!-- sparkle-signatures:\nedSignature: %s\nlength: %d\n-->\n" % (base64.b64encode(signature), len(signed)))
 		return feed
 
 	def check_feed(self, feed, public):
 		return self.run_script("check-feed", "--feed", str(feed), "--public-key", public)
+
+	def test_openssl_is_not_the_libressl_of_macos(self):
+		version = subprocess.run([self.openssl(), "version"], capture_output=True, text=True).stdout
+		self.assertTrue(version.startswith("OpenSSL "), version)
 
 	def test_check_feed_accepts_a_feed_of_the_update_key(self):
 		private, public = self.key_pair("update")
