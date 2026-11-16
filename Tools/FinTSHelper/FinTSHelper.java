@@ -506,11 +506,13 @@ public class FinTSHelper {
 		}
 
 		/// Reads a state of an earlier run. A state that does not read starts a new passport, and
-		/// the bank then registers a new system ID.
+		/// the bank then registers a new system ID. The limits keep a crafted state from exhausting
+		/// the stack or the memory of the helper (issue #327).
 		static State deserialize(byte[] bytes) {
 			try (ObjectInputStream in = new ObjectInputStream(new ByteArrayInputStream(bytes))) {
 				in.setObjectInputFilter(ObjectInputFilter.Config.createFilter(
-					"org.kapott.hbci.passport.storage.PassportData;java.util.Properties;java.util.Hashtable;java.util.Map$Entry;java.util.ArrayList;java.lang.*;!*"));
+					"org.kapott.hbci.passport.storage.PassportData;java.util.Properties;java.util.Hashtable;java.util.Map$Entry;java.util.ArrayList;java.lang.*;!*;"
+					+ "maxdepth=20;maxarray=100000;maxrefs=100000"));
 				PassportData data = (PassportData) in.readObject();
 				String tanMedium = null;
 				try {
