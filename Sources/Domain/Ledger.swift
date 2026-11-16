@@ -614,6 +614,35 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
+	public func splitting(row rowID: UUID, off amounts: [Money]) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: Split.amounts(of: row.amount, off: amounts))
+	}
+
+	public func splittingVAT(row rowID: UUID, rate: VATRate) throws -> [SplitPart] {
+		guard let row = row(rowID) else { throw SplitError.unbalanced }
+		guard !row.isPending else { throw SplitError.pending }
+		return try splitting(row: row, amounts: rate.split(row.amount), rate: rate)
+	}
+
+	private func splitting(row: Transaction, amounts: [Money], rate: VATRate? = nil) throws -> [SplitPart] {
+		let originalID = part(row.id)?.transactionID ?? row.id
+		let new = amounts.enumerated().map { index, amount in
+			SplitPart(transactionID: originalID, position: index, amountMinor: amount.minorUnits,
+				categoryID: row.categoryID, comment: row.comment,
+				vat: rate.map { VATShare(role: index == 0 ? .net : .tax, rate: $0) })
+		}
+		var result = parts(of: originalID)
+		if let index = result.firstIndex(where: { $0.id == row.id }) {
+			result.replaceSubrange(index...index, with: new)
+		} else {
+			result = new
+		}
+		for i in result.indices { result[i].position = i }
+		return result
+	}
+
 	public mutating func replaceParts(of transactionID: UUID, with parts: [SplitPart]) {
 		guard let original = transaction(transactionID) else { return }
 		partsByTransaction[transactionID] = parts.isEmpty ? nil : parts.map { part in

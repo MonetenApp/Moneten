@@ -76,7 +76,7 @@ enum Preference {
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
 	/// Runs with their own data folder skip it, so tests never write the real settings.
 	private static func adoptLegacyDomain() {
-		guard ProcessInfo.processInfo.environment["MONETEN_DATA_DIR"] == nil else { return }
+		guard DataFolder.requestedPath == nil else { return }
 		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
 		guard !d.bool(forKey: done) else { return }
 		for (key, value) in d.persistentDomain(forName: "io.github.alexander-schneider.MonetenMoneten") ?? [:] where d.object(forKey: key) == nil {
@@ -97,10 +97,10 @@ final class AppModel {
 		case failed(String)
 	}
 
-	let vault = Vault(folder: .standard())
-	let crashes = CrashReportController(folder: .standard())
+	let vault = Vault(folder: .current)
+	let crashes = CrashReportController(folder: .current)
 	/// The refreshes of the bank accesses and their dialogs.
-	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.standard().databaseFile.path))
+	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
@@ -922,9 +922,11 @@ final class AppModel {
 
 	@discardableResult
 	func replaceParts(of transactionID: UUID, with parts: [SplitPart]) async -> Bool {
-		guard let store else { return false }
+		guard let store, let original = ledger.transaction(transactionID) else { return false }
+		let previous = ledger.parts(of: transactionID)
 		return await replacingTable {
-			guard self.store === store else { return false }
+			guard self.store === store, ledger.transaction(transactionID)?.amount == original.amount,
+				ledger.parts(of: transactionID) == previous else { return false }
 			do {
 				try store.replaceParts(of: transactionID, with: parts)
 				ledgerChange = "split parts=\(parts.count)"
@@ -951,6 +953,7 @@ final class AppModel {
 	}
 
 	func delete(transactions ids: Set<UUID>) {
+		guard !refusePartDeletion(in: ids) else { return }
 		guard let store else { return }
 		do {
 			try store.deleteTransactions(Array(ids))
@@ -1648,6 +1651,8 @@ enum SheetKind: Identifiable, Equatable {
 	case groupSettings(UUID)
 	case categorySettings(UUID)
 	case transaction(UUID?)
+	case split(Transaction)
+	case undoSplit(UUID)
 	case comment(Set<UUID>)
 	case migration
 	case exportAllData

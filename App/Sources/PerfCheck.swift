@@ -68,6 +68,37 @@ struct PerfScenario {
 				category.sidebarAmount = .currentMonth
 				c.model.save(category: category)
 			}),
+		PerfScenario(name: "split-row-in-open-view", budget: halfSecond,
+			setUp: { c in
+				await c.select("Bulk")
+				guard var row = c.model.visibleTransactions.first else { return c.fail("no split row") }
+				row.amountMinor = -8000
+				c.model.save(transaction: row, adding: false)
+				c.model.selectedTransactions = [row.id]
+				await c.settle()
+				await c.checkStaleSplitWrites(row)
+			},
+			run: { c in
+				guard c.model.ledger.transactions.count == 50000,
+					let row = c.model.visibleTransactions.first, row.amountMinor == -8000,
+					let account = c.model.ledger.account(row.accountID),
+					let table = c.harness.transactionTables().first, table.numberOfRows == 50000 else {
+					return c.fail("the split did not start in a drawn view of 50000 rows")
+				}
+				let balance = c.model.ledger.computedBalance(of: account)
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+					return c.fail("split failed")
+				}
+				await c.settle()
+				let parts = c.model.ledger.parts(of: row.id)
+				if parts.map(\.amountMinor) != [-2500, -5500] || c.model.visibleTransactions.count != 50001
+					|| c.model.selectedTransactions != Set(parts.map(\.id)) || c.model.ledger.row(row.id) != nil
+					|| c.model.ledger.computedBalance(of: account) != balance {
+					c.fail("split rows, selection, or balance differ")
+				}
+				if c.harness.transactionTables().first === table { c.fail("split removed a shown row in place") }
+				if c.harness.transactionTables().first?.selectedRowIndexes.count != 2 { c.fail("split parts were not selected in the table") }
+			}),
 		// Last, because it adds rows: "Uncategorized" above holds exactly the 50,000.
 		PerfScenario(name: "import-into-open-view", budget: halfSecond,
 			setUp: { await $0.select("Bulk"); await $0.scroll { $0 / 2 } },
@@ -508,6 +539,54 @@ struct PerfContext {
 	let problems = PerfProblems()
 
 	func fail(_ problem: StaticString, _ values: (StaticString, LogValue)...) { problems.list.append((problem, values)) }
+
+	func checkStaleSplitWrites(_ original: Transaction) async {
+		var row = original
+		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await currencySplit.value
+			return fail("the currency race missed the drawing wait")
+		}
+		row.currency = "USD"
+		model.save(transaction: row, adding: false)
+		let currencySaved = await currencySplit.value
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored currency race") }
+			if currencySaved || model.ledger.transaction(row.id)?.currency != "USD"
+				|| stored.transaction(row.id)?.currency != "USD" || !stored.parts(of: row.id).isEmpty
+				|| !model.ledger.parts(of: row.id).isEmpty || model.selectedTransactions != [row.id] {
+				fail("a waiting split overwrote a currency correction")
+			}
+		} catch { return fail("the currency race could not be read") }
+		row.currency = "EUR"
+		model.save(transaction: row, adding: false)
+		guard let parts = try? model.ledger.splitting(row: row.id, off: [Money(minorUnits: -3000, currency: "EUR")]),
+			await model.replaceParts(of: row.id, with: parts) else { return fail("no parts for the edit race") }
+		await settle()
+		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await editedSplit.value
+			return fail("the part edit race missed the drawing wait")
+		}
+		guard let category = model.ledger.categories.first(where: { !$0.isGroup && !$0.isDefault && $0.id != parts[1].categoryID }) else {
+			_ = await editedSplit.value
+			return fail("no category for the part edit race")
+		}
+		model.assign(category: category.id, to: [parts[1].id])
+		let editSaved = await editedSplit.value
+		var expected = parts; expected[1].categoryID = category.id
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored part edit race") }
+			if editSaved || model.ledger.parts(of: row.id) != expected || stored.parts(of: row.id) != expected
+				|| model.selectedTransactions != Set(expected.map(\.id)) {
+				fail("a waiting split overwrote a newer part edit")
+			}
+		} catch { return fail("the part edit race could not be read") }
+		guard await model.replaceParts(of: row.id, with: []) else { return fail("the part edit race did not reset") }
+		await settle()
+	}
 
 	func select(_ name: String) async {
 		harness.select(name)
