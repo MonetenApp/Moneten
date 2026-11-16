@@ -13,10 +13,11 @@ public enum EntryPoint: String, Sendable, Codable, CaseIterable {
 	case endSession = "EndSession"
 }
 
-/// The value of `protocol` in `SupportsBank` and the login functions.
+/// The value of `protocol` in `SupportsBank` and the login functions. Published scripts compare it with
+/// the text "Web Banking", so the globals `ProtocolWebBanking` and `ProtocolFinTS` hold these texts.
 public enum BankProtocol: String, Sendable, Codable {
-	case webBanking = "ProtocolWebBanking"
-	case finTS = "ProtocolFinTS"
+	case webBanking = "Web Banking"
+	case finTS = "HBCI+/FinTS"
 }
 
 /// The value of `session` in `InitializeSession2`. The app never passes "payment".
@@ -44,7 +45,8 @@ enum EntryPoints {
 	/// The globals of the API that only name a value. A script compares them, so each has its own text.
 	static let constants: [String: String] = {
 		var constants = ["LoginFailed": "LoginFailed"]
-		for value in [BankProtocol.webBanking, .finTS] { constants[value.rawValue] = value.rawValue }
+		constants["ProtocolWebBanking"] = BankProtocol.webBanking.rawValue
+		constants["ProtocolFinTS"] = BankProtocol.finTS.rawValue
 		for type in AccountType.allCases { constants[type.rawValue] = type.rawValue }
 		return constants
 	}()

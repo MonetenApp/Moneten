@@ -12,6 +12,8 @@ The dry run needs no secrets and contacts no service. It builds the app signed t
 scripts/release.sh dry-run           # version 0.0.0-beta.1, on a copy of CHANGELOG.md
 ```
 
+The dry run takes XcodeGen and the JDK from `scripts/build-tools.sh`, as a release does, and checks that the check of the current feed refuses a changed feed, a feed of another key, and a disk image over http.
+
 A Debug build trusts the test key and reads the feed of the dry run:
 
 ```sh
@@ -88,9 +90,9 @@ Add a ruleset under Settings, Rules, for the tags `v*` that allows only the owne
 2. Go through the checklist below.
 3. Tag the merge commit on `main` and push the tag: `git tag v0.1.3 && git push origin v0.1.3`.
 4. The workflow checks that the tag has a section in `CHANGELOG.md`, that the commit is on `main`, and that the build number and the version are above every version in the current feed. Then it builds, signs, and notarizes.
-5. Approve the job `draft` in the run. It signs the disk image with the update key, writes the feed, and creates the release as a draft, with the disk image and `appcast.xml`.
+5. Approve the job `draft` in the run within a day, because the disk image of the job `package` is kept for one day. Otherwise run the workflow again. The job checks that the update key signed the current feed and that every disk image in it lies in a release of the repository. Then it signs the disk image with the update key, writes the feed, and creates the release as a draft, with the disk image and `appcast.xml`.
 6. Open the draft. Download the disk image on a Mac with the default security settings, open it, and start the app.
-7. Run `scripts/release.sh publish 0.1.3` with the GitHub CLI logged in as the owner. A stable version becomes the newest release and carries the feed. A pre-release is published as a pre-release, and its feed replaces `appcast.xml` on the newest stable release. The command also updates the text of every earlier release whose section in `CHANGELOG.md` changed, and checks that the feed URL lists the new version.
+7. Run `scripts/release.sh publish 0.1.3` with the GitHub CLI logged in as the owner. A stable version becomes the newest release and carries the feed. A pre-release is published as a pre-release, and its feed replaces `appcast.xml` on the newest stable release. The command also updates the text of each earlier release whose section in `CHANGELOG.md` changed, and leaves the others alone, and checks that the feed URL lists the new version.
 
 The feed URL is `https://github.com/MonetenApp/Moneten/releases/latest/download/appcast.xml`. Every other release, such as `bank-data`, must be created with "Set as the latest release" turned off, or the feed URL breaks.
 
@@ -102,6 +104,10 @@ To start over after a failed run, delete the draft and run the workflow again on
 - [ ] CI is green on the commit.
 - [ ] The release candidate was tested on the newest major version of macOS, and the key `MonetenTestedMacOS` in `App/Info.plist` names that version. The app warns at launch on a newer major version of macOS.
 - [ ] The production update key in `App/project.yml` is the public key of `SPARKLE_ED_PRIVATE_KEY`. `scripts/release.sh` checks this too.
+
+## Update a pinned build tool
+
+`scripts/build-tools.sh` pins XcodeGen with its version and SHA-256, and reads the Temurin JDK from the `jdk:` line of `Tools/FinTSProbeJava/dependencies.lock`. To move to a newer build, take the version and the SHA-256 from the release page of the project, which GitHub lists beside each file, change them in one pull request, and let the dry run of that pull request build with them. A security fix of the JDK 17 line is a reason for a new release, because its runtime ships inside the app.
 
 ## Withdraw a version
 

@@ -178,7 +178,7 @@ public struct Rule: Sendable {
 	}
 }
 
-enum RuleToken: Equatable {
+package enum RuleToken: Equatable {
 	case open, close, and, or, not
 	case constant(Bool)
 	case word(String)
@@ -190,6 +190,12 @@ enum RuleToken: Equatable {
 }
 
 extension RuleToken {
+	package static func positioned(in text: String) throws(RuleSyntaxError) -> [(token: RuleToken, position: Int)] {
+		var parser = RuleParser(text)
+		try parser.tokenize()
+		return parser.tokens
+	}
+
 	/// The tokens of a rule text that may be unfinished, as the user types it.
 	static func ofUnfinished(_ text: String) -> [RuleToken] {
 		var parser = RuleParser(text)

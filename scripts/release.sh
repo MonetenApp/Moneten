@@ -52,8 +52,15 @@ check_production_key() {
 	esac
 }
 
+# Fails unless the public update key $2 signed the feed $1 and every disk image in it lies in a
+# release of the repository.
+check_feed() { notes check-feed --feed "$1" --public-key "$2"; }
+
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
+# With the public update key $1, the feed must carry its signature, because a new feed keeps its items
+# and gets a new signature. preflight reads it without a key: the job draft checks the versions again
+# on the checked feed before it signs anything.
 current_feed() {
 	set -- -sS -o /dev/null -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -61,6 +68,7 @@ current_feed() {
 	case "$STATUS" in
 		404) FEED_ARGS=--first-release; echo "No stable release yet: this is the first feed." ;;
 		200) curl -fsSL -o "$WORK/current.xml" "$FEED_URL" || fail "The newest stable release has no readable $FEED_URL."
+			[ -z "$1" ] || check_feed "$WORK/current.xml" "$1" || fail "The current feed at $FEED_URL failed its check."
 			FEED_ARGS="--feed $WORK/current.xml" ;;
 		*) fail "GitHub answered $STATUS for the newest release." ;;
 	esac
@@ -106,8 +114,9 @@ check_dmg() {
 	[ -L "$WORK/volume/Applications" ] || unmount_and_fail "The disk image has no link to the Applications folder."
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
-	env -i "$MOUNTED/Contents/Resources/FinTSHelper/runtime/bin/java" -Xshare:off -version 2>/dev/null \
-		|| unmount_and_fail "The FinTS helper on the disk image does not start."
+	JDK_VERSION=$(sed -n 's/^jdk:temurin-aarch64-mac:\([^ ]*\) .*/\1/p' Tools/FinTSProbeJava/dependencies.lock)
+	env -i "$MOUNTED/Contents/Resources/FinTSHelper/runtime/bin/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
+		|| unmount_and_fail "The FinTS helper on the disk image does not start with the pinned Java runtime $JDK_VERSION."
 	if [ "$3" = signed ]; then
 		spctl --assess --type execute -vv "$MOUNTED" 2>&1 | grep -q 'source=Notarized Developer ID' \
 			|| unmount_and_fail "Gatekeeper does not accept the app on the disk image as notarized."
@@ -122,6 +131,10 @@ package() {
 	MODE=${2:-signed}
 	rm -rf "$OUT"
 	mkdir -p "$OUT"
+	# The pinned tools of scripts/build-tools.sh. The jlink runtime of this JDK ships inside the app.
+	JAVA_HOME=$(scripts/build-tools.sh jdk)
+	PATH="$(scripts/build-tools.sh xcodegen):$PATH"
+	export JAVA_HOME PATH
 	if [ "$MODE" = signed ]; then
 		MONETEN_VERSION="$1" scripts/build-app.sh developer-id
 		APP=dist/Moneten.app
@@ -174,7 +187,7 @@ feed() {
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$DMG" "$SIGNATURE"
-	if [ "$2" = first ]; then FEED_ARGS=--first-release; else current_feed; fi
+	if [ "$2" = first ]; then FEED_ARGS=--first-release; else current_feed "$(public_key "$MONETEN_UPDATE_KEY_FILE")"; fi
 	notes appcast "$1" --build "$BUILD" --min-macos "$MIN_MACOS" --url "$(dmg_url "$1")" \
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
@@ -222,15 +235,44 @@ publish() {
 		gh release edit "v$1" --repo "$REPO" --draft=false --latest
 		;;
 	esac
-	# The text of every earlier release follows its section in CHANGELOG.md, as the feed does.
-	gh release list --repo "$REPO" --limit 200 --json tagName,isDraft -q '.[] | select(.isDraft | not) | .tagName' | while read -r TAG; do
-		notes section "${TAG#v}" > "$WORK/section.md" 2>/dev/null || continue
-		gh release view "$TAG" --repo "$REPO" --json body -q .body > "$WORK/body.md"
-		cmp -s "$WORK/section.md" "$WORK/body.md" || gh release edit "$TAG" --repo "$REPO" --notes-file "$WORK/section.md"
-	done
+	# The text of every earlier release follows its section in CHANGELOG.md, as the feed does. One
+	# listing reads every text, and only a release whose text differs is edited.
+	gh api --paginate "repos/$REPO/releases?per_page=100" -q '.[] | select(.draft | not) | {tag: .tag_name, body: (.body // "")}' \
+		> "$WORK/releases.jsonl"
+	notes stale-releases < "$WORK/releases.jsonl" > "$WORK/stale"
+	while read -r TAG; do
+		notes section "${TAG#v}" > "$WORK/section.md"
+		gh release edit "$TAG" --repo "$REPO" --notes-file "$WORK/section.md"
+	done < "$WORK/stale"
 	curl -fsSL "$FEED_URL" | grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" \
 		|| fail "The feed at $FEED_URL does not list $1 yet."
 	echo "Published v$1. The feed at $FEED_URL lists it."
+}
+
+# The checks that guard the current feed, run on the new feed $OUT/appcast.xml that the private
+# update key in the file $1 signed. A release reads its current feed through the same check.
+check_feeds() {
+	# check_feed must refuse the feed $1 for the key $2 with the reason $3, or the dry run fails with $4.
+	refused() { check_feed "$1" "$2" 2>&1 | grep -qF "$3" || fail "$4"; }
+	SPARKLE=$(scripts/sparkle-tools.sh)
+	KEY=$(public_key "$1")
+	check_feed "$OUT/appcast.xml" "$KEY" || fail "The new feed failed the check of a current feed."
+	# One changed byte must break the signature, for Sparkle and for the check.
+	sed 's/Moneten/Monetem/' "$OUT/appcast.xml" > "$WORK/changed.xml"
+	if "$SPARKLE/sign_update" --verify --ed-key-file "$1" "$WORK/changed.xml" >/dev/null 2>&1; then
+		fail "The changed feed passed the signature check of Sparkle."
+	fi
+	refused "$WORK/changed.xml" "$KEY" "did not sign" "The changed feed passed the check of a current feed."
+	# Another key must not pass.
+	openssl genpkey -algorithm ed25519 -outform DER -out "$WORK/other.der"
+	tail -c 32 "$WORK/other.der" | base64 > "$WORK/other.key"
+	refused "$OUT/appcast.xml" "$(public_key "$WORK/other.key")" "did not sign" "A feed of another key passed the check of a current feed."
+	# A disk image over http must not pass, even in a feed that the update key signed.
+	sed 's#url="https://#url="http://#' "$OUT/appcast.xml" > "$WORK/http.xml"
+	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/http.xml" >/dev/null
+	"$SPARKLE/sign_update" --verify --ed-key-file "$1" "$WORK/http.xml" || fail "Sparkle did not sign the feed with the http disk image."
+	refused "$WORK/http.xml" "$KEY" "has a disk image outside" "A feed with an http disk image passed the check of a current feed."
+	echo "The check of a current feed refuses a changed feed, another key, and an http disk image."
 }
 
 dry_run() {
@@ -254,11 +296,7 @@ dry_run() {
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
-	# One changed byte must break the signature of the feed.
-	sed 's/Moneten/Monetem/' "$OUT/appcast.xml" > "$WORK/changed.xml"
-	if "$(scripts/sparkle-tools.sh)/sign_update" --verify --ed-key-file "$TEST_KEY_FILE" "$WORK/changed.xml" >/dev/null 2>&1; then
-		fail "The changed feed passed the signature check."
-	fi
+	check_feeds "$TEST_KEY_FILE"
 	echo "Dry run of $VERSION passed: $(ls "$OUT" | tr '\n' ' ')"
 }
 

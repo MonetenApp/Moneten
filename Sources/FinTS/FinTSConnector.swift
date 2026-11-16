@@ -129,22 +129,28 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	/// The accounts of the login of `access`, the new state of the access, and the notices of the bank.
+	/// A login that fails after notices throws `FailureWithNotices`, as a refresh does, so that the assistant
+	/// "Add Account" shows the notice of a maintenance next to the error that the maintenance causes.
 	public func listAccounts(of access: Access, state: AccessState?, session: SyncSession) async throws
 		-> (accounts: [FinTSAccount], state: AccessState?, notices: [BankMessage]) {
 		var accounts: [FinTSAccount]?
 		var newState: AccessState?
 		var notices: [BankMessage] = []
-		try await run(try command("accounts", access, state), session: session) { message in
-			switch message {
-			case let .accounts(list): accounts = list
-			case let .state(data): newState = AccessState(data)
-			case let .notice(text): notices.append(BankMessage(text: text))
-			case let .failed(error): throw error.failure
-			default: throw HelperFailure.unreadable
+		do {
+			try await run(try command("accounts", access, state), session: session) { message in
+				switch message {
+				case let .accounts(list): accounts = list
+				case let .state(data): newState = AccessState(data)
+				case let .notice(text): notices.append(BankMessage(text: text))
+				case let .failed(error): throw error.failure
+				default: throw HelperFailure.unreadable
+				}
 			}
+			guard let accounts else { throw HelperFailure.noAnswer }
+			return (accounts, newState, notices)
+		} catch where !notices.isEmpty {
+			throw FailureWithNotices(error, notices: notices)
 		}
-		guard let accounts else { throw HelperFailure.noAnswer }
-		return (accounts, newState, notices)
 	}
 
 	/// Fetches all requested accounts in one dialog with the bank.

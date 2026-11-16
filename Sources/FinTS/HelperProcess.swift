@@ -53,13 +53,14 @@ final class HelperProcess: @unchecked Sendable {
 		output.readabilityHandler = { [weak self] _ in self?.read() }
 		process.terminationHandler = { [weak self] process in
 			let end = (process.terminationStatus, process.terminationReason == .uncaughtSignal)
+			// A child of the helper can hold stdout open after the helper ended. The lines go to `onLine`
+			// before `ended()` returns, so that a run sees a rejection that the helper wrote just before it ended.
+			self?.drain()
 			self?.termination.withLock { state in
 				state.end = end
 				state.waiter?.resume(returning: end)
 				state.waiter = nil
 			}
-			// A child of the helper can hold stdout open after the helper ended.
-			self?.drain()
 		}
 		do {
 			try process.run()
@@ -139,7 +140,8 @@ final class HelperProcess: @unchecked Sendable {
 
 	var isRunning: Bool { process.isRunning }
 
-	/// Waits for the end of the process. Throws when it ended in another way than with status 0.
+	/// Waits for the end of the process, and until `onLine` has every line that it wrote. Throws when it
+	/// ended in another way than with status 0.
 	func ended() async throws {
 		let end = await withCheckedContinuation { continuation in
 			termination.withLock { state in
