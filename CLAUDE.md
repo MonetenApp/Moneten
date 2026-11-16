@@ -21,6 +21,8 @@ scripts/check.sh                                   # docs, chrome rule, specs, P
 
 scripts/generate-project.sh                        # writes App/Moneten.xcodeproj
 scripts/build-app.sh                               # dist/Moneten.app, Release; "debug" for a Debug build
+scripts/release.sh dry-run                         # the release pipeline without secrets: disk image and signed test feed
+python3 scripts/release-notes.py check             # the format of CHANGELOG.md
 swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
 scripts/perf-check.sh                              # UI performance scenarios in the Perf build; shows a window
 scripts/fints-probe-java.sh --build-only           # compiles the hbci4java probe, as CI does
@@ -66,7 +68,7 @@ How the parts work together:
 - **Parse at the edge.** Each parser, and later each connector, turns raw data into `Domain` types. Code inside `Domain`, `Storage`, and the app trusts those types and does not check them again. An entry that cannot be read fails the whole file with its line, so nothing from the file is imported. Only the CSV parser skips a row without a date.
 - **Schema changes.** Add a new `registerMigration("vN")` at the end of `Sources/Storage/Schema.swift`. Never change a migration that has shipped. `Transaction` is stored in the table `bankTransaction`. The models are Codable GRDB records.
 - **Sync.** FinTS, extensions, and finAPI will each implement `BankConnector.refresh(_:_:)` and ask the user only through `SyncSession.ask(_:)`. `SyncState` is a pure state machine. Views read it and keep no flags of their own. The `deliver` closure of `SyncCoordinator` merges fetched data, `storeState` stores the new `AccessState` before the next work of the access starts, and `ended` stores the status of each account. The [design of add-account-refresh](openspec/changes/add-account-refresh/design.md) has the complete types and the dialog queue.
-- **FinTS.** [ADR 0014](docs/decisions/0014-fints-through-hbci4java.md) replaces HBCI4Swift with hbci4java in a helper process that talks JSON lines over a pipe. `FinTSConnector` runs the helper of `Tools/FinTSHelper`. `Tools/FinTSProbeJava` is the probe for bank tests (issue #11), and its `dependencies.lock` pins the jars of both. The HBCI4Swift submodule and the Swift probe were removed in issue #107. A text that still names HBCI4Swift as the FinTS engine is out of date.
+- **FinTS.** [ADR 0014](docs/decisions/0014-fints-through-hbci4java.md) replaces HBCI4Swift with hbci4java in a helper process that talks JSON lines over a pipe. `FinTSConnector` runs the helper of `Tools/FinTSHelper`. `Tools/FinTSProbeJava` is the probe for bank tests (issue #11), and its `dependencies.lock` pins the jars of both and the JDK whose runtime ships in a release. The HBCI4Swift submodule and the Swift probe were removed in issue #107. A text that still names HBCI4Swift as the FinTS engine is out of date.
 
 ### Debug harness
 

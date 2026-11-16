@@ -11,7 +11,7 @@ done
 mkdir -p "$LIB"
 CP=""
 while read -r coordinate sha; do
-	case "$coordinate" in ""|\#*) continue ;; esac
+	case "$coordinate" in ""|\#*|jdk:*) continue ;; esac
 	group=$(echo "$coordinate" | cut -d: -f1); artifact=$(echo "$coordinate" | cut -d: -f2); version=$(echo "$coordinate" | cut -d: -f3)
 	jar="$LIB/$artifact-$version.jar"
 	if [ ! -f "$jar" ]; then
