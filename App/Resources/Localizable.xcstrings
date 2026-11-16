@@ -1169,6 +1169,16 @@
       },
       "extractionState" : "manual"
     },
+    "A part of a split cannot be deleted alone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Teil einer Aufteilung kann nicht allein gelöscht werden."
+          }
+        }
+      }
+    },
     "A phrase: the words next to each other, in this order" : {
       "localizations" : {
         "de" : {
@@ -3142,6 +3152,26 @@
         }
       }
     },
+    "Could not remove the search." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Suche konnte nicht entfernt werden."
+          }
+        }
+      }
+    },
+    "Could not rename the search." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Suche konnte nicht umbenannt werden."
+          }
+        }
+      }
+    },
     "Could not save the account group." : {
       "localizations" : {
         "de" : {
@@ -3238,6 +3268,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das Ergebnis der Aktualisierung konnte nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Could not save the search." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Suche konnte nicht gespeichert werden."
           }
         }
       }
@@ -6573,6 +6613,16 @@
         }
       }
     },
+    "Only booked transactions can be split." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur gebuchte Umsätze können aufgeteilt werden."
+          }
+        }
+      }
+    },
     "only manually" : {
       "localizations" : {
         "de" : {
@@ -7269,6 +7319,36 @@
         }
       }
     },
+    "Rename Search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche umbenennen"
+          }
+        }
+      }
+    },
+    "Rename Search..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche umbenennen..."
+          }
+        }
+      }
+    },
+    "Rename..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umbenennen..."
+          }
+        }
+      }
+    },
     "Repairs" : {
       "localizations" : {
         "de" : {
@@ -7490,6 +7570,26 @@
         }
       }
     },
+    "Save Search" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche speichern"
+          }
+        }
+      }
+    },
+    "Save Search..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche speichern..."
+          }
+        }
+      }
+    },
     "Saved PINs, the data that bank accesses and extensions keep, and statement files are not in the file." : {
       "localizations" : {
         "de" : {
@@ -7558,6 +7658,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nach „%@“ suchen"
+          }
+        }
+      }
+    },
+    "Searches" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suchen"
           }
         }
       }
@@ -9746,12 +9856,12 @@
       },
       "extractionState" : "manual"
     },
-    "The import of all data works only in an empty database. This database already holds accounts, categories, transactions, or CSV profiles." : {
+    "The import of all data works only in an empty database. This database already holds accounts, categories, transactions, CSV profiles, or saved searches." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Import aller Daten funktioniert nur in einer leeren Datenbank. Diese Datenbank enthält bereits Konten, Kategorien, Umsätze oder CSV-Profile."
+            "value" : "Der Import aller Daten funktioniert nur in einer leeren Datenbank. Diese Datenbank enthält bereits Konten, Kategorien, Umsätze, CSV-Profile oder gespeicherte Suchen."
           }
         }
       },
@@ -10565,6 +10675,16 @@
       },
       "extractionState" : "manual"
     },
+    "The VAT split would leave a part of zero." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Aufteilung nach MwSt. würde einen Teil von null ergeben."
+          }
+        }
+      }
+    },
     "The website" : {
       "localizations" : {
         "de" : {
@@ -11251,6 +11371,16 @@
         }
       }
     },
+    "Use “Undo Split Transaction...” first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwenden Sie zuerst „Aufteilung rückgängig machen...“."
+          }
+        }
+      }
+    },
     "User ID" : {
       "localizations" : {
         "de" : {
@@ -11421,6 +11551,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Darstellung"
+          }
+        }
+      }
+    },
+    "Wait until the bank has booked the transaction." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten Sie, bis die Bank den Umsatz gebucht hat."
           }
         }
       }

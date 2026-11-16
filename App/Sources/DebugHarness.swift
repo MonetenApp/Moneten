@@ -788,6 +788,9 @@ final class DebugHarness {
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
+		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
+		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
+		case "savedsearch": savedSearch(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -1176,6 +1179,34 @@ final class DebugHarness {
 		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
 	}
 
+	private func savedSearch(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		func named(_ name: String) -> UUID? { model.savedSearches.first { $0.name == name }?.id }
+		switch parts.first {
+		case "save": model.saveSearch(name: value)
+		case "open": if let id = named(value) { model.navigate(to: .search(id)) }
+		case "rename":
+			let names = value.split(separator: "|", maxSplits: 1).map(String.init)
+			if names.count == 2, let id = named(names[0]) { model.rename(search: id, to: names[1]) }
+		case "remove": if let id = named(value) { model.remove(search: id) }
+		case "sheet": model.sheet = .saveSearch
+		case "back": model.goBack()
+		case "forward": model.goForward()
+		default: return log("savedsearch rejected")
+		}
+		let selected: Int? = if case let .search(id) = model.selection { model.savedSearches.firstIndex { $0.id == id } } else { nil }
+		// In parts, so the compiler of the CI runner type-checks it in time.
+		let command: LogValue = .choice(parts.first ?? "", of: ["save", "open", "rename", "remove", "sheet", "back", "forward"])
+		let view: LogValue = .choice(model.selection?.trailName ?? "none", of: ["account", "group", "category", "search", "none"])
+		let filters: LogValue = .list(model.filter.activeKinds.map { LogValue.word($0) })
+		var values: [(StaticString, LogValue)] = [("", command), ("searches", .count(model.savedSearches.count)), ("selected", .position(selected)), ("view", view)]
+		values += [("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count))]
+		values += [("filters", filters), ("period", .state(model.period))]
+		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
+	}
+
 	private func csvPreview(_ argument: String) {
 		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
 		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -1364,7 +1395,7 @@ final class DebugHarness {
 	/// window uses a material that only the window server draws.
 	private func sidebarSnapshot(_ name: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 900), width: 340, name: name, kind: "sidebar")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file

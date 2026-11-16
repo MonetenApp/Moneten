@@ -164,6 +164,8 @@ struct HeaderIcon: View {
 					Image(systemName: CategorySymbols.name(of: c, filledGroup: true))
 						.foregroundStyle(CategoryColors.color(of: c, in: model.ledger))
 				}
+			case .search:
+				Image(systemName: "magnifyingglass")
 			case nil:
 				EmptyView()
 			}
@@ -237,20 +239,37 @@ struct FilterBar: View {
 			}
 			.popover(isPresented: $customAmount) { CustomAmountView() }
 			separator
-			if case .category = model.selection {
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? String(localized: "Show All")) {
-					Button("Show All") { model.filter.accountID = nil }
-					Divider()
-					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
-				}
-			} else {
+			// A saved search shows both menus, so selecting it resets no filter.
+			if case .category = model.selection {} else {
 				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.categoryID = nil }
 					Divider()
 					ForEach(model.ledger.categoriesInSidebarOrder) { c in Button(model.ledger.categoryPath(c.id)) { model.filter.categoryID = c.id } }
 				}
 			}
+			if case .search = model.selection { separator }
+			switch model.selection {
+			case .category, .search:
+				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? String(localized: "Show All")) {
+					Button("Show All") { model.filter.accountID = nil }
+					Divider()
+					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
+				}
+			default:
+				EmptyView()
+			}
 			Spacer()
+			// An icon like the pin, because a saved search already fills the bar with five menus.
+			Button { model.sheet = .saveSearch } label: {
+				Image(systemName: "plus.magnifyingglass")
+					.frame(width: 22, height: 22)
+					.contentShape(.rect)
+			}
+			.buttonStyle(.borderless)
+			.hoverHighlight()
+			.disabled(!model.canSaveSearch)
+			.help("Save Search...")
+			.accessibilityLabel("Save Search")
 		}
 		.font(.callout)
 		// The highlight of each control adds 6 points, so the bar keeps its text 16 points from the edge.
@@ -265,7 +284,7 @@ struct FilterBar: View {
 
 	private func filterMenu<Content: View>(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) -> some View {
 		HStack(spacing: 4) {
-			Text(label).foregroundStyle(Palette.detail)
+			Text(label).foregroundStyle(Palette.detail).fixedSize()
 			Menu(title, content: content)
 				.menuStyle(.borderlessButton)
 				.fixedSize()

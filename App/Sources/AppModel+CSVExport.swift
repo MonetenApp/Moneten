@@ -92,6 +92,7 @@ extension AppModel {
 		case let .account(id): ledger.account(id)?.name ?? String(localized: "Transactions")
 		case let .group(id): ledger.groups.first { $0.id == id }?.name ?? String(localized: "Transactions")
 		case let .category(id): ledger.category(id)?.name ?? String(localized: "Transactions")
+		case let .search(id): savedSearches.first { $0.id == id }?.name ?? String(localized: "Transactions")
 		case nil: String(localized: "Transactions")
 		}
 	}
