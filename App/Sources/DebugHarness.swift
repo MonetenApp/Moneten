@@ -419,10 +419,11 @@ final class DebugHarness {
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
 				.environment(model), width: 520, name: "\(argument)-pie")
 		case "portfolio":
-			// "<group> <euros>" adds a portfolio with that bank balance to a group.
+			// "<group> <euros> [currency]" adds a portfolio with that bank balance to a group, in euros or in the currency.
 			let parts = argument.split(separator: " ")
-			if parts.count == 2, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
-				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: "EUR")
+			if parts.count == 2 || parts.count == 3, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				let currency = parts.count == 3 ? String(parts[2]) : "EUR"
+				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: currency)
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
 			}
