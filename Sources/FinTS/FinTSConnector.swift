@@ -10,6 +10,12 @@ public struct FinTSBank: Sendable, Equatable {
 	/// The PIN/TAN address. Nil when the bank has none. The connector refuses any address that is
 	/// not https.
 	public let url: URL?
+
+	public init(name: String, bic: String?, url: URL?) {
+		self.name = name
+		self.bic = bic
+		self.url = url
+	}
 }
 
 /// An account of a login, as the bank lists it.
@@ -156,7 +162,8 @@ public struct FinTSConnector: BankConnector {
 		}
 	}
 
-	/// Fetches all requested accounts in one dialog with the bank.
+	/// Fetches all requested accounts in one dialog with the bank. Each result says whether its transactions may
+	/// miss older ones, and the merge keeps that mark with the account.
 	public func refresh(_ request: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
 		let today = Day.today()
 		var command = try command("refresh", request.access, request.state)
@@ -198,7 +205,8 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	/// The first day to ask the bank for. A first and an enforced refresh ask for the full history.
-	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions.
+	/// Any other asks for no more than 90 days, so that the bank needs no TAN for older transactions. The
+	/// helper asks for the same 90 days when the user cancels a challenge for older transactions.
 	static func firstDay(_ since: Day?, today: Day) -> Day? {
 		since.map { max($0, today.adding(days: -90)) }
 	}
@@ -254,6 +262,8 @@ public struct FinTSConnector: BankConnector {
 								do {
 									// The user changed the TAN method while the dialog waited for the approval.
 									if case let .tanMethod(method) = try await task.value { process.send(Answer(id: id, method: method)) }
+								} catch is OlderTransactionsSkipped {
+									process.send(Answer(id: id, skip: true))
 								} catch where !task.isCancelled { process.fail(error) } catch {}
 							}
 							continue
@@ -264,6 +274,9 @@ public struct FinTSConnector: BankConnector {
 						} catch is CancellationError where asks.closed && !Task.isCancelled {
 							helperLeft = true
 							break reading
+						} catch is OlderTransactionsSkipped {
+							process.send(Answer(id: id, skip: true))
+							continue
 						}
 						if ask.kind != "tanMethod", case let .tanMethod(method) = answer {
 							process.send(Answer(id: id, method: method))
