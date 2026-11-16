@@ -1265,14 +1265,11 @@ public class FinTSHelper {
 	static String cardSummary(Properties data) {
 		Map<String, Integer> finalized = new java.util.TreeMap<>();
 		List<String> references = new ArrayList<>();
-		for (String part : cardParts(data)) {
-			for (int i = 0; data.getProperty(HBCIUtilsInternal.withCounter(part + ".transactions", i) + ".cardnumber") != null; i++) {
-				String row = HBCIUtilsInternal.withCounter(part + ".transactions", i);
-				String value = StringUtil.normalize(data.getProperty(row + ".finalized"));
-				finalized.merge(value == null ? "none" : value.length() == 1 ? value.toUpperCase(java.util.Locale.ROOT) : "other", 1, Integer::sum);
-				String reference = StringUtil.normalize(data.getProperty(row + ".reference"));
-				if (reference != null) references.add(reference);
-			}
+		for (String row : cardRowKeys(data)) {
+			String value = StringUtil.normalize(data.getProperty(row + ".finalized"));
+			finalized.merge(value == null ? "none" : value.length() == 1 ? value.toUpperCase(java.util.Locale.ROOT) : "other", 1, Integer::sum);
+			String reference = StringUtil.normalize(data.getProperty(row + ".reference"));
+			if (reference != null) references.add(reference);
 		}
 		return "FinTSHelper: card statement finalized " + finalized + " references=" + references.size() + " distinct=" + new java.util.HashSet<>(references).size();
 	}
@@ -1295,12 +1292,15 @@ public class FinTSHelper {
 	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
 	/// the app stores it (task 1.18), so its precision cannot fail the row.
 	static List<Object> cardRows(Properties data) {
-		List<Object> rows = new ArrayList<>();
+		return cardRowKeys(data).stream().map(row -> (Object) cardRow(data, row)).toList();
+	}
+
+	/// The key of each row, such as "content_2.transactions_3", in the order of the answer.
+	static List<String> cardRowKeys(Properties data) {
+		List<String> rows = new ArrayList<>();
 		for (String part : cardParts(data)) {
-			for (int i = 0; ; i++) {
-				String row = HBCIUtilsInternal.withCounter(part + ".transactions", i);
-				if (data.getProperty(row + ".cardnumber") == null) break;
-				rows.add(cardRow(data, row));
+			for (int i = 0; data.getProperty(HBCIUtilsInternal.withCounter(part + ".transactions", i) + ".cardnumber") != null; i++) {
+				rows.add(HBCIUtilsInternal.withCounter(part + ".transactions", i));
 			}
 		}
 		return rows;
