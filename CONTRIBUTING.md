@@ -29,7 +29,7 @@ CI also runs `scripts/perf-check.sh`. It starts the optimized `Perf` build, whic
 
 ## CI checks and runner use
 
-The Ubuntu `changes` job selects checks from every changed path, including deletions and both sides of a rename. The `specs` job runs on every pull request. Main pushes and manual runs always select all checks.
+The Ubuntu `changes` job selects checks from every changed path, including deletions and both sides of a rename. The `specs` job runs on every pull request. Main pushes and manual runs always select all checks. Markdown files count as documentation in every directory.
 
 | Event or changed paths | Specs | Units, release, tools, app build | UI performance and debug log | Periphery |
 |---|---|---|---|---|
