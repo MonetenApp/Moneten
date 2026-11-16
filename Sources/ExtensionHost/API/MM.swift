@@ -14,7 +14,7 @@ enum MMLibrary {
 		case .beta: "BETA"
 		case .retail: "RETAIL"
 		}
-		let values: [(String, LuaValue)] = [("productName", .string("Moneten")), ("productVersion", .string(environment.productVersion)),
+		let values: [(String, LuaValue)] = [("productName", .string("Moneten")), ("productVersion", .string(Self.threeNumbers(environment.productVersion))),
 			("productBuild", .integer(Int64(environment.productBuild))), ("apiVersion", .integer(Int64(extensionAPIVersion))),
 			("language", .string(environment.language)), ("deviceUuid", .string(environment.deviceUuid)), (variant, .string(""))]
 		lua_createtable(L, 0, Int32(functions.count + values.count))
@@ -28,6 +28,15 @@ enum MMLibrary {
 		}
 		Environment.reportMisses(stack, of: "MM")
 		stack.setGlobal("MM")
+	}
+
+	/// The version as three numbers, such as "0.1.0" for "0.1", because scripts compare it field by field
+	/// with a version of three numbers and stop when the counts differ. A field without digits counts as 0.
+	static func threeNumbers(_ version: String) -> String {
+		let fields = version.split(separator: ".", omittingEmptySubsequences: false).prefix(3).map { field in
+			String(Int(field.prefix(while: \.isASCII).prefix(while: \.isNumber)) ?? 0)
+		}
+		return (fields + Array(repeating: "0", count: 3 - fields.count)).joined(separator: ".")
 	}
 
 	private static let functions: [(String, clua_Function)] = [
@@ -368,10 +377,14 @@ enum MMLibrary {
 		data.map { String(format: "%02X", $0) }.joined()
 	}
 
-	/// `MM.hexToBin(hex)` ignores case and colons and gives `nil` for any other character or an odd length.
+	/// `MM.hexToBin(hex)` ignores case and colons, reads an odd length with a leading 0, so that "10001" gives
+	/// 01 00 01 as web pages write the RSA exponent 65537, and gives `nil` for any other character.
 	private static let hexToBin: clua_Function = { L in
 		let stack = LuaStack(L!)
-		return stack.returning(stack.data(at: 1).flatMap { bytes(hex: $0.filter { $0 != UInt8(ascii: ":") }) })
+		return stack.returning(stack.data(at: 1).flatMap { data in
+			let digits = data.filter { $0 != UInt8(ascii: ":") }
+			return bytes(hex: digits.count.isMultiple(of: 2) ? digits : [UInt8(ascii: "0")] + digits)
+		})
 	}
 
 	/// The bytes of pairs of hexadecimal digits, or nil for an odd count or another character.
