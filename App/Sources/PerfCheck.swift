@@ -385,8 +385,9 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
-		// Last, because it adds 50,000 rows. Each keystroke in the name field of a new transaction searches 50,000
-		// different names for suggestions. The search ran on every drawing of the window before.
+		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
+		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
+		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
 		PerfScenario(name: "type-name-over-50000-names", budget: .milliseconds(100),
 			setUp: { c in
 				let account = Account(position: c.model.ledger.accounts.count, name: "Name history", kind: .cash, source: .offline)
@@ -402,13 +403,11 @@ struct PerfScenario {
 				await c.settle()
 			},
 			run: { c in
-				for end in 1..."Händler 4".count {
-					c.harness.run("type", String("Händler 4".dropFirst(end - 1).prefix(1)))
+				for character in "Zahnarzt" {
+					c.harness.run("type", String(character))
 					await c.settle()
 				}
-				if c.harness.focusedSheetText() != "Händler 4" { c.fail("the name field did not take the typed name") }
-				c.model.sheet = nil
-				await c.settle()
+				if c.harness.focusedSheetText() != "Zahnarzt" { c.fail("the name field did not take the typed name") }
 			}),
 	]
 
