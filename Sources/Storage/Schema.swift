@@ -338,7 +338,8 @@ enum Schema {
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
 		// Saved searches (add-transaction-search-and-filters, task 1.20). The filter bar is the JSON of
-		// `SavedFilterBar`, as the pin keeps it. The number is a placeholder until the open PRs with v21 to v25 land.
+		// `SavedFilterBar`, as the pin keeps it. The number is a placeholder: v21 to v24 belong to open pull requests,
+		// and the migration becomes v25 when it merges.
 		m.registerMigration("v26") { db in
 			try db.create(table: "savedSearch") { t in
 				t.column("id", .blob).primaryKey()
