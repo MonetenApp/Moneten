@@ -241,6 +241,17 @@ struct BankAccessTests {
 		#expect(Self.names(ledger.refreshAccounts(.group(privat.id))) == [Self.accessID: ["Giro"], Self.otherAccessID: ["Card"]])
 	}
 
+	@Test("A refresh request carries the stored balance, the end of the last refresh, and the notes, which an extension reads")
+	func requestCarriesTheStoredBalance() {
+		var giro = Self.bankAccount("Giro", refreshedAt: Self.noon)
+		giro.bankBalanceMinor = 125_050
+		giro.comment = "Contract 4711"
+		let request = Ledger(accounts: [giro]).refreshAccounts(.all)[Self.accessID]?.first
+		#expect(request?.balance == Money(minorUnits: 125_050, currency: giro.currency))
+		#expect(request?.refreshedAt == Self.noon)
+		#expect(request?.comment == "Contract 4711")
+	}
+
 	@Test("A first refresh asks for the full history, and a later one from 14 days before the last success")
 	func since() {
 		let fresh = Self.bankAccount("Giro")

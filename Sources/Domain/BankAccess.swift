@@ -255,7 +255,8 @@ extension Ledger {
 				return oldestPending[a.id].map { min($0, overlap) } ?? overlap
 			}
 			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since,
-				lastFetched: a.refreshedAt.map { Day($0, calendar: calendar) }, currency: a.currency))
+				lastFetched: a.refreshedAt.map { Day($0, calendar: calendar) }, currency: a.currency,
+				balance: a.bankBalanceMinor.map { Money(minorUnits: $0, currency: a.currency) }, refreshedAt: a.refreshedAt, comment: a.comment))
 		}
 		return plan
 	}
