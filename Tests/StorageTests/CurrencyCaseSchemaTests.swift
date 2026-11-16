@@ -75,8 +75,11 @@ extension SchemaTests {
 extension SchemaTests {
 	@Test("v27 leaves a file identity that does not read as it is, also one with a hostile length", arguments: [
 		"file:1:99999999999999999999999999999999:x",
-		"file:1:8:20261103:5:-8900:9223372036854775807:eur",
-		"file:1:8:20261103:5:-8900:4:eur",
+		"file:1:8:202611035:-89009223372036854775807:eur",
+		"file:1:8:202611035:-89004:eur",
+		"file:1:8:202611035:-89003:eur",
+		"file:1::0:3:eur0:0:0:0:",
+		"file:1:8:202611035:-89003:eur5:Miete9:name:Lena0:0:x",
 		"file:1:8:2026",
 		"file:2:8:20261103:5:-8900:3:eur",
 		"file:1:",

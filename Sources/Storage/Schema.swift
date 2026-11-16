@@ -412,30 +412,33 @@ enum Schema {
 		return m
 	}
 
-	/// The file identity with its currency in upper case, or nil when it does not read, which leaves it as it is. A file identity is "file:1:"
-	/// and then booking day, amount, currency, and further fields, each as its length in UTF-8 bytes, a colon, and the
-	/// value. A currency code is ASCII, so changing only a to z keeps every length.
+	/// The file identity with its currency in upper case, or nil when it does not read, which leaves it as it is. A file
+	/// identity is "file:1:" and then exactly seven fields, booking day, amount, currency, purpose, counterparty, source
+	/// ID, and end-to-end reference, each as its length in UTF-8 bytes, a colon, and the value, with nothing after them
+	/// (`Transaction.originalFileIdentity`). A currency code is ASCII, so changing only a to z keeps every length.
 	private static func upperCasingCurrency(inFileIdentity identity: String) -> String? {
 		let prefix = Array("file:1:".utf8)
 		var bytes = Array(identity.utf8)
 		guard bytes.starts(with: prefix) else { return nil }
 		var i = prefix.count
-		for field in 0..<3 {
+		var currency: Range<Int>?
+		for field in 0..<7 {
 			// A length beyond the rest of the identity cannot be right, so the parse ends there, before the number can
 			// overflow. An identity from a complete export can hold anything, and a migration must never trap.
+			let start = i
 			var length = 0
 			while i < bytes.count, (0x30...0x39).contains(bytes[i]) {
 				length = length * 10 + Int(bytes[i] - 0x30)
 				guard length <= bytes.count else { return nil }
 				i += 1
 			}
-			guard i < bytes.count, bytes[i] == 0x3A, length <= bytes.count - i - 1 else { return nil }
+			guard i > start, i < bytes.count, bytes[i] == 0x3A, length <= bytes.count - i - 1 else { return nil }
 			i += 1
-			if field == 2 {
-				for j in i..<(i + length) where (0x61...0x7A).contains(bytes[j]) { bytes[j] -= 0x20 }
-			}
+			if field == 2 { currency = i..<(i + length) }
 			i += length
 		}
+		guard i == bytes.count, let currency else { return nil }
+		for j in currency where (0x61...0x7A).contains(bytes[j]) { bytes[j] -= 0x20 }
 		return String(decoding: bytes, as: UTF8.self)
 	}
 
