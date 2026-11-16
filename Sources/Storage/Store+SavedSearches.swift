@@ -11,9 +11,19 @@ extension Store {
 		}
 	}
 
-	/// Adds a saved search, or replaces the one with the same ID, such as after a rename.
-	public func save(_ search: SavedSearch) throws {
-		try queue.write { db in try Self.insert(search, into: db, replacing: true) }
+	/// Saves the search text and the filter bar under `name` as the last entry of "Searches".
+	public func appendSavedSearch(name: String, period: PeriodChoice, filter: TransactionFilter) throws -> SavedSearch {
+		try queue.write { db in
+			let last = try Int.fetchOne(db, sql: "SELECT MAX(position) FROM savedSearch")
+			let search = SavedSearch(name: name, position: last.map { $0 + 1 } ?? 0, period: period, filter: filter)
+			try Self.insert(search, into: db)
+			return search
+		}
+	}
+
+	/// Changes only the name, so a filter bar that this version cannot read stays as it is.
+	public func renameSavedSearch(_ id: UUID, to name: String) throws {
+		try queue.write { db in try db.execute(sql: "UPDATE savedSearch SET name = ? WHERE id = ?", arguments: [name, id]) }
 	}
 
 	public func deleteSavedSearch(_ id: UUID) throws {
@@ -25,13 +35,9 @@ extension Store {
 		return SavedSearch(id: row["id"], name: row["name"], position: row["position"], searchText: row["searchText"], bar: bar)
 	}
 
-	/// The complete import does not replace, so a file that holds a saved search twice fails.
-	static func insert(_ search: SavedSearch, into db: Database, replacing: Bool) throws {
-		// An update in place keeps the row, so the complete export keeps the order of the database after a rename.
-		let update = replacing
-			? " ON CONFLICT(id) DO UPDATE SET name = excluded.name, position = excluded.position, searchText = excluded.searchText, filterBar = excluded.filterBar"
-			: ""
-		try db.execute(sql: "INSERT INTO savedSearch(id, name, position, searchText, filterBar) VALUES (?, ?, ?, ?, ?)" + update,
+	/// A plain insert, so a file that holds a saved search twice fails the complete import.
+	static func insert(_ search: SavedSearch, into db: Database) throws {
+		try db.execute(sql: "INSERT INTO savedSearch(id, name, position, searchText, filterBar) VALUES (?, ?, ?, ?, ?)",
 			arguments: [search.id, search.name, search.position, search.searchText, search.bar.data])
 	}
 }

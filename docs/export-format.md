@@ -50,7 +50,7 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 |---|---|
 | `id` | Identifier |
 | `name` | Name in the sidebar |
-| `position` | Order in the sidebar section "Searches", a number |
+| `position` | Order in the sidebar section "Searches", a number. The import keeps the order and numbers the saved searches from 0. |
 | `searchText` | The text of the search field, possibly empty |
 | `period` | The period choice, see below |
 | `status` | `all`, `checked`, or `unchecked` |

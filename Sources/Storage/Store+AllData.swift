@@ -99,7 +99,14 @@ extension Store {
 			for profile in data.csvProfiles {
 				try db.execute(sql: "INSERT INTO csvProfile(name, version, payload) VALUES (?, ?, ?)", arguments: [profile.name, profile.version, profile.payload])
 			}
-			for search in data.savedSearches { try Self.insert(search, into: db, replacing: false) }
+			// The file can hold any number as a position, such as the largest one, after which the next saved
+			// search would have none. So the searches get 0, 1, 2, and so on in their order.
+			let ordered = data.savedSearches.enumerated().sorted { ($0.element.position, $0.offset) < ($1.element.position, $1.offset) }
+			for (position, entry) in ordered.enumerated() {
+				var search = entry.element
+				search.position = position
+				try Self.insert(search, into: db)
+			}
 		}
 	}
 }

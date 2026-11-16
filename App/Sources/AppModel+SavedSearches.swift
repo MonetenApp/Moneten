@@ -10,10 +10,8 @@ extension AppModel {
 	/// Saves the search field and the filter bar on screen under `name`, as the last entry of "Searches".
 	func saveSearch(name: String) {
 		guard let store else { return }
-		let search = SavedSearch(name: name, position: (savedSearches.map(\.position).max() ?? -1) + 1, period: period, filter: filter)
 		do {
-			try store.save(search)
-			savedSearches.append(search)
+			savedSearches.append(try store.appendSavedSearch(name: name, period: period, filter: filter))
 		} catch {
 			alert = AlertMessage(title: "Could not save the search.", message: String(describing: error))
 		}
@@ -21,23 +19,23 @@ extension AppModel {
 
 	func rename(search id: UUID, to name: String) {
 		guard let store, let index = savedSearches.firstIndex(where: { $0.id == id }) else { return }
-		var search = savedSearches[index]
-		search.name = name
 		do {
-			try store.save(search)
-			savedSearches[index] = search
+			try store.renameSavedSearch(id, to: name)
+			savedSearches[index].name = name
 		} catch {
 			alert = AlertMessage(title: "Could not rename the search.", message: String(describing: error))
 		}
 	}
 
 	/// Removes the entry and changes no transaction. The search field and the filter bar stay as they are.
+	/// Back and Forward lose the entry too.
 	func remove(search id: UUID) {
 		guard let store else { return }
 		do {
 			try store.deleteSavedSearch(id)
 			savedSearches.removeAll { $0.id == id }
 			if selection == .search(id) { select(nil) }
+			forgetInHistory(.search(id))
 		} catch {
 			alert = AlertMessage(title: "Could not remove the search.", message: String(describing: error))
 		}
