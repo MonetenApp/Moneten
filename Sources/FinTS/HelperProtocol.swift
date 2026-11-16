@@ -308,7 +308,7 @@ struct AccountResult: Decodable {
 
 	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
+			return (.failed(shownError?.failure ?? .bank(BankMessage(text: String(localized: "The bank sent nothing for this account.")))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
@@ -424,19 +424,20 @@ private struct AccountLine: Decodable {
 
 /// Failures of the helper itself, as the app shows them.
 enum HelperFailure {
-	static let unreadable = SyncFailure.network("The FinTS helper sent a line that Moneten cannot read.")
-	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
-	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
-	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
-	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
-	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
-	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
+	static let unreadable = SyncFailure.network(String(localized: "The FinTS helper sent a line that Moneten cannot read."))
+	static let noAnswer = SyncFailure.network(String(localized: "The FinTS helper ended without an answer."))
+	static let noProductID = SyncFailure.unsupported(String(localized: "This build of Moneten has no FinTS product ID, and banks accept only registered apps."))
+	static let insecure = SyncFailure.unsupported(String(localized: "The bank offers no encrypted FinTS address."))
+	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
+	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
+	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
-		.network("The FinTS helper stopped unexpectedly (\(signal ? "signal" : "status") \(status)).")
+		.network(signal ? String(localized: "The FinTS helper stopped unexpectedly (signal \(status)).")
+			: String(localized: "The FinTS helper stopped unexpectedly (status \(status))."))
 	}
 
 	static func notStarted(_ error: Error) -> SyncFailure {
-		.network("The FinTS helper could not start: \(error.localizedDescription)")
+		.network(String(localized: "The FinTS helper could not start: \(error.localizedDescription)"))
 	}
 }
