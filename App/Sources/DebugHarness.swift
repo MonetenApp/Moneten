@@ -212,6 +212,7 @@ final class DebugHarness {
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
 			log("focusfield count=\(editable.count) position=\(position) editor=\(sheet.firstResponder is NSTextView)")
+		// Inserts text into the focused editor of this app's sheet without global key events.
 		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
