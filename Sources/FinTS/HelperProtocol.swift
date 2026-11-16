@@ -330,8 +330,9 @@ struct AccountResult: Decodable {
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
 
+	/// An amount above `Money.maxMinorUnits` fails the account, so that no sum of stored amounts can overflow.
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.unreadable }
+		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.tooLarge }
 		return money
 	}
 
@@ -385,10 +386,13 @@ extension AccountResult {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
 			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
-			return Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
+			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
 				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency : nil,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
 				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
+			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
+			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }
+			return holding
 		}
 
 		private static func quote(_ a: Amount) throws -> Quote {
@@ -432,6 +436,7 @@ enum HelperFailure {
 	static let noProductID = SyncFailure.unsupported(String(localized: "This build of Moneten has no FinTS product ID, and banks accept only registered apps."))
 	static let insecure = SyncFailure.unsupported(String(localized: "The bank offers no encrypted FinTS address."))
 	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
+	static let tooLarge = SyncFailure.unsupported(String(localized: "The bank sent an amount that is too large, so nothing of this account was stored."))
 	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
 	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
 	static let lineTooLong = SyncFailure.network(String(localized: "The FinTS helper sent a message larger than \(HelperProcess.lineLimit >> 20) MiB, which Moneten does not read."))
