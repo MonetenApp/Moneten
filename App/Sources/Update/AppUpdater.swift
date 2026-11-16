@@ -21,6 +21,9 @@ final class AppUpdater: NSObject {
 	@ObservationIgnored private var waitingInstall: (() -> Void)?
 	@ObservationIgnored private var busyTimer: Timer?
 	@ObservationIgnored private var observation: NSKeyValueObservation?
+	/// The feed that Sparkle loaded last is older than one the app read before (spec: "Check the
+	/// update feed"), so no update from it may proceed.
+	@ObservationIgnored private var refusedFeed: (newest: Int, floor: Int)?
 	/// Mirrors `canCheckForUpdates` of Sparkle for the menu command.
 	private(set) var canCheck = false
 
@@ -52,6 +55,8 @@ final class AppUpdater: NSObject {
 	}
 
 	private static let betaKey = "offerPreReleaseVersions"
+	/// The newest build of the feeds that the app read, the floor of `FeedFloor`.
+	private static let feedFloorKey = "newestFeedBuild"
 
 	/// The feed URL of a Debug build: `MONETEN_FEED_URL`. A Debug build checks no other feed, because
 	/// it trusts the public test key of Fixtures/update.
@@ -81,7 +86,7 @@ final class AppUpdater: NSObject {
 		do {
 			try updater.start()
 		} catch {
-			UpdateLog.write("updater not started: \(error.localizedDescription)")
+			UpdateLog.write("update updater not started", ("error", .type(of: error)))
 			return
 		}
 		self.updater = updater
@@ -89,7 +94,7 @@ final class AppUpdater: NSObject {
 			let can = change.newValue ?? false
 			MainActor.assumeIsolated { self?.canCheck = can }
 		}
-		UpdateLog.write("updater started interval=\(Int(updater.updateCheckInterval)) automatic=\(updater.automaticallyChecksForUpdates)")
+		UpdateLog.write("update updater started", ("interval", .count(Int(updater.updateCheckInterval))), ("automatic", .flag(updater.automaticallyChecksForUpdates)))
 		// The scheduler of Sparkle checks every 24 hours. The app also checks at every launch.
 		if updater.automaticallyChecksForUpdates || untestedMacOS { updater.checkForUpdatesInBackground() }
 	}
@@ -125,7 +130,7 @@ final class AppUpdater: NSObject {
 		busyTimer?.invalidate()
 		busyTimer = nil
 		waitingInstall = nil
-		UpdateLog.write("installation resumed")
+		UpdateLog.write("update installation resumed")
 		install()
 	}
 }
@@ -135,14 +140,34 @@ extension AppUpdater: SPUUpdaterDelegate {
 
 	func allowedChannels(for updater: SPUUpdater) -> Set<String> { offersPreReleases ? ["beta"] : [] }
 
+	/// Sparkle calls this only for a feed whose signature it checked, with every item of every channel.
 	func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
-		feed = appcast.items.compactMap(ReleaseNoteItem.init)
-		UpdateLog.write("feed loaded items=\(feed.count)")
+		let defaults = UserDefaults.standard
+		let floor = defaults.object(forKey: Self.feedFloorKey) as? Int
+		switch FeedFloor.check(builds: appcast.items.compactMap { Int($0.versionString) }, floor: floor) {
+		case let .accepted(newFloor):
+			refusedFeed = nil
+			if let newFloor, newFloor != floor { defaults.set(newFloor, forKey: Self.feedFloorKey) }
+			feed = appcast.items.compactMap(ReleaseNoteItem.init)
+			UpdateLog.write("update feed loaded", ("items", .count(feed.count)))
+		case let .refused(newest, floor):
+			refusedFeed = (newest, floor)
+			feed = []
+			UpdateLog.write("update feed refused", ("newest", .count(newest)), ("floor", .count(floor)))
+		}
+	}
+
+	/// A refused feed stops the update before the window offers it. Sparkle reports the error as a
+	/// failed check, which the window shows only for a check that the user started.
+	func updater(_ updater: SPUUpdater, shouldProceedWithUpdate updateItem: SUAppcastItem, updateCheck: SPUUpdateCheck) throws {
+		guard let refused = refusedFeed else { return }
+		throw NSError(domain: "io.github.moneten.update", code: 1, userInfo: [NSLocalizedDescriptionKey:
+			"The update feed lists build \(refused.newest) as its newest version, but Moneten already read a feed with build \(refused.floor)."])
 	}
 
 	func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
 		guard isBusy() else { return false }
-		UpdateLog.write("installation postponed")
+		UpdateLog.write("update installation postponed")
 		waitingInstall = installHandler
 		driver.showWaitingForBankWork()
 		busyTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -182,12 +207,17 @@ struct AppVersion {
 }
 
 /// The log of the updater in a Debug build, for the checks of the tasks: the debug harness log, and
-/// stderr for the lines before the harness starts with the main window.
+/// stderr for the lines before the harness starts with the main window. Both get only a `LogLine`.
 enum UpdateLog {
-	@MainActor static func write(_ text: String) {
+	@MainActor static func write(_ event: StaticString, _ values: (StaticString, LogValue)...) {
+		write(event, values: values)
+	}
+
+	@MainActor static func write(_ event: StaticString, values: [(StaticString, LogValue)]) {
+		let line = LogLine(event, values: values)
 		#if DEBUG
-		NSLog("update %@", text)
+		NSLog("%@", line.text)
 		#endif
-		DebugHarness.shared?.log("update \(text)")
+		DebugHarness.shared?.log(line)
 	}
 }

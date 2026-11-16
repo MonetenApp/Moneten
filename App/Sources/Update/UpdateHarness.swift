@@ -17,12 +17,16 @@ extension DebugHarness {
 		case "close": driver.close()
 		case "about": AboutPanel.show()
 		case "state":
-			log("update state version=\(AboutPanel.version) accounts=\(model.ledger.accounts.count) phase=\(model.phase.trailName) available=\(model.updater.isAvailable) canCheck=\(model.updater.canCheck) automatic=\(model.updater.checksAutomatically) beta=\(model.updater.offersPreReleases) stage=\(driver.stage?.name ?? "none") agent=\(AppUpdater.userAgent)")
+			log(LogLine("update state", values: [("version", .version(AppVersion.current.display)), ("build", .count(Int(AppVersion.current.build) ?? 0)),
+				("accounts", .count(model.ledger.accounts.count)), ("phase", .state(model.phase)), ("available", .flag(model.updater.isAvailable)),
+				("canCheck", .flag(model.updater.canCheck)), ("automatic", .flag(model.updater.checksAutomatically)),
+				("beta", .flag(model.updater.offersPreReleases)), ("stage", driver.stage.map { .list($0.logValues.map(\.1)) } ?? .word("none")),
+				("agent", .hash(AppUpdater.userAgent))]))
 		case "automatic": model.updater.checksAutomatically = parts.last == "on"
 		case "beta": model.updater.offersPreReleases = parts.last == "on"
-		case "copies": log("update copies=\(LaunchChecks.otherCopies()?.count ?? 1) untested=\(LaunchChecks.untestedMacOS.map(String.init) ?? "none")")
+		case "copies": log("update copies", ("copies", .count(LaunchChecks.otherCopies()?.count ?? 1)), ("untested", .position(LaunchChecks.untestedMacOS)))
 		case "show": showMadeUp(parts.count > 1 ? parts[1] : "", driver: driver)
-		default: log("update unknown \(argument)")
+		default: log("update unknown")
 		}
 	}
 
@@ -52,7 +56,7 @@ extension DebugHarness {
 		case "move": driver.show(.failed(.moveToApplications))
 		case "notice": driver.show(.notice(title: "Several copies of Moneten are installed.",
 			message: "Moneten is in these folders:\n/Applications\n/Users/erika/Downloads\n\nDelete the copies that you do not use, so that you always start the newest version."))
-		default: log("update unknown stage \(stage)")
+		default: log("update unknown stage")
 		}
 	}
 }

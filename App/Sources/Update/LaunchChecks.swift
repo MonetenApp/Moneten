@@ -7,7 +7,7 @@ import FinTS
 enum LaunchChecks {
 	/// The message instead of the database when the own code signature fails its check.
 	static var damagedApp: String? {
-		AppSeal.isIntact ? nil : "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place."
+		get async { await AppSeal.isIntact ? nil : "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place." }
 	}
 
 	/// Runs the checks after the first, shows their messages in the update window, and starts the updater.

@@ -42,10 +42,18 @@ final class UpdateDriver: NSObject {
 	@ObservationIgnored private var received: UInt64 = 0
 	@ObservationIgnored private var expected: UInt64 = 0
 	@ObservationIgnored private var cancelDownload: () -> Void = {}
+	/// Messages of the checks at launch that wait for the window, oldest first. No stage replaces a
+	/// message that the user has not closed yet.
+	@ObservationIgnored private var waitingNotices: [UpdateStage] = []
 
 	/// Shows `stage` in the update window, which opens if it is closed. `acknowledgement` runs when
 	/// the user closes a final message.
 	func show(_ stage: UpdateStage, acknowledgement: (() -> Void)? = nil) {
+		if case .notice = stage, self.stage != nil {
+			waitingNotices.append(stage)
+			return
+		}
+		if let shown = self.stage, case .notice = shown { waitingNotices.insert(shown, at: 0) }
 		// A message that a new stage replaces counts as read, so Sparkle ends its session and the
 		// menu command works again.
 		let replaced = acknowledge
@@ -57,24 +65,34 @@ final class UpdateDriver: NSObject {
 		if !window.isVisible { window.center() }
 		window.makeKeyAndOrderFront(nil)
 		NSApp.activate()
-		UpdateLog.write("window \(stage.name)")
+		UpdateLog.write("update window", values: stage.logValues)
 	}
 
 	/// Closes the window. A pending acknowledgement goes to Sparkle.
 	func close() {
 		let acknowledge = acknowledge
 		self.acknowledge = nil
+		hide()
+		acknowledge?()
+	}
+
+	/// Takes the stage off the screen, then shows the next waiting message of the launch checks.
+	/// The window may be closing, so the message opens it on the next turn of the run loop.
+	private func hide() {
 		stage = nil
 		window?.orderOut(nil)
-		acknowledge?()
+		guard !waitingNotices.isEmpty else { return }
+		DispatchQueue.main.async { [weak self] in
+			guard let self, stage == nil, !waitingNotices.isEmpty else { return }
+			show(waitingNotices.removeFirst())
+		}
 	}
 
 	/// The answer to the update window: install or remind later.
 	func choose(_ choice: SPUUserUpdateChoice) {
 		guard case let .found(_, _, _, reply) = stage else { return }
-		stage = nil
-		window?.orderOut(nil)
-		UpdateLog.write("choice \(choice == .install ? "install" : "later")")
+		hide()
+		UpdateLog.write("update choice", ("", .word(choice == .install ? "install" : "later")))
 		reply(choice)
 	}
 
@@ -102,8 +120,8 @@ extension UpdateDriver: NSWindowDelegate {
 	func windowWillClose(_ notification: Notification) {
 		switch stage {
 		case .found: choose(.dismiss)
-		case let .checking(cancel): stage = nil; cancel()
-		case .downloading: stage = nil; cancelDownload()
+		case let .checking(cancel): hide(); cancel()
+		case .downloading: hide(); cancelDownload()
 		default: close()
 		}
 	}
@@ -145,7 +163,7 @@ extension UpdateDriver: SPUUserDriver {
 
 	func showUpdaterError(_ error: any Error, acknowledgement: @escaping () -> Void) {
 		let error = error as NSError
-		UpdateLog.write("error \(error.code)")
+		UpdateLog.write("update error", ("code", .count(error.code)))
 		let failure: UpdateStage.Failure = if [SUError.runningTranslocated, .runningFromDiskImageError].map({ Int($0.rawValue) }).contains(error.code) {
 			.moveToApplications
 		} else if stage.isChecking {
@@ -208,9 +226,7 @@ extension UpdateDriver: SPUUserDriver {
 		// A final message stays until the user closes it.
 		switch stage {
 		case .upToDate, .systemTooOld, .failed, .notice: return
-		default:
-			stage = nil
-			window?.orderOut(nil)
+		default: hide()
 		}
 	}
 }
@@ -220,19 +236,13 @@ private extension Optional where Wrapped == UpdateStage {
 }
 
 extension UpdateStage {
-	/// The name of the stage for the log of the debug harness.
-	var name: String {
+	/// The stage for the log of the debug harness: its case, and the versions of an offer.
+	var logValues: [(StaticString, LogValue)] {
 		switch self {
-		case .checking: "checking"
-		case .upToDate: "uptodate"
-		case .systemTooOld: "systemtooold"
-		case let .found(offered, notes, _, _): "found \(offered.version) notes=\(notes.map(\.version).joined(separator: ","))"
-		case .downloading: "downloading"
-		case .extracting: "extracting"
-		case .installing: "installing"
-		case .waitingForBankWork: "waiting"
-		case let .failed(failure): "failed \(failure)"
-		case .notice: "notice"
+		case let .found(offered, notes, _, _):
+			[("", .word("found")), ("", .version(offered.version)), ("notes", .list(notes.map { .version($0.version) }))]
+		case let .failed(failure): [("", .word("failed")), ("", .state(failure))]
+		default: [("", .state(self))]
 		}
 	}
 }

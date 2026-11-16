@@ -38,10 +38,22 @@ struct HelperSeal: @unchecked Sendable {
 }
 
 /// The check at launch that the application file is complete and unchanged (spec: "Report a
-/// damaged application file"). It is the seal check of the helper, for the whole bundle.
+/// damaged application file"). It is the seal check of the helper, for the whole bundle. It reads
+/// every file of the bundle, more than 100 MB with the Java runtime, so it never runs on the main
+/// thread, and the launch checks it once.
 public enum AppSeal {
-	/// False when a sealed file of the running app was changed, added, or removed.
+	private static let atLaunch = Task { await check() }
+
+	/// False when a sealed file of the running app was changed, added, or removed. The result of the
+	/// first check of this launch.
 	public static var isIntact: Bool {
-		(try? HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil).check()) != nil
+		get async { await atLaunch.value }
+	}
+
+	/// Checks the seal now, away from the caller's actor.
+	public static func check() async -> Bool {
+		await Task.detached(priority: .userInitiated) {
+			(try? HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil).check()) != nil
+		}.value
 	}
 }

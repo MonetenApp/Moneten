@@ -23,12 +23,6 @@ struct UpdateSettings: View {
 /// "About Moneten" with the full version, the build number, and the mark of a pre-release (spec:
 /// "Mark pre-release versions").
 enum AboutPanel {
-	/// For example "0.2.0-beta.1 (412)".
-	static var version: String {
-		let version = AppVersion.current
-		return "\(version.display) (\(version.build))"
-	}
-
 	@MainActor static func show() {
 		let version = AppVersion.current
 		NSApp.orderFrontStandardAboutPanel(options: [

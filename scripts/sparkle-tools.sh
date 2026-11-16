@@ -5,6 +5,8 @@ set -e
 cd "$(dirname "$0")/.."
 VERSION=2.10.1
 SHA256=1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+[ "$(sed -n '/^  Sparkle:$/,/^  [^ ]/s/^ *exactVersion: *//p' App/project.yml)" = "$VERSION" ] || {
+	echo "App/project.yml names another version of Sparkle than scripts/sparkle-tools.sh ($VERSION). Change both, and scripts/generate-project.sh." >&2; exit 1; }
 DIR=.build/sparkle/$VERSION
 if [ ! -x "$DIR/bin/sign_update" ]; then
 	mkdir -p "$DIR"

@@ -143,6 +143,31 @@ The app SHALL install an update only when the download carries a signature made 
 - **THEN** the app does not install it and shows that it could not install the update
 - **AND** the running version keeps working
 
+### Requirement: Check the update feed
+
+The app SHALL read an update feed only when the update key of the project signed it and its newest build is not lower than the newest build of any feed that the app read before.
+
+#### Scenario: Feed with a broken signature
+
+- **GIVEN** the feed that a check receives has a signature that does not match its content
+- **WHEN** the same feed comes back at every check for 30 days
+- **THEN** the app offers no update from it on any of these days
+- **AND** a check that the user started says that the check failed
+
+#### Scenario: Replayed older feed
+
+- **GIVEN** build 100 is installed, and the app read a feed whose newest build is 120
+- **AND** build 110 was taken out of the feed after its release
+- **WHEN** a check receives an older feed with build 110 as its newest build, signed with the update key
+- **THEN** the app does not offer build 110
+- **AND** a check that the user started says that the check failed
+
+#### Scenario: Newer feed
+
+- **GIVEN** build 100 is installed, and the app read a feed whose newest build is 120
+- **WHEN** a check receives a feed whose newest build is 130
+- **THEN** the app offers build 130
+
 ### Requirement: No update during a bank dialog
 
 The app SHALL NOT quit for an update while a refresh, a bank dialog, or a payment is in progress. It installs the update when that work has ended.

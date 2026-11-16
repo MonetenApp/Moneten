@@ -380,8 +380,19 @@ final class AppModel {
 
 	// MARK: Opening and locking
 
+	/// Opens the database after the seal check of the app, which runs away from the main thread.
+	/// "Opening database..." stays until then. A command of the debug harness that opened or created
+	/// the database meanwhile wins.
 	func start() {
-		if let damaged = LaunchChecks.damagedApp { return phase = .failed(damaged) }
+		let from = phase
+		Task {
+			if let damaged = await LaunchChecks.damagedApp { return phase = .failed(damaged) }
+			guard phase == from else { return }
+			openDatabase()
+		}
+	}
+
+	private func openDatabase() {
 		do {
 			switch try vault.state() {
 			case .empty:

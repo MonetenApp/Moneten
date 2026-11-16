@@ -107,9 +107,15 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 # A Release build is hardened (ADR 0017): the app, the extension host, and the java of the FinTS
 # helper have the hardened runtime, and none of them lets another process attach.
 check_hardened() {
+	# Only a build without a team may turn library validation off (App/Signing.xcconfig).
+	TEAM_OF_APP=$(codesign -dv "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p')
 	for code in "$1" "$1/Contents/Helpers/MonetenExtensionHost" "$1/Contents/Resources/FinTSHelper/runtime/bin/java"; do
 		codesign -dv "$code" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' || { echo "$code has no hardened runtime." >&2; exit 1; }
 		codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q get-task-allow && { echo "$code lets other processes attach." >&2; exit 1; }
+		if [ -n "$TEAM_OF_APP" ] && [ "$TEAM_OF_APP" != "not set" ]; then
+			codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q disable-library-validation \
+				&& { echo "$code turns library validation off, which only a build without a team may do." >&2; exit 1; }
+		fi
 	done
 	return 0
 }

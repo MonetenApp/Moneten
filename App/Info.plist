@@ -38,6 +38,9 @@
 	<string>$(MONETEN_UPDATE_PUBLIC_KEY)</string>
 	<key>SURequireSignedFeed</key>
 	<true/>
+	<!-- Never fall back to a feed without a valid signature. Without this key Sparkle does after 20 days of failures. -->
+	<key>SUSignedFeedFailureExpirationInterval</key>
+	<integer>0</integer>
 	<key>SUVerifyUpdateBeforeExtraction</key>
 	<true/>
 	<key>SUEnableAutomaticChecks</key>

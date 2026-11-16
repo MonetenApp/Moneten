@@ -115,7 +115,7 @@ Sparkle never offers an older build, so a withdrawn version needs a fixed versio
 
 1. Take the item out of the feed: download `appcast.xml` of the newest stable release, run `python3 scripts/release-notes.py remove 0.1.3 --feed appcast.xml --out appcast.xml`, sign it with `"$(scripts/sparkle-tools.sh)/sign_update" appcast.xml`, which reads the update key from the login Keychain, and upload it to the same release with `gh release upload <tag> appcast.xml --clobber`.
 2. Mark the release page as withdrawn in its text.
-3. Release the fixed version as usual.
+3. Release the fixed version as usual, and soon. An installed copy that saw the withdrawn version refuses every feed whose newest build is lower than the one it saw, so it offers no update until the fixed version is in the feed.
 
 ## Replace a leaked update key
 
