@@ -28,6 +28,8 @@ final class DebugHarness {
 	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
+	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
+	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
 	private static var requestedPath: String? {
@@ -38,9 +40,26 @@ final class DebugHarness {
 		#endif
 	}
 
-	/// Whether the harness drives this run. Such a run does not bring the app to the front, because the
-	/// developer keeps working in another app. Only "mainkey table" and "securefield" ask for the focus.
-	static var isRequested: Bool { requestedPath != nil }
+	/// Called before the app finishes launching. A run of the harness does not bring the app to the front,
+	/// because the developer keeps working in another app. The app then drops every request to become the
+	/// active app, also for a bank dialog, an alert, and the offer of a crash report, and only "mainkey table"
+	/// and "securefield" ask for the focus. A check at each call in the app would not be enough, because
+	/// AppKit itself activates the app when an alert sheet opens. Windows still open, and macOS can show them
+	/// above the app in front.
+	static func keepBehindIfRequested() {
+		#if DEBUG || PERF_HARNESS
+		if requestedPath != nil { NSApplication.dropActivationRequests() }
+		#endif
+	}
+
+	/// The focus that "mainkey table" and "securefield" need. Only the active app has a key window and AutoFill.
+	private func activateForFocus() {
+		#if DEBUG || PERF_HARNESS
+		NSApplication.allowsActivation = true
+		defer { NSApplication.allowsActivation = false }
+		#endif
+		NSApp.activate()
+	}
 
 	static func installIfRequested(model: AppModel) {
 		#if DEBUG || PERF_HARNESS
@@ -134,7 +153,7 @@ final class DebugHarness {
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
-		case "unlock": log("unlock", ("", .flag(model.unlock(password: argument))))
+		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
@@ -166,8 +185,10 @@ final class DebugHarness {
 				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
-		case "storepassword": log("storepassword", ("", .flag((try? model.vault.storePassword(argument)) != nil)))
-		case "removepassword": try? model.vault.removeStoredPassword()
+		case "storepassword":
+			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
+		case "removepassword":
+			do { try model.vault.removeStoredPassword() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -231,13 +252,15 @@ final class DebugHarness {
 			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
 			let editable = fields(in: view)
 			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
-			NSApp.activate()
+			// The field editor of the sheet takes the text of "type" while the app stays behind.
 			sheet.makeKeyAndOrderFront(nil)
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
 			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
-		// Inserts text into the focused editor of this app's sheet without global key events.
-		case "type": (topSheet?.firstResponder as? NSTextView)?.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
+		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
+		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
+		case "type": ((topSheet ?? NSApp.keyWindow ?? NSApp.orderedWindows.first { $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?
+			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
@@ -254,7 +277,8 @@ final class DebugHarness {
 					("interval", .state(a.refreshInterval)), ("balance", .presence(a.bankBalanceMinor != nil)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
 					("new", .count(model.ledger.newTransactionCounts[a.id] ?? 0)),
 					("historyStart", .day(model.bankHistories[a.id].flatMap { if case let .startsAt(day) = $0 { day } else { nil } })),
-					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)))
+					("noTransactions", .flag(model.bankHistories[a.id] == .noTransactions)),
+					("olderMayBeMissing", .flag(a.missesOlderTransactions)))
 			}
 			// Whether the status line shows a text, without the text, which names the bank of an access.
 			log("status", ("line", .presence(model.refreshStatus != nil)), ("accesses", .count(model.accesses.count)), ("bankNotices", .count(model.bankNotices.waiting.count)))
@@ -323,7 +347,22 @@ final class DebugHarness {
 		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
+		case "supportedbanks": openMenuItem("Supported Banks...")
+		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it,
+		// also with "command-" in front, such as "command-down". It never activates the app. Then it logs which view has the focus.
+		case "supportedkey": supportedBanksKey(argument)
 		// An app in the background shows every item of the menu bar disabled, so this reads the condition of the commands.
+		// The items of a menu of the menu bar, as the menu shows them after an update: each title by its hash, because
+		// a title can name an account, a group, or a category, and whether it is enabled.
+		case "menu":
+			let names: [StaticString] = ["Moneten", "File", "Edit", "View", "Account", "Transaction", "Window", "Help"]
+			guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == argument })?.submenu else { return log("menu not found") }
+			menu.delegate?.menuNeedsUpdate?(menu)
+			menu.update()
+			let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }
+			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
+				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
 		#if DEBUG
 		case "extcatalog":
@@ -422,6 +461,19 @@ final class DebugHarness {
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
+		// "<name>|<purpose>" gives the newest row with that name the purpose, as "Edit Transaction..." saves it.
+		// "check <name>|<purpose>" logs how many rows have the name and whether each has the purpose.
+		case "edit":
+			let check = argument.hasPrefix("check ")
+			let parts = argument.dropFirst(check ? 6 : 0).components(separatedBy: "|")
+			guard parts.count == 2 else { return log("edit refused", ("needs", .word("name|purpose"))) }
+			let rows = model.ledger.transactions.filter { $0.name == parts[0] }
+			if check { return log("edit check", ("rows", .count(rows.count)), ("kept", .flag(rows.allSatisfy { $0.purpose == parts[1] }))) }
+			guard var t = rows.max(by: { $0.bookingDate < $1.bookingDate }) else { return log("edit refused", ("rows", .count(0))) }
+			t.edit(OriginalValues(bookingDate: t.bookingDate, valueDate: t.valueDate, amountMinor: t.amountMinor, name: t.name, purpose: parts[1]))
+			model.save(transaction: t, adding: false)
+			model.sheet = .transaction(t.id)
+			log("edit done", ("original", .flag(t.original != nil)))
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
@@ -523,6 +575,38 @@ final class DebugHarness {
 		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
+		// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it, so
+		// that a check can drag a row with the mouse.
+		case "sidebarrows": logSidebarRows()
+		// "<row>|<group>|<gap>" moves an account or a group by its name into a group, or to the top level for an empty
+		// group, at a gap among its rows, as a drop between sidebar rows does. "movetree" then logs the rows of the target.
+		case "movetree":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 3, let gap = Int(parts[2]),
+				let id = model.ledger.accounts.first(where: { $0.name == parts[0] })?.id ?? model.ledger.groups.first(where: { $0.name == parts[0] })?.id
+			else { return log("movetree bad argument") }
+			let parent = model.ledger.groups.first { $0.name == parts[1] }?.id
+			model.move(treeItem: id, into: parent, at: gap)
+			log("movetree", ("rows", .list(model.ledger.accountTree(in: parent).map { .position($0.position) })))
+		// "<row>|<group>|<gap>" drags an account or a group by its name and drops it on the row of the group and then in
+		// the gap <gap> of the top level, as when both drop targets get the same drop. It logs whether each drop moved
+		// the row, and the rows of the group.
+		case "droptwice":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 3, let gap = Int(parts[2]),
+				let id = model.ledger.accounts.first(where: { $0.name == parts[0] })?.id ?? model.ledger.groups.first(where: { $0.name == parts[0] })?.id,
+				let group = model.ledger.groups.first(where: { $0.name == parts[1] })?.id
+			else { return log("droptwice bad argument") }
+			_ = model.startDrag(treeItem: id)
+			let onGroup = model.dropTreeItem(on: .group(group))
+			let inGap = model.dropTreeItem(on: .gap(parent: nil, index: gap))
+			log("droptwice", ("group", .flag(onGroup)), ("gap", .flag(inGap)), ("inGroup", .flag(model.ledger.account(id)?.groupID == group || model.ledger.group(id)?.parentID == group)))
+		// "<group>|on" or "<group>|off" expands or collapses a group, as its disclosure triangle does.
+		case "expand":
+			let parts = argument.components(separatedBy: "|")
+			guard var g = model.ledger.groups.first(where: { $0.name == parts[0] }) else { return log("expand no group") }
+			g.isExpanded = parts.last != "off"
+			model.save(group: g)
 		#if DEBUG || PERF_HARNESS
 		case "perf": Task { await runPerf() }
 		#endif
@@ -580,6 +664,10 @@ final class DebugHarness {
 			let rows = model.rowsToExport(of: .account(account.id))
 			model.export(rows, to: URL(filePath: argument))
 			log("exportcontextcsv", ("rows", .count(rows.count)))
+		// "<menu>|<path>" chooses "Export Transactions..." in a real menu: "account" for the Account menu, "sidebar <n>"
+		// for the context menu of sidebar row n, "row <n> [<count>]" for the context menu of table row n, with the first
+		// <count> rows selected. The save panel answers <path>.
+		case "menuexport": menuExport(argument)
 		case "exportstatus": log("exportstatus", ("running", .flag(model.exportTask != nil)), ("sheet", .state(model.sheet)))
 		case "cancelexport": model.cancelExport()
 		case "sheet":
@@ -625,6 +713,11 @@ final class DebugHarness {
 			}
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
+		case "offsetting":
+			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.row($0) })
+			log("offsetting", ("menu", .list(targets.map { .word($0.isEnabled ? "on" : "off") })))
+			if let t = targets.first(where: { $0.account.name == argument && $0.isEnabled }) { model.createOffsettingEntries(of: model.visibleSelection, in: t.account.id) }
 		case "split":
 			guard let row = model.visibleTransactions.first else { return log("split refused") }
 			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
@@ -818,7 +911,7 @@ final class DebugHarness {
 		}
 		guard let sheet = topSheet, let field = sheet.contentView.flatMap(fields)?.first else { return log("securefield none") }
 		// AutoFill offers itself only in the active app. macOS grants this only when the app in front gives up the focus, which the log shows.
-		NSApp.activate()
+		activateForFocus()
 		sheet.makeFirstResponder(field)
 		DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
 			let editor = sheet.firstResponder as? NSTextView
@@ -861,7 +954,7 @@ final class DebugHarness {
 		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
-			NSApp.activate()
+			activateForFocus()
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
 		} else if let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
@@ -1033,10 +1126,41 @@ final class DebugHarness {
 
 	/// Chooses "Extensions" in the Window menu, as the user does.
 	func openExtensionsWindow() {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "Extensions" }
-		guard let item, let menu = item.menu else { return log("extensions no menu item") }
+		openMenuItem("Extensions")
+	}
+
+	private func supportedBanksKey(_ name: String) {
+		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
+		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
+			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
+		// "command-down" and the like send the key with Command, which the window leaves to the system.
+		let withCommand = name.hasPrefix("command-")
+		let base = withCommand ? String(name.dropFirst("command-".count)) : name
+		guard let key = keys[base], let scalar = UnicodeScalar(key.0) else { return log("supportedkey unknown") }
+		// A harness run stays in the background (#291), so this never activates the app. The window becomes the
+		// key window of the app, which it is once the app is active, and gets the key as the keyboard sends it.
+		window.makeKeyAndOrderFront(nil)
+		let characters = String(Character(scalar))
+		var modifiers: NSEvent.ModifierFlags = base == "tab" ? [] : [.numericPad, .function]
+		if withCommand { modifiers.insert(.command) }
+		if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: modifiers, timestamp: 0,
+			windowNumber: window.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false, keyCode: key.1) {
+			window.sendEvent(event)
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+			let key = LogValue.choice(name, of: ["down", "up", "pagedown", "pageup", "home", "end", "tab", "command-down", "command-up",
+				"command-pagedown", "command-pageup", "command-home", "command-end", "command-tab"])
+			self?.log("supportedkey", ("", key), ("key", .flag(NSApp.keyWindow === window)),
+				("responder", window.firstResponder.map { .type(of: $0) } ?? .position(nil)),
+				("cursor", .position((window.firstResponder as? NSTextView)?.selectedRange().location)))
+		}
+	}
+
+	private func openMenuItem(_ title: StaticString) {
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "\(title)" }
+		guard let item, let menu = item.menu else { return log("menu no item", ("title", .word(title))) }
 		menu.performActionForItem(at: menu.index(of: item))
-		log("extensions opened")
+		log("menu opened", ("title", .word(title)))
 	}
 
 	private func filterBar(_ argument: String) {
@@ -1113,24 +1237,10 @@ final class DebugHarness {
 	/// an item that the Option key shows in place of the item before it.
 	private func logContextMenus(_ argument: String) {
 		let choice = argument.split(separator: "|").compactMap { Int($0) }
-		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
-		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
-			let content = window.contentView else { return log("contextmenu no window") }
-		// The sidebar is the leftmost list. The transaction table is a list too.
-		guard let list = outlines(in: content).min(by: { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }) else {
-			return log("contextmenu no list")
-		}
+		guard NSApp.windows.contains(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else { return log("contextmenu no window") }
+		guard let list = sidebarList() else { return log("contextmenu no list") }
 		for index in 0..<list.numberOfRows {
-			let row = list.rect(ofRow: index)
-			let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
-			guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: .option, timestamp: 0,
-				windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { continue }
-			var view = content.hitTest(content.convert(point, from: nil))
-			var menu: NSMenu?
-			while let v = view, menu == nil {
-				menu = v.menu(for: event)
-				view = v.superview
-			}
+			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
@@ -1144,6 +1254,75 @@ final class DebugHarness {
 				return
 			}
 		}
+	}
+
+	private func menuExport(_ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2 else { return log("menuexport needs <menu>|<path>") }
+		// The menu action runs at once. When it opens no panel, the answer must not wait for a later export.
+		defer { savePanelAnswer = nil }
+		savePanelAnswer = { [weak self] panel in
+			let formats = panel.accessoryView?.subviews.compactMap { $0 as? NSPopUpButton }.first?.itemTitles ?? []
+			let label = panel.accessoryView?.subviews.compactMap { ($0 as? NSTextField)?.stringValue }.first ?? ""
+			// Every text by its hash: the suggested file name holds the name of the account or category.
+			self?.log("menuexport panel", ("title", .hash(panel.title ?? "")), ("label", .hash(label)), ("format", .list(formats.map { .hash($0) })),
+				("types", .list(panel.allowedContentTypes.map { .hash($0.identifier) })), ("name", .hash(panel.nameFieldStringValue)))
+			return URL(filePath: parts[1])
+		}
+		let place = parts[0].split(separator: " ")
+		let menu: NSMenu? = switch place.first {
+		case "account": NSApp.mainMenu?.item(withTitle: "Account")?.submenu
+		case "sidebar": place.count == 2 ? Int(place[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
+		case "row":
+			// "row <n> <count>" selects the first <count> rows before the right click.
+			place.count >= 2 ? Int(place[1]).flatMap { row in
+				if place.count == 3, let count = Int(place[2]) {
+					transactionTables().first?.selectRowIndexes(IndexSet(0..<count), byExtendingSelection: false)
+				}
+				return contextMenu(row: row, sidebar: false)
+			} : nil
+		default: nil
+		}
+		menu?.update()
+		guard let menu, let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Export Transaction") }) else { return log("menuexport no item") }
+		guard menu.items[index].isEnabled else {
+			// SwiftUI enables the commands of the Account menu only while the app is active, which a locked Mac does
+			// not allow. When the conditions of the item hold, the check runs its action, `exportTransactions()`.
+			guard place.first == "account", let model, model.phase == .unlocked, model.selection != nil, !model.isTransferringTransactions else {
+				return log("menuexport disabled")
+			}
+			log("menuexport account action, app not active")
+			return model.exportTransactions()
+		}
+		log("menuexport item", ("title", .hash(menu.items[index].title)))
+		menu.performActionForItem(at: index)
+	}
+
+	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
+	private func sidebarList() -> NSOutlineView? {
+		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
+		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
+		return outlines(in: content).min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+	}
+
+	/// The context menu of a row of the sidebar or of the transaction table, as a right click builds it. "Option" shows
+	/// the items that the Option key shows.
+	private func contextMenu(row index: Int, sidebar: Bool, modifiers: NSEvent.ModifierFlags = []) -> NSMenu? {
+		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+			let content = window.contentView else { return nil }
+		let list: NSTableView? = sidebar ? sidebarList() : transactionTables().first
+		guard let list, index < list.numberOfRows else { return nil }
+		list.scrollRowToVisible(index)
+		let row = list.rect(ofRow: index)
+		let point = list.convert(NSPoint(x: row.midX, y: row.midY), to: nil)
+		guard let event = NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: modifiers, timestamp: 0,
+			windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) else { return nil }
+		var view = content.hitTest(content.convert(point, from: nil))
+		while let v = view {
+			if let menu = v.menu(for: event) { return menu }
+			view = v.superview
+		}
+		return nil
 	}
 
 	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
@@ -1168,6 +1347,16 @@ final class DebugHarness {
 		_ = provider.loadTransferable(type: T.self) { result in
 			let item = try? result.get()
 			Task { @MainActor in use(item) }
+		}
+	}
+
+	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
+	private func logSidebarRows() {
+		guard let list = sidebarList(), let window = list.window, let screen = NSScreen.screens.first else { return log("sidebarrows no list") }
+		for index in 0..<list.numberOfRows {
+			let frame = window.convertToScreen(list.convert(list.rect(ofRow: index), to: nil))
+			log("sidebarrow", ("", .position(index)), ("x", .count(Int(frame.minX))), ("y", .count(Int(screen.frame.maxY - frame.maxY))),
+				("w", .count(Int(frame.width))), ("h", .count(Int(frame.height))), ("level", .count(list.level(forRow: index))))
 		}
 	}
 
@@ -1430,3 +1619,29 @@ extension HostLog {
 		}
 	}
 }
+
+#if DEBUG || PERF_HARNESS
+extension NSApplication {
+	/// True only while the harness asks for the focus itself.
+	fileprivate static var allowsActivation = false
+
+	/// Exchanges the two ways to activate the app, `activate()` and `activate(ignoringOtherApps:)`, for
+	/// methods that pass a request on only while `allowsActivation` is true.
+	fileprivate static func dropActivationRequests() {
+		for (name, guarded) in [("activate", #selector(harnessActivate as (NSApplication) -> () -> Void)), ("activateIgnoringOtherApps:", #selector(harnessActivate(ignoringOtherApps:)))] {
+			guard let original = class_getInstanceMethod(NSApplication.self, NSSelectorFromString(name)),
+				let replacement = class_getInstanceMethod(NSApplication.self, guarded) else { continue }
+			method_exchangeImplementations(original, replacement)
+		}
+	}
+
+	// After the exchange, each method calls itself to reach the original of AppKit.
+	@objc private func harnessActivate() {
+		if Self.allowsActivation { harnessActivate() } else { Trail.log("activation dropped") }
+	}
+
+	@objc private func harnessActivate(ignoringOtherApps flag: Bool) {
+		if Self.allowsActivation { harnessActivate(ignoringOtherApps: flag) } else { Trail.log("activation dropped") }
+	}
+}
+#endif

@@ -493,6 +493,11 @@ struct AccountSetupSheet: View {
 					} icon: {
 						Image(systemName: "building.columns")
 					}
+					if let note = bank.mergerNote {
+						Label(note, systemImage: "info.circle")
+							.foregroundStyle(.secondary)
+							.fixedSize(horizontal: false, vertical: true)
+					}
 				case let .failed(message):
 					Label(message, systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)

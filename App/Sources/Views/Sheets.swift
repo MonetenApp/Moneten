@@ -147,7 +147,6 @@ struct AccountSettingsSheet: View {
 	/// The account as the settings opened.
 	@State private var opened: Account?
 	@State private var initialBalance = ""
-	@State private var confirmRemove = false
 	@State private var confirmRemovePIN = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
@@ -165,7 +164,7 @@ struct AccountSettingsSheet: View {
 				model.save(account: a)
 				return true
 			}, leading: {
-				Button("Remove Account...", role: .destructive) { confirmRemove = true }
+				Button("Remove Account...", role: .destructive) { if model.confirmRemove(.account(accountID)) { dismiss() } }
 			}) {
 				if let binding = Binding($account) {
 					Section {
@@ -231,16 +230,6 @@ struct AccountSettingsSheet: View {
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
-			}
-			.confirmationDialog("Are you sure you want to remove the account \(original.name)?", isPresented: $confirmRemove) {
-				Button("Remove", role: .destructive) {
-					Task { await model.remove(account: original.id) }
-					dismiss()
-				}
-			} message: {
-				Text(original.kind == .portfolio
-					? "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings."
-					: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
 			}
 		}
 	}
@@ -329,6 +318,8 @@ struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
 	@State private var date = Date()
+	/// The value date of an existing row, nil for none.
+	@State private var valueDate: Date?
 	@State private var name = ""
 	@State private var purpose = ""
 	@State private var amount = ""
@@ -338,16 +329,35 @@ struct TransactionSheet: View {
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	private var editable: Bool { (account?.isOffline ?? false) && transactionID.flatMap { model.ledger.part($0) } == nil }
+	/// A new row only goes into an offline account. "Edit Transaction..." changes every row but a part of a split
+	/// (add-transaction-list, task 1.16).
+	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? (account?.isOffline == true) }
+	/// The typed amount with the sign of the type, nil while it cannot be read or does not fit.
+	private var amountMinor: Int64? {
+		guard let currency = existing?.currency ?? account?.currency, let value = AmountParser.decimal(from: amount) else { return nil }
+		return Money(fitting: isDeposit ? abs(value) : -abs(value), currency: currency)?.minorUnits
+	}
 
 	var body: some View {
-		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || AmountParser.decimal(from: amount) != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || amountMinor != nil, width: 500, onConfirm: save) {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
 			if editable {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
+					if existing != nil {
+						LabeledContent("Value date") {
+							HStack {
+								Toggle("Value date", isOn: Binding(get: { valueDate != nil }, set: { valueDate = $0 ? (valueDate ?? date) : nil }))
+									.labelsHidden()
+								if let shown = valueDate {
+									DatePicker("Value date", selection: Binding(get: { shown }, set: { valueDate = $0 }), displayedComponents: .date)
+										.labelsHidden()
+								}
+							}
+						}
+					}
 					TextField("Name", text: $name)
 					Picker("Type", selection: $isDeposit) {
 						Text("Withdrawal").tag(false)
@@ -360,14 +370,9 @@ struct TransactionSheet: View {
 						.monospacedDigit()
 					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 				}
-			} else if let t = existing {
-				Section {
-					LabeledContent("Date", value: Format.day(t.bookingDate))
-					LabeledContent("Name", value: t.name)
-					LabeledContent("Amount") { AmountText(money: t.amount) }
-					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
-				}
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil || t.valueDate != nil {
+			}
+			if let t = existing {
+				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
 					Section("Details") {
 						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
 						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
@@ -375,7 +380,6 @@ struct TransactionSheet: View {
 						if let e = t.endToEndReference { LabeledContent("End-to-end reference") { Text(e).textSelection(.enabled) } }
 						if let m = t.mandateReference { LabeledContent("Mandate reference") { Text(m).textSelection(.enabled) } }
 						if let c = t.creditorID { LabeledContent("Creditor ID") { Text(c).textSelection(.enabled) } }
-						if let v = t.valueDate { LabeledContent("Value date", value: Format.day(v)) }
 					}
 				}
 			}
@@ -393,10 +397,12 @@ struct TransactionSheet: View {
 	private func load() {
 		guard let t = existing else { return }
 		date = t.bookingDate.date()
+		valueDate = t.valueDate?.date()
 		name = t.name
 		purpose = t.purpose
 		isDeposit = t.amountMinor > 0
-		if editable { amount = Format.editableAmount(abs(t.amountMinor), t.currency) }
+		// Every import refuses `Int64.min`, and clamping keeps a row stored before that from stopping the app.
+		if editable { amount = Format.editableAmount(Int64(clamping: t.amountMinor.magnitude), t.currency) }
 		categoryID = t.categoryID
 		comment = t.comment ?? ""
 	}
@@ -406,11 +412,9 @@ struct TransactionSheet: View {
 		guard let account else { return true }
 		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
 		if editable {
-			guard let value = AmountParser.decimal(from: amount) else { return false }
-			t.bookingDate = Day(date)
-			t.name = name
-			t.purpose = purpose
-			t.amountMinor = Money(abs(value), currency: account.currency).minorUnits * (isDeposit ? 1 : -1)
+			guard let minor = amountMinor else { return false }
+			// `edit` keeps the values of a source, so that a refresh or a file does not add the row again.
+			t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))
 		}
 		if categoryID != t.categoryID {
 			t.categoryID = categoryID
@@ -455,7 +459,6 @@ struct ChangePasswordSheet: View {
 				return false
 			}
 			error = model.changePassword(current: current, new: new)
-			if error == nil { model.alert = AlertMessage(title: "The password has been changed.", message: "") }
 			return error == nil
 		}) {
 			Section {

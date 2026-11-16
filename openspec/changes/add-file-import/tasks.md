@@ -35,6 +35,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.29 The bank's version of a future pending transaction from a file. ReconcileTests verifies takeover, reversed weekly rows, closest-day choice, and stable ties. FileImportTests verifies the 8 December entry before 1 December, and a daily import after takeover.
 
 - [x] 1.30 Pending file transactions already stored. ReconcileTests verifies seven-day duplicate skipping, closest-day and stable tie choice, one-to-one counts, and user fields. FileImportTests verifies the daily FUTR entry after a bank takeover and after the bank row was stored first.
+- [x] 1.31 Amounts beyond the range of the app. Verified by FileImportTests "A CSV amount whose minor units do not fit is rejected with its line, instead of turning into another amount", "An MT940 file with a transaction that cannot be read is rejected with its line", and "A CAMT file with an entry that cannot be read is rejected with its line", which fail before `Money(fitting:currency:)` (#275).
 
 ## 2. Changes to the first build
 
