@@ -86,10 +86,16 @@ struct LogValue: Sendable {
 
 	/// The name of the case of an enum, without its values, or "-" for nil. Anything that is not an enum
 	/// is "invalid", and so is a case without values whose description is not a plain name.
+	///
+	/// A type that writes its own description or mirror can put any runtime text there, even a name, so its
+	/// value is "invalid" too. Only the case names that the compiler takes from the source remain.
 	static func state(_ value: Any) -> LogValue {
 		let mirror = Mirror(reflecting: value)
+		if mirror.displayStyle == .optional { return mirror.children.first.map { state($0.value) } ?? LogValue("-") }
+		if value is CustomStringConvertible || value is CustomDebugStringConvertible || value is CustomReflectable {
+			return LogValue("invalid")
+		}
 		switch mirror.displayStyle {
-		case .optional: return mirror.children.first.map { state($0.value) } ?? LogValue("-")
 		case .enum:
 			if let label = mirror.children.first?.label { return LogValue(label) }
 			let name = String(describing: value)
