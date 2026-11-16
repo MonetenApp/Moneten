@@ -68,7 +68,7 @@ enum ExtensionWebDebug {
 	static var pages: [String: String] = [:]
 	static var captchaStub = false
 	static weak var current: WKWebView?
-	static var log: (String) -> Void = { _ in }
+	static var log: (LogLine) -> Void = { _ in }
 
 	static func key(_ url: URL) -> String {
 		"\(url.scheme ?? "")://\(url.host() ?? "")\(url.path())"
@@ -115,7 +115,7 @@ private struct ExtensionWebView: NSViewRepresentable {
 					return fail(String(localized: "The login window could not be secured: \(error?.localizedDescription ?? "no rules")."))
 				}
 				view.configuration.userContentController.add(list)
-				ExtensionWebDebug.log("ext browser rules ok")
+				ExtensionWebDebug.log(LogLine("ext browser rules ok"))
 				switch page {
 				case let .approval(approval):
 					coordinator.open(approval.url, in: view)
@@ -173,15 +173,15 @@ private struct ExtensionWebView: NSViewRepresentable {
 				switch approval.step(for: url, isMainFrame: isMainFrame) {
 				case let .finish(code):
 					decisionHandler(.cancel)
-					ExtensionWebDebug.log("ext browser final \(url.scheme ?? "")://\(url.host() ?? "") code=\(code.count) characters")
+					ExtensionWebDebug.log(LogLine("ext browser final", ("address", .hash("\(url.scheme ?? "")://\(url.host() ?? "")")), ("code", .count(code.count))))
 					deliver(code)
 				case let .refuse(message):
 					decisionHandler(.cancel)
-					ExtensionWebDebug.log("ext browser refused \(url.host() ?? url.scheme ?? "")")
+					ExtensionWebDebug.log(LogLine("ext browser refused", ("host", .hash(url.host() ?? url.scheme ?? ""))))
 					if isMainFrame { refuse(message) }
 				case let .fail(message):
 					decisionHandler(.cancel)
-					ExtensionWebDebug.log("ext browser failed \(message)")
+					ExtensionWebDebug.log(LogLine("ext browser failed"))
 					guard !finished else { return }
 					finished = true
 					fail(message)
@@ -190,7 +190,7 @@ private struct ExtensionWebView: NSViewRepresentable {
 						decisionHandler(.cancel)
 						open(url, in: webView)
 					} else {
-						ExtensionWebDebug.log("ext browser load \(url.host() ?? "")")
+						ExtensionWebDebug.log(LogLine("ext browser load", ("host", .hash(url.host() ?? ""))))
 						decisionHandler(.allow)
 					}
 				}
@@ -203,7 +203,7 @@ private struct ExtensionWebView: NSViewRepresentable {
 
 		func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
 			guard case .captcha = page, let token = message.body as? String, !token.isEmpty else { return }
-			ExtensionWebDebug.log("ext captcha token=\(token.count) characters")
+			ExtensionWebDebug.log(LogLine("ext captcha", ("token", .count(token.count))))
 			deliver(token)
 		}
 
