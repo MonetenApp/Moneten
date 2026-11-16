@@ -401,7 +401,8 @@ poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^snapshot split-menu " splitmenusnapshot
 send split 5,00
 poll "^splitstate parts=3 .*sheet=none$" splitstate
-send search ""poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
+send search ""
+poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 # "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
 poll "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
