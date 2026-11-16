@@ -13,7 +13,7 @@ final class HelperProcess: @unchecked Sendable {
 	private let received: AsyncStream<String>.Continuation
 	/// The unfinished last line, and whether the stream has ended. The lock also keeps the reads of
 	/// the readability handler and of the termination handler apart.
-	private let reading = Mutex<(partial: Data, finished: Bool)>((Data(), false))
+	private let reading = Mutex<(partial: LineBuffer, finished: Bool)>((LineBuffer(), false))
 	/// How the process ended, or who waits for it. A canceled refresh still waits for the end.
 	private let termination = Mutex<(end: (status: Int32, signal: Bool)?, waiter: CheckedContinuation<(status: Int32, signal: Bool), Never>?)>((nil, nil))
 	/// Writes the lines in order. A serial queue of its own runs on the overcommitting root queue of
@@ -25,6 +25,10 @@ final class HelperProcess: @unchecked Sendable {
 	private let grace: TimeInterval
 	private let onLine: @Sendable (String) -> Void
 	private let onEnd: @Sendable () -> Void
+
+	/// The longest line that the helper may write, 64 MiB. A result of an account with 50,000 transactions
+	/// takes about 15 MiB. A longer line fails the run with `HelperFailure.lineTooLong`.
+	static let lineLimit = 64 << 20
 
 	/// `onLine` runs with each line when it arrives, before `lines` delivers it, also after `lines` ended
 	/// because the reading task was canceled. `onEnd` runs once when stdout ends
@@ -44,18 +48,21 @@ final class HelperProcess: @unchecked Sendable {
 		_ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
 		input = stdin.fileHandleForWriting
 		output = stdout.fileHandleForReading
+		// A read never waits while it holds the lock of `reading`: it takes what the pipe holds and returns.
+		let fd = output.fileDescriptor
+		_ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
 		self.grace = grace
 		self.onLine = onLine
 		self.onEnd = onEnd
 		(lines, received) = AsyncStream.makeStream(of: String.self)
 		// A handler per pipe, because FileHandle.bytes reads all pipes one after the other, and one
 		// helper that waits for its bank would hold up the others.
-		output.readabilityHandler = { [weak self] _ in self?.read() }
+		output.readabilityHandler = { [weak self] _ in self?.read(final: false) }
 		process.terminationHandler = { [weak self] process in
 			let end = (process.terminationStatus, process.terminationReason == .uncaughtSignal)
 			// A child of the helper can hold stdout open after the helper ended. The lines go to `onLine`
 			// before `ended()` returns, so that a run sees a rejection that the helper wrote just before it ended.
-			self?.drain()
+			self?.read(final: true)
 			self?.termination.withLock { state in
 				state.end = end
 				state.waiter?.resume(returning: end)
@@ -69,34 +76,33 @@ final class HelperProcess: @unchecked Sendable {
 		}
 	}
 
-	private func read() {
+	/// Reads what stdout holds now without waiting for more. `final` ends the lines also while stdout
+	/// is still open, because the process ended and a child of it can hold stdout open.
+	private func read(final: Bool) {
 		reading.withLock { state in
 			guard !state.finished else { return }
-			let data = output.availableData
-			guard !data.isEmpty else { return finish(&state) }
-			state.partial.append(data)
-			for line in state.partial.takeLines() { onLine(line); received.yield(line) }
-		}
-	}
-
-	/// Reads what the ended process left in the pipe without waiting for more, and ends the lines.
-	private func drain() {
-		reading.withLock { state in
-			guard !state.finished else { return }
-			let fd = output.fileDescriptor
-			_ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
 			var buffer = [UInt8](repeating: 0, count: 65536)
 			while true {
-				let count = Foundation.read(fd, &buffer, buffer.count)
-				guard count > 0 else { break }
-				state.partial.append(contentsOf: buffer[0..<count])
+				let count = Foundation.read(output.fileDescriptor, &buffer, buffer.count)
+				if count < 0, errno == EINTR { continue }
+				// 0 is the end of stdout, and -1 with EAGAIN means that the pipe holds nothing more now.
+				guard count > 0 else {
+					if count == 0 || errno != EAGAIN { return finish(&state) }
+					break
+				}
+				state.partial.append(buffer[0..<count])
+				for line in state.partial.takeLines() { onLine(line); received.yield(line) }
+				guard state.partial.count <= Self.lineLimit else {
+					// The rest of the line is not read, and the helper gets the cancel and the grace.
+					fail(HelperFailure.lineTooLong)
+					return finish(&state)
+				}
 			}
-			for line in state.partial.takeLines() { onLine(line); received.yield(line) }
-			finish(&state)
+			if final { finish(&state) }
 		}
 	}
 
-	private func finish(_ state: inout (partial: Data, finished: Bool)) {
+	private func finish(_ state: inout (partial: LineBuffer, finished: Bool)) {
 		state.finished = true
 		output.readabilityHandler = nil
 		received.finish()
@@ -153,14 +159,35 @@ final class HelperProcess: @unchecked Sendable {
 	}
 }
 
-private extension Data {
+/// The bytes of stdout after the last complete line. A long line arrives in many pieces, and each
+/// piece is searched for the end of the line only once, so the time to read a line grows with its length.
+private struct LineBuffer {
+	private var data = Data()
+	/// How many bytes at the front of `data` hold no newline.
+	private var searched = 0
+
+	var count: Int { data.count }
+
+	mutating func append(_ bytes: ArraySlice<UInt8>) {
+		bytes.withUnsafeBufferPointer { data.append($0) }
+	}
+
 	/// Removes the complete lines from the front and returns them.
 	mutating func takeLines() -> [String] {
 		var lines: [String] = []
-		while let end = firstIndex(of: 0x0A) {
-			lines.append(String(decoding: self[startIndex..<end], as: UTF8.self))
-			self = Data(self[index(after: end)...])
+		let taken = data.withUnsafeBytes { bytes -> Int in
+			guard let base = bytes.baseAddress else { return 0 }
+			var start = 0, from = searched
+			while from < bytes.count, let newline = memchr(base + from, 0x0A, bytes.count - from) {
+				let end = base.distance(to: UnsafeRawPointer(newline))
+				lines.append(String(decoding: UnsafeRawBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self))
+				start = end + 1
+				from = start
+			}
+			return start
 		}
+		if taken > 0 { data.removeSubrange(data.startIndex..<data.startIndex + taken) }
+		searched = data.count
 		return lines
 	}
 }

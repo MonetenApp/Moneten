@@ -29,34 +29,53 @@ struct HelperProcessTests {
 		#expect(read.withLock { $0 } == ["last"])
 	}
 
-	@Test("More helpers that do not read a large state than the Mac has cores all time out, and other tasks run meanwhile")
+	@Test("More helpers that do not read a large state than the Mac has cores all time out, and other tasks run meanwhile", .timeLimit(.minutes(3)))
 	func blockedWritesKeepThreadsFree() async throws {
 		// A write that blocks a thread of Swift concurrency or of the global queue would hold up the
 		// timers that end the helpers, and every other task of the app.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let inactivity: TimeInterval = 1, grace: TimeInterval = 10
 		let start = ContinuousClock.now
 		let runs = (0..<ProcessInfo.processInfo.activeProcessorCount + 2).map { _ in
 			Task { () -> (any Error)? in
 				do {
-					_ = try await connector("exec sleep 60", inactivity: 1, grace: 10).listAccounts(of: Self.access, state: state, session: Session())
+					_ = try await connector("exec sleep 600", inactivity: inactivity, grace: grace).listAccounts(of: Self.access, state: state, session: Session())
 					return nil
 				} catch {
 					return error
 				}
 			}
 		}
-		// A starved pool would run this task only after the helpers end on their own, 60 seconds after
-		// their start. The bound lies between that and the timeout of the helpers (11 seconds), because
-		// a loaded runner of CI ran this task only after 12 seconds.
+		// A starved pool would run this task only after the helpers end on their own, 600 seconds after
+		// their start. A loaded runner of CI ran it only after 32 seconds, so the bound holds a margin.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
-		#expect(ContinuousClock.now - start < .seconds(30))
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + FinTSConnectorTests.loadMargin)
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
-		// The end stays below the 60 seconds after which the helpers would end on their own. CI takes
-		// up to 25 seconds here, so a tighter bound would fail on a loaded runner again.
-		#expect(ContinuousClock.now - start < .seconds(55))
+		// Termination ends the helpers after the timeout and the grace, long before they end on their own.
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + FinTSConnectorTests.loadMargin)
+	}
+
+	@Test("A line of 32 MiB arrives whole, and the time to read it grows with its length", .timeLimit(.minutes(1)))
+	func longLine() async throws {
+		// Each piece of a long line is searched for its end only once. A search of the whole line on every
+		// piece took more than 45 seconds for 16 MiB, and four times as long for twice the length.
+		let lengths = Mutex<[Int]>([])
+		let process = try HelperProcess(executable: URL(filePath: "/bin/sh"), arguments: ["-c", #"head -c 33554432 /dev/zero | tr '\0' x; echo; echo next"#],
+			grace: 5, onLine: { line in lengths.withLock { $0.append(line.utf8.count) } })
+		try await process.ended()
+		#expect(lengths.withLock { $0 } == [33_554_432, 4])
+	}
+
+	@Test("A line longer than 64 MiB fails the run with an error that names the limit", .timeLimit(.minutes(1)))
+	func lineTooLong() async throws {
+		// The helper would end on its own after 600 seconds. The cancel and the grace end it.
+		await #expect(throws: SyncFailure.network("The FinTS helper sent a message larger than 64 MB, which Moneten does not read.")) {
+			_ = try await connector(#"read cmd; head -c 67108865 /dev/zero | tr '\0' x; exec sleep 600"#, grace: 1)
+				.listAccounts(of: Self.access, state: nil, session: Session())
+		}
 	}
 
 	@Test("More certificate checks that wait than the Mac has cores hold up neither a timeout nor another refresh")

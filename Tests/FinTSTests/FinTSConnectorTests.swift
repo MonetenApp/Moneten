@@ -11,6 +11,11 @@ struct FinTSConnectorTests {
 	static let giro = AccountRequest(accountID: UUID(), name: "Giro", remoteID: "DE02120300000000202051", currency: "EUR")
 	static let savings = AccountRequest(accountID: UUID(), name: "Savings", remoteID: "1234567890", currency: "EUR")
 
+	/// How much later than its timeouts a run may end. A loaded runner of CI ended a run that takes about
+	/// 2 seconds after 34 seconds, so a bound of wall-clock time holds this margin, and the helper of such
+	/// a test ends on its own only long after it.
+	static let loadMargin: Duration = .seconds(60)
+
 	/// A file that a script writes the lines of the app into.
 	let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
 
@@ -326,30 +331,31 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 	}
 
-	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds")
+	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds", .timeLimit(.minutes(2)))
 	func cancelBlockedWrite() async throws {
 		// A state far larger than the buffer of a pipe, to a helper that never reads it.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let task = Task {
-			try await connector(#"trap 'echo "{\"type\":\"terminated\"}" >> "$R"; exit 1' TERM; sleep 60 & wait"#).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector(#"trap 'echo "{\"type\":\"terminated\"}" >> "$R"; exit 1' TERM; echo '{"type":"ready"}' >> "$R"; sleep 60 & wait"#)
+				.listAccounts(of: Self.access, state: state, session: Session())
 		}
-		try await Task.sleep(for: .milliseconds(300))
+		try await helperReady()
 		let canceled = ContinuousClock.now
 		task.cancel()
 		// A cancel that waited for the write would return only when the helper ends, 5 seconds later.
 		#expect(ContinuousClock.now - canceled < .seconds(5))
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled >= .seconds(5))
-		#expect(recorded.map { $0["type"] } == ["terminated"])
+		#expect(recorded.map { $0["type"] } == ["ready", "terminated"])
 	}
 
-	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(1)))
+	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(2)))
 	func cancelIgnoresTerm() async throws {
 		let grace: TimeInterval = 1
 		let task = Task {
-			try await connector("trap '' TERM; read cmd; exec sleep 600", grace: grace).listAccounts(of: Self.access, state: nil, session: Session())
+			try await connector(#"trap '' TERM; echo '{"type":"ready"}' >> "$R"; read cmd; exec sleep 600"#, grace: grace).listAccounts(of: Self.access, state: nil, session: Session())
 		}
-		try await Task.sleep(for: .milliseconds(300))
+		try await helperReady()
 		let canceled = ContinuousClock.now
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
@@ -373,23 +379,24 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 	}
 
-	@Test("A helper that sends a line and then stays silent fails with a timeout", .timeLimit(.minutes(1)))
+	@Test("A helper that sends a line and then stays silent fails with a timeout", .timeLimit(.minutes(3)))
 	func timeoutAfterLine() async throws {
 		// The line counts until the run has handled it. Afterwards the silence must time out, as when
 		// the helper reported that it sent a message and the bank never answers.
+		let inactivity: TimeInterval = 1, grace: TimeInterval = 1
 		let start = ContinuousClock.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
 			try await connector("""
 				read cmd
-				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; exit 1' TERM
+				trap 'echo "{\\"type\\":\\"terminated\\"}" >> "$R"; kill $!; exit 1' TERM
 				echo '{"type":"alive"}'
 				read line; printf '%s\\n' "$line" >> "$R"
-				sleep 60 & wait
-				""", inactivity: 1, grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
+				sleep 600 & wait
+				""", inactivity: inactivity, grace: grace).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
-		// The helper would end on its own after 60 seconds.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		// The helper would end on its own after 600 seconds.
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + Self.loadMargin)
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends", .timeLimit(.minutes(1)))
@@ -413,15 +420,16 @@ struct FinTSConnectorTests {
 		_ = await run.value
 	}
 
-	@Test("A helper that does not read a large state fails with a timeout")
+	@Test("A helper that does not read a large state fails with a timeout", .timeLimit(.minutes(3)))
 	func timeoutBlockedWrite() async throws {
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
+		let inactivity: TimeInterval = 1, grace: TimeInterval = 1
 		let start = ContinuousClock.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
-			try await connector("exec sleep 60", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector("exec sleep 600", inactivity: inactivity, grace: grace).listAccounts(of: Self.access, state: state, session: Session())
 		}
-		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(ContinuousClock.now - start < .seconds(30))
+		// The helper would end on its own after 600 seconds; termination ends it after the timeout and the grace.
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + Self.loadMargin)
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
@@ -907,6 +915,15 @@ struct FinTSConnectorTests {
 		await #expect(throws: SyncFailure.bank(BankMessage(text: "hbci4java has no bank directory"))) {
 			try await connector(#"read cmd; echo '{"type":"failed","text":"hbci4java has no bank directory"}'"#).bankDirectory()
 		}
+	}
+
+	/// Waits until the helper wrote `{"type":"ready"}` into `record`, which a script does once its signal
+	/// handler is in place, so a cancel tests the handler also when the helper starts late.
+	func helperReady() async throws {
+		for _ in 0..<6000 where !recorded.contains(["type": "ready"]) {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		try #require(recorded.contains(["type": "ready"]))
 	}
 
 	/// Waits until the condition holds, for at most five seconds.
