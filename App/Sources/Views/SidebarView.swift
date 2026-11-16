@@ -123,13 +123,11 @@ struct AccountTree: View {
 					.tag(SidebarSelection.account(account.id))
 			}
 		}
-		// A drop between two rows. A drop on a group goes to `GroupDrop`. Only rows of this section are
-		// `DraggedTreeItem`s, so a category or a transaction never lands here, and a group or an account never
-		// lands among the categories.
-		.dropDestination(for: DraggedTreeItem.self) { items, index in
-			model.endDrag()
-			guard let item = items.first else { return }
-			model.move(treeItem: item.id, into: parent, at: index)
+		// A drop between two rows. A drop on a group goes to `GroupDrop`, and `AppModel.dropTreeItem(on:)` moves the
+		// row once when both get it. Only rows of this section are `DraggedTreeItem`s, so a category or a transaction
+		// never lands here, and a group or an account never lands among the categories.
+		.dropDestination(for: DraggedTreeItem.self) { _, index in
+			model.dropTreeItem(on: .gap(parent: parent, index: index))
 		}
 	}
 }
@@ -370,14 +368,7 @@ struct GroupDrop: DropDelegate {
 	func validateDrop(info: DropInfo) -> Bool { model.acceptsDrag(on: group) }
 
 	func performDrop(info: DropInfo) -> Bool {
-		defer { model.endDrag() }
-		guard model.acceptsDrag(on: group), let provider = info.itemProviders(for: [.monetenTreeItem]).first else { return false }
-		let target = group.id
-		_ = provider.loadTransferable(type: DraggedTreeItem.self) { [model] result in
-			guard let item = try? result.get() else { return }
-			Task { @MainActor in model.move(treeItem: item.id, into: target, at: model.ledger.accountTree(in: target).count) }
-		}
-		return true
+		model.dropTreeItem(on: .group(group.id))
 	}
 }
 

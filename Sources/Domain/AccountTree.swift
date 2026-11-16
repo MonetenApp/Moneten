@@ -8,6 +8,14 @@ public struct AccountTreeChange: Equatable, Sendable {
 	public var isEmpty: Bool { groups.isEmpty && accounts.isEmpty }
 }
 
+/// Where a dragged group or account lands in the section "Accounts".
+public enum TreeDropTarget: Equatable, Sendable {
+	/// On the row of a group, which puts the row at the end of that group.
+	case group(UUID)
+	/// In the gap `index` among the rows of `parent`, or of the top level for nil, as the sidebar shows them before the move.
+	case gap(parent: UUID?, index: Int)
+}
+
 /// What a collapsed account group shows for the accounts inside it: the number of their new transactions,
 /// and the accounts whose last refresh failed.
 public struct GroupMarkers: Equatable, Sendable {
@@ -60,6 +68,14 @@ extension Ledger {
 			}
 		}
 		return change
+	}
+
+	/// The parent and the gap that a drop on `target` moves a row to.
+	public func destination(of target: TreeDropTarget) -> (parent: UUID?, index: Int) {
+		switch target {
+		case let .group(id): (id, accountTree(in: id).count)
+		case let .gap(parent, index): (parent, index)
+		}
 	}
 
 	/// Takes the groups and accounts of a move.

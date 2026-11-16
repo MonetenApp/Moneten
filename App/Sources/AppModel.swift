@@ -695,7 +695,22 @@ final class AppModel {
 	/// Whether the group row lights up for the drag in progress: a group or an account that would move into it.
 	func acceptsDrag(on group: AccountGroup) -> Bool {
 		guard case let .treeItem(id) = drag else { return false }
-		return !ledger.move(treeItem: id, into: group.id, at: ledger.accountTree(in: group.id).count).isEmpty
+		let (parent, index) = ledger.destination(of: .group(group.id))
+		return !ledger.move(treeItem: id, into: parent, at: index).isEmpty
+	}
+
+	/// The drop of the dragged group or account. The row of a group and the gap beside it are two drop targets, and
+	/// both could get the same drop, so the first drop ends the drag and moves the row, and a later one finds no drag.
+	/// It reads the row from the drag and not from the dropped data, which arrives later, so that the order of the
+	/// two targets decides and not the time the data takes.
+	@discardableResult
+	func dropTreeItem(on target: TreeDropTarget) -> Bool {
+		guard case let .treeItem(id) = drag else { return false }
+		drag = nil
+		let (parent, index) = ledger.destination(of: target)
+		guard !ledger.move(treeItem: id, into: parent, at: index).isEmpty else { return false }
+		move(treeItem: id, into: parent, at: index)
+		return true
 	}
 
 	/// Whether the category row lights up for the drag in progress.

@@ -528,6 +528,19 @@ final class DebugHarness {
 			let parent = model.ledger.groups.first { $0.name == parts[1] }?.id
 			model.move(treeItem: id, into: parent, at: gap)
 			log("movetree", ("rows", .list(model.ledger.accountTree(in: parent).map { .position($0.position) })))
+		// "<row>|<group>|<gap>" drags an account or a group by its name and drops it on the row of the group and then in
+		// the gap <gap> of the top level, as when both drop targets get the same drop. It logs whether each drop moved
+		// the row, and the rows of the group.
+		case "droptwice":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 3, let gap = Int(parts[2]),
+				let id = model.ledger.accounts.first(where: { $0.name == parts[0] })?.id ?? model.ledger.groups.first(where: { $0.name == parts[0] })?.id,
+				let group = model.ledger.groups.first(where: { $0.name == parts[1] })?.id
+			else { return log("droptwice bad argument") }
+			_ = model.startDrag(treeItem: id)
+			let onGroup = model.dropTreeItem(on: .group(group))
+			let inGap = model.dropTreeItem(on: .gap(parent: nil, index: gap))
+			log("droptwice", ("group", .flag(onGroup)), ("gap", .flag(inGap)), ("inGroup", .flag(model.ledger.account(id)?.groupID == group || model.ledger.group(id)?.parentID == group)))
 		// "<group>|on" or "<group>|off" expands or collapses a group, as its disclosure triangle does.
 		case "expand":
 			let parts = argument.components(separatedBy: "|")

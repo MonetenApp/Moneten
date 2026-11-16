@@ -120,6 +120,30 @@ struct AccountTreeTests {
 		#expect(rows(moving(cash.id, into: privat.id, at: 9, in: l), in: privat.id).last == "3 Bargeld")
 	}
 
+	/// A drop on the row of a group and a drop in a gap are the two drop targets of the section "Accounts".
+	@Test("A drop on a group row puts the row at the end of the group, and a drop in a gap at that gap")
+	func dropTargets() {
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline)
+		let privat = AccountGroup(name: "Private", position: 1)
+		let savings = Account(groupID: privat.id, position: 0, name: "Tagesgeld", kind: .savings, source: .offline)
+		let card = Account(groupID: privat.id, position: 1, name: "Kreditkarte", kind: .creditCard, source: .offline)
+		let l = Ledger(groups: [privat], accounts: [giro, savings, card])
+
+		let onGroup = l.destination(of: .group(privat.id))
+		#expect(onGroup.parent == privat.id && onGroup.index == 2)
+		let into = moving(giro.id, into: onGroup.parent, at: onGroup.index, in: l)
+		#expect(rows(into, in: privat.id) == ["0 Tagesgeld", "1 Kreditkarte", "2 Girokonto"])
+		#expect(rows(into, in: nil) == ["0 Private"])
+		// The gap beside the group row: after "Private" at the top level, where "Girokonto" stays out of the group.
+		let beside = l.destination(of: .gap(parent: nil, index: 2))
+		#expect(beside.parent == nil && beside.index == 2)
+		#expect(rows(moving(giro.id, into: beside.parent, at: beside.index, in: l), in: nil) == ["0 Private", "1 Girokonto"])
+		// An empty group takes the row at its first gap.
+		let empty = AccountGroup(name: "Business", position: 2)
+		let withEmpty = Ledger(groups: [privat, empty], accounts: [giro, savings, card])
+		#expect(withEmpty.destination(of: .group(empty.id)).index == 0)
+	}
+
 	@Test("A collapsed group shows the error and the new transactions of the accounts in it and in its subgroups")
 	func markers() {
 		let privat = AccountGroup(name: "Private", position: 0, isExpanded: false)
