@@ -1084,6 +1084,15 @@ struct FinTSConnectorTests {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
 	}
+
+	@Test("A helper that writes its currencies in lower case gives upper-case codes to the rows, the balance, and the account")
+	func lowerCaseCurrency() throws {
+		let line = #"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"eur"},"transactions":{"rows":[{"type":"row","booked":"2026-11-03","amount":"-89","currency":"eur","purpose":"Abschlag November","pending":false},{"type":"row","booked":"2026-11-04","amount":"-5","purpose":"Kiosk","pending":false}]},"errors":[]}"#
+		let result = try JSONDecoder().decode(AccountResult.self, from: Data(line.utf8))
+		let rows = try #require(result.transactions?.rows).map { try $0.transaction(of: Self.giro) }
+		#expect(rows.map(\.currency) == ["EUR", "EUR"])
+		#expect(try AccountResult.money("10.00", "eur").currency == "EUR")
+	}
 }
 
 /// A session that answers every request at once, and waits on an approval until it is withdrawn.
@@ -1137,4 +1146,5 @@ final class Session: SyncSession {
 		default: return .tan(Secret("123456"))
 		}
 	}
+
 }

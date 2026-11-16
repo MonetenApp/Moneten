@@ -903,6 +903,10 @@ struct ReconcileTests {
 		let r = fromFile ? merge(.file([eur]), stored: [usd]) : merge(refresh([eur]), stored: [usd])
 		#expect(r.skipped == 0 && r.updated == [])
 		#expect(r.added.map(\.currency) == ["EUR"])
+		// The balance in euros counts the new -800,00 €, and the USD row stays out of it.
+		var ledger = Ledger(accounts: [giro], transactions: [usd])
+		ledger.apply(r)
+		#expect(ledger.balance(of: giro) == Money(minorUnits: -80_000, currency: "EUR"))
 		// The same row in its own currency is still found, also a foreign currency.
 		let again = fromFile ? merge(.file([inCurrency(fresh(usd), "USD")]), stored: [usd]) : merge(refresh([inCurrency(fresh(usd), "USD")]), stored: [usd])
 		#expect(again.skipped == 1 && again.added == [])

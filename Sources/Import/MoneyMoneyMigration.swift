@@ -112,10 +112,13 @@ public struct MoneyMoneyMigration: Sendable {
 
 		var rows: [Transaction] = []
 		var sourceRows: [String: [Transaction]] = [:]
+		// A transaction without a currency is in the currency of its account. The same amount in another currency is
+		// another transaction, so a default of EUR in a USD account would add a stored USD row a second time.
+		let accountCurrencies = Dictionary((ledger.accounts + plan.accounts).map { ($0.id, $0.currency) }, uniquingKeysWith: { first, _ in first })
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
-			let currency = (raw["currency"] as? String) ?? "EUR"
+			let currency = (raw["currency"] as? String)?.uppercased() ?? accountCurrencies[accountID] ?? "EUR"
 			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
@@ -344,9 +347,9 @@ public struct MoneyMoneyMigration: Sendable {
 			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
-			var currency = (item["currency"] as? String) ?? "EUR"
+			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
-				let amount = first[0] as? Double, let c = first[1] as? String {
+				let amount = first[0] as? Double, let c = (first[1] as? String)?.uppercased() {
 				currency = c
 				balanceMinor = try Self.money(amount, c, .accountBalance(name)).minorUnits
 			}
