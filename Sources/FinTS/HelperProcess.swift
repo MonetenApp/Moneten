@@ -77,7 +77,9 @@ final class HelperProcess: @unchecked Sendable {
 	}
 
 	/// Reads what stdout holds now without waiting for more. `final` ends the lines also while stdout
-	/// is still open, because the process ended and a child of it can hold stdout open.
+	/// is still open, because the process ended and a child of it can hold stdout open. When the lines
+	/// end, the bytes after the last newline arrive as the last line: a message without a newline at its
+	/// end reads, and a message cut off by the end of the helper fails as unreadable.
 	private func read(final: Bool) {
 		reading.withLock { state in
 			guard !state.finished else { return }
@@ -87,22 +89,30 @@ final class HelperProcess: @unchecked Sendable {
 				if count < 0, errno == EINTR { continue }
 				// 0 is the end of stdout, and -1 with EAGAIN means that the pipe holds nothing more now.
 				guard count > 0 else {
-					if count == 0 || errno != EAGAIN { return finish(&state) }
+					if count == 0 || errno != EAGAIN { return finish(&state, last: state.partial.takeRest()) }
 					break
 				}
 				state.partial.append(buffer[0..<count])
-				for line in state.partial.takeLines() { onLine(line); received.yield(line) }
-				guard state.partial.count <= Self.lineLimit else {
+				let (lines, tooLong) = state.partial.takeLines(upTo: Self.lineLimit)
+				for line in lines { deliver(line) }
+				// A complete line counts as well as the unfinished one, which the next piece can end.
+				guard !tooLong, state.partial.count <= Self.lineLimit else {
 					// The rest of the line is not read, and the helper gets the cancel and the grace.
 					fail(HelperFailure.lineTooLong)
-					return finish(&state)
+					return finish(&state, last: nil)
 				}
 			}
-			if final { finish(&state) }
+			if final { finish(&state, last: state.partial.takeRest()) }
 		}
 	}
 
-	private func finish(_ state: inout (partial: LineBuffer, finished: Bool)) {
+	private func deliver(_ line: String) {
+		onLine(line)
+		received.yield(line)
+	}
+
+	private func finish(_ state: inout (partial: LineBuffer, finished: Bool), last: String?) {
+		if let last { deliver(last) }
 		state.finished = true
 		output.readabilityHandler = nil
 		received.finish()
@@ -172,14 +182,20 @@ private struct LineBuffer {
 		bytes.withUnsafeBufferPointer { data.append($0) }
 	}
 
-	/// Removes the complete lines from the front and returns them.
-	mutating func takeLines() -> [String] {
+	/// Removes the complete lines from the front and returns them. It stops at the first line longer
+	/// than `limit` and reports it, and the bytes from that line on stay in the buffer.
+	mutating func takeLines(upTo limit: Int) -> (lines: [String], tooLong: Bool) {
 		var lines: [String] = []
+		var tooLong = false
 		let taken = data.withUnsafeBytes { bytes -> Int in
 			guard let base = bytes.baseAddress else { return 0 }
 			var start = 0, from = searched
 			while from < bytes.count, let newline = memchr(base + from, 0x0A, bytes.count - from) {
 				let end = base.distance(to: UnsafeRawPointer(newline))
+				guard end - start <= limit else {
+					tooLong = true
+					break
+				}
 				lines.append(String(decoding: UnsafeRawBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self))
 				start = end + 1
 				from = start
@@ -188,6 +204,13 @@ private struct LineBuffer {
 		}
 		if taken > 0 { data.removeSubrange(data.startIndex..<data.startIndex + taken) }
 		searched = data.count
-		return lines
+		return (lines, tooLong)
+	}
+
+	/// Removes the bytes after the last newline and returns them as a line, or nil when there are none.
+	mutating func takeRest() -> String? {
+		guard !data.isEmpty else { return nil }
+		defer { data = Data(); searched = 0 }
+		return String(decoding: data, as: UTF8.self)
 	}
 }

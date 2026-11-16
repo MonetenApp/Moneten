@@ -58,21 +58,57 @@ struct HelperProcessTests {
 		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + FinTSConnectorTests.loadMargin)
 	}
 
-	@Test("A line of 32 MiB arrives whole, and the time to read it grows with its length", .timeLimit(.minutes(1)))
-	func longLine() async throws {
+	/// Runs `script` as a helper and returns the length of each line that reached `onLine`, and the
+	/// first failure of the run.
+	func lineLengths(_ script: String) async throws -> (lengths: [Int], failure: SyncFailure?) {
+		let lengths = Mutex<[Int]>([])
+		let process = try HelperProcess(executable: URL(filePath: "/bin/sh"), arguments: ["-c", script], grace: 5,
+			onLine: { line in lengths.withLock { $0.append(line.utf8.count) } })
+		try? await process.ended()
+		return (lengths.withLock { $0 }, process.firstFailure as? SyncFailure)
+	}
+
+	@Test("A line of exactly 64 MiB arrives whole, with or without a newline at its end, in a time that grows with its length",
+		.timeLimit(.minutes(1)), arguments: [("echo; echo next", [64 << 20, 4]), ("", [64 << 20])])
+	func lineAtLimit(after: String, expected: [Int]) async throws {
 		// Each piece of a long line is searched for its end only once. A search of the whole line on every
 		// piece took more than 45 seconds for 16 MiB, and four times as long for twice the length.
-		let lengths = Mutex<[Int]>([])
-		let process = try HelperProcess(executable: URL(filePath: "/bin/sh"), arguments: ["-c", #"head -c 33554432 /dev/zero | tr '\0' x; echo; echo next"#],
-			grace: 5, onLine: { line in lengths.withLock { $0.append(line.utf8.count) } })
+		let run = try await lineLengths(#"head -c 67108864 /dev/zero | tr '\0' x; "# + after)
+		#expect(run.lengths == expected)
+		#expect(run.failure == nil)
+	}
+
+	@Test("A line of one byte more than 64 MiB fails the run, with or without a newline at its end, and is not delivered",
+		.timeLimit(.minutes(1)), arguments: ["echo x; echo next", "printf x"])
+	func lineOverLimit(after: String) async throws {
+		// `echo x` ends the line in the same piece of stdout that takes it over the limit.
+		let run = try await lineLengths(#"head -c 67108864 /dev/zero | tr '\0' x; "# + after)
+		#expect(run.lengths == [])
+		#expect(run.failure == HelperFailure.lineTooLong)
+	}
+
+	@Test("Lines that span the pieces of stdout arrive whole and in order")
+	func linesAcrossPieces() async throws {
+		// About 1.3 MB of short lines arrive in pieces of up to 64 KiB, so many lines start in one piece
+		// and end in the next.
+		let read = Mutex<[String]>([])
+		let process = try HelperProcess(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "seq 1 200000"], grace: 5,
+			onLine: { line in read.withLock { $0.append(line) } })
 		try await process.ended()
-		#expect(lengths.withLock { $0 } == [33_554_432, 4])
+		#expect(read.withLock { $0 } == (1...200_000).map(String.init))
+	}
+
+	@Test("The bytes after the last newline arrive as the last line when stdout ends or the helper ends")
+	func unfinishedLastLine() async throws {
+		#expect(try await lineLengths("printf 'first\\nlast'").lengths == [5, 4])
+		// The background sleep holds stdout open after the helper ended, so the end of the process ends the lines.
+		#expect(try await lineLengths("printf 'first\\nlast'; sleep 3 &").lengths == [5, 4])
 	}
 
 	@Test("A line longer than 64 MiB fails the run with an error that names the limit", .timeLimit(.minutes(1)))
 	func lineTooLong() async throws {
 		// The helper would end on its own after 600 seconds. The cancel and the grace end it.
-		await #expect(throws: SyncFailure.network("The FinTS helper sent a message larger than 64 MB, which Moneten does not read.")) {
+		await #expect(throws: SyncFailure.network("The FinTS helper sent a message larger than 64 MiB, which Moneten does not read.")) {
 			_ = try await connector(#"read cmd; head -c 67108865 /dev/zero | tr '\0' x; exec sleep 600"#, grace: 1)
 				.listAccounts(of: Self.access, state: nil, session: Session())
 		}
