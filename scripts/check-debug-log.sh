@@ -58,7 +58,7 @@ ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP" 2>/dev/null
 MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" \
-	"$APP/Contents/MacOS/Moneten" -lockAfterInactivity NO -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
+	"$APP/Contents/MacOS/Moneten" -lockAfterInactivity NO -ApplePersistenceIgnoreState YES -AppleLocale de_DE >"$WORK/app.log" 2>&1 &
 PID=$!
 
 cat >"$WORK/Check.lua" <<-'EOF'
@@ -335,6 +335,73 @@ send select Girokonto
 poll "visible=[1-9]" state
 poll "^mainkey rejected$" mainkey "Erika Mustermann"
 poll "^filterbar rejected$" filterbar "Mustermann Erika"
+send sheet ""
+send alert
+send seed
+sleep 2
+send select Girokonto
+send search Stadtwerke
+poll "^phase=.*visible=[1-9][0-9]* " state
+send sheet split
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=false sheet=split$" splitui
+send type 25,00
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=true sheet=split$" splitui
+send splitnext
+poll "^splitui .*nextEnabled=false sheet=split$" splitui
+send key tab
+send key return
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+send selectRows 2
+poll "^deleteparts refused=true selected=2$" deleteparts
+send alert
+poll "^undosplit sheet=undoSplit$" undosplit
+send key escape
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^undosplit sheet=undoSplit$" undosplit
+send key return
+poll "^splitstate parts=0 .*sheet=none$" splitstate
+for value in 0,00 89,00 abc; do
+	send sheet split
+	send type "$value"
+	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	send key escape
+done
+for entry in 5,00 +5,00 -5,00; do
+	send sheet split
+	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	send type 100,00
+	poll "^splitui .*nextEnabled=true sheet=split$" splitui
+	send splitnext
+	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	send type "$entry"
+	send key return
+	poll "^splitstate parts=3 .*sheet=none$" splitstate
+	poll "^exportall done$" exportall "$WORK/remainder.json"
+	python3 - "$WORK/remainder.json" "$entry" <<-'EOF'
+	import json, sys
+	data = json.load(open(sys.argv[1]))
+	ids = {row["id"] for row in data["transactions"] if row["name"] == "Stadtwerke Musterstadt"}
+	parts = sorted((part for part in data["splitParts"] if part["transactionID"] in ids), key=lambda part: part["position"])
+	expected = ["-100.00", "-5.00", "16.00"] if sys.argv[2] == "-5,00" else ["-100.00", "5.00", "6.00"]
+	assert [part["amount"] for part in parts] == expected
+	assert [part["position"] for part in parts] == [0, 1, 2]
+	EOF
+	send alert
+	poll "^undosplit sheet=undoSplit$" undosplit
+	send key return
+	poll "^splitstate parts=0 .*sheet=none$" splitstate
+done
+send split 7%
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^undosplit sheet=undoSplit$" undosplit
+send key return
+poll "^splitstate parts=0 .*sheet=none$" splitstate
+send split 19%
+poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^snapshot split-menu " splitmenusnapshot
+send split 5,00
+poll "^splitstate parts=3 .*sheet=none$" splitstate
+send search ""
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 # "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
 poll "^lookfornew setup=true$" lookfornew Girokonto
@@ -369,6 +436,7 @@ for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "D
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \
 	"Beispiel GmbH" "Wohnbau Musterstadt" "Tankstelle Beispiel" /Users/erika \
 	"Gehalt November" Miete Kartenzahlung Sparen Haushaltskasse MIETE-2026-11 GUTSCHRIFT DAUERAUFTRAG \
+	"0,00" "89,00" "100,00" "5,00" "+5,00" "-5,00" abc "Stadtwerke Musterstadt" "Streaming Dienst" Electricity Groceries \
 	"Zugang vorübergehend gesperrt" "PIN falsch" Wartungsarbeiten pushTAN-App "currency:/^+?49/"; do
 	if grep -n -w -F -- "$value" "$LOG" >&2; then
 		echo "debug.log holds \"$value\"." >&2
