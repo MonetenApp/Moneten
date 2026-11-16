@@ -81,7 +81,7 @@ jobs:
           if [[ "$SHARD" == core ]]; then
             scripts/ci-run.sh scripts/test.sh --filter '^(DomainTests|StorageTests|ImportTests|SyncTests)\.' --skip PerformanceTests
           else
-            scripts/ci-run.sh scripts/test.sh --skip '^(DomainTests|StorageTests|ImportTests|SyncTests|FinTSTests)\.|PerformanceTests|SessionTests/testHosts|LimitTests'
+            scripts/ci-run.sh scripts/test.sh --skip '^(DomainTests|StorageTests|ImportTests|SyncTests|FinTSTests)\.|PerformanceTests|LimitTests'
             scripts/ci-run.sh scripts/test.sh --skip-build --filter '^FinTSTests\.'
           fi
       - if: matrix.shard == 'core'

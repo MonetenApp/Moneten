@@ -338,7 +338,7 @@ struct FinTSConnectorTests {
 		let canceled = ContinuousClock.now
 		task.cancel()
 		// A write that blocks cancel would wait for the helper to end.
-		#expect(ContinuousClock.now - canceled < .seconds(5))
+		#expect(ContinuousClock.now - canceled < .seconds(grace))
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled >= .seconds(grace))
 		#expect(recorded.map { $0["type"] } == ["ready", "terminated"])

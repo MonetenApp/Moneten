@@ -13,7 +13,7 @@ The CI workflow SHALL run specification checks for every pull request and skip m
 - **THEN** all unit, tool, app, and performance checks run
 
 ### Requirement: Preserve verification in shards
-The CI workflow SHALL run every selected test and scenario once, keep performance measurements isolated, and reject compiler warnings from repository targets.
+The CI workflow SHALL run every selected test contract and scenario, keep performance measurements isolated, and reject compiler warnings from repository targets.
 
 #### Scenario: Swift implementation changes
 - **WHEN** a pull request changes Sources/Domain/Ledger.swift
