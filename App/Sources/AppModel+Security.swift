@@ -49,8 +49,8 @@ extension AppModel {
 				guard try vault.setUnlockMethod(entry, on: on, password: password) else { return false }
 			} catch {
 				throw SecurityChangeFailure(description: on
-					? "The database password could not be stored in the Keychain. \(error)"
-					: "The database password could not be deleted from the Keychain, so the setting stays on. \(error)")
+					? String(localized: "The database password could not be stored in the Keychain. \(String(describing: error))")
+					: String(localized: "The database password could not be deleted from the Keychain, so the setting stays on. \(String(describing: error))"))
 			}
 			if on { unlockSettings.insert(entry) } else { unlockSettings.remove(entry) }
 		}

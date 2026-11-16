@@ -143,19 +143,19 @@ public enum Standing: Sendable, Equatable {
 
 	public init(of installed: InstalledPackage, in index: CatalogIndex) {
 		guard let entry = index.entry(installed.id) else {
-			self = .stopped("\(installed.name) is no longer in the catalog.")
+			self = .stopped(String(localized: "\(installed.name) is no longer in the catalog."))
 			return
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
 		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
-			self = .outdated("Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update.")
+			self = .outdated(String(localized: "Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update."))
 			return
 		}
 		self = switch entry.status {
 		case .active: .runs(note: nil)
-		case .unmaintained: .runs(note: "Nobody maintains \(installed.name).\(note)")
-		case .blocked: .stopped("\(installed.name) is blocked.\(note)")
-		case .withdrawn: .stopped("\(installed.name) was withdrawn.\(note)")
+		case .unmaintained: .runs(note: String(localized: "Nobody maintains \(installed.name).\(note)"))
+		case .blocked: .stopped(String(localized: "\(installed.name) is blocked.\(note)"))
+		case .withdrawn: .stopped(String(localized: "\(installed.name) was withdrawn.\(note)"))
 		}
 	}
 }

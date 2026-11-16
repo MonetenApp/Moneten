@@ -9,7 +9,7 @@ struct RootView: View {
 		Group {
 			switch model.phase {
 			case .starting:
-				ProgressView(model.opening ?? "Opening database...")
+				ProgressView(model.opening ?? String(localized: "Opening database..."))
 			case .firstLaunch:
 				FirstLaunchView()
 			case .locked:
@@ -216,7 +216,7 @@ struct AppLogo: View {
 
 /// Two fields for a new password, a strength grade, and the warning about lost passwords.
 struct PasswordForm: View {
-	var confirmTitle: String
+	var confirmTitle: LocalizedStringKey
 	var requireWarning: Bool
 	var onCancel: (() -> Void)? = nil
 	var onConfirm: (String) -> Void
@@ -274,10 +274,10 @@ enum PasswordStrength {
 
 	static func grade(_ s: String) -> String {
 		switch bits(s) {
-		case ..<40: "weak"
-		case ..<60: "good"
-		case ..<80: "strong"
-		default: "excellent"
+		case ..<40: String(localized: "weak")
+		case ..<60: String(localized: "good")
+		case ..<80: String(localized: "strong")
+		default: String(localized: "excellent")
 		}
 	}
 

@@ -220,12 +220,40 @@ The `ext` tool SHALL exit with status 0 when a command succeeds and with a statu
 
 ### Requirement: Help and version
 
-The `ext` tool SHALL print its commands and options with `ext --help`, and its version and the API version it implements with `ext --version`.
+The `ext` tool SHALL print its commands and options with `ext --help`, and its version and the API version it implements with `ext --version`. A released binary also prints the full commit it was built from. A build from source prints no commit.
 
 #### Scenario: Version
 
 - **WHEN** the author runs `ext --version`
 - **THEN** the tool prints its version and the API version, for example "API version 1"
+
+#### Scenario: Version of a release
+
+- **GIVEN** the author installed the release 0.1.0, built from the commit 0123456789abcdef0123456789abcdef01234567
+- **WHEN** the author runs `ext --version`
+- **THEN** the tool prints "ext 0.1.0 (commit 0123456789abcdef0123456789abcdef01234567), API version 1"
+
+### Requirement: Signed release of the tool
+
+The project SHALL publish each release of `ext` as a GitHub release of the app repository. The release holds one universal binary for Apple silicon and Intel Macs, signed with the Developer ID of the project and notarized by Apple, and its SHA-256. A tag such as `ext-v0.1.0` starts the release. A release whose tag differs from the version in the tool fails before it signs anything.
+
+#### Scenario: Install without Xcode
+
+- **GIVEN** a Mac with macOS 15 and no Xcode
+- **WHEN** an author downloads `ext-0.1.0-macos.zip` from the release `ext-v0.1.0`, checks its SHA-256, and unpacks it
+- **THEN** macOS starts `ext` without a warning, and `ext --version` prints version 0.1.0 and the commit of the tag
+
+#### Scenario: Tag with another version
+
+- **GIVEN** the tool has the version 0.1.0
+- **WHEN** a maintainer pushes the tag `ext-v0.2.0`
+- **THEN** the release workflow fails before it signs the binary and publishes nothing
+
+#### Scenario: Missing secrets
+
+- **GIVEN** the environment of the release has no Developer ID certificate
+- **WHEN** a maintainer pushes the tag `ext-v0.1.0`
+- **THEN** the release workflow fails at its first step and names each missing secret
 
 ### Requirement: Author guide
 

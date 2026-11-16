@@ -235,6 +235,13 @@ The app SHALL offer "Export All Data..." in the File menu. The command writes on
 - **THEN** both profiles keep their settings, stored versions and unknown fields
 - **AND** a file without the optional "csvProfiles" key imports with no profiles
 
+#### Scenario: Saved searches
+
+- **GIVEN** the saved search "Tax payments" with the search text "Finanzamt", the period "30 Days", and the amount from -500 to -100
+- **WHEN** the user exports all data and imports the file into an empty database
+- **THEN** the sidebar section "Searches" shows "Tax payments" with the same search text, period, and amount range
+- **AND** a file without the optional "savedSearches" key imports with no saved searches
+
 #### Scenario: Later capability
 
 - **GIVEN** a version of the app that also stores transfer templates
@@ -292,7 +299,7 @@ The app SHALL offer "Import All Data..." in the File menu, which reads a complet
 
 ### Requirement: Complete import needs an empty database
 
-The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, a transaction, or a saved CSV profile, and say that the import works only in an empty database.
+The app SHALL refuse "Import All Data..." when the database holds an account, a category that the user created, a transaction, a saved CSV profile, or a saved search, and say that the import works only in an empty database.
 
 #### Scenario: Database in use
 

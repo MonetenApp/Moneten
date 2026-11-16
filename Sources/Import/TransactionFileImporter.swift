@@ -19,12 +19,12 @@ public enum TransactionFileImporter {
 
 		public var description: String {
 			switch self {
-			case .empty: "The file is empty and does not contain any transactions."
-			case .unsupported: "Files in this format cannot be imported. The following file formats are supported when importing transactions: CSV, MT940, and SEPA camt.052/.053."
-			case .noHeader: "No column with a date and no column with an amount was found. The columns should be headed with common keywords like Date, Amount, Name, and Purpose."
-			case let .encoding(name): "The file cannot be read as \(name)."
-			case let .line(n, problem): "Line \(n): \(problem)"
-			case .severalAccounts: "The file holds the statements of several accounts. Import the statements of each account from a file of its own."
+			case .empty: String(localized: "The file is empty and does not contain any transactions.")
+			case .unsupported: String(localized: "Files in this format cannot be imported. The following file formats are supported when importing transactions: CSV, MT940, and SEPA camt.052/.053.")
+			case .noHeader: String(localized: "No column with a date and no column with an amount was found. The columns should be headed with common keywords like Date, Amount, Name, and Purpose.")
+			case let .encoding(name): String(localized: "The file cannot be read as \(name).")
+			case let .line(n, problem): String(localized: "Line \(n): \(problem)")
+			case .severalAccounts: String(localized: "The file holds the statements of several accounts. Import the statements of each account from a file of its own.")
 			}
 		}
 	}
@@ -38,10 +38,10 @@ public enum TransactionFileImporter {
 
 		public var description: String {
 			switch self {
-			case let .unknownCurrency(n, cell, replacement): "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account."
-			case let .skippedCSVRow(n): "Line \(n): The row was skipped while locating the CSV transactions. Check the header row."
-			case let .mixedDateForms(n): "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first."
-			case let .unreadableValueDate(n, cell): "Line \(n): The value date \(cell) cannot be read. The transaction has no value date."
+			case let .unknownCurrency(n, cell, replacement): String(localized: "Line \(n): The currency \(cell) is unknown. The transaction is in \(replacement), the currency of the account.")
+			case let .skippedCSVRow(n): String(localized: "Line \(n): The row was skipped while locating the CSV transactions. Check the header row.")
+			case let .mixedDateForms(n): String(localized: "Line \(n): The file mixes month-first dates and dotted dates. Dates with dots read day first.")
+			case let .unreadableValueDate(n, cell): String(localized: "Line \(n): The value date \(cell) cannot be read. The transaction has no value date.")
 			}
 		}
 	}
@@ -188,26 +188,26 @@ enum MT940Parser {
 		func fail(_ reason: String) -> TransactionFileImporter.Failure { .line(line, reason) }
 		let chars = Array(s.replacingOccurrences(of: "\n", with: ""))
 		guard chars.count >= 6, let yy = Int(String(chars[0..<2])), let mm = Int(String(chars[2..<4])), let dd = Int(String(chars[4..<6])),
-			let value = Day.valid(year: 2000 + yy, month: mm, day: dd) else { throw fail("The date cannot be read.") }
+			let value = Day.valid(year: 2000 + yy, month: mm, day: dd) else { throw fail(String(localized: "The date cannot be read.")) }
 		var i = 6
 		var booking = value
 		if chars.count > i + 4, let bm = Int(String(chars[i..<i + 2])), let bd = Int(String(chars[i + 2..<i + 4])), chars[i].isNumber {
 			var by = value.year
 			if bm - mm > 6 { by -= 1 } else if mm - bm > 6 { by += 1 }
-			guard let day = Day.valid(year: by, month: bm, day: bd) else { throw fail("The date cannot be read.") }
+			guard let day = Day.valid(year: by, month: bm, day: bd) else { throw fail(String(localized: "The date cannot be read.")) }
 			booking = day
 			i += 4
 		}
 		// RC is the reversal of a credit and books a debit. RD is the reversal of a debit and books a credit.
 		let isReversal = i < chars.count && chars[i] == "R"
 		if isReversal { i += 1 }
-		guard i < chars.count, chars[i] == "C" || chars[i] == "D" else { throw fail("The transaction has no debit or credit mark.") }
+		guard i < chars.count, chars[i] == "C" || chars[i] == "D" else { throw fail(String(localized: "The transaction has no debit or credit mark.")) }
 		let negative = (chars[i] == "D") != isReversal
 		i += 1
 		if i < chars.count, chars[i].isLetter { i += 1 }
 		var amountText = ""
 		while i < chars.count, chars[i].isNumber || chars[i] == "," { amountText.append(chars[i]); i += 1 }
-		guard let amount = AmountParser.decimal(from: amountText, decimalMark: .comma) else { throw fail("The amount cannot be read.") }
+		guard let amount = AmountParser.decimal(from: amountText, decimalMark: .comma) else { throw fail(String(localized: "The amount cannot be read.")) }
 		return Line61(value: value, booking: booking, amount: negative ? -amount : amount)
 	}
 
@@ -296,7 +296,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		if let failure = p.failure { throw failure }
 		p.result.account = try TransactionFileImporter.accountDecision(p.accounts.map(Optional.some)).account
 		guard parsed else {
-			throw TransactionFileImporter.Failure.line(parser.lineNumber, "The XML file cannot be read.")
+			throw TransactionFileImporter.Failure.line(parser.lineNumber, String(localized: "The XML file cannot be read."))
 		}
 		return p.result
 	}
@@ -320,7 +320,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	/// The parser stops after the first error and moves on, so its position after `parse()` can lie lines
 	/// behind the error. An entry that `finishEntry` failed aborts the parser, which reports it here too.
 	func parser(_ parser: XMLParser, parseErrorOccurred parseError: Error) {
-		if failure == nil { failure = .line(parser.lineNumber, "The XML is not well-formed at column \(parser.columnNumber).") }
+		if failure == nil { failure = .line(parser.lineNumber, String(localized: "The XML is not well-formed at column \(parser.columnNumber).")) }
 	}
 
 	func parser(_ parser: XMLParser, foundCharacters string: String) {
@@ -391,10 +391,10 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			parser.abortParsing()
 		}
 		guard let amountText = entry["amount"], let amount = Decimal(string: amountText, locale: Locale(identifier: "en_US_POSIX")) else {
-			return fail("The amount of the entry cannot be read.")
+			return fail(String(localized: "The amount of the entry cannot be read."))
 		}
 		guard let bookingText = entry["booking"] ?? entry["value"], let booking = Day(string: String(bookingText.prefix(10))) else {
-			return fail("The booking date of the entry cannot be read.")
+			return fail(String(localized: "The booking date of the entry cannot be read."))
 		}
 		let debit = entry["sign"] == "DBIT"
 		let currency = entry["currency"] ?? currency

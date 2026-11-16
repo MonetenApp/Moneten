@@ -63,45 +63,45 @@ public struct Vault: Sendable {
 
 		public var description: String {
 			switch self {
-			case .incorrectPassword: "Incorrect password!"
+			case .incorrectPassword: String(localized: "Incorrect password!")
 			case let .newerVersion(needed?, running):
-				"Moneten \(needed) has upgraded this database. Moneten \(needed) or newer is needed to open it, and Moneten \(running) is running. The database file has not been changed."
+				String(localized: "Moneten \(needed) has upgraded this database. Moneten \(needed) or newer is needed to open it, and Moneten \(running) is running. The database file has not been changed.")
 			case let .newerVersion(nil, running):
-				"A newer version of Moneten has upgraded this database. Moneten \(running) is running and cannot open it. The database file has not been changed."
-			case let .fileIsEmpty(path): "The database file is empty. Please replace the database file with a backup copy.\n\n\(path)"
+				String(localized: "A newer version of Moneten has upgraded this database. Moneten \(running) is running and cannot open it. The database file has not been changed.")
+			case let .fileIsEmpty(path): String(localized: "The database file is empty. Please replace the database file with a backup copy.\n\n\(path)")
 			case let .fileIsMissing(path):
-				"The database file is missing. Moneten does not start a new database in its place. Please put the database file back or replace it with a backup copy.\n\n\(path)"
-			case let .databaseExists(path): "A database already exists. Moneten does not create a new one in its place.\n\n\(path)"
+				String(localized: "The database file is missing. Moneten does not start a new database in its place. Please put the database file back or replace it with a backup copy.\n\n\(path)")
+			case let .databaseExists(path): String(localized: "A database already exists. Moneten does not create a new one in its place.\n\n\(path)")
 			case let .pathIsFolder(path):
-				"The database file should be a file and not a directory. Move the folder away and put the database file in its place.\n\n\(path)"
+				String(localized: "The database file should be a file and not a directory. Move the folder away and put the database file in its place.\n\n\(path)")
 			case let .writeProtected(path):
-				"The database file is write-protected. Remove the write protection in the Finder with File, Get Info, and try again.\n\n\(path)"
+				String(localized: "The database file is write-protected. Remove the write protection in the Finder with File, Get Info, and try again.\n\n\(path)")
 			case let .folderNotWritable(path):
-				"Your user account has no write permission for the database folder. Give your account read and write access in the Finder with File, Get Info, and try again.\n\n\(path)"
+				String(localized: "Your user account has no write permission for the database folder. Give your account read and write access in the Finder with File, Get Info, and try again.\n\n\(path)")
 			case let .damaged(path):
-				"The database file is damaged. Moneten keeps the file and tries to repair it at the next start. Quit Moneten and start it again.\n\n\(path)"
+				String(localized: "The database file is damaged. Moneten keeps the file and tries to repair it at the next start. Quit Moneten and start it again.\n\n\(path)")
 			case let .repairFailed(path):
-				"The database file is damaged and could not be repaired. Please replace the database file with a backup copy.\n\n\(path)"
+				String(localized: "The database file is damaged and could not be repaired. Please replace the database file with a backup copy.\n\n\(path)")
 			case let .upgradeFailed(detail):
-				"Could not upgrade the database. The database is unchanged and still opens with the earlier version of Moneten.\n\n\(detail)"
-			case let .unreadable(detail): "Could not open database.\n\n\(detail)"
+				String(localized: "Could not upgrade the database. The database is unchanged and still opens with the earlier version of Moneten.\n\n\(detail)")
+			case let .unreadable(detail): String(localized: "Could not open database.\n\n\(detail)")
 			case let .keyNotInKeychain(detail):
-				"No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password."
-					+ (detail.map { "\n\nKeychain: \($0)" } ?? "")
-			case let .keychain(detail): "The Keychain reported an error: \(detail)"
+				String(localized: "No database password is set, and the key of the database could not be read from the Keychain. This happens when a new build of the app has a different signature than the build that created the database. Open the database with that build and set a database password.")
+					+ (detail.map { "\n\n" + String(localized: "Keychain: \($0)") } ?? "")
+			case let .keychain(detail): String(localized: "The Keychain reported an error: \(detail)")
 			case let .passwordSetWithLeftover(detail):
-				"The database password has been set, but Moneten could not remove the random key of the database: \(detail)"
+				String(localized: "The database password has been set, but Moneten could not remove the random key of the database: \(detail)")
 			case let .keychainNotUpdated(detail, copies):
-				"The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain."
+				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain.")
 					+ (copies.isEmpty ? "" : "\n\n" + Failure.copiesNotUpdated(copies).description)
 			case let .copiesNotUpdated(paths):
-				"The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.\n\n" + paths.joined(separator: "\n")
+				String(localized: "The database password has been changed, but Moneten could not update the copies of the database at these paths. They may still open with the earlier password. Please move them to the Trash.") + "\n\n" + paths.joined(separator: "\n")
 			case let .copiesUnreadable(paths):
-				"Moneten could not read these copies of the database, so the password has not been changed. Close the program that uses them, or move them to the Trash, and try again.\n\n" + paths.joined(separator: "\n")
+				String(localized: "Moneten could not read these copies of the database, so the password has not been changed. Close the program that uses them, or move them to the Trash, and try again.") + "\n\n" + paths.joined(separator: "\n")
 			case let .workFilesNotRemoved(paths):
-				"Moneten could not remove these work files of an interrupted upgrade or repair, so the password has not been changed. They still open with the current password. Move them to the Trash and try again.\n\n" + paths.joined(separator: "\n")
+				String(localized: "Moneten could not remove these work files of an interrupted upgrade or repair, so the password has not been changed. They still open with the current password. Move them to the Trash and try again.") + "\n\n" + paths.joined(separator: "\n")
 			case let .copiesKeepRandomKey(paths):
-				"The database password has been set, but Moneten could not encrypt the copies of the database at these paths with it. They still open with the random key, which stays in the Keychain. Moneten tries again at the next start.\n\n" + paths.joined(separator: "\n")
+				String(localized: "The database password has been set, but Moneten could not encrypt the copies of the database at these paths with it. They still open with the random key, which stays in the Keychain. Moneten tries again at the next start.") + "\n\n" + paths.joined(separator: "\n")
 			}
 		}
 	}
@@ -213,7 +213,7 @@ public struct Vault: Sendable {
 			let created = try openDatabase(key: key, creating: true).store
 			store = created
 			if password == nil, !FileManager.default.createFile(atPath: noPasswordMarker.path, contents: Data()) {
-				throw Failure.unreadable("Could not create \(noPasswordMarker.path).")
+				throw Failure.unreadable(String(localized: "Could not create \(noPasswordMarker.path)."))
 			}
 			try created.write { db in
 				for c in starterCategories { try c.insert(db) }
@@ -595,7 +595,9 @@ public struct Vault: Sendable {
 		config.label = "Moneten"
 		config.prepareDatabase { db in
 			try db.usePassphrase(key)
-			// Overwrites deleted rows with zeros, so a removed saved PIN does not stay in a free page (issue #327).
+			// Overwrites deleted rows and freed pages with zeros, so a removed saved PIN does not stay in the file (issue #327).
+			// SQLCipher already turns this on for every connection with a key (sqlcipherCodecAttach in src/sqlcipher.c), so a
+			// database from before #327 holds no deleted PIN either (#335). The pragma keeps it on if that default changes.
 			try db.execute(sql: "PRAGMA secure_delete = ON")
 		}
 		return config
@@ -635,7 +637,7 @@ public struct Vault: Sendable {
 			let tookRandomKeyCopy = finishRekey(key: key)
 			if fm.fileExists(atPath: repairMarker.path) { queue = try repair(queue, key: key) }
 			if try !isIntact(queue) {
-				guard fm.createFile(atPath: repairMarker.path, contents: Data()) else { throw Failure.unreadable("Could not create \(repairMarker.path).") }
+				guard fm.createFile(atPath: repairMarker.path, contents: Data()) else { throw Failure.unreadable(String(localized: "Could not create \(repairMarker.path).")) }
 				throw Failure.damaged(folder.databaseFile.path)
 			}
 			let migrator = Schema.migrator
@@ -679,7 +681,7 @@ public struct Vault: Sendable {
 			// Leaving WAL mode writes the committed rows of the WAL into the database. SQLite refuses while
 			// another connection has the database open.
 			let mode = try queue.writeWithoutTransaction { db in try String.fetchOne(db, sql: "PRAGMA journal_mode = DELETE") }
-			guard mode == "delete" else { throw Failure.unreadable("Another program has the database open.") }
+			guard mode == "delete" else { throw Failure.unreadable(String(localized: "Another program has the database open.")) }
 			// The exclusive lock stays until the connection closes right before the rename, so no other
 			// connection writes a row between the copy and the rename.
 			do {
@@ -689,7 +691,7 @@ public struct Vault: Sendable {
 					try db.execute(sql: "COMMIT")
 				}
 			} catch let error as DatabaseError where error.resultCode == .SQLITE_BUSY || error.resultCode == .SQLITE_LOCKED {
-				throw Failure.unreadable("Another program is using the database.")
+				throw Failure.unreadable(String(localized: "Another program is using the database."))
 			}
 			try snapshot(queue, into: backupPartial, key: key)
 			try removeSideFiles(of: automaticBackup)
@@ -699,7 +701,7 @@ public struct Vault: Sendable {
 			do {
 				// GRDB checks the foreign keys at the end of each step, because the connection has them on.
 				try Schema.migrator.migrate(copy)
-				guard try isIntact(copy) else { throw Failure.unreadable("The upgraded copy failed the integrity check.") }
+				guard try isIntact(copy) else { throw Failure.unreadable(String(localized: "The upgraded copy failed the integrity check.")) }
 				try recordVersion(in: copy)
 				try copy.close()
 			} catch {
@@ -751,7 +753,7 @@ public struct Vault: Sendable {
 			let check = try connect(repaired, key: key)
 			let intact = try isIntact(check)
 			try check.close()
-			guard intact else { throw Failure.unreadable("The repaired copy failed the integrity check.") }
+			guard intact else { throw Failure.unreadable(String(localized: "The repaired copy failed the integrity check.")) }
 			try place(repaired, at: folder.databaseFile)
 		} catch {
 			try? removeWithSideFiles(repaired)

@@ -4,10 +4,20 @@ import Foundation
 /// An error of a script or of the host, with the file and line of the script where Lua knows them.
 struct ScriptError: Error, Equatable, Sendable, CustomStringConvertible {
 	let message: String
+	/// The reason for a failure that the app words itself. Two errors with the same message are equal.
+	let stop: HostStop?
 
 	init(_ message: String) {
 		self.message = message
+		stop = nil
 	}
+
+	init(_ stop: HostStop) {
+		message = stop.message
+		self.stop = stop
+	}
+
+	static func == (a: ScriptError, b: ScriptError) -> Bool { a.message == b.message }
 
 	var description: String { message }
 }
@@ -129,7 +139,7 @@ final class LuaState {
 	private func popError(_ status: Int32) -> ScriptError {
 		guard status != LUA_ERRMEM else {
 			lua_settop(stack.L, 0)
-			return ScriptError("The extension needs more than \(memory / 1_048_576) MB of memory.")
+			return ScriptError(.memoryLimit(megabytes: memory / 1_048_576))
 		}
 		let message = lua_type(stack.L, -1) == LUA_TSTRING ? stack.string(at: -1) : "The script stopped with an error of type \(stack.typeName(at: -1))."
 		lua_settop(stack.L, 0)

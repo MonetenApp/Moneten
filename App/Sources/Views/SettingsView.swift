@@ -107,7 +107,7 @@ struct SecuritySettings: View {
 	/// Returns an error for the prompt, or nil when the prompt closes.
 	private func apply(_ change: SecurityChange, password: String) -> String? {
 		do {
-			guard try model.changeSecurity(change, password: password) else { return "Incorrect password!" }
+			guard try model.changeSecurity(change, password: password) else { return String(localized: "Incorrect password!") }
 		} catch {
 			message = String(describing: error)
 		}
@@ -151,10 +151,12 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
 	@State private var notificationsDenied = false
+	/// Nil while the app follows macOS.
+	@State private var language = AppLanguage.stored
 
 	private var version: String {
 		let info = Bundle.main.infoDictionary
-		guard let short = info?["CFBundleShortVersionString"] as? String else { return "Development build" }
+		guard let short = info?["CFBundleShortVersionString"] as? String else { return String(localized: "Development build") }
 		return info?["CFBundleVersion"].map { "\(short) (\($0))" } ?? short
 	}
 
@@ -172,6 +174,17 @@ struct GeneralSettings: View {
 				Toggle("Play sound on new transactions", isOn: askingPermission($playsSound))
 				if notificationsDenied {
 					Button("Open Notification Settings...") { NSWorkspace.shared.open(Self.notificationSettings) }
+				}
+			}
+			Section {
+				Picker("Language", selection: $language) {
+					Text("System").tag(AppLanguage?.none)
+					ForEach(AppLanguage.allCases, id: \.self) { Text(verbatim: $0.name).tag(Optional($0)) }
+				}
+				.onChange(of: language) { _, new in AppLanguage.store(new) }
+			} footer: {
+				if (language ?? AppLanguage.system) != AppLanguage.current {
+					Text("Moneten uses the new language after a restart.").foregroundStyle(.secondary)
 				}
 			}
 			Section {

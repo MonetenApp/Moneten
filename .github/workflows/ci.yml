@@ -22,6 +22,7 @@ jobs:
           node-version: 22
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
+      - run: scripts/test-forget-bundle.sh
       # The format of CHANGELOG.md, the only source of the release notes, and the tests of its script.
       - run: python3 scripts/release-notes.py check
       - run: python3 scripts/test-release-notes.py
@@ -70,6 +71,9 @@ jobs:
         run: scripts/build-fints-helper.sh
       # Adds the FinTS helper with a jlink runtime to the app.
       - run: scripts/build-app.sh debug
+      - name: German translation
+        # Every text that the build extracts has a German value in App/Resources/Localizable.xcstrings.
+        run: python3 scripts/check-localization.py .build/xcode
       - name: No personal data in the debug log
         run: scripts/check-debug-log.sh
       - name: UI performance

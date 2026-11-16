@@ -15,12 +15,15 @@ enum SidebarSelection: Hashable {
 	case account(UUID)
 	case group(UUID)
 	case category(UUID)
+	/// A saved search, which shows the rows of every account.
+	case search(UUID)
 
 	var scope: LedgerScope {
 		switch self {
 		case let .account(id): .account(id)
 		case let .group(id): .accountGroup(id)
 		case let .category(id): .category(id)
+		case .search: .all
 		}
 	}
 }
@@ -86,6 +89,8 @@ final class AppModel {
 	/// What failed setups of extension services left for the next setup of the same service and login.
 	/// It lives in memory until the lock.
 	let extensionSetupStates = KeptSetupStates()
+	/// The entries of the sidebar section "Searches", in their order. The lock empties them with the ledger.
+	var savedSearches: [SavedSearch] = []
 	/// The bank accesses, by ID. Their states stay in the database until a refresh reads them.
 	private(set) var accesses: [UUID: Access] = [:]
 	/// The "Add Account" assistant while its sheet is open.
@@ -151,6 +156,7 @@ final class AppModel {
 			if !selectedTransactions.isEmpty { selectedTransactions = [] }
 			// After the selected rows, so that the new filter waits for their drawing like the new view.
 			if let selection { filter.resetHidden(in: selection.scope) }
+			if case let .search(id) = selection { applySavedSearch(id) }
 			tableChanged()
 		}
 	}
@@ -426,20 +432,21 @@ final class AppModel {
 		case failed
 	}
 
-	private static let staleKeychainNotice =
-		"The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again."
+	private static var staleKeychainNotice: String {
+		String(localized: "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again.")
+	}
 
 	/// Opens the database away from the main thread, so that the window can show what happens.
 	/// When the app moved on while the database opened, the new store is closed and nothing is unlocked.
 	private func openAway(_ opener: @escaping @Sendable (Vault, @escaping @Sendable () -> Void) throws -> Store) async throws {
 		let phaseBefore = phase
-		opening = "Opening database..."
+		opening = String(localized: "Opening database...")
 		defer { opening = nil }
 		let vault = vault
 		let store = try await Task.detached {
 			try opener(vault) {
 				Task { @MainActor [weak self] in
-					if self?.opening != nil { self?.opening = "Upgrading database..." }
+					if self?.opening != nil { self?.opening = String(localized: "Upgrading database...") }
 				}
 			}
 		}.value
@@ -484,7 +491,7 @@ final class AppModel {
 			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
 			try loadUnlockSettings()
 		} catch {
-			alert = AlertMessage(title: "The database password could not be stored in the Keychain.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "The database password could not be stored in the Keychain."), message: String(describing: error))
 		}
 		return .unlocked
 	}
@@ -522,6 +529,7 @@ final class AppModel {
 		ledgerChange = "load"
 		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+		savedSearches = try store.savedSearches()
 		// The saved PINs live only in the database, so a refresh after a restart or an unlock does not ask.
 		try sync.broker.open(store)
 		if selection == nil {
@@ -574,6 +582,7 @@ final class AppModel {
 				guard let self, self.phase == .locked else { return }
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
+				self.savedSearches = []
 				self.selectedTransactions = []
 			}
 		}
@@ -584,12 +593,12 @@ final class AppModel {
 		do {
 			try vault.setPassword(password, on: store)
 			hasPassword = true
-			alert = AlertMessage(title: "The password has been changed.", message: "From now on, the database password opens Moneten.")
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(localized: "From now on, the database password opens Moneten."))
 		} catch let failure as Vault.Failure where failure.passwordChanged {
 			hasPassword = true
-			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 		} catch {
-			alert = AlertMessage(title: "Could not change password of database.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not change password of database."), message: String(describing: error))
 		}
 	}
 
@@ -598,15 +607,15 @@ final class AppModel {
 		guard let store else { return nil }
 		do {
 			try vault.changePassword(current: current, new: new, on: store)
-			alert = AlertMessage(title: "The password has been changed.", message: "")
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: "")
 			return nil
 		} catch Vault.Failure.incorrectPassword {
-			return "Incorrect password!"
+			return String(localized: "Incorrect password!")
 		} catch let failure as Vault.Failure where failure.passwordChanged {
-			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {
-			return "Could not change password of database. \(error)"
+			return String(localized: "Could not change password of database. \(String(describing: error))")
 		}
 	}
 
@@ -640,7 +649,7 @@ final class AppModel {
 
 	/// Writes the lock settings to the database first, as every change does.
 	func saveLockSettings(_ settings: LockSettings) throws {
-		guard let store else { throw SecurityChangeFailure(description: "Unlock Moneten to change this setting.") }
+		guard let store else { throw SecurityChangeFailure(description: String(localized: "Unlock Moneten to change this setting.")) }
 		try store.saveLockSettings(settings)
 		lockSettings = settings
 	}
@@ -716,6 +725,7 @@ final class AppModel {
 		case let .account(id): ledger.account(id)?.name ?? ""
 		case let .group(id): ledger.group(id)?.name ?? ""
 		case let .category(id): ledger.categoryPath(id)
+		case let .search(id): savedSearches.first { $0.id == id }?.name ?? ""
 		case nil: "Moneten"
 		}
 	}
@@ -733,7 +743,7 @@ final class AppModel {
 			ledger.update(changed.transactions, parts: changed.parts)
 			return true
 		} catch {
-			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
 			return false
 		}
 	}
@@ -863,7 +873,7 @@ final class AppModel {
 			ledgerChange = "move categories=\(changed.count)"
 			ledger = moved
 		} catch {
-			alert = AlertMessage(title: "Could not move the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not move the category."), message: String(describing: error))
 		}
 	}
 
@@ -888,10 +898,10 @@ final class AppModel {
 		guard count > 0 else { return }
 		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()
-		alert.messageText = "Mark all transactions as checked?"
-		alert.informativeText = "A total of \(count) \(count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
-		alert.addButton(withTitle: "Mark as Checked")
-		alert.addButton(withTitle: "Cancel")
+		alert.messageText = String(localized: "Mark all transactions as checked?")
+		alert.informativeText = String(localized: "A total of \(String(localized: "\(count) transactions")) in \(String(localized: "\(accounts) accounts")) will be marked as checked.")
+		alert.addButton(withTitle: String(localized: "Mark as Checked"))
+		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(rows.map(\.id))) }
 	}
 
@@ -923,7 +933,7 @@ final class AppModel {
 				selectedTransactions = parts.isEmpty ? [transactionID] : Set(parts.map(\.id))
 				return true
 			} catch {
-				alert = AlertMessage(title: "Could not split the transaction.", message: String(describing: error))
+				alert = AlertMessage(title: String(localized: "Could not split the transaction."), message: String(describing: error))
 				return false
 			}
 		}
@@ -936,8 +946,8 @@ final class AppModel {
 		do {
 			commit((transactions: try ledger.offsettingEntries(of: ids.compactMap { ledger.row($0) }, into: target), parts: []))
 		} catch {
-			alert = AlertMessage(title: "Could not create the offsetting entries.",
-				message: "The amount of a selected transaction has no opposite amount that the app can store.")
+			alert = AlertMessage(title: String(localized: "Could not create the offsetting entries."),
+				message: String(localized: "The amount of a selected transaction has no opposite amount that the app can store."))
 		}
 	}
 
@@ -950,7 +960,7 @@ final class AppModel {
 			ledger.remove(transactionIDs: ids)
 			selectedTransactions.subtract(ids)
 		} catch {
-			alert = AlertMessage(title: "Could not delete the transactions.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not delete the transactions."), message: String(describing: error))
 		}
 	}
 
@@ -964,7 +974,7 @@ final class AppModel {
 			if let value = account.portfolioValue() { ledger.record(value) }
 			ledger.replace()
 		} catch {
-			alert = AlertMessage(title: "Could not save the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account."), message: String(describing: error))
 		}
 	}
 
@@ -1001,7 +1011,7 @@ final class AppModel {
 			do {
 				try sync.broker.remember(pin, for: access.id, save: savePIN)
 			} catch {
-				alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+				alert = AlertMessage(title: String(localized: "Could not save the PIN."), message: String(describing: error))
 			}
 		}
 		accesses[access.id] = access
@@ -1070,7 +1080,7 @@ final class AppModel {
 				selection = .group(g.id)
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1080,7 +1090,7 @@ final class AppModel {
 			try store.save(group)
 			ledger.upsert(group)
 		} catch {
-			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1118,7 +1128,7 @@ final class AppModel {
 			ledgerChange = "move groups=\(change.groups.count) accounts=\(change.accounts.count)"
 			ledger.apply(change)
 		} catch {
-			alert = AlertMessage(title: "Could not move the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not move the account."), message: String(describing: error))
 		}
 	}
 
@@ -1127,7 +1137,7 @@ final class AppModel {
 		do {
 			try sync.broker.removeSavedPIN(of: access)
 		} catch {
-			alert = AlertMessage(title: "Could not remove the saved PIN.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the saved PIN."), message: String(describing: error))
 		}
 	}
 
@@ -1144,7 +1154,7 @@ final class AppModel {
 				if selection == .account(id) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the account."), message: String(describing: error))
 		}
 	}
 
@@ -1159,7 +1169,7 @@ final class AppModel {
 				if selection == .group(id) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1179,7 +1189,7 @@ final class AppModel {
 	/// why nothing happens.
 	func refresh(_ scope: RefreshScope, enforced: Bool = false) {
 		guard autoRefresh.isOnline else {
-			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
+			alert = AlertMessage(title: SyncFailure.offline.message, message: String(localized: "Connect this Mac to the Internet and try again."))
 			return
 		}
 		refresh(ledger.refreshAccounts(scope), enforced: enforced)
@@ -1280,7 +1290,7 @@ final class AppModel {
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
-				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: "Moneten has no connector for this access yet.") }
+				if attended { alert = AlertMessage(title: String(localized: "Could not refresh \(access.bankName)."), message: String(localized: "Moneten has no connector for this access yet.")) }
 				continue
 			}
 			do {
@@ -1288,7 +1298,7 @@ final class AppModel {
 					attended: attended)
 				Trail.log("refresh start access=\(trailNumber(of: access.id)) accounts=\(accounts.count) attended=\(attended)")
 			} catch {
-				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
+				if attended { alert = AlertMessage(title: String(localized: "Could not refresh \(access.bankName)."), message: String(describing: error)) }
 			}
 		}
 	}
@@ -1296,7 +1306,7 @@ final class AppModel {
 	private func connector(for source: AccessSource) -> (any BankConnector)? {
 		switch source {
 		case .fints: fints
-		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? CheckedAtStart { throw SyncFailure.unsupported("The extension \(id) is not installed.") }
+		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? CheckedAtStart { throw SyncFailure.unsupported(String(localized: "The extension \(id) is not installed.")) }
 		case .finAPI: nil
 		}
 	}
@@ -1313,7 +1323,7 @@ final class AppModel {
 				ledger.upsert(a)
 			}
 		} catch {
-			report(AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error)), attended: attended)
+			report(AlertMessage(title: String(localized: "Could not save the result of the refresh."), message: String(describing: error)), attended: attended)
 		}
 	}
 
@@ -1324,13 +1334,13 @@ final class AppModel {
 
 	/// The step of the first running refresh, for the status line.
 	var refreshStatus: String? {
-		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? "the bank", state) : nil }.sorted { $0.0 < $1.0 }
+		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? String(localized: "the bank"), state) : nil }.sorted { $0.0 < $1.0 }
 		guard let (bank, state) = running.first else { return nil }
 		switch state {
-		case let .fetching(done, of): return "Getting transactions from \(bank) (\(min(done + 1, of)) of \(of))..."
-		case .needsUser(_, waiting: true, _): return "\(bank) waits for your input..."
-		case .needsUser: return "\(bank) needs your input..."
-		default: return "Connecting to \(bank)..."
+		case let .fetching(done, of): return String(localized: "Getting transactions from \(bank) (\(min(done + 1, of)) of \(of))...")
+		case .needsUser(_, waiting: true, _): return String(localized: "\(bank) waits for your input...")
+		case .needsUser: return String(localized: "\(bank) needs your input...")
+		default: return String(localized: "Connecting to \(bank)...")
 		}
 	}
 
@@ -1353,7 +1363,7 @@ final class AppModel {
 			ledger.upsert(category)
 			ledger.replace()
 		} catch {
-			alert = AlertMessage(title: "Could not save the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the category."), message: String(describing: error))
 		}
 	}
 
@@ -1368,7 +1378,7 @@ final class AppModel {
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the category."), message: String(describing: error))
 		}
 	}
 
@@ -1394,7 +1404,7 @@ final class AppModel {
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
 			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
-		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
+		if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
 	}
 
 	// MARK: Migration
@@ -1417,6 +1427,8 @@ final class AppModel {
 			ledgerChange = "load"
 			ledger = loaded
 			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
+			// A complete import brings saved searches.
+			savedSearches = try store.savedSearches()
 			filter.dropMissing(in: ledger)
 			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 			// A complete import replaces the account groups.
@@ -1649,6 +1661,9 @@ enum SheetKind: Identifiable, Equatable {
 	case exporting
 	case setPassword
 	case changePassword
+	/// The name of a new saved search, with the search field and the filter bar that are on screen.
+	case saveSearch
+	case renameSearch(UUID)
 
 	var id: String { String(describing: self) }
 }
