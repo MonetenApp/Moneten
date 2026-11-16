@@ -31,20 +31,30 @@ public struct Categorizer: Sendable {
 		}
 	}
 
-	/// The fields of a row that a rule reads. Two rows with the same fields give every rule the same result.
-	// The synthesized Hashable conformance reads the fields, which Periphery cannot see.
-	// periphery:ignore
+	/// The fields of a row that a rule reads. Two rows with the same fields give every rule the same result. The synthesized
+	/// Hashable conformance reads the fields, which Periphery cannot see.
 	private struct Texts: Hashable {
+		// periphery:ignore
 		let accountID: UUID
+		// periphery:ignore
 		let name: String
+		// periphery:ignore
 		let purpose: String
+		// periphery:ignore
 		let bookingText: String?
+		// periphery:ignore
 		let endToEndReference: String?
+		// periphery:ignore
 		let mandateReference: String?
+		// periphery:ignore
 		let creditorID: String?
+		// periphery:ignore
 		let comment: String?
+		// periphery:ignore
 		let counterpartyIBAN: String?
+		// periphery:ignore
 		let currency: String
+		// periphery:ignore
 		let amountMinor: Int64
 
 		init(_ t: Transaction) {
@@ -62,9 +72,9 @@ public struct Categorizer: Sendable {
 		}
 	}
 
-	// The synthesized Hashable conformance reads the fields, which Periphery cannot see.
-	// periphery:ignore
 	private struct ResultKey: Hashable {
+		// The synthesized Hashable conformance reads it, which Periphery cannot see.
+		// periphery:ignore
 		let entry: Int
 		let texts: Texts
 	}
