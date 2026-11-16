@@ -38,6 +38,8 @@ Tasks marked as built in part may differ from the spec in the way their note say
 - A FUTR row in an offline account stays pending until a booked version arrives or the user deletes it. An offline account has no refresh that drops it after its date.
 
 - `Storage` stores each CSV profile as versioned JSON in the encrypted database. Independent records keep unreadable profiles unchanged when another is saved or deleted. `Import` decodes known column fields and defaults a missing category option to false. Legacy profiles without a delimiter require preview confirmation.
+- The name is the primary key of the table `csvProfile`, so a readable profile and an unreadable one cannot share a name. Saving under the name of an unreadable record, such as one with a newer payload version, is refused with `Store.CSVProfileNameTaken`, and the preview says so before "Import". The other choice, saving the new profile under a changed name, would apply a name that the user did not type. A record counts as unreadable exactly when `csvProfiles()` leaves it out.
+- A quotation mark that is still open at the end of a CSV file fails the file with the line where the quote opened, because the open field would otherwise hold every later row and lose them without a warning.
 - `Domain` indexes category names and full paths once per file. `Storage` creates, assigns, merges and removes unused file categories in one database transaction, so a failed merge rolls back categories too.
 
 - Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes and before commit. Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.

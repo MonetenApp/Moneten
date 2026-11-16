@@ -1378,7 +1378,7 @@ final class DebugHarness {
 				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
 				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
 				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
-				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("nameTaken", .flag(preview.nameProblem != nil)), ("createsCategories", .flag(preview.layout.createsCategories)),
 				("profiles", .count(preview.profiles.count)))
 		}
 	}
