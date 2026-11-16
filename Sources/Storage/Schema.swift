@@ -337,6 +337,11 @@ enum Schema {
 			try db.execute(sql: "UPDATE bankTransaction SET review = 'unclearBooking' WHERE needsReview = 1")
 			try db.alter(table: "bankTransaction") { t in t.drop(column: "needsReview") }
 		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). v21 and v22 are
+		// reserved for other changes.
+		m.registerMigration("v23") { db in
+			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
+		}
 		return m
 	}
 }

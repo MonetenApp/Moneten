@@ -139,12 +139,13 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `review` | Optional `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
+| `isManual` | Optional `true` for a transaction that the user added with "Add Transaction...". Missing means a transaction that a source delivered. |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 
 ## Deleted transaction
 
-What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again.
+What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again. A manual transaction leaves no record, because no source delivers it.
 
 | Key | Content |
 |---|---|
@@ -187,7 +188,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Split part
 
-Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity and v19 adds CSV profiles. The file format version is separate from these migration numbers.
+Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity, v19 adds CSV profiles, and v23 adds the manual mark. The file format version is separate from these migration numbers.
 
 Each split part has these keys.
 

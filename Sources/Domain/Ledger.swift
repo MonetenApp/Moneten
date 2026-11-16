@@ -395,6 +395,24 @@ public struct Ledger: Sendable {
 			balanceToday: Money(minorUnits: computedBalance(of: account, through: today).minorUnits + difference, currency: account.currency))
 	}
 
+	/// The accounts whose initial balance moves when the manual rows `old` become `new`, as an addition, a change, or
+	/// a deletion does. In an account with bank access, a manual row booked by the day of the bank balance is part of
+	/// that balance. Once a refresh set the initial balance, it moves against such a row, so the computed balance keeps
+	/// ending at the bank balance and the row only shapes the history before it. Before that, the first refresh derives
+	/// the initial balance with the manual rows. A manual row after the day of the bank balance counts on top of it.
+	public func keepingBankBalance(replacing old: [Transaction], with new: [Transaction], calendar: Calendar = .current) -> [Account] {
+		let ids = Set((old + new).filter(\.isManual).map(\.accountID))
+		return ids.sorted { $0.uuidString < $1.uuidString }.compactMap { id -> Account? in
+			guard var a = account(id), a.source == .bank, a.kind != .portfolio, a.initialBalanceIsSet, a.bankBalanceMinor != nil else { return nil }
+			let day = Day(a.bankBalanceDate ?? Date(), calendar: calendar)
+			let shift = a.bookedSum(of: old.lazy.filter { $0.isManual && $0.accountID == id }, through: day)
+				- a.bookedSum(of: new.lazy.filter { $0.isManual && $0.accountID == id }, through: day)
+			guard shift != 0 else { return nil }
+			a.initialBalanceMinor += shift
+			return a
+		}
+	}
+
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
 	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64 {

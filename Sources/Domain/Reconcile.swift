@@ -106,8 +106,12 @@ public struct Reconciliation: Sendable, Equatable {
 /// nothing to write except the balance. `stored` must be all live rows of `account`, and `deleted` all
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
-public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
+public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
+	// No bank delivers a row that the user added by hand, so a refresh never pairs one: a delivered row with its
+	// day, amount, and purpose is another booking. A file still pairs it, so the same cash rows from a file add no copies.
+	// The scan comes first, because a copy of 50,000 rows on each refresh costs more than it.
+	let stored = delivery.isFetched && all.contains(where: \.isManual) ? all.filter { !$0.isManual } : all
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
@@ -226,7 +230,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 		if a.derivesInitialBalance, result.transactionFailure == nil {
 			// Dropped and marked rows are pending and do not count.
 			let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-			a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added)
+			a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added)
 		}
 		r.account = a
 	}

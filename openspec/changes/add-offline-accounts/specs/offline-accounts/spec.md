@@ -71,6 +71,46 @@ The app SHALL refuse a manual transaction with an amount of zero, with text in t
 - **WHEN** the user enters the amount 0,00 and confirms
 - **THEN** the app says that the amount should not be zero and stores nothing
 
+#### Scenario: More decimal places than the currency has
+
+- **GIVEN** the offline account "Wallet" in euros
+- **WHEN** the user enters the amount 4,8051 and confirms
+- **THEN** the app says that the amount has more decimal places than its currency and stores nothing
+
+### Requirement: Reading a typed amount
+
+The app SHALL read a typed amount once with a decimal comma and once with a decimal point, where the other character may only separate groups of three digits. A reading with more decimal places than the currency of the account has does not count. When two readings with different values remain, the decimal mark of the region of the Mac decides. The app ignores the symbol and the code of the currency of the account.
+
+#### Scenario: Thousands in euros
+
+- **GIVEN** an offline account in euros
+- **WHEN** the user enters the amount 1.234 and confirms
+- **THEN** the list shows a transaction of 1.234,00 €
+
+#### Scenario: Thousands in yen
+
+- **GIVEN** an offline account in yen
+- **WHEN** the user enters the amount 1,200 and confirms
+- **THEN** the list shows a transaction of 1.200 JPY
+
+#### Scenario: Three decimal places, region with a decimal comma
+
+- **GIVEN** an offline account in Kuwaiti dinar and a Mac in a region with a decimal comma
+- **WHEN** the user enters the amount 12,345 and confirms
+- **THEN** the transaction has the amount 12,345 KWD
+
+#### Scenario: Three decimal places, region with a decimal point
+
+- **GIVEN** an offline account in Kuwaiti dinar and a Mac in a region with a decimal point
+- **WHEN** the user enters the amount 12,345 and confirms
+- **THEN** the transaction has the amount 12.345,000 KWD
+
+#### Scenario: Currency symbol
+
+- **GIVEN** an offline account in US dollars
+- **WHEN** the user enters the amount 12.50 $ and confirms
+- **THEN** the transaction has the amount 12,50 USD
+
 ### Requirement: Suggestions while typing
 
 The app SHALL suggest completions from earlier transactions while the user types the name of a manual transaction. A chosen suggestion fills the name, and it fills the purpose and the category while those fields are still empty.
@@ -81,6 +121,12 @@ The app SHALL suggest completions from earlier transactions while the user types
 - **WHEN** the user types "Bäck" in the name field and chooses the suggestion "Bäckerei Gutbrot"
 - **THEN** the window shows the name "Bäckerei Gutbrot", the purpose "Brot", and the category "Groceries"
 
+#### Scenario: Typed name
+
+- **GIVEN** an earlier transaction with the name "Kiosk" and the purpose "Zeitung"
+- **WHEN** the user types "Kiosk" letter by letter in the name field
+- **THEN** the purpose stays empty
+
 ### Requirement: A selected transaction is the template
 
 The app SHALL fill the window for a new transaction with the name, the amount, the purpose, and the category of the transaction that is selected when the user calls "Add Transaction...". The date is today.
@@ -90,6 +136,12 @@ The app SHALL fill the window for a new transaction with the name, the amount, t
 - **GIVEN** a selected transaction of -12,00 € to "Kiosk am Markt" with the category "Leisure"
 - **WHEN** the user presses ⌘+
 - **THEN** the window shows "Kiosk am Markt", -12,00, "Leisure", and today's date
+
+#### Scenario: Template in another currency
+
+- **GIVEN** the account "Wallet" in euros and its selected transaction of -12,00 USD to "Kiosk am Markt" with the category "Leisure"
+- **WHEN** the user presses ⌘+
+- **THEN** the window shows "Kiosk am Markt", "Leisure", today's date, and an empty amount
 
 ### Requirement: Edit and delete manual transactions
 
@@ -257,3 +309,67 @@ The app SHALL also offer "Add Transaction..." in the view of a single account wi
 - **WHEN** the user adds a manual transaction of 10.000,00 € with the date of the deposit
 - **THEN** the account has a bar chart that starts at that date
 - **AND** the next refresh keeps the manual transaction
+
+### Requirement: A refresh never takes a manual transaction
+
+The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one.
+
+#### Scenario: Same day and amount
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026
+- **WHEN** a refresh delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has both transactions
+- **AND** the manual transaction keeps its name "Kiosk"
+
+#### Scenario: Deleted manual transaction
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026
+- **WHEN** the user deletes it, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has the delivered transaction
+
+### Requirement: A manual transaction is part of the bank balance
+
+The app SHALL count a manual transaction in an account with bank access as part of the balance that the bank reports when its booking date is not after the day of that balance. Once a refresh set the initial balance, the app moves the initial balance against each such manual transaction that the user adds, changes, or deletes, so the computed balance keeps ending at the bank balance. A manual transaction after the day of the bank balance counts on top of it.
+
+#### Scenario: Deposit after the first refresh
+
+- **GIVEN** a fixed term deposit whose first refresh on 01.11.2026 delivered the balance 10.000,00 € and no transactions
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+- **AND** the computed balance on 28.02.2026 is 6.000,00 €
+
+#### Scenario: Delete the deposit
+
+- **GIVEN** the fixed term deposit of the scenario above with its manual transaction of 4.000,00 €
+- **WHEN** the user deletes the manual transaction
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+
+#### Scenario: Before the first refresh
+
+- **GIVEN** an account with bank access without a refresh and a manual transaction of 4.000,00 € on 01.03.2026
+- **WHEN** the first refresh delivers the balance 10.000,00 € and no transactions
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+- **AND** the computed balance on 28.02.2026 is 6.000,00 €
+
+### Requirement: What a transaction in an account with bank access can change
+
+The app SHALL let the user change every field of a manual transaction in an account with bank access. A transaction from a file import keeps its date, its amount, and its purpose, and the user can change its name, its category, and its comment. A transaction that a refresh or a migration brought, and any other transaction without the manual mark, keeps every field except its category and its comment.
+
+#### Scenario: Manual transaction
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk"
+- **WHEN** the user opens "Edit Transaction..."
+- **THEN** the window offers the date, the name, the amount, the purpose, the category, and the comment for a change
+
+#### Scenario: Transaction from a file
+
+- **GIVEN** an account with bank access and a transaction of -12,00 € "KIOSK" from a CSV file
+- **WHEN** the user opens "Edit Transaction..."
+- **THEN** the window shows the date, the amount, and the purpose without a field to change them
+- **AND** offers the name, the category, and the comment for a change
+
+#### Scenario: Fetched transaction
+
+- **GIVEN** an account with bank access and a transaction of -12,00 € "KIOSK" from a refresh
+- **WHEN** the user opens "Edit Transaction..."
+- **THEN** the window offers only the category and the comment for a change

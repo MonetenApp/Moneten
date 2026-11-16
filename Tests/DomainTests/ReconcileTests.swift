@@ -243,11 +243,38 @@ struct ReconcileTests {
 	@Test("A refresh keeps a row that the user added by hand in an account with bank access")
 	func keepsManualRow() {
 		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
-		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: 1_000_000, name: "Anlage")
+		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: 1_000_000, name: "Anlage", isManual: true)
 		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR")), into: bank, stored: [manual])
 		#expect(r.dropped == [])
 		#expect(r.updated == [])
 		#expect(r.account?.bankBalanceMinor == 1_000_000)
+	}
+
+	@Test("A refresh adds a delivered row with the day and the amount of a manual row and leaves the manual row alone")
+	func manualRowIsNoPartner() {
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: -1_200, name: "Kiosk", purpose: "Kartenzahlung", isManual: true)
+		let delivered = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: -1_200, name: "KIOSK", purpose: "KARTENZAHLUNG", sourceID: "TX-7")
+		let r = merge(refresh([delivered]), into: bank, stored: [manual])
+		#expect(r.added.map(\.sourceID) == ["TX-7"])
+		#expect(r.added.first?.isManual == false)
+		#expect(r.updated == [] && r.booked == [] && r.skipped == 0)
+		var ledger = Ledger(accounts: [bank], transactions: [manual])
+		ledger.apply(r)
+		#expect(ledger.transactions(ofAccount: bank.id).count == 2)
+		#expect(ledger.transaction(manual.id) == manual)
+		// The same delivery again pairs with the stored bank row, not with the manual one.
+		let again = merge(refresh([delivered]), into: bank, stored: ledger.transactions(ofAccount: bank.id))
+		#expect(again.added == [] && again.skipped == 1)
+	}
+
+	@Test("The first refresh derives the initial balance with the manual rows, so the computed balance meets the bank balance")
+	func firstRefreshCountsManualRows() {
+		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
+		let deposit = Transaction(accountID: bank.id, bookingDate: day(1, month: 3), amountMinor: 400_000, name: "Anlage", isManual: true)
+		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: now), into: bank, stored: [deposit])
+		#expect(r.account?.initialBalanceMinor == 600_000)
+		#expect(r.account?.initialBalanceIsSet == true)
 	}
 
 	@Test("A booked row with a return reason books a pending row and keeps the reason")

@@ -17,23 +17,53 @@ struct TransactionDraftTests {
 
 	@Test("The amount keeps its sign: a leading minus goes out, a number without a sign comes in")
 	func signedAmount() {
-		#expect(draft(amount: "-4,80").amountMinor(in: "EUR") == .success(-480))
-		#expect(draft(amount: "50,00").amountMinor(in: "EUR") == .success(5_000))
-		#expect(draft(amount: "+12").amountMinor(in: "EUR") == .success(1_200))
-		#expect(draft(amount: "-1.250,00 €").amountMinor(in: "EUR") == .success(-125_000))
+		#expect(draft(amount: "-4,80").amountMinor(in: "EUR", region: .comma) == .success(-480))
+		#expect(draft(amount: "50,00").amountMinor(in: "EUR", region: .comma) == .success(5_000))
+		#expect(draft(amount: "+12").amountMinor(in: "EUR", region: .comma) == .success(1_200))
+		#expect(draft(amount: "-1.250,00 €").amountMinor(in: "EUR", region: .comma) == .success(-125_000))
 	}
 
-	@Test("An amount of zero, text that is not a number, and an empty field are refused")
+	@Test("An amount of zero, text that is not a number, an empty field, and an amount beyond the minor units are refused")
 	func refusedAmounts() {
-		#expect(draft(amount: "0,00").amountMinor(in: "EUR") == .failure(.zero))
-		#expect(draft(amount: "-0,0001").amountMinor(in: "EUR") == .failure(.zero))
-		#expect(draft(amount: "vier").amountMinor(in: "EUR") == .failure(.notANumber))
-		#expect(draft(amount: "1,234").amountMinor(in: "EUR") == .failure(.notANumber))
-		#expect(draft(amount: " ").amountMinor(in: "EUR") == .failure(.missing))
-		#expect(draft(amount: "100000000000000000000").amountMinor(in: "EUR") == .failure(.tooLarge))
-		#expect(draft(amount: "-92233720368547758,08").amountMinor(in: "EUR") == .failure(.tooLarge))
-		#expect(draft(amount: "-92233720368547758,07").amountMinor(in: "EUR") == .success(-9_223_372_036_854_775_807))
+		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma) == .failure(.zero))
+		#expect(draft(amount: "-0,00").amountMinor(in: "EUR", region: .comma) == .failure(.zero))
+		#expect(draft(amount: "vier").amountMinor(in: "EUR", region: .comma) == .failure(.notANumber))
+		#expect(draft(amount: "1,2,3").amountMinor(in: "EUR", region: .comma) == .failure(.notANumber))
+		#expect(draft(amount: "12 $").amountMinor(in: "EUR", region: .comma) == .failure(.notANumber))
+		#expect(draft(amount: " ").amountMinor(in: "EUR", region: .comma) == .failure(.missing))
+		#expect(draft(amount: "100000000000000000000").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
+		#expect(draft(amount: "-92233720368547758,08").amountMinor(in: "EUR", region: .comma) == .failure(.tooLarge))
+		#expect(draft(amount: "-92233720368547758,07").amountMinor(in: "EUR", region: .comma) == .success(-9_223_372_036_854_775_807))
 		#expect(AmountProblem.zero.message == "The amount should not be zero.")
+	}
+
+	@Test("A reading with more decimal places than the currency has does not count, and the decimal mark of the region decides a tie", arguments: [
+		("1.234", "EUR", DecimalMark.comma, Int64(123_400)), ("1.234", "EUR", .point, 123_400),
+		("1,200", "JPY", .comma, 1_200), ("1.200", "JPY", .point, 1_200),
+		("12,345", "KWD", .comma, 12_345), ("12,345", "KWD", .point, 12_345_000),
+		("1.234", "KWD", .comma, 1_234_000), ("1.234", "KWD", .point, 1_234),
+		("0,007", "KWD", .point, 7), ("-1,2340", "KWD", .point, -1_234),
+		("12.50 $", "USD", .comma, 1_250), ("USD 12.50", "USD", .comma, 1_250), ("-12,50 €", "EUR", .point, -1_250), ("12,5", "EUR", .point, 1_250),
+		("1.234,56", "EUR", .point, 123_456), ("1,234.56", "EUR", .comma, 123_456),
+	])
+	func amountReadings(text: String, currency: String, region: DecimalMark, minor: Int64) {
+		#expect(draft(amount: text).amountMinor(in: currency, region: region) == .success(minor))
+	}
+
+	@Test("An amount with more decimal places than its currency has is refused and never rounds", arguments: [
+		("4,8051", "EUR"), ("4.8051", "EUR"), ("0,007", "EUR"), ("12,5", "JPY"), ("1,2345", "KWD"),
+	])
+	func tooManyDecimals(text: String, currency: String) {
+		for region in DecimalMark.allCases {
+			#expect(draft(amount: text).amountMinor(in: currency, region: region) == .failure(.tooManyDecimals))
+		}
+		#expect(AmountProblem.tooManyDecimals.message == "The amount has more decimal places than its currency.")
+	}
+
+	@Test("The region names the decimal mark that wins a tie")
+	func regionMark() {
+		#expect(DecimalMark(region: Locale(identifier: "de_DE")) == .comma)
+		#expect(DecimalMark(region: Locale(identifier: "en_US")) == .point)
 	}
 
 	@Test("A selected transaction fills the name, the amount with its sign, the purpose, and the category")
@@ -43,9 +73,57 @@ struct TransactionDraftTests {
 		let d = TransactionDraft(template: kiosk)
 		#expect(d.name == "Kiosk am Markt")
 		#expect(d.amount == "-12,00")
-		#expect(d.amountMinor(in: "EUR") == .success(-1_200))
+		#expect(d.amountMinor(in: "EUR", region: .comma) == .success(-1_200))
+		#expect(d.amountMinor(in: "EUR", region: .point) == .success(-1_200))
 		#expect(d.purpose == "Zeitung")
 		#expect(d.categoryID == leisure.id)
+	}
+
+	@Test("Add Transaction starts from the one selected row of the account, and a row in another currency gives no amount")
+	func templateChoice() throws {
+		let kiosk = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: -1_200, name: "Kiosk am Markt",
+			purpose: "Zeitung", categoryID: leisure.id, categorizedBy: .manual)
+		var dollars = kiosk
+		dollars.id = UUID()
+		dollars.currency = "USD"
+		let paper = Transaction(accountID: business.id, bookingDate: Day(year: 2026, month: 10, day: 3), amountMinor: -500, name: "Papierhaus Beispiel")
+		let split = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 4), amountMinor: -3_000, name: "Markt", purpose: "Einkauf")
+		let parts = [SplitPart(transactionID: split.id, position: 0, amountMinor: -1_000, categoryID: groceries.id), SplitPart(transactionID: split.id, position: 1, amountMinor: -2_000)]
+		let l = Ledger(accounts: [wallet, business], categories: [groceries, leisure], transactions: [kiosk, dollars, paper, split], parts: parts)
+
+		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id]) == TransactionDraft(template: kiosk))
+		let foreign = l.newTransactionDraft(in: wallet, selection: [dollars.id])
+		#expect(foreign.name == "Kiosk am Markt" && foreign.purpose == "Zeitung" && foreign.categoryID == leisure.id)
+		#expect(foreign.amount == "")
+		#expect(l.newTransactionDraft(in: wallet, selection: [paper.id]) == TransactionDraft())
+		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id, dollars.id]) == TransactionDraft())
+		#expect(l.newTransactionDraft(in: wallet, selection: []) == TransactionDraft())
+		let part = l.newTransactionDraft(in: wallet, selection: [parts[0].id])
+		#expect(part.name == "Markt" && part.amount == "-10,00" && part.categoryID == groceries.id)
+	}
+
+	@Test("What the window can change: everything in a new, offline, or manual row, the name too in a file row of a bank account, else the category and the comment")
+	func editing() {
+		let bank = Account(position: 2, name: "Giro", kind: .giro, source: .bank)
+		func row(_ account: Account, manual: Bool = false, file: Bool = false, fetched: Bool = false, source: String? = nil) -> Transaction {
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_200, name: "Kiosk", isFetched: fetched,
+				sourceID: source, fileIdentity: file ? "file:v1:kiosk" : nil, isManual: manual)
+		}
+		let rows = [
+			row(wallet), row(wallet, file: true), row(wallet, source: "moneymoney:1"),
+			row(bank, manual: true), row(bank, file: true), row(bank, file: true, fetched: true), row(bank, fetched: true, source: "TX-1"),
+			row(bank, source: "moneymoney:2"), row(bank),
+		]
+		let split = row(bank, manual: true)
+		let part = SplitPart(transactionID: split.id, position: 0, amountMinor: -200)
+		let l = Ledger(accounts: [wallet, bank], transactions: rows + [split], parts: [part, SplitPart(transactionID: split.id, position: 1, amountMinor: -1_000)])
+		#expect(l.editing(nil) == .allFields)
+		#expect(rows.map { l.editing($0.id) } == [
+			.allFields, .allFields, .allFields,
+			.allFields, .nameCategoryAndComment, .categoryAndComment, .categoryAndComment,
+			.categoryAndComment, .categoryAndComment,
+		])
+		#expect(l.editing(part.id) == .categoryAndComment)
 	}
 
 	@Test("The window shows an amount with every decimal place of its currency, and the text reads back to the same amount")
@@ -61,7 +139,7 @@ struct TransactionDraftTests {
 		for (minor, currency) in [(5_000, "EUR"), (-5, "EUR"), (-123_456, "EUR"), (1_200, "JPY"), (-1_234, "KWD"), (7, "KWD")] as [(Int64, String)] {
 			var d = TransactionDraft()
 			d.amount = shown(minor, currency)
-			#expect(d.amountMinor(in: currency) == .success(minor))
+			for region in DecimalMark.allCases { #expect(d.amountMinor(in: currency, region: region) == .success(minor)) }
 		}
 	}
 
@@ -79,6 +157,52 @@ struct TransactionDraftTests {
 		#expect(l.nameSuggestions(for: "kiosk") == [])
 		#expect(l.nameSuggestions(for: "") == [])
 		#expect(l.nameSuggestions(for: "B", limit: 1).count == 1)
+	}
+
+	@Test("Suggestions keep two spaces and a trailing space of the typed text as the search text does")
+	func suggestionSpaces() {
+		let l = Ledger(accounts: [wallet], transactions: [
+			Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 1), amountMinor: -100, name: "Bäckerei  Gutbrot"),
+		])
+		#expect(l.nameSuggestions(for: "Bäckerei  G").map(\.name) == ["Bäckerei  Gutbrot"])
+		#expect(l.nameSuggestions(for: "Bäckerei G").map(\.name) == ["Bäckerei  Gutbrot"])
+		#expect(l.nameSuggestions(for: "Bäckerei ").map(\.name) == ["Bäckerei  Gutbrot"])
+		#expect(l.nameSuggestions(for: "  Bäck").map(\.name) == ["Bäckerei  Gutbrot"])
+		#expect(l.nameSuggestions(for: "Bäckereig") == [])
+	}
+
+	@Test("Only a chosen suggestion fills the purpose and the category, not a name typed to its end")
+	func enterName() {
+		let kiosk = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: -1_200, name: "Kiosk", purpose: "Zeitung",
+			categoryID: leisure.id, categorizedBy: .manual)
+		let names = (1...9).map { Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 9, day: $0), amountMinor: -100, name: "Kiosk \($0)", purpose: "Nummer \($0)") }
+		let l = Ledger(accounts: [wallet], categories: [groceries, leisure], transactions: [kiosk] + names)
+
+		var typed = TransactionDraft()
+		for end in 1..."Kiosk".count {
+			let text = String("Kiosk".prefix(end))
+			typed.enterName(text, offered: l.nameSuggestions(for: typed.name), for: wallet.id, in: l)
+		}
+		#expect(typed.name == "Kiosk")
+		#expect(typed.purpose == "" && typed.categoryID == nil)
+
+		var chosen = TransactionDraft()
+		chosen.enterName("k", offered: [], for: wallet.id, in: l)
+		chosen.enterName("Kiosk", offered: l.nameSuggestions(for: "k"), for: wallet.id, in: l)
+		#expect(chosen.purpose == "Zeitung" && chosen.categoryID == leisure.id)
+
+		// The eighth suggestion, the last one shown, fills too. A name that the list did not show fills nothing.
+		let offered = l.nameSuggestions(for: "kiosk ")
+		#expect(offered.count == 8)
+		var eighth = TransactionDraft()
+		eighth.name = "kiosk "
+		eighth.enterName(offered[7].name, offered: offered, for: wallet.id, in: l)
+		#expect(eighth.purpose == offered[7].purpose)
+		var pasted = TransactionDraft()
+		pasted.name = "kiosk "
+		pasted.enterName("Kiosk 1", offered: offered, for: wallet.id, in: l)
+		#expect(!offered.contains { $0.name == "Kiosk 1" })
+		#expect(pasted.purpose == "")
 	}
 
 	@Test("A chosen suggestion fills the name, and the purpose and the category while they are empty")

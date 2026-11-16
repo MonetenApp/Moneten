@@ -20,6 +20,10 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.14 An offsetting entry stays in its currency. Tasks 3.3 and 3.4 build it.
 - [ ] 1.15 Fields of an offsetting entry. Tasks 3.3 and 3.4 build it.
 - [ ] 1.16 Category of an offsetting entry. Tasks 3.3 and 3.4 build it.
+- [x] 1.17 Reading a typed amount. Verified by TransactionDraftTests "A reading with more decimal places than the currency has does not count, and the decimal mark of the region decides a tie" and "An amount with more decimal places than its currency has is refused and never rounds" (#272).
+- [x] 1.18 A refresh never takes a manual transaction. Verified by ReconcileTests "A refresh adds a delivered row with the day and the amount of a manual row and leaves the manual row alone", ManualMarkTests "A refresh stores the delivered row next to a manual row with the same day and amount" and "Deleting a manual row keeps no record, so a refresh still adds the delivered row", and the export round trip of `isManual` (#272).
+- [x] 1.19 A manual transaction is part of the bank balance. Verified by LedgerTests "After a real first refresh, a manual deposit moves the initial balance..." and "Only a manual row booked by the day of the bank balance...", and ReconcileTests "The first refresh derives the initial balance with the manual rows..." (#272).
+- [x] 1.20 What a transaction in an account with bank access can change. Verified by TransactionDraftTests "What the window can change..." (#272).
 
 ## 2. Integration
 

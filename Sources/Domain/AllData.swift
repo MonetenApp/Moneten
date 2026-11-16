@@ -420,6 +420,8 @@ private struct TransactionEntry: Codable {
 	var sourceID: String?
 	var fileIdentity: String?
 	var createdAt: Date
+	/// Written only for a manual row. A missing key means a row that a source delivered.
+	var isManual: Bool?
 
 	init(_ t: Transaction) {
 		id = t.id
@@ -449,6 +451,7 @@ private struct TransactionEntry: Codable {
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
+		isManual = t.isManual ? true : nil
 	}
 
 	func transaction(version: Int) throws -> Transaction {
@@ -459,7 +462,7 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 	}
 }
 

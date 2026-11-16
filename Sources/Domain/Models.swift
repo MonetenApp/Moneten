@@ -302,11 +302,14 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var sourceID: String?
 	public var fileIdentity: String?
 	public var createdAt: Date
+	/// The user added the row with "Add Transaction...". No source delivers it, so a refresh never pairs a
+	/// delivered row with it, and deleting it keeps no record.
+	public var isManual: Bool
 
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil) {
+		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil, isManual: Bool = false) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -333,6 +336,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.sourceID = sourceID
 		self.fileIdentity = fileIdentity
 		self.createdAt = createdAt
+		self.isManual = isManual
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
