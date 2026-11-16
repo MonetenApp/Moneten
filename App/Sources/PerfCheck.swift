@@ -385,6 +385,31 @@ struct PerfScenario {
 				} catch { c.fail("booked file refresh failed") }
 				if c.model.ledger.transactions(ofAccount: account.id).count != stored.count { c.fail("booked file refresh changed row count") }
 			}),
+		// Last, because it adds 50,000 rows. Each keystroke in the name field of a new transaction searches 50,000
+		// different names for suggestions. The search ran on every drawing of the window before.
+		PerfScenario(name: "type-name-over-50000-names", budget: .milliseconds(100),
+			setUp: { c in
+				let account = Account(position: c.model.ledger.accounts.count, name: "Name history", kind: .cash, source: .offline)
+				c.model.save(account: account)
+				let rows = (0..<50_000).map { i in
+					Transaction(accountID: account.id, bookingDate: Day.today().adding(days: -(i % 2_000)), amountMinor: -Int64(100 + i % 9_000),
+						name: i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)", purpose: "Names \(i)")
+				}
+				do { _ = try c.model.merge(.file(rows), into: account.id) }
+				catch { c.fail("name history setup failed") }
+				await c.select("Name history")
+				c.model.sheet = .transaction(nil)
+				await c.settle()
+			},
+			run: { c in
+				for end in 1..."Händler 4".count {
+					c.harness.run("type", String("Händler 4".dropFirst(end - 1).prefix(1)))
+					await c.settle()
+				}
+				if c.harness.focusedSheetText() != "Händler 4" { c.fail("the name field did not take the typed name") }
+				c.model.sheet = nil
+				await c.settle()
+			}),
 	]
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".

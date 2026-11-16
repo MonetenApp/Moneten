@@ -332,26 +332,21 @@ struct TransactionSheet: View {
 	@State private var draft = TransactionDraft()
 	@State private var comment = ""
 	@State private var problem: AmountProblem?
+	/// The suggestions for the name as it stands. Only a change of the name searches again, never a redraw.
+	@State private var suggestions: [Transaction] = []
 	@FocusState private var nameHasFocus: Bool
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
+	private var editing: TransactionEditing { model.ledger.editing(transactionID) }
 
-	/// Every field of a new transaction and of a manual one can change. In an account with bank access, a row
-	/// counts as manual when no refresh delivered it and no migration brought it.
-	private var editable: Bool {
-		guard let transactionID else { return true }
-		guard model.ledger.part(transactionID) == nil, let t = existing else { return false }
-		return account?.isOffline == true || (!t.isFetched && t.sourceID == nil)
-	}
-
-	/// The name field: a typed name that equals an earlier one, as a chosen suggestion does, also fills the
-	/// purpose and the category while they are empty. Loading a row sets the name without this.
+	/// The name field of a new transaction offers earlier names. A chosen one fills the purpose and the category
+	/// while they are empty.
 	private var name: Binding<String> {
 		Binding(get: { draft.name }, set: { typed in
-			draft.name = typed
-			guard existing == nil, let account, let earlier = model.ledger.nameSuggestions(for: typed).first(where: { $0.name == typed }) else { return }
-			draft.take(earlier, for: account.id, in: model.ledger)
+			guard transactionID == nil, let account else { return draft.name = typed }
+			draft.enterName(typed, offered: suggestions, for: account.id, in: model.ledger)
+			suggestions = model.ledger.nameSuggestions(for: typed).filter { $0.name != typed }
 		})
 	}
 
@@ -360,12 +355,12 @@ struct TransactionSheet: View {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
-			if editable {
+			if editing == .allFields {
 				Section {
 					DatePicker("Date", selection: $date, displayedComponents: .date)
 					TextField("Name", text: name)
 						.focused($nameHasFocus)
-						.textInputSuggestions(existing == nil ? model.ledger.nameSuggestions(for: draft.name) : []) { t in
+						.textInputSuggestions(suggestions) { t in
 							Text(t.name).textInputCompletion(t.name)
 						}
 					TextField("Amount", text: $draft.amount, prompt: Text("-0,00"))
@@ -380,7 +375,11 @@ struct TransactionSheet: View {
 			} else if let t = existing {
 				Section {
 					LabeledContent("Date", value: Format.day(t.bookingDate))
-					LabeledContent("Name", value: t.name)
+					if editing == .nameCategoryAndComment {
+						TextField("Name", text: $draft.name)
+					} else {
+						LabeledContent("Name", value: t.name)
+					}
 					LabeledContent("Amount") { AmountText(money: t.amount) }
 					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
 				}
@@ -407,28 +406,28 @@ struct TransactionSheet: View {
 		.onChange(of: draft.amount) { problem = nil }
 		.onAppear {
 			load()
-			nameHasFocus = editable
+			nameHasFocus = editing == .allFields
 		}
 	}
 
-	/// An existing row shows its values. A new one repeats the one selected row of the account, with today's date.
+	/// An existing row shows its values. A new one starts from the one selected row of the account, with today's date.
 	private func load() {
 		if let t = existing {
 			date = t.bookingDate.date()
 			draft = TransactionDraft(template: t)
 			comment = t.comment ?? ""
-		} else if let account, model.visibleSelection.count == 1, let id = model.visibleSelection.first,
-			let template = model.ledger.row(id), template.accountID == account.id {
-			draft = TransactionDraft(template: template)
+		} else if let account {
+			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection)
 		}
 	}
 
 	private func save() -> Bool {
 		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
-		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
-		if editable {
-			switch draft.amountMinor(in: t.currency) {
+		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "", isManual: true)
+		switch editing {
+		case .allFields:
+			switch draft.amountMinor(in: t.currency, region: DecimalMark(region: .current)) {
 			case let .failure(p):
 				problem = p
 				return false
@@ -438,6 +437,10 @@ struct TransactionSheet: View {
 			t.bookingDate = Day(date)
 			t.name = draft.name
 			t.purpose = draft.purpose
+		case .nameCategoryAndComment:
+			t.name = draft.name
+		case .categoryAndComment:
+			break
 		}
 		if draft.categoryID != t.categoryID {
 			t.categoryID = draft.categoryID

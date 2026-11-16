@@ -631,14 +631,16 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	/// Saves the rows, with the accounts whose initial balance they move, and returns whether they are saved.
+	/// A locked app has no database and saves nothing.
 	@discardableResult
-	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
+	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart]), accounts: [Account] = []) -> Bool {
 		guard let store else { return false }
 		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
 		do {
-			try store.save(changed.transactions, parts: changed.parts)
+			try store.save(changed.transactions, parts: changed.parts, accounts: accounts)
 			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.update(changed.transactions, parts: changed.parts)
 			return true
 		} catch {
@@ -788,7 +790,8 @@ final class AppModel {
 		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
 			categorizer.categorize(&changed.transactions[i])
 		}
-		commit(changed)
+		let before = changed.transactions.compactMap { ledger.transaction($0.id) }
+		commit(changed, accounts: ledger.keepingBankBalance(replacing: before, with: changed.transactions))
 	}
 
 	@discardableResult
@@ -811,9 +814,11 @@ final class AppModel {
 
 	func delete(transactions ids: Set<UUID>) {
 		guard let store else { return }
+		let accounts = ledger.keepingBankBalance(replacing: ids.compactMap { ledger.transaction($0) }, with: [])
 		do {
-			try store.deleteTransactions(Array(ids))
+			try store.deleteTransactions(Array(ids), accounts: accounts)
 			ledgerChange = "delete rows=\(ids.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.remove(transactionIDs: ids)
 			selectedTransactions.subtract(ids)
 		} catch {

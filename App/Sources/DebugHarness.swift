@@ -858,6 +858,9 @@ final class DebugHarness {
 	/// The tables of positions in all windows.
 	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
 
+	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
+	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
+
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
 			if let table = view as? NSTableView {
