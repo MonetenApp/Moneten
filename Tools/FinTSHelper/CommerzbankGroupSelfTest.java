@@ -236,22 +236,7 @@ final class CommerzbankGroupSelfTest {
 		Answers failing = new Answers().on(GIRO, "KUmsAll", resend, ok);
 		failing.failingDialog = 2;
 		failing.failing = new FinTSHelper.Failure(null, "9800", "Dialog abgebrochen");
-		{
-			FinTSHelper.Callback.server = COMDIRECT;
-			FinTSHelper.Callback kept = new FinTSHelper.Callback(Map.of());
-			Konto[] both = failing.accounts();
-			Answers twice = new Answers().on(GIRO, "KUmsAll", resend, ok);
-			twice.failingDialog = 2;
-			twice.failing = failing.failing;
-			List<FinTSHelper.Jobs> all = List.of(FinTSHelper.queue(twice, both[0], GIRO, "2026-10-01", kept, 0),
-				FinTSHelper.queue(twice, both[1], SAVINGS, "2026-10-01", kept, 1));
-			twice.execute();
-			List<FinTSHelper.Jobs> left = new ArrayList<>();
-			SelfTest.sent(() -> left.addAll(CommerzbankGroup.again(twice, passport(free), both, all, kept)));
-			SelfTest.expect("the account that a failed second dialog did not carry keeps the jobs of the first dialog",
-				left.size() + " " + (left.get(0).statements() == all.get(1).statements()), "1 true");
-		}
-		SelfTest.expect("a second dialog that fails fails only the account that it carried, and the other keeps its answer",
+		SelfTest.expect("a second dialog that fails fails only the account that it carried, and the other keeps the answer of the first dialog",
 			again(COMDIRECT, free, "2026-10-01", failing),
 			"2 [{\"type\":\"accountFailed\",\"code\":\"9800\",\"text\":\"Dialog abgebrochen\",\"account\":\"" + GIRO + "\"}] " + SAVINGS + "=[]");
 		Answers canceled = new Answers().on(GIRO, "KUmsAll", resend, ok);
@@ -283,12 +268,18 @@ final class CommerzbankGroupSelfTest {
 	/// `answer` is what the user does with the TAN of that login, as the app sends it, or null for a cancel of the run.
 	/// The result: the request of that TAN, whether the run ended, and then what again() sent and kept.
 	static String secondLogin(Properties bpd, GVRKUms resend, GVRKUms ok, Map<String, Object> answer) {
+		return secondLogin(bpd, resend, ok, answer, false);
+	}
+
+	/// The same, and with `download` the challenge comes after the orders of the second dialog.
+	static String secondLogin(Properties bpd, GVRKUms resend, GVRKUms ok, Map<String, Object> answer, boolean download) {
 		FinTSHelper.Passport passport = passport(bpd);
 		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
 		List<String> asked = new ArrayList<>();
 		Answers bank = new Answers().on(SAVINGS, "KUmsAll", resend, ok);
 		bank.during = dialog -> {
 			if (dialog != 2) return;
+			if (download) passport.jobsSent = true;
 			java.util.HashMap<String, Object> reply = answer == null ? null : new java.util.HashMap<>(answer);
 			if (reply == null) FinTSHelper.Inbox.queue.add(FinTSHelper.Inbox.CANCEL);
 			else {
@@ -320,6 +311,30 @@ final class CommerzbankGroupSelfTest {
 			secondLogin(free, resend, ok, null), "login - - ended");
 		SelfTest.expect("a cancel for older transactions in the second dialog fails only the account that it carried and restarts nothing",
 			secondLogin(free, resend, ok, Map.of("type", "answer", "skip", true)), "login - - 2 [{\"type\":\"accountFailed\",\"text\":\"the user canceled the challenge for older transactions\",\"account\":\"" + SAVINGS + "\"}] " + GIRO + "=[]");
+		SelfTest.expect("a challenge after the orders of the second dialog is not for older transactions, though the first dialog asked for the full history",
+			secondLogin(free, resend, ok, Map.of("type", "answer", "value", "1234567"), true), "download - - 2 [] " + GIRO + "=[] " + SAVINGS + "=[]");
+		lateSkip(free, resend, ok);
+	}
+
+	/// The user cancels the decoupled approval of the first dialog for older transactions, and the cancel arrives
+	/// after hbci4java went on and while the second dialog runs. It belongs to the first dialog, so the second dialog
+	/// keeps its answers.
+	static void lateSkip(Properties free, GVRKUms resend, GVRKUms ok) {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
+		// The state after the first dialog: hbci4java went on after the approval, and the refresh withdrew it.
+		callback.lastApproval = ++callback.lastID;
+		Answers bank = new Answers().on(SAVINGS, "KUmsAll", resend, ok);
+		bank.during = dialog -> {
+			if (dialog == 2) FinTSHelper.Inbox.queue.add(Map.of("type", "answer", "id", String.valueOf(callback.lastApproval), "skip", true));
+		};
+		String outcome;
+		try {
+			outcome = again(COMDIRECT, passport(free), null, "2026-10-01", bank, callback);
+		} finally {
+			FinTSHelper.Inbox.queue.clear();
+		}
+		SelfTest.expect("a late cancel of the approval of the first dialog fails nothing in the second dialog",
+			outcome + " " + (callback.restarts() ? "restarts" : "-"), "2 [] " + GIRO + "=[] " + SAVINGS + "=[] -");
 	}
 
 	/// A state of Commerzbank stores the 8 digits as the user ID and the customer ID, and the command sends the 10 digits.

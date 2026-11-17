@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TestSupport
 @testable import Domain
 
 @Suite("Performance with a long history")
@@ -296,11 +297,4 @@ struct PerformanceTests {
 		return (0..<runs).map { _ in clock.measure(work) }.min()!
 	}
 
-	/// The budget on a Mac, or 1.5 times as much on a runner that GitHub hosts, which takes about nine times
-	/// as long as a current Mac and stalls at random. There the sidebar amounts and the booked refresh usually
-	/// take 18 to 20 ms, so twice that fails, but the fastest runners pass up to 2.2 times. GitHub sets
-	/// `RUNNER_ENVIRONMENT` to `github-hosted` only on its own runners, so a developer Mac keeps the budget of a Mac.
-	private func budget(_ onAMac: Duration) -> Duration {
-		ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? onAMac * 1.5 : onAMac
-	}
 }

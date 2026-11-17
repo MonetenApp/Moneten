@@ -22,6 +22,9 @@ jobs:
           node-version: 22
       - run: python3 scripts/check-docs.py
       - run: python3 scripts/check-ui.py
+      # Every time limit in a test goes through budget(_:), and the probes of that check.
+      - run: python3 scripts/check-time-limits.py
+      - run: python3 scripts/test-check-time-limits.py
       - run: scripts/test-forget-bundle.sh
       # The format of CHANGELOG.md, the only source of the release notes, and the tests of its script.
       - run: python3 scripts/release-notes.py check

@@ -4,6 +4,7 @@ import ExtensionHost
 import Foundation
 import Storage
 import Testing
+import TestSupport
 
 /// The time of a whole extension refresh, from the start of the host process to the merge into a
 /// long history, and the start of a session up to its first entry call.
@@ -66,7 +67,7 @@ struct ExtensionRefreshPerformanceTests {
 		#expect(session.printed == ["known 250"])
 		#expect(added == 50)
 		#if !DEBUG
-		#expect(elapsed < .seconds(1))
+		#expect(elapsed < budget(.seconds(1)))
 		#endif
 	}
 
@@ -86,7 +87,7 @@ struct ExtensionRefreshPerformanceTests {
 		let p50 = times[9] / .milliseconds(1), p95 = times[18] / .milliseconds(1)
 		print("ext session_start_ms p50=\(p50) p95=\(p95)")
 		#if !DEBUG
-		#expect(times[18] < .milliseconds(300))
+		#expect(times[18] < budget(.milliseconds(300)))
 		#endif
 	}
 }

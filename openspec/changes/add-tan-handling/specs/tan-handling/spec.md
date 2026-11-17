@@ -194,6 +194,23 @@ The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank 
 - **WHEN** the user types "123456"
 - **THEN** "Continue" is enabled
 
+### Requirement: Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals
+
+The app SHALL turn the letters of a typed TAN into capitals as the user types, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. A TAN typed in lower case then does not count as a wrong TAN at the bank. The TAN of any other bank stays as the user types it.
+
+#### Scenario: TAN in lower case
+
+- **GIVEN** a Postbank access on `hbci.postbank.de` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the field shows "AB12CD"
+- **AND** the app sends "AB12CD"
+
+#### Scenario: Other bank
+
+- **GIVEN** a "Musterbank" access on `fints.musterbank.example` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the app sends "ab12cd"
+
 ### Requirement: Approval in an app without typing
 
 The app SHALL, for a method that the user approves in an app of the bank, ask the user to confirm the data in that app, show no TAN field, and check the result with the bank by itself. The dialog closes by itself when the bank reports the approval.

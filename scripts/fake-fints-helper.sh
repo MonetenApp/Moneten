@@ -28,6 +28,7 @@
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
+# The refresh of "ersetzt" fails with the answer of the Deutsche Bank group to a login that a new login replaced.
 # The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
 # the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
@@ -40,6 +41,8 @@
 # Commerzbank (50040000) and comdirect (20041111) have their real FinTS addresses, so the setup shows their hints and sends
 # a login name of 8 digits to Commerzbank with 00 in front. Their login asks for a photoTAN of method 900 with 10 characters
 # in the bank parameters, or of method 902.
+# Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
+# shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -69,6 +72,9 @@ case "$cmd" in
 '{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
 '{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
 '{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
+'{"code":"37070060","name":"Deutsche Bank","city":"Köln","bic":"DEUTDEDKXXX","url":"https://fints.deutsche-bank.de/"},'\
+'{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
+'{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
@@ -153,6 +159,10 @@ case "$cmd" in
 	;;
 	*'"user":"ohnetan"'*)
 		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
+		exit 0
+	;;
+	*'"user":"ersetzt"'*)
+		echo '{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}'
 		exit 0
 	;;
 	*'"user":"falschetan"'*)

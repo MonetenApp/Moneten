@@ -89,6 +89,13 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **WHEN** the user enters "apobank"
 - **THEN** the list starts with "Deutsche Apotheker- und Ärztebank eG" with 30060601
 
+#### Scenario: Brand on the Bankleitzahl of another bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 10010010 "Postbank" in Berlin, and FYRST is the business brand of Postbank on the same Bankleitzahl
+- **WHEN** the user enters "fyrst"
+- **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
+- **AND** "postbank" lists it too
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -291,6 +298,26 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **THEN** the first field has the label "Participant number"
 - **AND** the line under it says that Commerzbank expects the 10-digit participant number, and that Commerzbank must switch on "FinTS/HBCI with photoTAN" for the user
 
+#### Scenario: Deutsche Bank
+
+- **GIVEN** the user chose Deutsche Bank with the Bankleitzahl 37070060, whose FinTS address is on the host `fints.deutsche-bank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Deutsche Bank ID"
+- **AND** the line under it says that the Deutsche Bank ID is the branch and account number without the subaccount number, unless the user chose an ID of their own
+
+#### Scenario: Postbank and FYRST
+
+- **GIVEN** the user chose Postbank with the Bankleitzahl 10010010, whose FinTS address is on the host `hbci.postbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Postbank ID"
+- **AND** the line under it says that a business profile needs the Postbank ID followed by "#" and the profile name, in the form `Postbank-ID#Profil`
+
+#### Scenario: norisbank
+
+- **GIVEN** the user chose norisbank with the Bankleitzahl 10077777, whose FinTS address is on the host `fints.norisbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -439,6 +466,70 @@ The app SHALL send and store "00" followed by the login name when the login name
 - **WHEN** the app refreshes the access
 - **THEN** the app sends "0012345678" to the bank
 - **AND** a second setup with the login name "0012345678" joins that access
+
+### Requirement: Send the login name of Deutsche Bank, Postbank, and norisbank without spaces
+
+The app SHALL send and store the login name without any space when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. Users copy the number in groups from the bank card or the letter of the bank, and the FinTS login of these banks has no spaces. Two login names that agree without spaces are the same login.
+
+#### Scenario: Branch and account number in groups
+
+- **GIVEN** the user chose Deutsche Bank with the FinTS address `https://fints.deutsche-bank.de/`
+- **WHEN** the user enters the login name "123 4567890" and clicks "Next"
+- **THEN** the app sends "1234567890" to the bank
+- **AND** the access stores "1234567890" as its login name
+
+#### Scenario: Postbank ID with a space
+
+- **GIVEN** the user chose Postbank with the FinTS address `https://hbci.postbank.de/banking/hbci.do`
+- **WHEN** the user enters the login name "erika muster#Profil" and clicks "Next"
+- **THEN** the app sends and stores "erikamuster#Profil"
+
+#### Scenario: Access that the app stored before
+
+- **GIVEN** an access to norisbank on `fints.norisbank.de` stores the login name "123 4567890"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "1234567890" to the bank
+
+#### Scenario: Same login in groups
+
+- **GIVEN** an access to Deutsche Bank on `fints.deutsche-bank.de` stores the login name "1234567890"
+- **WHEN** the user adds an account of the same bank with the login name "123 4567890"
+- **THEN** the setup joins the access that the app has
+
+#### Scenario: Bank on another server
+
+- **GIVEN** the user chose "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the user enters the login name "123 4567890"
+- **THEN** the app sends "123 4567890"
+
+### Requirement: Show a login name of Deutsche Bank and norisbank as branch and account number
+
+The app SHALL show a stored login name of exactly 10 digits as the branch number of 3 digits, a space, and the account number of 7 digits, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de` or `.norisbank.de`. The user then recognizes the number of the bank card. The app sends and stores the login name without the space.
+
+#### Scenario: Edit Login Data
+
+- **GIVEN** an access to norisbank on `fints.norisbank.de` stores the login name "1234567890"
+- **WHEN** the user opens "Edit Login Data..."
+- **THEN** the login name field reads "123 4567890"
+- **AND** saving without a change keeps the login name "1234567890"
+
+#### Scenario: PIN dialog
+
+- **GIVEN** an access to Deutsche Bank on `fints.deutsche-bank.de` stores the login name "1234567890"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "123 4567890"
+
+#### Scenario: Postbank
+
+- **GIVEN** an access to Postbank on `hbci.postbank.de` stores the login name "1234567890"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "1234567890"
+
+#### Scenario: Deutsche Bank ID of the user's choice
+
+- **GIVEN** an access to Deutsche Bank on `fints.deutsche-bank.de` stores the login name "erikamuster"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "erikamuster"
 
 ### Requirement: Show what the bank requires before the first login
 
@@ -681,6 +772,14 @@ The app SHALL tell the user to use "Edit Login Data..." when a bank reports that
 
 - **WHEN** the refresh of an access fails because the user did not approve the login in the app of the bank in time
 - **THEN** the account error names "Edit Login Data..." as the next step
+
+#### Scenario: Login replaced by a new one at Deutsche Bank
+
+- **GIVEN** a Deutsche Bank access on `fints.deutsche-bank.de` with a saved PIN
+- **WHEN** a refresh fails with the code 9940 or 3960 and the text "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."
+- **THEN** the account error shows the text of the bank and says to enter the new login of the bank with "Edit Login Data..."
+- **AND** the app keeps the saved PIN and opens no PIN sheet, and the automatic refresh leaves the access out until the user refreshes it by hand
+- **AND** the same answer on `hbci.postbank.de` or `fints.norisbank.de` does the same, and on the host of another bank it gives the error of the bank alone
 
 #### Scenario: Error of one account
 
