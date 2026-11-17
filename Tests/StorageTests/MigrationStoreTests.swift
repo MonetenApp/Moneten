@@ -158,20 +158,26 @@ struct MigrationStoreTests {
 		for i in 0..<20_000 { amounts.append(Double(i % 97 + 1) / 100) }
 		let plan = try sourcePlan(amounts: amounts)
 		let writing = DispatchSemaphore(value: 0)
+		let assigned = DispatchSemaphore(value: 0)
 		let counted = Mutex(0)
+		let cancelTask = Mutex<(@Sendable () -> Void)?>(nil)
 		let task = Task.detached {
 			try await store.importMigration(plan, progress: { update in
-				// The first count above 0 comes after a second of writing. The cancel then comes while rows are written: a cancel
-				// while the write waits between two rows did not move the data version with the old write path.
+				// The first count above 0 comes after a second of writing. The task is canceled right here, while rows are
+				// written, and not by the test after a wait, which on a busy runner came only after the import had committed. A
+				// cancel while the write waits between two rows did not move the data version with the old write path.
 				guard update.step == .importing, update.completed > 0, counted.withLock({ $0 }) == 0 else { return }
 				counted.withLock { $0 = update.completed }
+				assigned.wait()
+				cancelTask.withLock { $0 }?()
 				writing.signal()
 			})
 		}
+		cancelTask.withLock { $0 = { task.cancel() } }
+		assigned.signal()
 		await withCheckedContinuation { done in DispatchQueue.global().async { writing.wait(); done.resume() } }
 		// The read waits for the writer, as the check of the file does in the app.
 		let read = Task.detached { store.isChangedOnDisk() }
-		task.cancel()
 		await #expect(throws: CancellationError.self) { _ = try await task.value }
 		#expect(counted.withLock { $0 } < amounts.count)
 		#expect(await read.value == false)
