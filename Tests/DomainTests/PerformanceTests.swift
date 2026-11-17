@@ -223,11 +223,16 @@ struct PerformanceTests {
 				name: t.name, purpose: t.purpose)
 			rows.append(moved)
 		}
+		// The answer also holds older payments that did not move, so its days reach back past the stored days of the moved ones.
+		for t in stored[300..<310] {
+			let unchanged: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose)
+			rows.append(unchanged)
+		}
 		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: nil, maxBookingShift: 7)))
 		let rules = Categorizer(ledger: Ledger(accounts: [account]))
 		var result = Reconciliation()
 		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
-		#expect(result.skipped == 300 && result.updated.count == 300 && result.added.isEmpty)
+		#expect(result.skipped == 310 && result.updated.count == 300 && result.added.isEmpty)
 		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(40))), updated=\(result.updated.count)")
 		#if !DEBUG
 		#expect(elapsed < budget(.milliseconds(40)))

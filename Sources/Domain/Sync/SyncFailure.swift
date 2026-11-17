@@ -149,11 +149,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		case .notRegistered:
 			String(localized: "The bank does not know Moneten yet. Banks take some weeks to accept a new app. Try again later.")
 		case let .noTANMethod(m):
-			(m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods."))
-				+ "\n" + String(localized: "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
+			Self.noTANMethods(m) + "\n" + String(localized: "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
 		case let .noTANMethodOfBank(m, nextStep):
-			(m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods."))
-				+ "\n" + nextStep
+			Self.noTANMethods(m) + "\n" + nextStep
 		case .notFetched:
 			String(localized: "Canceled because of the previous error.")
 		case let .bank(m):
@@ -167,5 +165,10 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		case let .notSaved(text):
 			String(localized: "The fetched transactions could not be saved: \(text)")
 		}
+	}
+
+	/// The first line of a failure without a TAN method, with the answer of the bank that showed it.
+	private static func noTANMethods(_ m: BankMessage?) -> String {
+		m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods.")
 	}
 }

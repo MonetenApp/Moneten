@@ -216,8 +216,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			r.booked.append(next)
 		} else if let j = moved.ofDelivered[i] {
 			// The source moved a booked row to another day: the stored row takes its day and texts and keeps the user fields.
+			// The amount stays, so a split stays, and so does the category of its original.
 			var next = stored[j].takingBankFields(of: delivered)
-			if next != stored[j] { rules.categorize(&next) }
+			if next != stored[j], !split.contains(stored[j].id) { rules.categorize(&next) }
 			r.skipped += 1
 			if next != stored[j] { r.updated.append(next) }
 		} else {

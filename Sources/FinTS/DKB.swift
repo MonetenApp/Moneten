@@ -27,7 +27,7 @@ enum DKB {
 
 	/// The outcome of an account, with the days by which a DKB card may move its booked payments.
 	static func outcome(_ outcome: AccountOutcome, account remoteID: String, bankCode: String?, server: URL?) -> AccountOutcome {
-		guard case var .fetched(result) = outcome, result.transactions != nil, isCard(remoteID), isDKB(bankCode: bankCode, server: server) else {
+		guard case var .fetched(result) = outcome, isCard(remoteID), isDKB(bankCode: bankCode, server: server) else {
 			return outcome
 		}
 		result.transactions?.maxBookingShift = maxBookingShift

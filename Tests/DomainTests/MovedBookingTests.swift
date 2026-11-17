@@ -2,12 +2,15 @@ import Domain
 import Foundation
 import Testing
 
-/// "Keep a moved card booking as one transaction": a source that may move a booked transaction to a later day, as a DKB
+/// "Keep a moved card booking as one transaction": a source that may move a booked transaction to another day, as a DKB
 /// card does, updates the stored transaction in place of adding a second one.
+///
+/// Every refresh here also delivers two other payments that are stored already: one on its first day and one on 25 March,
+/// so the delivered days span the stored booking, as in a real answer of 90 days. `merge` leaves them out of its result.
 @Suite("Moved card bookings")
 struct MovedBookingTests {
 	let card = Account(position: 0, name: "Visa", kind: .creditCard, source: .offline)
-	let now = Date(timeIntervalSince1970: 1_710_590_400)
+	let now = Date(timeIntervalSince1970: 1_711_540_800)
 
 	func day(_ d: Int) -> Day { Day(year: 2024, month: 3, day: d) }
 
@@ -22,12 +25,19 @@ struct MovedBookingTests {
 		return t
 	}
 
-	func refresh(_ rows: [Transaction], from: Int = 5, shift: Int = 7) -> Delivery {
-		.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: day(from), maxBookingShift: shift)))
+	/// The two other payments of a refresh from `from`.
+	func anchors(from: Int) -> [Transaction] {
+		[row(from, -350, "Bäckerei Beispiel", purpose: "Bäckerei Beispiel / Musterstadt"),
+			row(25, -1_200, "Tankstelle Beispiel", purpose: "Tankstelle Beispiel / Musterstadt")]
 	}
 
-	func merge(_ delivery: Delivery, stored: [Transaction], categories: [Domain.Category] = []) -> Reconciliation {
-		reconcile(delivery, into: card, stored: stored, deleted: [], rules: Categorizer(ledger: Ledger(accounts: [card], categories: categories)), now: now)
+	/// Merges `rows`, and with `anchored` the two other payments, which are stored already, into `stored`.
+	func merge(_ rows: [Transaction], stored: [Transaction], from: Int = 5, shift: Int = 7, anchored: Bool = true, split: Set<UUID> = [],
+		categories: [Domain.Category] = []) -> Reconciliation {
+		let others = anchored ? anchors(from: from) : []
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows + others, from: day(from), maxBookingShift: shift)))
+		let rules = Categorizer(ledger: Ledger(accounts: [card], categories: categories))
+		return reconcile(delivery, into: card, stored: stored + others.map(self.stored), deleted: [], split: split, rules: rules, now: now)
 	}
 
 	func history(_ stored: [Transaction], after r: Reconciliation) -> [Transaction] {
@@ -44,7 +54,7 @@ struct MovedBookingTests {
 		streaming.categoryID = subscriptions.id
 		streaming.categorizedBy = .manual
 		streaming.isChecked = true
-		let r = merge(refresh([row(10, purpose: "STREAMING BEISPIEL MUSTERSTADT")]), stored: [streaming], categories: [subscriptions])
+		let r = merge([row(10, purpose: "STREAMING BEISPIEL MUSTERSTADT")], stored: [streaming], categories: [subscriptions])
 		#expect(r.added == [])
 		#expect(r.dropped == [])
 		#expect(r.updated.map(\.id) == [streaming.id])
@@ -60,25 +70,25 @@ struct MovedBookingTests {
 		#expect(after.map(\.isChecked) == [true])
 		#expect(after.map(\.isNew) == [false])
 		// The same delivery again changes nothing.
-		#expect(merge(refresh([row(10, purpose: "STREAMING BEISPIEL MUSTERSTADT")]), stored: after).updated == [])
+		#expect(merge([row(10, purpose: "STREAMING BEISPIEL MUSTERSTADT")], stored: after).updated == [])
 	}
 
 	@Test("A booking on the same day with other texts, one seven days later, and one seven days earlier take the place of the stored booking")
 	func sameDayAndSevenDays() {
 		let streaming = stored(row(8))
-		#expect(merge(refresh([row(8, purpose: "Streaming Beispiel Abo")]), stored: [streaming]).updated.map(\.id) == [streaming.id])
-		#expect(merge(refresh([row(15)]), stored: [streaming]).updated.map(\.id) == [streaming.id])
+		#expect(merge([row(8, purpose: "Streaming Beispiel Abo")], stored: [streaming]).updated.map(\.id) == [streaming.id])
+		#expect(merge([row(15)], stored: [streaming]).updated.map(\.id) == [streaming.id])
 		let tenth = stored(row(10))
-		let r = merge(refresh([row(8)], from: 1), stored: [tenth])
+		let r = merge([row(8)], stored: [tenth], from: 1)
 		#expect(r.added == [])
 		#expect(history([tenth], after: r).map(\.bookingDate) == [day(8)])
-		#expect(merge(refresh([row(3)], from: 1), stored: [tenth]).updated.map(\.id) == [tenth.id])
+		#expect(merge([row(3)], stored: [tenth], from: 1).updated.map(\.id) == [tenth.id])
 	}
 
 	@Test("A stored booking that the refresh still delivers stays, and the other delivered booking is new")
 	func stillDelivered() {
 		let streaming = stored(row(8))
-		let r = merge(refresh([row(8), row(10)]), stored: [streaming])
+		let r = merge([row(8), row(10)], stored: [streaming])
 		#expect(r.added.map(\.bookingDate) == [day(10)])
 		#expect(r.updated == [])
 	}
@@ -92,10 +102,81 @@ struct MovedBookingTests {
 	])
 	func noMove(storedDay: Int, delivered: Int, minor: Int64, name: String, from: Int) {
 		let streaming = stored(row(storedDay))
-		let r = merge(refresh([row(delivered, minor, name)], from: from), stored: [streaming])
+		let r = merge([row(delivered, minor, name)], stored: [streaming], from: from)
 		#expect(r.added.count == 1)
 		#expect(r.updated == [])
 		#expect(history([streaming], after: r).count == 2)
+	}
+
+	@Test("A stored booking before the first or after the last delivered day stays, also when the answer claims to cover it")
+	func outsideDeliveredDays() {
+		// The bank answered from 5 March, but its first booked row is the café on 6 March: the café of 2 March is no
+		// evidence of a move, and the café of 6 March is a second coffee.
+		let coffee = stored(row(2, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		let second = row(6, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt")
+		let before = merge([second, row(12, -350, "Bäckerei Beispiel")], stored: [coffee], from: 1, anchored: false)
+		#expect(before.added.count == 2)
+		#expect(before.updated == [])
+		#expect(history([coffee], after: before).filter { $0.name == "Café Beispiel" }.count == 2)
+		// With no first day the answer covers every day, and still only the delivered days count.
+		let whole = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: [second], from: nil, maxBookingShift: 7)))
+		let all = reconcile(whole, into: card, stored: [coffee], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [card])), now: now)
+		#expect(all.added.count == 1)
+		#expect(all.updated == [])
+		// The last delivered day is 6 March, so a stored coffee of 9 March is not covered either.
+		let later = stored(row(9, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		let after = merge([second, row(3, -350, "Bäckerei Beispiel")], stored: [later], from: 1, anchored: false)
+		#expect(after.added.count == 2)
+		#expect(after.updated == [])
+	}
+
+	@Test("Two equal stored bookings on one day move neither, whatever their order, when the refresh delivers one of them again")
+	func equalStoredBookings() {
+		var first = stored(row(8, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		first.comment = "with Max"
+		var second = stored(row(8, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		second.comment = "with Erika"
+		let delivered = [row(8, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"), row(10, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt")]
+		for order in [[first, second], [second, first]] {
+			let r = merge(delivered, stored: order)
+			#expect(r.updated == [])
+			#expect(r.added.map(\.bookingDate) == [day(10)])
+			let after = history(order, after: r)
+			#expect(Set(after.filter { $0.bookingDate == day(8) }.compactMap(\.comment)) == ["with Max", "with Erika"])
+		}
+	}
+
+	@Test("A moved split original keeps its category and its split, whatever the rules say about the new texts")
+	func splitOriginal() {
+		let groceries = Domain.Category(position: 0, name: "Groceries")
+		let drinks = Domain.Category(position: 1, name: "Drinks", rule: "DANKE")
+		var original = stored(row(8, -8_000, "Supermarkt Beispiel", purpose: "Supermarkt Beispiel / Musterstadt"))
+		original.categoryID = groceries.id
+		original.categorizedBy = .rule
+		let r = merge([row(10, -8_000, "Supermarkt Beispiel", purpose: "SUPERMARKT SAGT DANKE")], stored: [original], split: [original.id],
+			categories: [groceries, drinks])
+		#expect(r.updated.map(\.id) == [original.id])
+		#expect(r.updated.map(\.bookingDate) == [day(10)])
+		#expect(r.updated.map(\.categoryID) == [groceries.id])
+		#expect(r.updated.map(\.categorizedBy) == [.rule])
+		#expect(r.unsplit.isEmpty)
+		// An original without a split takes the category of the rules, as any changed row does.
+		let plain = merge([row(10, -8_000, "Supermarkt Beispiel", purpose: "SUPERMARKT SAGT DANKE")], stored: [original], categories: [groceries, drinks])
+		#expect(plain.updated.map(\.categoryID) == [drinks.id])
+	}
+
+	@Test("A moved booking that the user edited keeps the edit, and its source values follow the bank")
+	func editedBooking() {
+		var streaming = stored(row(8))
+		streaming.edit(OriginalValues(bookingDate: day(8), valueDate: day(8), amountMinor: -1_990, name: "Streaming family plan",
+			purpose: "Streaming Beispiel / Musterstadt"))
+		let r = merge([row(10)], stored: [streaming])
+		#expect(r.added == [])
+		#expect(r.updated.map(\.id) == [streaming.id])
+		#expect(r.updated.map(\.name) == ["Streaming family plan"])
+		#expect(r.updated.map(\.bookingDate) == [day(10)])
+		#expect(r.updated.map(\.original?.bookingDate) == [day(10)])
+		#expect(r.updated.map(\.original?.name) == ["Streaming Beispiel"])
 	}
 
 	@Test("Two bookings with different references or different source IDs are two payments")
@@ -104,27 +185,27 @@ struct MovedBookingTests {
 		referenced.endToEndReference = "ABO-2024-03"
 		var other = row(10)
 		other.endToEndReference = "ABO-2024-04"
-		let byReference = merge(refresh([other]), stored: [referenced])
+		let byReference = merge([other], stored: [referenced])
 		#expect(byReference.added.count == 1)
 		#expect(byReference.updated == [])
 		var withID = stored(row(8))
 		withID.sourceID = "card-1001"
 		var otherID = row(10)
 		otherID.sourceID = "card-1002"
-		let byID = merge(refresh([otherID]), stored: [withID])
+		let byID = merge([otherID], stored: [withID])
 		#expect(byID.added.count == 1)
 		#expect(byID.updated == [])
 		// The same reference on both sides, or one on one side only, still moves the booking.
 		var same = row(10)
 		same.endToEndReference = "ABO-2024-03"
-		#expect(merge(refresh([same]), stored: [referenced]).updated.map(\.id) == [referenced.id])
-		#expect(merge(refresh([row(10)]), stored: [referenced]).updated.map(\.id) == [referenced.id])
+		#expect(merge([same], stored: [referenced]).updated.map(\.id) == [referenced.id])
+		#expect(merge([row(10)], stored: [referenced]).updated.map(\.id) == [referenced.id])
 	}
 
 	@Test("A source that does not move bookings adds the later booking")
 	func otherSource() {
 		let streaming = stored(row(8))
-		let r = merge(refresh([row(10)], shift: 0), stored: [streaming])
+		let r = merge([row(10)], stored: [streaming], shift: 0)
 		#expect(r.added.count == 1)
 		#expect(r.updated == [])
 	}
@@ -133,10 +214,10 @@ struct MovedBookingTests {
 	func noGuess() {
 		let seventh = stored(row(7))
 		let eighth = stored(row(8))
-		let r = merge(refresh([row(10)]), stored: [seventh, eighth])
+		let r = merge([row(10)], stored: [seventh, eighth])
 		#expect(r.added.count == 1)
 		#expect(r.updated == [])
-		let two = merge(refresh([row(9), row(10)]), stored: [eighth])
+		let two = merge([row(9), row(10)], stored: [eighth])
 		#expect(two.added.count == 2)
 		#expect(two.updated == [])
 	}
@@ -144,11 +225,11 @@ struct MovedBookingTests {
 	@Test("A pending reservation still pairs with its booked version, and a row that the user added by hand or a file brought never moves")
 	func onlyFetchedBookings() {
 		let reservation = stored(row(8, pending: true))
-		let r = merge(refresh([row(10)]), stored: [reservation])
+		let r = merge([row(10)], stored: [reservation])
 		#expect(r.booked.map(\.id) == [reservation.id])
 		#expect(r.updated == [])
 		let manual = row(8)
-		let byHand = merge(refresh([row(10)]), stored: [manual])
+		let byHand = merge([row(10)], stored: [manual])
 		#expect(byHand.added.count == 1)
 		#expect(byHand.updated == [])
 	}
