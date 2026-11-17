@@ -170,9 +170,9 @@ struct MovedBookingTests {
 
 	/// What a merge leaves in the history: each row with its fields, a stored row by its ID and a new row as "new", in a
 	/// fixed order, and the counts of the merge.
-	func outcome(_ delivered: [Transaction], stored: [Transaction], split: Set<UUID> = []) -> [String] {
+	func outcome(_ delivered: [Transaction], stored: [Transaction], deleted: [DeletedTransaction] = [], split: Set<UUID> = []) -> [String] {
 		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: delivered, from: day(5), maxBookingShift: 7)))
-		let r = reconcile(delivery, into: card, stored: stored, deleted: [], split: split, rules: Categorizer(ledger: Ledger(accounts: [card])), now: now)
+		let r = reconcile(delivery, into: card, stored: stored, deleted: deleted, split: split, rules: Categorizer(ledger: Ledger(accounts: [card])), now: now)
 		let ids = Set(stored.map(\.id))
 		let rows = history(stored, after: r).map { t in
 			[ids.contains(t.id) ? t.id.uuidString : "new", t.bookingDate.description, String(t.amountMinor), t.name, t.purpose, t.endToEndReference ?? "-",
@@ -181,7 +181,7 @@ struct MovedBookingTests {
 		return rows.sorted() + ["added \(r.added.count)", "updated \(r.updated.count)", "booked \(r.booked.count)", "skipped \(r.skipped)"]
 	}
 
-	@Test("Every order of the stored and of the delivered rows gives the same history", arguments: 0..<6)
+	@Test("Every order of the stored and of the delivered rows gives the same history", arguments: 0..<7)
 	func everyOrder(fixture: Int) {
 		func cafe(_ d: Int, _ name: String = "Café Beispiel", purpose: String = "Café Beispiel / Musterstadt", reference: String? = nil) -> Transaction {
 			var t = row(d, -320, name, purpose: purpose)
@@ -191,6 +191,7 @@ struct MovedBookingTests {
 		let anchors = anchors(from: 5)
 		var old: [Transaction]
 		var delivered: [Transaction]
+		var deleted: [DeletedTransaction] = []
 		switch fixture {
 		case 0:
 			// Two stored rows on one day with the same purpose but other names, and a third that fits.
@@ -218,21 +219,50 @@ struct MovedBookingTests {
 			streaming.comment = "Family plan"
 			old = [streaming, stored(cafe(12))]
 			delivered = [row(10), cafe(12), cafe(14, "Kino Beispiel")]
-		default:
+		case 5:
 			// A stored row outside the delivered days, and a moved one inside them.
 			old = [stored(cafe(6)), stored(row(9))]
 			delivered = [cafe(9), row(11)]
+		default:
+			// Two delivered rows on one day with other names, a stored row that fits one of them two days later, and a deleted
+			// row from a file that fits both.
+			old = [stored(cafe(10))]
+			delivered = [cafe(8, purpose: "Kartenzahlung"), cafe(8, "Kino Beispiel", purpose: "Kartenzahlung")]
+			var imported = cafe(8, purpose: "Kartenzahlung")
+			imported.fileIdentity = "statement-2024-03"
+			deleted = [DeletedTransaction(imported, deletedAt: now)]
 		}
 		old += anchors.map(stored)
 		delivered += anchors
-		let expected = outcome(delivered, stored: old)
+		// Each delivery builds its rows anew, in the order of the bank, so the time of creation follows that order.
+		func delivery(_ rows: [Transaction]) -> [Transaction] {
+			rows.enumerated().map { k, t in
+				var t = t
+				t.id = UUID()
+				t.createdAt = now.addingTimeInterval(Double(k))
+				return t
+			}
+		}
+		let expected = outcome(delivery(delivered), stored: old, deleted: deleted)
 		for storedOrder in permutations(old) {
 			for deliveredOrder in permutations(delivered) {
-				let actual = outcome(deliveredOrder, stored: storedOrder)
+				let actual = outcome(delivery(deliveredOrder), stored: storedOrder, deleted: deleted)
 				#expect(actual == expected)
 				if actual != expected { return }
 			}
 		}
+	}
+
+	@Test("Two delivered bookings that differ only in a missing or an empty booking text add the same one in either order")
+	func missingAndEmptyText() {
+		let cafe = stored(row(8, -320, "Café Beispiel", purpose: "Kartenzahlung"))
+		var missing = row(8, -320, "Café Beispiel", purpose: "Kartenzahlung")
+		missing.bookingText = nil
+		var empty = missing
+		empty.bookingText = ""
+		let added = [[missing, empty], [empty, missing]].map { merge($0, stored: [cafe]).added.map(\.bookingText) }
+		#expect(added[0].count == 1)
+		#expect(added[0] == added[1])
 	}
 
 	@Test("Stored bookings with other names on one day, and a third that fits, move none of them")
