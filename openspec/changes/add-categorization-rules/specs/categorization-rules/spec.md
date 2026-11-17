@@ -338,7 +338,7 @@ The app SHALL stop a rule when one of its regular expressions takes about 100 ms
 
 ### Requirement: A slow call of a regular expression counts only when it is slow again
 
-The app SHALL run a regular expression of a rule once more on the same text when a call takes 1 ms or more or stops at the limit of one call, and SHALL stop the second call at 1 ms. When the second call takes less than 1 ms, only the second call counts toward the limits of the rule. Otherwise both calls count. The host of a virtual machine can pause the Mac during a fast call, and the Mac counts the pause as processor time of that call.
+The app SHALL run a regular expression of a rule once more on the same text when a call takes 1 ms or more or stops at the limit of one call, unless the call reached the limit of the run, and SHALL stop the second call at 1 ms. When the second call takes less than 1 ms, only the second call counts toward the limits of the rule. Otherwise both calls count. The host of a virtual machine can pause the Mac during a fast call, and the Mac counts the pause as processor time of that call.
 
 #### Scenario: A pause of the host during a fast call
 
@@ -354,7 +354,7 @@ The app SHALL run a regular expression of a rule once more on the same text when
 
 ### Requirement: The rules of one run stop together after 3 seconds
 
-The app SHALL stop every rule with a regular expression when the slow calls of the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A slow call is one that takes 0.1 ms or more on one text. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
+The app SHALL stop every rule with a regular expression when the slow calls of the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A slow call is one that takes 0.1 ms or more on one text. A rule that does not stop runs its regular expressions on each text of the run once, apart from the second call of a slow call, also when the run repeats after another rule stopped.
 
 #### Scenario: Many slow rules above a normal one
 

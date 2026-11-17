@@ -316,6 +316,7 @@ public struct Rule: Sendable {
 		var regex: RegexWatch?
 
 		mutating func firstMatch(_ box: RegexBox, _ text: String) -> Bool {
+			// A second call sets `regex` to nil, so without this guard the next field of a stopped rule would start a new call.
 			guard let stop, stop.position == nil else { return false }
 			let watch = regex ?? RegexWatch(budget: RegexBudget(limit: Rule.runLimit, spent: stop.spent))
 			regex = watch
