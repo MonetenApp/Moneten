@@ -338,13 +338,19 @@ The app SHALL stop a rule when one of its regular expressions takes about 100 ms
 
 ### Requirement: The rules of one run stop together after 3 seconds
 
-The app SHALL stop every rule with a regular expression when the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
+The app SHALL stop every rule with a regular expression when the slow calls of the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A slow call is one that takes 0.1 ms or more on one text. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
 
 #### Scenario: Many slow rules above a normal one
 
 - **GIVEN** twelve categories whose rules stop, above "Traders" with the rule `/Haendler1/`
 - **WHEN** a migration categorizes 50,000 transactions, of which 7,865 have a name that starts with "Haendler1"
 - **THEN** the 7,865 transactions are in "Traders", and the categorization ends within a few seconds
+
+#### Scenario: Many fast rules over a long history
+
+- **GIVEN** 30 categories with the rules `/Haendler0x/` to `/Haendler29x/`
+- **WHEN** a migration categorizes 50,000 transactions with a name, a purpose, a booking text, and a reference each
+- **THEN** no rule stops, also when the regular expressions of the 30 rules take more than 3 seconds together
 
 ### Requirement: A stopped rule matches nothing in its run
 
