@@ -407,6 +407,10 @@ public class FinTSHelper {
 	/// state, which hbci4java reads in its constructor, before the fields of a subclass exist.
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
+		/// The login name of the command, which replaces the user ID of the state, so that a login name that
+		/// the app sends in another form, such as a VR-Kennung in capitals, reaches the bank. A customer ID
+		/// that was the user ID follows it.
+		static String user;
 
 		record State(PassportData data, String tanMedium) { }
 
@@ -426,15 +430,43 @@ public class FinTSHelper {
 			setBLZ(d.blz);
 			setHost(d.host);
 			setPort(d.port);
-			setUserId(d.userId);
+			// A passport that a self-test builds without a command keeps the user ID of its state.
+			boolean replaced = present(user);
+			setUserId(replaced ? user : d.userId);
 			setSysId(d.sysId);
 			setBPD(d.bpd);
 			setUPD(d.upd);
 			setHBCIVersion(d.hbciVersion);
-			setCustomerId(d.customerId);
+			setCustomerId(replaced && sameLogin(d.customerId, d.userId, d.host) ? user : d.customerId);
 			setFilterType(d.filter);
 			setAllowedTwostepMechanisms(d.twostepMechs);
 			setCurrentTANMethod(d.tanMethod);
+		}
+
+		/// Whether the customer ID of a state names the login of its user ID: the same text, or on a server of
+		/// the cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals.
+		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart.
+		static boolean sameLogin(String customerId, String userId, String host) {
+			if (customerId == null || userId == null) return false;
+			if (customerId.equals(userId)) return true;
+			String vrk = vrKennung(customerId);
+			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
+		}
+
+		/// A VR-Kennung, "VRK" and digits, in capitals and without spaces, or null for any other login name. It removes
+		/// every Unicode white space, as Character.isWhitespace in FinTSServer.loginName of the app does.
+		static String vrKennung(String name) {
+			String joined = name.replaceAll("(?U)\\s", "").toUpperCase(java.util.Locale.ROOT);
+			return joined.matches("VRK[0-9]+") ? joined : null;
+		}
+
+		/// The FinTS servers of Atruvia and of apoBank, by the host of the address that hbci4java keeps with its path.
+		static boolean cooperative(String address) {
+			if (address == null) return false;
+			String host = address.trim().toLowerCase(java.util.Locale.ROOT);
+			int end = host.indexOf('/');
+			if (end >= 0) host = host.substring(0, end);
+			return host.endsWith(".atruvia.de") || host.endsWith(".bankenit.de") || host.equals("fints.apobank.de");
 		}
 
 		/// The challenge data of the last challenge, which hbci4java removes before the callback. A
@@ -591,6 +623,8 @@ public class FinTSHelper {
 		/// The last challenge of the run was an approval in the app, so a refused TAN means that the approval
 		/// did not happen. One helper runs one command, so the field can be static for `failure`.
 		static volatile boolean approvalAsked;
+		/// The host of the bank with its path, as `connect` sets it, for the rules of a bank group in `failure`.
+		static volatile String server;
 		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
 		/// before every order that needs a TAN.
 		String tanMedium;
@@ -612,6 +646,7 @@ public class FinTSHelper {
 			String path = url.getRawPath() == null || url.getRawPath().isEmpty() ? "/" : url.getRawPath();
 			host = url.getHost() + path + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
 			port = url.getPort() > 0 ? url.getPort() : 443;
+			server = host;
 		}
 
 		String ask(Map<String, Object> request) {
@@ -689,7 +724,7 @@ public class FinTSHelper {
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
-			if (m.find()) pinError = message("rejected", "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
+			if (m.find()) pinError = message("rejected", "kind", kind(m.group(1), m.group(2)), "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
 			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
@@ -730,7 +765,10 @@ public class FinTSHelper {
 				case NEED_PT_TANMEDIA -> {
 					List<Object> media = new ArrayList<>();
 					for (String name : retData.toString().split("\\|")) if (present(name)) media.add(name);
-					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(passport), "media", media));
+					// A bank that lists no media, as apoBank for apoTAN, keeps the name that the user typed, also an empty one.
+					if (tanMedium == null || (!media.isEmpty() && !media.contains(tanMedium))) {
+						tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(passport), "media", media));
+					}
 					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
@@ -994,8 +1032,10 @@ public class FinTSHelper {
 	/// did not happen.
 	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
-	/// The error of the bank that the app shows: the first urgent one, or else the first one.
+	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, the first urgent one,
+	/// or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
+		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
 		for (String code : URGENT) {
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
@@ -1015,9 +1055,15 @@ public class FinTSHelper {
 	/// The error of a job, or of the message when the job has none.
 	static Map<String, Object> problem(HBCIJobResult result) {
 		HBCIRetVal r = relevant(errors(result.getJobStatus(), result.getGlobStatus()));
-		if (r != null) return message("error", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-			"code", r.code, "text", Out.withoutSecrets(r.text));
+		if (r != null) return message("error", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		return message("error", "text", "The bank did not answer the request.");
+	}
+
+	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
+	/// savings bank, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	static String kind(String code, String text) {
+		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 
 	/// hbci4java reports a failed dialog start, for example a wrong PIN, in the status of execute and
@@ -1532,6 +1578,7 @@ public class FinTSHelper {
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
+			Passport.user = string(command, "user");
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
 			while (!dialog(type, command, callback, Bank::new)) {
 				diagnostic("FinTSHelper: starting a new dialog after a change of the TAN method or a canceled challenge for older transactions");
@@ -1634,8 +1681,7 @@ public class FinTSHelper {
 		for (Throwable t : all) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
 			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
-			if (r != null) return message("failed", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-				"code", r.code, "text", Out.withoutSecrets(r.text));
+			if (r != null) return message("failed", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		}
 		for (Throwable t : all) {
 			if (t instanceof CertificateException c) return message("failed", "kind", "certificate", "text", Out.withoutSecrets(String.valueOf(c.getMessage())));

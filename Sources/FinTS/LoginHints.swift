@@ -19,6 +19,9 @@ public struct LoginHint: Sendable, Equatable {
 	public let source: URL
 	/// The title of the link. The page for the savings banks is the guide of one of them.
 	public let sourceTitle: String
+	/// What the bank requires before the first login, which the login step shows above the fields. Nil for a bank
+	/// without such a note.
+	public var note: String? = nil
 
 	// Bankleitzahl: https://www.consorsbank.de/web/Wissen/FAQ/kontokarten/Bankleitzahl-Consorsbank
 	static let consorsbank = LoginHint(bankName: "Consorsbank", bankCodes: ["76030080"], label: String(localized: "Account number + 001"),
@@ -38,7 +41,8 @@ public struct LoginHint: Sendable, Equatable {
 		source: URL(string: "https://www.ing.de/hilfe/log-in/fints/")!, sourceTitle: String(localized: "Help page of ING"))
 	static let savingsBank = LoginHint(bankName: nil, bankCodes: [], label: String(localized: "Login name or Legitimations-ID"),
 		help: String(localized: "A Sparkasse expects the Anmeldename or the Legitimations-ID that it gave you for online banking."),
-		source: URL(string: "https://www.ospa.de/content/dam/myif/ostseespk-rostock/work/dokumente/pdf/allgemein/anleitung-zur-konfiguration-der-finanz-software.pdf")!, sourceTitle: String(localized: "Example: Ostseesparkasse Rostock"))
+		source: URL(string: "https://www.ospa.de/content/dam/myif/ostseespk-rostock/work/dokumente/pdf/allgemein/anleitung-zur-konfiguration-der-finanz-software.pdf")!, sourceTitle: String(localized: "Example: Ostseesparkasse Rostock"),
+		note: String(localized: "Log in with the login name and the PIN of the online banking of your Sparkasse. Before the first login, set up a TAN method such as pushTAN or chipTAN in the online banking."))
 
 	static let byCode = Dictionary(uniqueKeysWithValues: [consorsbank, dkb, comdirect, ing].flatMap { hint in hint.bankCodes.map { ($0, hint) } })
 }
@@ -51,9 +55,8 @@ extension BankDirectory.Entry {
 	/// because the setup goes on with it.
 	public var loginHint: LoginHint? {
 		if let hint = LoginHint.byCode[code] { return hint }
-		guard let host = bank.url?.host()?.lowercased() else { return nil }
+		if let hint = cooperativeHint { return hint }
 		let name = TextFolding.fold(bank.name)
-		let savingsServer = host.contains(".s-fints-pt-") || host.hasSuffix(".s-hbci.de")
-		return savingsServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
+		return isOnSavingsBankServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}
 }

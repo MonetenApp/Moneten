@@ -435,4 +435,48 @@ struct SplitLedgerTests {
 		#expect(ps.map(\.position) == [0, 1])
 	}
 
+	@Test("A row that no longer exists is missing, not unbalanced")
+	func splitMissing() {
+		let l = ledger([original()])
+		#expect(throws: SplitError.missing) { try l.splitting(row: UUID(), off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		#expect(throws: SplitError.missing) { try l.splittingVAT(row: UUID(), rate: VATRate(hundredths: 1900)) }
+	}
+
+	@Test("A split refuses a row whose amount, category, or comment changed since the user saw it")
+	func splitChangedRow() throws {
+		let seen = original()
+		let off = [Money(minorUnits: -2500, currency: "EUR")]
+		var moved = seen; moved.categoryID = household.id
+		var commented = seen; commented.comment = "Party"
+		var corrected = seen; corrected.amountMinor = -8500
+		for now in [moved, commented, corrected] {
+			#expect(throws: SplitError.changed) { try ledger([now]).splitting(row: seen.id, off: off, seen: seen) }
+		}
+		var checked = seen; checked.isChecked = true
+		#expect(try ledger([checked]).splitting(row: seen.id, off: off, seen: seen).map(\.amountMinor) == [-2500, -5500])
+		#expect(throws: SplitError.missing) { try ledger([]).splitting(row: seen.id, off: off, seen: seen) }
+	}
+
+	@Test("The split base changes with the category and the comment of the transaction and its parts")
+	func splitBase() {
+		let t = original(), ps = parts(t)
+		var l = ledger([t])
+		let plain = l.splitBase(of: t.id)
+		var moved = t; moved.categoryID = household.id
+		l.update([moved])
+		#expect(l.splitBase(of: t.id) != plain)
+		l.update([t])
+		#expect(l.splitBase(of: t.id) == plain)
+		var commented = t; commented.comment = "Party"
+		l.update([commented])
+		#expect(l.splitBase(of: t.id) != plain)
+		l.update([t])
+		l.replaceParts(of: t.id, with: ps)
+		let split = l.splitBase(of: t.id)
+		#expect(split != plain)
+		var part = ps[1]; part.comment = "Bottles"
+		l.update([], parts: [part])
+		#expect(l.splitBase(of: t.id) != split)
+		#expect(l.splitBase(of: UUID()) == nil)
+	}
 }

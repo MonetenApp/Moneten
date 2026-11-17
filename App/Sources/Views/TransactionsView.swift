@@ -102,7 +102,11 @@ struct HeaderView: View {
 				switch model.selection {
 				case let .account(id):
 					if let a = model.ledger.account(id) {
-						AmountText(money: model.ledger.balance(of: a)).font(.title2)
+						BalancesText(amounts: model.ledger.balances(of: a)).font(.title2)
+						// A portfolio never stores bonus points, so the line shows only for an account with a bonus program.
+						if let points = a.bonusPoints {
+							Text("Bonus points: \(points.formatted())").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
+						}
 					}
 				case let .group(id):
 					Text(Format.sums(model.ledger.sum(ofGroup: id))).font(.title2).monospacedDigit()
@@ -337,24 +341,27 @@ struct FilterBar: View {
 struct CustomPeriodView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
-	@State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
-	@State private var to = Date()
+	/// Nil while the field holds a text that is not a date.
+	@State private var from: Day? = Day.today().adding(months: -1)
+	@State private var to: Day? = Day.today()
 
 	var body: some View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					DatePicker("From", selection: $from, displayedComponents: .date)
-					DatePicker("To", selection: $to, displayedComponents: .date)
+					DateField(title: "From", day: $from, identifier: "from")
+					DateField(title: "To", day: $to, identifier: "to")
 				}
 			}
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					model.choose(period: .custom(Day(from), Day(to)))
+					guard let from, let to else { return }
+					model.choose(period: .custom(from, to))
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
+				.disabled(from == nil || to == nil)
 			}
 		}
 		.frame(width: 300)
@@ -425,7 +432,9 @@ struct TransactionTable: View {
 				Spacer()
 				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
-				if let a = model.selectedOfflineAccount, model.ledger.transactions(ofAccount: a.id).isEmpty {
+				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
+					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
+						.foregroundStyle(.secondary)
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
 				}
 				Spacer()

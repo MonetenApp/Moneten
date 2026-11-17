@@ -50,6 +50,38 @@ The app SHALL read from the bank all accounts that belong to a login, each with 
 - **WHEN** the app lists the accounts of the login
 - **THEN** it reports three accounts with the types "Giro account", "Savings account", and "Credit card"
 
+### Requirement: Correct a BIC that the bank no longer uses
+
+The app SHALL store the BIC `GENODEF1ETK` for an account of a login at the Bankleitzahl 83094495 when the bank sends the old BIC `GENODEF1ESN` for it. Any other BIC stays as the bank sends it.
+
+#### Scenario: Old BIC of the bank
+
+- **GIVEN** the bank with the Bankleitzahl 83094495 lists the account DE02120300000000202051 with the BIC `GENODEF1ESN`
+- **WHEN** the setup adds the account
+- **THEN** the account has the BIC `GENODEF1ETK`
+
+#### Scenario: Same BIC at another bank
+
+- **GIVEN** a bank with the Bankleitzahl 12030000 lists an account with the BIC `GENODEF1ESN`
+- **WHEN** the setup adds the account
+- **THEN** the account has the BIC `GENODEF1ESN`
+
+### Requirement: Accounts of the partners of a cooperative bank
+
+The app SHALL fetch the accounts of the partners that a cooperative bank on a host that ends in `.atruvia.de` or `.bankenit.de` lists for the login, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, and offer them in the account selection with their balance or value.
+
+#### Scenario: Building savings contract
+
+- **GIVEN** a Volksbank lists a building savings contract of Bausparkasse Schwäbisch Hall with a balance of 4.250,00 € for the login
+- **WHEN** the user looks for new accounts
+- **THEN** the list offers "Bausparvertrag" with 4.250,00 €
+
+#### Scenario: Fund depot
+
+- **GIVEN** a Volksbank lists a fund depot of Union Investment with a value of 1.200,00 € for the login
+- **WHEN** a refresh of the depot ends
+- **THEN** the depot is a portfolio with the value 1.200,00 €
+
 ### Requirement: Use only what the bank allows
 
 The app SHALL read from the bank which operations the bank offers and which of them each account allows, and it SHALL not send an operation that is not allowed. When the user asks for such an operation, the app says which operation the FinTS server of the bank does not support for which account.
@@ -313,6 +345,34 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 - **GIVEN** the bank reports a credit card for the login of the giro account
 - **WHEN** the user adds the card in the account selection
 - **THEN** the card appears as its own account with its transactions
+
+### Requirement: Ask for the name of the apoTAN device
+
+The app SHALL ask for the name of the apoTAN device in a text field that may stay empty when the FinTS server `fints.apobank.de` asks for a TAN medium and lists none. The hint under the field says that the user leaves it empty unless the bank reports an error in the next step, and then enters the name exactly as the apoTAN settings of the website of apoBank show it. The app remembers the answer for the access, also an empty one, and sends it again while the bank lists no TAN media.
+
+#### Scenario: Empty list of TAN media
+
+- **GIVEN** the user adds an account of apoBank, whose FinTS server is `fints.apobank.de`
+- **WHEN** the bank asks for a TAN medium and lists none
+- **THEN** the dialog shows an empty text field "apoTAN device name" with the hint
+- **AND** "Continue" is enabled
+
+#### Scenario: Next refresh
+
+- **GIVEN** the user left the field "apoTAN device name" empty in the setup
+- **WHEN** the next refresh of the access asks for a TAN medium and the bank lists none
+- **THEN** the app sends the empty name again and shows no dialog for it
+
+#### Scenario: Name needed after the setup
+
+- **WHEN** the dialog shows the field "apoTAN device name"
+- **THEN** the hint also says that the user enters the name with "Edit Login Data..." when a later refresh reports the error
+
+#### Scenario: Other bank without a list
+
+- **GIVEN** a bank on another FinTS server asks for a TAN medium and lists none
+- **WHEN** the dialog opens
+- **THEN** the dialog asks for the name of the TAN medium, and "Continue" stays disabled while the field is empty
 
 ### Requirement: Fetch a credit card through its card statement
 
@@ -638,6 +698,37 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 - **WHEN** the bank answers the login with the code 9931 and the text "Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar."
 - **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
 - **AND** the app asks for no new PIN
+
+### Requirement: Say how to unblock the app at a savings bank
+
+The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app ("Kundenprodukt" or "Kontozugriff" with "vom Benutzer deaktiviert"), and tell the user to unblock it under "Kontozugriffe" in the online banking. A bank is on these servers when its host label before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN and asks for no new PIN until a refresh by hand.
+
+#### Scenario: App deactivated in the online banking
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9800 "Dialog abgebrochen" and the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows that Moneten is blocked in the online banking of the Sparkasse, the text "Kundenprodukt wurde vom Benutzer deaktiviert" with the code 9010, and "Unblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account."
+- **AND** the app asks for no new PIN
+- **AND** the automatic refresh skips this access until the user starts a refresh
+
+#### Scenario: App deactivated during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** the assistant lists no accounts and says where the user unblocks Moneten
+
+#### Scenario: Card or TAN method blocked by the user
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch" and the code 9010 "pushTAN wurde vom Kunden deaktiviert"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no "Kontozugriffe"
+
+#### Scenario: Same text from another bank
+
+- **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
 
 ### Requirement: Cancel and interruption
 

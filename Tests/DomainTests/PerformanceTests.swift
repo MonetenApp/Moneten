@@ -135,6 +135,26 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Suggestions for a typed name look through 50,000 transactions with different names within a frame")
+	func nameSuggestions() {
+		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline)
+		// Separate lets with their types, because the compiler of CI gave up on one expression.
+		var ts: [Transaction] = []
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let name: String = i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)"
+			ts.append(Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -Int64(i % 9_000), name: name))
+		}
+		let ledger = Ledger(accounts: [wallet], transactions: ts)
+		var found = 0
+		let keystroke = fastest { found = ledger.nameSuggestions(for: "Bäckerei").count }
+		print("suggestions over 50,000 names: \(keystroke)")
+		#expect(found == 0)
+		#if !DEBUG
+		#expect(keystroke < budget(.milliseconds(16)))
+		#endif
+	}
+
 	@Test("50,000 file rows create and assign at most 1,000 categories within the import budget")
 	func fileCategoryLimit() {
 		let account = Account(position: 0, name: "Import", kind: .giro, source: .offline)

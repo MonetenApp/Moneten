@@ -75,14 +75,16 @@ extension Access {
 	/// The same login name at the same bank or service. A second setup of a login joins the access
 	/// that the app has, so that one login keeps one session ("One session for the accounts of one login").
 	/// A login without a user name, such as an OAuth login of an extension, names no login to compare,
-	/// so each of its setups is an access of its own.
+	/// so each of its setups is an access of its own. FinTS login names compare in the form that the server
+	/// sees, so a VR-Kennung stored in lower case is the same login as the one in capitals.
 	public func isSameLogin(as other: Access) -> Bool {
-		guard !loginName.isEmpty, loginName == other.loginName else { return false }
+		guard !loginName.isEmpty else { return false }
 		switch (source, other.source) {
-		case let (.fints(mine, _), .fints(theirs, _)): return mine == theirs
+		case let (.fints(mine, myServer), .fints(theirs, theirServer)):
+			return mine == theirs && FinTSServer.loginName(loginName, server: myServer) == FinTSServer.loginName(other.loginName, server: theirServer)
 		// The service of an extension is its bank: the script gets it as the bank code.
-		case (.extension, .extension): return source == other.source && bankName == other.bankName
-		default: return source == other.source
+		case (.extension, .extension): return loginName == other.loginName && source == other.source && bankName == other.bankName
+		default: return loginName == other.loginName && source == other.source
 		}
 	}
 }
@@ -345,15 +347,13 @@ extension Account {
 	/// it. The balance and the status of a refresh that ended while the settings were open stay. The type
 	/// changes only when the user changed it from the type of `opened`, the account as the settings
 	/// opened, to one of the `AccountKind.choices` of the current type. A portfolio stays a portfolio, also
-	/// one that a refresh made while the settings were open.
+	/// one that a refresh made while the settings were open. The initial balance, too, counts as entered only
+	/// when the user changed it from that of `opened`, so a derived value that a refresh set meanwhile stays.
 	public mutating func takeSettings(from edited: Account, opened: Account) {
 		name = edited.name
 		if edited.kind != opened.kind, kind.choices?.contains(edited.kind) == true { kind = edited.kind }
 		isClosed = edited.isClosed
-		if edited.initialBalanceMinor != initialBalanceMinor {
-			initialBalanceMinor = edited.initialBalanceMinor
-			initialBalanceIsSet = true
-		}
+		if edited.initialBalanceMinor != opened.initialBalanceMinor { enterInitialBalance(edited.initialBalanceMinor) }
 		color = edited.color
 		refreshInterval = edited.refreshInterval
 	}

@@ -77,6 +77,23 @@ struct FileImportTests {
 		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == amounts)
 	}
 
+	/// A group of thousands never starts with a zero, so the shared amount parser reads a zero before three digits only as a
+	/// decimal. The owner kept this for the CSV import too: "0,500" is 0,50 € in a file with decimal points, and "0.500" is
+	/// no longer 500,00 € in a file with decimal commas.
+	@Test("A CSV amount with a zero before three digits reads as a decimal, and a fixed decimal comma refuses \"0.500\"")
+	func zeroBeforeThreeDigits() throws {
+		let point = "Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Bakery,\"0,500\"\n"
+		#expect(try TransactionFileImporter.parse(Data(point.utf8), currency: "EUR").transactions.map(\.amountMinor) == [450, 50])
+		let comma = Data("Datum;Name;Betrag\n01.11.2026;Kiosk;-89,00\n02.11.2026;Bäckerei Gutbrot;0.500\n".utf8)
+		#expect(try TransactionFileImporter.parse(comma, currency: "EUR").transactions.map(\.amountMinor) == [-8_900, 50])
+		let file = try CSVFile(data: comma)
+		var layout = try file.detectedLayout()
+		layout.decimalMark = .comma
+		#expect(throws: TransactionFileImporter.Failure.line(3, "The amount cannot be read.")) {
+			try TransactionFileImporter.parse(comma, currency: "EUR", csv: (file, layout))
+		}
+	}
+
 	@Test("A CSV file with an amount that cannot be read without doubt is rejected with its line", arguments: [
 		"Date,Payee,Amount\n2026-11-01,Landlord,\"1,234\"\n",
 		"Date,Payee,Amount\n2026-11-01,Kiosk,4.50\n2026-11-02,Landlord,\"12,3,4\"\n",
@@ -174,6 +191,28 @@ struct FileImportTests {
 		#expect(throws: TransactionFileImporter.Failure.line(5, "The amount cannot be read.")) {
 			try TransactionFileImporter.parse(Data((text + "03.11.2026;;Kiosk;zwölf;EUR\n").utf8), currency: "EUR")
 		}
+	}
+
+	@Test("A CSV quotation mark that is never closed fails the file with the line where it opened, instead of swallowing the later rows", arguments: [
+		("Datum;Name;Betrag\n01.11.2026;Kiosk;-1,50\n02.11.2026;\"Shop;-2,00\n03.11.2026;Bakery;-3,00\n", 3),
+		("Datum;Name;Betrag\r\n01.11.2026;Kiosk;-1,50\r\n02.11.2026;\"Shop;-2,00\r\n03.11.2026;Bakery;-3,00\r\n", 3),
+		("Datum;Name;Betrag\n01.11.2026;\"Bäckerei\nGutbrot\";-2,00\n02.11.2026;Kiosk;-1,50;\"", 4),
+	])
+	func csvUnclosedQuote(text: String, line: Int) throws {
+		let failure = TransactionFileImporter.Failure.line(line, "A closing quotation mark is missing.")
+		#expect(failure.description == "Line \(line): A closing quotation mark is missing.")
+		#expect(throws: failure) { try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR") }
+		// The import and the preview read the file through CSVFile, also when the user picks another encoding.
+		#expect(throws: failure) { try CSVFile.detect(Data(text.utf8)) }
+		#expect(throws: failure) { try CSVFile(data: Data(text.utf8), encoding: .isoLatin1) }
+	}
+
+	@Test("A quoted CSV field that holds a line break and closes in a later line reads as one field")
+	func csvQuotedLineBreak() throws {
+		let text = "Datum;Name;Verwendungszweck;Betrag\n01.11.2026;Vermieter;\"Miete\nNovember\";-800,00\n02.11.2026;Kiosk;Zeitung;-1,50\n"
+		let parsed = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR")
+		#expect(parsed.transactions.map(\.purpose) == ["Miete\nNovember", "Zeitung"])
+		#expect(parsed.transactions.map(\.amountMinor) == [-80_000, -150])
 	}
 
 	@Test("A CAMT value date with a time is read, and one that cannot be read is imported with a warning")
@@ -772,7 +811,9 @@ struct FileImportTests {
 		let canceled = clock.now
 		reading.cancel()
 		let result = await reading.value
-		#expect(clock.now - canceled < .seconds(1))
+		// Without the cancel the reading goes on for several times the split. The limit grows with the measured split,
+		// so a runner that is slow for all tests at once does not fail the test, and never drops below one second.
+		#expect(clock.now - canceled < max(.seconds(1), split * 2))
 		#expect(throws: CancellationError.self) { try result.get() }
 	}
 	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])

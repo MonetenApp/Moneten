@@ -24,6 +24,16 @@ struct PINRulesTests {
 		#expect(PINRules(minLength: 8).check("kurz", secretName: "password") == "The password is too short. The minimum is 8 characters.")
 	}
 
+	@Test("A PIN of the length that the server refuses since it raised the minimum asks for a longer PIN in the online banking")
+	func refusedLength() {
+		let rules = PINRules(minLength: 8, maxLength: 20, refusedLength: 6)
+		#expect(rules.check("123456") == "The FinTS server of the bank no longer accepts a PIN of 6 characters. Set a longer PIN in the online banking of the bank first.")
+		#expect(rules.check("12345") == "The PIN is too short. The minimum is 8 characters.")
+		#expect(rules.check("12345678") == nil)
+		#expect(PINRules(minLength: 6, refusedLength: 6).check("123456") == nil)
+		#expect(PINRules(refusedLength: 6).check("123456") == nil)
+	}
+
 	@Test("Without rules every PIN passes")
 	func none() {
 		#expect(PINRules().check("a") == nil)

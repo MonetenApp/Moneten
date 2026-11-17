@@ -207,9 +207,14 @@ final class AccountSetup {
 	/// so a second "Next" sends no second PIN. The login of an access that the app has waits for its
 	/// refresh, and its refresh waits for the login.
 	private func logIn() {
-		guard !isLoggingIn, let code = chosenBank?.code, let bank, let url = bank.url else { return }
+		guard !isLoggingIn, let chosenBank, let bank, let url = bank.url else { return }
 		let userIDHelp = loginHint?.help
-		let access = Access(source: .fints(bankCode: code, url: url), bankName: bank.name, loginName: loginName.trimmingCharacters(in: .whitespaces))
+		let name = chosenBank.loginName(loginName)
+		if let problem = chosenBank.loginNameProblem(name) {
+			loginError = problem
+			return
+		}
+		let access = Access(source: .fints(bankCode: chosenBank.code, url: url), bankName: bank.name, loginName: name)
 		let knownAccess = model.accesses.values.first { $0.isSameLogin(as: access) }
 		let known = knownAccess?.id ?? access.id
 		// A refresh of the access that the app has names its notices with the bank name of that access.
@@ -262,9 +267,14 @@ final class AccountSetup {
 	/// access"). Unchanged values set the access up again ("Reinitialize an access"). The login waits for a
 	/// refresh of the access, and a refresh waits for the login.
 	private func changeLogin(of old: Access) {
-		guard !isLoggingIn else { return }
+		guard !isLoggingIn, let chosenBank else { return }
 		let userIDHelp = loginHint?.help
-		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: loginName.trimmingCharacters(in: .whitespaces))
+		let name = chosenBank.loginName(loginName)
+		if let problem = chosenBank.loginNameProblem(name) {
+			loginError = problem
+			return
+		}
+		let access = Access(id: old.id, source: old.source, bankName: old.bankName, loginName: name)
 		guard !model.accesses.values.contains(where: { $0.id != old.id && $0.isSameLogin(as: access) }) else {
 			loginError = String(localized: "Another bank access in Moneten uses this login already.")
 			return
@@ -493,7 +503,7 @@ struct AccountSetupSheet: View {
 					} icon: {
 						Image(systemName: "building.columns")
 					}
-					if let note = bank.mergerNote {
+					ForEach([bank.mergerNote, setup.lookup.note].compactMap(\.self), id: \.self) { note in
 						Label(note, systemImage: "info.circle")
 							.foregroundStyle(.secondary)
 							.fixedSize(horizontal: false, vertical: true)
@@ -578,6 +588,12 @@ struct AccountSetupSheet: View {
 						Text(Self.place(of: bank)).font(.callout)
 					}
 				}
+			}
+		}
+		if let note = setup.loginHint?.note {
+			Section {
+				Label(note, systemImage: "info.circle")
+					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
 		Section {

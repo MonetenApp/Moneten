@@ -29,6 +29,8 @@ final class DebugHarness {
 	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
+	/// Whether the popover of the custom period that "datefield popover" shows is open.
+	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 
@@ -203,6 +205,13 @@ final class DebugHarness {
 				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// "open" shows the custom period and a field that expects a future date in a sheet, and "popover" shows the
+		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there, "calendar
+		// <from|to|scheduled>" opens the calendar of a field, "pick <yyyymmdd>" clicks that day in the open calendar,
+		// and "state" logs the date that each field reads, whether it has the focus, and the open popovers.
+		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
+		// "calendarsnapshot <name>" draws the calendar alone.
+		case "datefield": dateField(argument)
 		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
 			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -274,6 +283,8 @@ final class DebugHarness {
 				if !handled, argument == "tab" { sheet.sendEvent(event) }
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
+		// Moves the focus to the next field of the sheet on top, as the Tab key does.
+		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -419,6 +430,11 @@ final class DebugHarness {
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
+		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
+		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
+		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
+		// sheet is visible, its tab, the switches that are on, the stored values of the switches of "General", and the stored language.
+		case "settings": settings(argument)
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
@@ -512,6 +528,11 @@ final class DebugHarness {
 		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
 		// counts of the preview, or "rows", which logs the count and the days of its first rows.
 		case "csv": csvPreview(argument)
+		// "<kind> <name>": an empty offline account in euros, such as "loan Darlehen".
+		case "offline":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let kind = AccountKind(rawValue: parts[0]) else { return log("offline error=argument") }
+			Task { await model.addOfflineAccount(name: parts[1], kind: kind, currency: "EUR", groupID: nil); log("offline done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -579,6 +600,13 @@ final class DebugHarness {
 				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: currency)
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
+			}
+		case "wallet":
+			// "<group> <euros> <US dollars>" adds a wallet of a bank that reports a balance in euros and one in US dollars.
+			let parts = argument.split(separator: " ")
+			if parts.count == 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Reisekasse", kind: .other,
+					source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
 			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.
@@ -784,16 +812,39 @@ final class DebugHarness {
 				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
-					saved = await model.split(row: row.id, off: [amount])
+					saved = await model.split(row: row.id, off: [amount]) == .done
 				} else { return log("split refused") }
 				let count = saved ? model.ledger.parts(of: originalID).count : 0
-				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "undosplit":
 			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
 			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "deleteparts":
 			model.delete(transactions: model.visibleSelection)
 			log("deleteparts", ("refused", .flag(model.alert != nil)), ("selected", .count(model.visibleSelection.count)))
+		// What a cancel right after the confirm of the split window does, before the window shows its disabled
+		// "Cancel": the split must store nothing. Logs the parts of the row after the drawing wait.
+		case "splitcancel":
+			guard case let .split(row) = model.sheet, let sheet = topSheet else { return log("splitcancel refused") }
+			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
+			for (key, code) in [("\r", 36), ("\u{1b}", 53)] {
+				if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber,
+					context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: UInt16(code)) {
+					_ = sheet.performKeyEquivalent(with: event)
+				}
+			}
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				log("splitcancel", ("parts", .count(model.ledger.parts(of: originalID).count)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+			}
+		// "<currency>": what a refresh that corrects the currency does to the transaction of the open split window.
+		case "splitcurrency":
+			guard case let .split(row) = model.sheet,
+				var t = model.ledger.transaction(model.ledger.part(row.id)?.transactionID ?? row.id) else { return log("splitcurrency refused") }
+			t.currency = argument
+			model.save(transaction: t, adding: false)
+			log("splitcurrency", ("currency", .flag(model.ledger.transaction(t.id)?.currency == argument)))
 		case "splitnext":
 			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
 			log("splitnext", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
@@ -804,6 +855,8 @@ final class DebugHarness {
 			log("splitui", ("amountLabel", .flag(amount.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextLabel", .flag(next.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
+				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
+				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
 				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }
@@ -1048,7 +1101,139 @@ final class DebugHarness {
 		}
 	}
 
-	private func sheetAccessibility() -> [NSObject] {
+	private func dateField(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ").map(String.init)
+		func fields(in view: NSView) -> [NSTextField] {
+			if let field = view as? NSTextField, field.isEditable { return [field] }
+			return view.subviews.flatMap(fields)
+		}
+		func calendars() -> [NSDatePicker] {
+			func pickers(in view: NSView) -> [NSDatePicker] { (view as? NSDatePicker).map { [$0] } ?? view.subviews.flatMap(pickers) }
+			return NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap(pickers).filter { $0.datePickerStyle == .clockAndCalendar }
+		}
+		// The custom period in its popover, the visible popover with text fields, or else the sheet of "open".
+		let popoverWindow = NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") && !($0.contentView.map(fields) ?? []).isEmpty }
+		let window = popoverWindow ?? topSheet
+		switch parts.first ?? "" {
+		case "open":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
+			let sheet = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			sheet.contentView = host
+			main.beginSheet(sheet)
+			log("datefield opened")
+		// What "Custom..." in the period menu of the filter bar does: a SwiftUI popover with `CustomPeriodView`, here on
+		// an anchor at the top of the main window.
+		case "popover":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let view = main.contentView else { return }
+			if !datePopover.isAnchored {
+				let anchor = NSHostingView(rootView: DateFieldPopoverAnchor(state: datePopover).environment(model))
+				anchor.frame = NSRect(x: view.bounds.midX, y: view.bounds.maxY - 80, width: 1, height: 1)
+				view.addSubview(anchor)
+				datePopover.isAnchored = true
+			}
+			datePopover.isShown = true
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield popover", ("shown", .flag(shown)))
+			}
+		// "<position>" puts the focus into that field of the popover or the sheet, "type <text>" types there, and "tab"
+		// sends the Tab key, as the general commands do for a sheet.
+		case "focus" where parts.count == 2:
+			guard let window, let position = Int(parts[1]), let view = window.contentView, fields(in: view).indices.contains(position) else { return log("datefield focus", ("", .flag(false))) }
+			window.makeFirstResponder(fields(in: view)[position])
+			fields(in: view)[position].selectText(nil)
+			log("datefield focus", ("", .flag(window.firstResponder is NSTextView)))
+		case "type" where parts.count == 2:
+			(window?.firstResponder as? NSTextView)?.insertText(parts[1], replacementRange: NSRange(location: NSNotFound, length: 0))
+		case "tab":
+			guard let window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+				context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) else { return }
+			window.sendEvent(event)
+		case "calendar" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
+			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "pick" where parts.count == 2:
+			guard let picker = calendars().first, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
+			// What a click on a day does: the picker takes the date and sends its action.
+			picker.dateValue = Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100).noon
+			picker.sendAction(picker.action, to: picker.target)
+			log("datefield pick", ("picker", .flag(true)))
+		// What a click outside does: SwiftUI sets the binding of the popover to false.
+		case "closepopover":
+			datePopover.isShown = false
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield closepopover", ("shown", .flag(shown)), ("calendars", .count(calendars().count)))
+			}
+		case "state":
+			let editable = window?.contentView.map(fields) ?? []
+			let editor = window?.firstResponder as? NSTextView
+			for (i, field) in editable.enumerated() {
+				let read = Day(typed: field.stringValue, today: .today(), order: DateOrder(locale: .current))
+				log("datefield state", ("", .position(i)), ("day", .day(read)), ("focused", .flag(editor?.delegate === field)),
+					("popover", .flag(window === popoverWindow)), ("calendars", .count(calendars().count)))
+			}
+		case "close":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// The calendar at 15 December 2026, drawn outside a popover, whose glass a snapshot does not draw.
+		case "calendarsnapshot" where parts.count == 2:
+			let name = parts[1]
+			offscreenSnapshot(DateFieldCalendar(title: LocalizedStringKey(name), shown: Day(year: 2026, month: 12, day: 15)) { _, _ in }, width: 200, name: name, kind: "calendar")
+		default: log("datefield rejected")
+		}
+	}
+
+	private func settings(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		let window = { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" } }
+		let elements = { window().map(self.accessibility) ?? [] }
+		func role(_ element: NSObject) -> NSAccessibility.Role? { (element as AnyObject).accessibilityRole?() }
+		let switches = { elements().filter { role($0) == .checkBox } }
+		switch parts.first ?? "" {
+		case "open":
+			// An app in the background updates its menus only when they open, so the item may still show the lock.
+			if let menu = NSApp.mainMenu?.items.first?.submenu {
+				menu.delegate?.menuNeedsUpdate?(menu)
+				menu.update()
+			}
+			guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil,
+				characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) else { return }
+			// The menu claims the key also while the item is disabled, so only the window in the log shows what happened.
+			_ = NSApp.mainMenu?.performKeyEquivalent(with: event)
+		case "force":
+			// The window that an earlier "open" left behind, put on screen past the menu item, as a stale or restored window would be.
+			guard let hidden = NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }) else {
+				return log("settings force", ("found", .flag(false)))
+			}
+			hidden.orderFrontRegardless()
+		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
+		case "press":
+			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
+			_ = (switches()[number] as AnyObject).accessibilityPerformPress?()
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self else { return }
+			// The switches of the "General" tab in their order, as the defaults of the app store them, or "-" for none. A switch that
+			// differs from its stored value shows a value that macOS does not use, such as one that a launch argument overrides.
+			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey]
+			let id = Bundle.main.bundleIdentifier ?? ""
+			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
+			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
+			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
+			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
+				("tab", .word(model.settingsTab == .general ? "general" : "security")),
+				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
+					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
+				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))
+		}
+	}
+
+	private func accessibility(in window: NSWindow) -> [NSObject] {
 		// SwiftUI builds its accessibility nodes only after a client requests the enhanced interface.
 		NSApp.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
 		var seen: Set<ObjectIdentifier> = []
@@ -1057,7 +1242,11 @@ final class DebugHarness {
 			let children = (element as AnyObject).accessibilityChildren?() ?? []
 			return [element] + (children + ((element as? NSView)?.subviews ?? [])).flatMap(descendants)
 		}
-		return topSheet?.contentView.map(descendants) ?? []
+		return window.contentView.map(descendants) ?? []
+	}
+
+	private func sheetAccessibility() -> [NSObject] {
+		topSheet.map(accessibility) ?? []
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
@@ -1067,6 +1256,9 @@ final class DebugHarness {
 
 	/// The tables of positions in all windows.
 	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
+
+	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
+	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
@@ -1219,7 +1411,7 @@ final class DebugHarness {
 					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
 			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))
 			case let .captcha(captcha): log("ext prompt captcha", ("provider", .state(captcha.provider)), ("page", captcha.page?.host().map { .hash($0) } ?? .presence(false)))
-			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			case .chooseTANMedium, .nameTANMedium, .flickerCode: log("ext prompt other")
 			}
 		}
 	}
@@ -1378,7 +1570,7 @@ final class DebugHarness {
 				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
 				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
 				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
-				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("nameTaken", .flag(preview.nameProblem != nil)), ("createsCategories", .flag(preview.layout.createsCategories)),
 				("profiles", .count(preview.profiles.count)))
 		}
 	}
@@ -1833,3 +2025,39 @@ extension NSApplication {
 	}
 }
 #endif
+
+/// The custom period and a field that expects a future date, for the checks of the date field in the debug harness.
+/// No window of the app has a field that expects a future date yet, so the harness shows one with an English label.
+private struct DateFieldHarnessView: View {
+	@State private var scheduled: Day? = .today()
+	private let label = "Scheduled date"
+
+	var body: some View {
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					DateField(title: LocalizedStringKey(label), day: $scheduled, expectsFuture: true, identifier: "scheduled")
+				}
+				// The bound day, read here as well, so that the check for unused code sees the same use with every
+				// toolchain, whether or not it counts a read through the binding of the field.
+				.accessibilityValue(scheduled.map { String($0.rawValue) } ?? "")
+			}
+			CustomPeriodView()
+		}
+	}
+}
+
+@MainActor @Observable
+private final class DateFieldPopoverState {
+	var isShown = false
+	var isAnchored = false
+}
+
+/// The anchor of the popover of the custom period in the debug harness, as the filter bar has it.
+private struct DateFieldPopoverAnchor: View {
+	@Bindable var state: DateFieldPopoverState
+
+	var body: some View {
+		Color.clear.frame(width: 1, height: 1).popover(isPresented: $state.isShown) { CustomPeriodView() }
+	}
+}

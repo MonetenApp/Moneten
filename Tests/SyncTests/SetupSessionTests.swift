@@ -68,6 +68,19 @@ struct SetupSessionTests {
 		#expect(try await session.ask(.pin(PINRequest(rules: PINRules(minLength: 4)))) == .pin(Secret("1234")))
 	}
 
+	@Test("A six character PIN for a server that refuses it since it raised the minimum ends the login with that message")
+	func refusedPINLength() async throws {
+		let session = SetupSession(broker: broker, access: Self.access, pin: Secret("123456"))
+		do {
+			let answer = try await session.ask(.pin(PINRequest(rules: PINRules(minLength: 8, refusedLength: 6))))
+			Issue.record("the PIN was sent: \(answer)")
+		} catch {
+			#expect(error.localizedDescription
+				== "The FinTS server of the bank no longer accepts a PIN of 6 characters. Set a longer PIN in the online banking of the bank first.")
+		}
+		#expect(broker.current == nil)
+	}
+
 	static let chooseMethod = UserRequest.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer,
 		challenge: .chooseTANMethod([TANMethod(id: "922", name: "pushTAN 2.0", delivery: .pushNotification)], current: nil)))
 

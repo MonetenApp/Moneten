@@ -76,6 +76,19 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **WHEN** the user enters "760 30"
 - **THEN** the list shows the banks whose Bankleitzahl starts with 76030, Consorsbank 76030080 first
 
+#### Scenario: Brand of a bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 83065408 "VR-Bank Altenburger Land" and 51090000 "Wiesbadener Volksbank", and Skatbank and Ordensbank are brands of these two banks
+- **WHEN** the user enters "skatbank"
+- **THEN** the list starts with "VR-Bank Altenburger Land / Skatbank" with 83065408
+- **AND** "ordensbank" lists "Wiesbadener Volksbank / Ordensbank" with 51090000 first
+
+#### Scenario: Short name of a bank with a FinTS address
+
+- **GIVEN** the bank directory names the Bankleitzahl 30060601 "Deutsche Apotheker- und Ärztebank eG" with a FinTS address, and other Bankleitzahlen "apoBank" without one
+- **WHEN** the user enters "apobank"
+- **THEN** the list starts with "Deutsche Apotheker- und Ärztebank eG" with 30060601
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -116,6 +129,22 @@ The app SHALL check an IBAN for its country code, its length for that country, a
 
 - **WHEN** the user enters an IBAN that starts with "XX"
 - **THEN** the app says that the IBAN starts with an unexpected country code
+
+### Requirement: Point customers of 1822direkt to its Bankleitzahl
+
+The app SHALL tell the user in the first step that a customer of 1822direkt enters the Bankleitzahl 50050222 in place of the IBAN, when the entered IBAN carries the Bankleitzahl 50050201. 1822direkt gives its customers IBANs with the Bankleitzahl of Frankfurter Sparkasse, and its FinTS server has the Bankleitzahl 50050222. A Bankleitzahl that the user enters or chooses gets no such note.
+
+#### Scenario: IBAN with the Bankleitzahl of Frankfurter Sparkasse
+
+- **GIVEN** the bank directory lists 50050201 as "Frankfurter Sparkasse" and 50050222 as "1822direkt (PIN/TAN)"
+- **WHEN** the user enters "DE24500502010000202051"
+- **THEN** the app shows "Frankfurter Sparkasse"
+- **AND** the app says that a customer of 1822direkt enters the Bankleitzahl 50050222 in place of the IBAN
+
+#### Scenario: Bankleitzahl of Frankfurter Sparkasse
+
+- **WHEN** the user enters "50050201"
+- **THEN** the app shows "Frankfurter Sparkasse" without that note
 
 ### Requirement: Check the Bankleitzahl
 
@@ -242,11 +271,53 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "Login name or Legitimations-ID"
 
+#### Scenario: Cooperative bank
+
+- **GIVEN** the user chose Wiesbadener Volksbank with the Bankleitzahl 51090000, whose FinTS address is on the host `fints2.atruvia.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "VR-NetKey or alias"
+- **AND** the line under it says that a Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking
+
+#### Scenario: Sparda-Bank on the servers of the cooperative banks
+
+- **GIVEN** the user chose Sparda-Bank Baden-Württemberg with the Bankleitzahl 60090800, whose FinTS address is on the host `fints2.atruvia.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because a Sparda-Bank calls its login name differently
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
 - **WHEN** the user fills in "User ID" and "PIN" and leaves the customer ID empty
 - **THEN** "Next" is enabled
+
+### Requirement: Send a login name of 17 digits to a savings bank as 16 digits
+
+The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it.
+
+#### Scenario: Login name of 17 digits
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "12345678901234567" and clicks "Next"
+- **THEN** the app sends the login name "1234567890123456"
+- **AND** the access stores the login name "1234567890123456"
+
+#### Scenario: Login name of 17 characters with a letter
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "1234567890123456A" and clicks "Next"
+- **THEN** the app sends and stores "1234567890123456A"
+
+#### Scenario: Login name of 17 digits at another bank
+
+- **GIVEN** the user chose "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the user enters the login name "12345678901234567" and clicks "Next"
+- **THEN** the app sends and stores "12345678901234567"
+
+#### Scenario: New login name of 17 digits in "Edit Login Data..."
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "12345678901234567" in "Edit Login Data..." and clicks "Next"
+- **THEN** the app sends and stores "1234567890123456"
 
 ### Requirement: Check the format of login fields
 
@@ -264,15 +335,72 @@ The app SHALL check each login field against the format that the bank directory 
 - **WHEN** the user enters "1.2.80"
 - **THEN** the app says that the date of birth must be in the format DD.MM.YYYY
 
+#### Scenario: Long alias at a cooperative bank
+
+- **GIVEN** the chosen bank has its FinTS address on a host that ends in `.atruvia.de` or `.bankenit.de`
+- **WHEN** the user enters a login name of 31 characters and clicks "Next"
+- **THEN** the app says that the FinTS server of the bank accepts no alias longer than 30 characters and that the user changes the alias in the online banking of the bank first
+- **AND** the app sends nothing to the bank and stays on the second step
+
+#### Scenario: Six character PIN at a cooperative bank
+
+- **GIVEN** the chosen bank has its FinTS address on a host that ends in `.atruvia.de` or `.bankenit.de`, and its bank parameters require a PIN of at least 8 characters
+- **WHEN** the user enters the PIN "123456"
+- **THEN** the app says that the FinTS server of the bank no longer accepts PINs of 6 characters and that the user sets a longer PIN in the online banking of the bank first
+- **AND** the app sends nothing to the bank
+- **AND** the PIN sheet of a refresh shows the same message for the same PIN
+
+### Requirement: Send the login name in the form that the bank expects
+
+The app SHALL send and store a VR-Kennung in capitals and without spaces when the FinTS address of the bank is on a host that ends in `.atruvia.de` or `.bankenit.de`, or on the host `fints.apobank.de`. A VR-Kennung is a login name that starts with "VRK" in any case and has only digits after it once the spaces are removed. Any other login name stays as the user typed it. Two login names that agree in this form are the same login.
+
+#### Scenario: VR-Kennung in lower case
+
+- **GIVEN** the user chose Wiesbadener Volksbank on the host `fints2.atruvia.de`
+- **WHEN** the user enters the login name "vrk 12345678" and clicks "Next"
+- **THEN** the app sends "VRK12345678" to the bank
+- **AND** the access stores "VRK12345678" as its login name
+
+#### Scenario: Alias that starts with the same letters
+
+- **GIVEN** the user chose Wiesbadener Volksbank on the host `fints2.atruvia.de`
+- **WHEN** the user enters the login name "vrkonto1"
+- **THEN** the app sends "vrkonto1"
+
+#### Scenario: Bank on another server
+
+- **GIVEN** the user chose a bank whose FinTS address is on another host
+- **WHEN** the user enters the login name "vrk12345678"
+- **THEN** the app sends "vrk12345678"
+
+#### Scenario: Access that the app stored before
+
+- **GIVEN** an access to a bank on `fints1.atruvia.de` stores the login name "vrk12345678"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "VRK12345678" to the bank
+
+#### Scenario: Same login in another case
+
+- **GIVEN** an access to Wiesbadener Volksbank on `fints2.atruvia.de` stores the login name "vrk12345678"
+- **WHEN** the user adds an account of the same bank with the login name "VRK12345678"
+- **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "VRK12345678"
+
 ### Requirement: Show what the bank requires before the first login
 
-The app SHALL show a hint in the second step when the bank directory or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
+The app SHALL show a hint in the second step when the app, the bank directory, or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
 
 #### Scenario: Access must be requested
 
 - **GIVEN** the note for "Musterbank" says that the FinTS access must be requested from the bank
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows that note above the fields
+
+#### Scenario: Savings bank
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user logs in with the login name and the PIN of the online banking of the Sparkasse
+- **AND** the app says that the user sets up a TAN method such as pushTAN or chipTAN in the online banking before the first login
 
 #### Scenario: Credit card
 

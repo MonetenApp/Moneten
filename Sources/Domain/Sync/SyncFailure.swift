@@ -26,6 +26,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// An extension service rejected the login data. Automatic refreshes skip the access until the user enters it again.
 	case loginRejected
 	case accessBlocked(BankMessage)
+	/// A savings bank answered that the user blocked this app under "Kontozugriffe" in its online banking. Only the
+	/// user can unblock it there, so it acts like a blocked access.
+	case appBlocked(BankMessage)
 	/// The bank did not accept the TAN that the user typed.
 	case tanRejected(BankMessage)
 	/// The user declined the approval in the app of the bank, or did not answer there in time.
@@ -52,11 +55,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
 
-	/// The bank rejected the PIN or blocked the access, or an extension service rejected the login data,
+	/// The bank rejected the PIN or blocked the access or the app, or an extension service rejected the login data,
 	/// so the PIN or the login data must never be sent again.
 	public var rejectsPIN: Bool {
 		switch self {
-		case .pinRejected, .accessBlocked, .loginRejected: true
+		case .pinRejected, .accessBlocked, .appBlocked, .loginRejected: true
 		default: false
 		}
 	}
@@ -65,7 +68,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// manual refresh ends without it ("An automatic refresh never asks the user").
 	public var waitsForUser: Bool {
 		switch self {
-		case .needsUser, .pinRejected, .loginRejected, .accessBlocked, .noTANMethod: true
+		case .needsUser, .pinRejected, .loginRejected, .accessBlocked, .appBlocked, .noTANMethod: true
 		default: false
 		}
 	}
@@ -87,7 +90,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// method. So a command after an automatic refresh that failed with it does not run again with dialogs.
 	public var dialogResolves: Bool {
 		switch self {
-		case .accessBlocked, .noTANMethod: false
+		case .accessBlocked, .appBlocked, .noTANMethod: false
 		default: waitsForUser
 		}
 	}
@@ -95,7 +98,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {
-		case let .pinRejected(m), let .accessBlocked(m), let .tanRejected(m), let .bank(m): m
+		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m), let .noTANMethod(m): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
@@ -127,6 +130,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			String(localized: "The bank did not accept the PIN: \(m.text)\nMore wrong attempts can block the access.")
 		case let .accessBlocked(m):
 			String(localized: "The bank blocked the access: \(m.text)\nAsk the bank to unblock it.")
+		case let .appBlocked(m):
+			String(localized: "Moneten is blocked in the online banking of the Sparkasse: \(m.text)\nUnblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account.")
 		case let .tanRejected(m):
 			String(localized: "The bank did not accept the entered TAN: \(m.text)")
 		case let .approvalDeclined(m):

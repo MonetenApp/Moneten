@@ -330,8 +330,12 @@ private struct AccountEntry: Codable {
 	var owner: String?
 	var bankBalance: String?
 	var bankBalanceDate: Date?
+	var otherBankBalances: [AmountEntry]?
+	var bonusPoints: Int64?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
+	/// Written only when true, so a reader before it reads the file, and the format version stays.
+	var initialBalanceIsDerived: Bool?
 	var isClosed: Bool
 	var comment: String?
 	var sourceID: String?
@@ -360,8 +364,11 @@ private struct AccountEntry: Codable {
 		owner = a.owner
 		bankBalance = a.bankBalanceMinor.map { AmountText.text($0, a.currency) }
 		bankBalanceDate = a.bankBalanceDate
+		otherBankBalances = a.otherBankBalances.isEmpty ? nil : a.otherBankBalances.map(AmountEntry.init)
+		bonusPoints = a.bonusPoints
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
+		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
 		comment = a.comment
 		sourceID = a.sourceID
@@ -376,12 +383,19 @@ private struct AccountEntry: Codable {
 
 	func account() throws -> Account {
 		try currencyCode(currency)
+		let others = try (otherBankBalances ?? []).map { try $0.money() }
+		// A balance in the account currency would count twice in the sum of a group, and a repeated currency would show twice.
+		guard Set(others.map(\.currency) + [currency]).count == others.count + 1 else {
+			throw AllData.ReadError.damaged("the other balances of an account repeat a currency or hold the currency of the account")
+		}
 		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
-			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
+			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
+			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
-			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false)
+			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
+			otherBankBalances: others, bonusPoints: bonusPoints)
 	}
 }
 
@@ -429,6 +443,8 @@ private struct TransactionEntry: Codable {
 	var sourceID: String?
 	var fileIdentity: String?
 	var createdAt: Date
+	/// Written only for a manual row. A missing key means a row that a source delivered.
+	var isManual: Bool?
 	var original: OriginalEntry?
 
 	init(_ t: Transaction) {
@@ -459,6 +475,7 @@ private struct TransactionEntry: Codable {
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
+		isManual = t.isManual ? true : nil
 		original = t.original.map { OriginalEntry($0, currency: t.currency) }
 	}
 
@@ -470,7 +487,7 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
 		return t
 	}
@@ -595,7 +612,10 @@ private struct AmountEntry: Codable {
 		currency = m.currency
 	}
 
-	func money() throws -> Money { Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency) }
+	func money() throws -> Money {
+		try currencyCode(currency)
+		return Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency)
+	}
 }
 
 private struct QuoteEntry: Codable {
