@@ -177,6 +177,22 @@ final class SelfTest {
 		expect("TAN medium asked once in a run", medium(null, "Handy|Karte 1", "Handy|Karte 1"), "Karte 1 Karte 1, asked 1");
 		expect("TAN medium of the last refresh", medium("Handy", "Handy|Karte 1"), "Handy, asked 0");
 		expect("TAN medium that the bank no longer offers", medium("Alte Karte", "Handy|Karte 1"), "Karte 1, asked 1");
+		expect("login name of the command replaces the stored one", restoredLogin("vrk12345678", "vrk12345678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID of its own stays", restoredLogin("vrk12345678", "4711", "VRK12345678"), "VRK12345678 4711");
+		expect("stored login name without one in the command", restoredLogin("erika77", "erika77", null), "erika77 erika77");
+		expect("customer ID that differs from the user ID only in case stays", restoredLogin("erika77", "ERIKA77", "erika77"), "erika77 ERIKA77");
+		expect("customer ID that is the same VR-Kennung on a server of Atruvia follows",
+			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrk12345678", "VRK 12345678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID that is the same VR-Kennung of apoBank follows",
+			restoredLogin("fints.apobank.de/FinTs30PinTanHttpGate", "vrk12345678", "Vrk12345678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID with a no-break space and an em space is the same VR-Kennung",
+			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrk12345678", "VRK\u00A0123\u20034\u00A05678", "VRK12345678"), "VRK12345678 VRK12345678");
+		expect("customer ID in another case on another server stays", restoredLogin("VRK12345678", "vrk12345678", "VRK12345678"), "VRK12345678 vrk12345678");
+		expect("alias in another case on a server of Atruvia stays",
+			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrkonto1", "VRKONTO1", "vrkonto1"), "vrkonto1 VRKONTO1");
+		expect("TAN medium without a list asked once in a run", medium(null, "", ""), "Karte 1 Karte 1, asked 1");
+		expect("TAN medium without a list from the last refresh", medium("Karte 1", ""), "Karte 1, asked 0");
+		expect("empty TAN medium without a list from the last refresh", medium("", ""), ", asked 0");
 
 		try {
 			X509Certificate selfSigned = (X509Certificate) CertificateFactory.getInstance("X.509").generateCertificate(new ByteArrayInputStream(Base64.getDecoder().decode(
@@ -961,6 +977,26 @@ final class SelfTest {
 		FinTSHelper.Passport passport = new FinTSHelper.Passport();
 		FinTSHelper.Passport.loaded = null;
 		return passport;
+	}
+
+	/// The user ID and the customer ID of a passport from a state with `userId` and `customerId`, for a
+	/// command with the login name `user`.
+	static String restoredLogin(String userId, String customerId, String user) {
+		return restoredLogin(null, userId, customerId, user);
+	}
+
+	/// The same at the FinTS address `host`, or at the made-up bank when it is null.
+	static String restoredLogin(String host, String userId, String customerId, String user) {
+		PassportData d = passportData();
+		if (host != null) d.host = host;
+		d.userId = userId;
+		d.customerId = customerId;
+		FinTSHelper.Passport.loaded = d;
+		FinTSHelper.Passport.user = user;
+		FinTSHelper.Passport passport = new FinTSHelper.Passport();
+		FinTSHelper.Passport.loaded = null;
+		FinTSHelper.Passport.user = null;
+		return passport.getUserId() + " " + passport.getCustomerId();
 	}
 
 	/// The data of the passport of a made-up bank.

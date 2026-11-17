@@ -33,7 +33,7 @@ extension Ledger {
 	/// one whose restriction leaves out `target`, gives an entry that the rules sort.
 	///
 	/// `rows` are the rows the list shows, so a part of a split gives the amount of the part. The entry is booked,
-	/// because no refresh books a row of an offline account. One row without an opposite amount stops all of them.
+	/// because no refresh books a row of an offline account, and manual, because the user made it. One row without an opposite amount stops all of them.
 	public func offsettingEntries(of rows: [Transaction], into target: Account, now: Date = Date()) throws -> [Transaction] {
 		guard rows.allSatisfy({ $0.amountMinor != .min }) else { throw OffsettingEntryFailure.noOppositeAmount }
 		let rules = Categorizer(ledger: self)
@@ -46,7 +46,7 @@ extension Ledger {
 			var entry = Transaction(accountID: target.id, bookingDate: source.bookingDate, valueDate: source.bookingDate, amountMinor: -source.amountMinor,
 				currency: source.currency, name: source.name, purpose: source.purpose, counterpartyIBAN: from?.iban,
 				counterpartyBIC: from?.iban == nil ? nil : from?.bic, comment: source.comment, categoryID: kept,
-				categorizedBy: kept == nil ? .none : .manual, createdAt: now)
+				categorizedBy: kept == nil ? .none : .manual, createdAt: now, isManual: true)
 			rules.categorize(&entry)
 			return entry
 		}

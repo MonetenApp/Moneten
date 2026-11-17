@@ -18,10 +18,24 @@ struct SplitTests {
 	func rateInputBoundaries() {
 		#expect(VATRate(text: "0.01")?.hundredths == 1)
 		#expect(VATRate(text: " 7,50 ")?.hundredths == 750)
-		#expect(VATRate(text: "92233720368547758.07")?.hundredths == 9223372036854775807)
-		for text in ["", " ", "0.00", "+5", "−5", "1,000", "7.125", "1.2.3", "1,2.3", "19%", "1e2", "1 000", ".5", "7.", "７", "92233720368547758.08"] {
+		#expect(VATRate(text: "100")?.hundredths == 10000)
+		#expect(VATRate(text: "100,00")?.hundredths == 10000)
+		for text in ["", " ", "0.00", "+5", "−5", "1,000", "7.125", "1.2.3", "1,2.3", "19%", "1e2", "1 000", ".5", "7.", "７",
+			"100,01", "190", "92233720368547758.07", "92233720368547758.08"] {
 			#expect(VATRate(text: text) == nil)
 		}
+	}
+
+	@Test("The list holds each rate once and keeps its order")
+	func rateList() {
+		let r19 = VATRate(hundredths: 1900), r7 = VATRate(hundredths: 700), r20 = VATRate(hundredths: 2000)
+		#expect(VATRate.setting(r20, at: nil, in: [r19, r7]) == [r19, r7, r20])
+		#expect(VATRate.setting(r19, at: nil, in: [r19, r7]) == [r19, r7])
+		#expect(VATRate.setting(VATRate(hundredths: 810), at: 1, in: [r19, r7, r20]).map(\.hundredths) == [1900, 810, 2000])
+		#expect(VATRate.setting(r7, at: 2, in: [r19, r7, r20]) == [r19, r7])
+		#expect(VATRate.setting(r20, at: 0, in: [r19, r7, r20]) == [r20, r7])
+		#expect(VATRate.setting(r7, at: 1, in: [r19, r7]) == [r19, r7])
+		#expect(VATRate.list(hundredths: [1900, 700, 1900, 19000, 0, -5, 10000]).map(\.hundredths) == [1900, 700, 10000])
 	}
 
 	func money(_ minor: Int64, _ currency: String = "EUR") -> Money { Money(minorUnits: minor, currency: currency) }

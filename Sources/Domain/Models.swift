@@ -73,11 +73,20 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// The balance that the bank or the migration source reported. `reportedBalance` says which accounts show it.
 	public var bankBalanceMinor: Int64?
 	public var bankBalanceDate: Date?
+	/// The balances in other currencies that the source reported with `bankBalanceMinor`, in its order and
+	/// without a zero, such as the dollars of a wallet in euros. Each refresh that stores a balance replaces them.
+	public var otherBankBalances: [Money]
+	/// The bonus points that the source reported with the balance, or nil. Each refresh that stores a balance replaces them.
+	public var bonusPoints: Int64?
 	/// The balance before the oldest transaction. Charts start from it.
 	public var initialBalanceMinor: Int64
-	/// The first refresh with a bank balance or the user set the initial balance, so the app never
-	/// derives it again. The user changes it from then on, with "Calibrate" or by hand.
+	/// The first refresh with a bank balance and the full history, or the user, set the initial balance, so no
+	/// later refresh derives it from scratch. A derived value still follows manual rows (`initialBalanceIsDerived`).
+	/// The user changes it with "Calibrate" or by hand.
 	public var initialBalanceIsSet: Bool
+	/// A refresh derived the initial balance, and the user has not entered one since. Only then does a manual row in the
+	/// bank balance move it. A value that the user enters stays as the user entered it.
+	public var initialBalanceIsDerived: Bool
 	public var isClosed: Bool
 	public var comment: String?
 	/// The identifier of the account in the program it came from.
@@ -103,9 +112,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
-		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
+		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, initialBalanceIsDerived: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false, otherBankBalances: [Money] = [], bonusPoints: Int64? = nil) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -121,8 +130,11 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.owner = owner
 		self.bankBalanceMinor = bankBalanceMinor
 		self.bankBalanceDate = bankBalanceDate
+		self.otherBankBalances = otherBankBalances
+		self.bonusPoints = bonusPoints
 		self.initialBalanceMinor = initialBalanceMinor
 		self.initialBalanceIsSet = initialBalanceIsSet
+		self.initialBalanceIsDerived = initialBalanceIsDerived
 		self.isClosed = isClosed
 		self.comment = comment
 		self.sourceID = sourceID
@@ -137,12 +149,21 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	public var isOffline: Bool { source == .offline }
 
+	/// "Add Transaction..." works in every account except a portfolio, whose value comes from its positions.
+	/// In an account with bank access, a manual row covers what the bank does not deliver.
+	public var takesManualTransactions: Bool { kind != .portfolio }
+
 	/// The balance that a portfolio or an account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
 	/// the balance of the source.
 	public var reportedBalance: Money? {
 		guard kind == .portfolio || source == .bank, let bankBalanceMinor else { return nil }
 		return Money(minorUnits: bankBalanceMinor, currency: currency)
+	}
+
+	/// The reported balance and then the balances in other currencies, or nothing for an account that computes its balance.
+	public var reportedBalances: [Money] {
+		reportedBalance.map { [$0] + otherBankBalances } ?? []
 	}
 
 	/// The record of a portfolio with a bank balance: that balance on the day the bank reported it,
@@ -161,12 +182,33 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// history from its recorded values instead.
 	var derivesInitialBalance: Bool { source == .bank && kind != .portfolio && !initialBalanceIsSet }
 
+	/// A refresh derived the initial balance and the user entered none since, so a manual row in the bank balance
+	/// moves it by its own change, and a refresh whose new day passes a manual row sets it by the rule of the first refresh.
+	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived }
+
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
 	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.
 	func bookedSum(of rows: some Sequence<Transaction>, through day: Day) -> Int128 {
-		rows.reduce(0) { sum, t in
-			!t.isPending && t.currency == currency && t.bookingDate <= day ? sum + Int128(t.amountMinor) : sum
+		rows.reduce(0) { sum, t in bankBalance(through: day, holds: t) ? sum + Int128(t.amountMinor) : sum }
+	}
+
+	/// The row is in a bank balance for the end of `day`, as `bookedSum(of:through:)` counts it.
+	func bankBalance(through day: Day, holds t: Transaction) -> Bool {
+		!t.isPending && t.currency == currency && t.bookingDate <= day
+	}
+
+	/// How far a derived initial balance moves when manual rows change from `old` to `new`, so the computed balance
+	/// keeps ending at a bank balance for the end of `day`: by the booked amount that each manual row of the account
+	/// had in that balance before, less what it has after. Only the row's own change counts, so a difference that a
+	/// bank row left stays for the calibration proposal. A row keeps `isManual` when a file matches it, so its later
+	/// deletion still moves the value back. A nil side is a row that is added or deleted. The move is exact, so that
+	/// the caller can refuse an initial balance above `Money.maxMinorUnits` instead of storing a wrapped one.
+	func moveForManualRows(_ changes: some Sequence<(old: Transaction?, new: Transaction?)>, through day: Day) -> Int128 {
+		func share(_ t: Transaction?) -> Int128 {
+			guard let t, t.isManual, t.accountID == id, bankBalance(through: day, holds: t) else { return 0 }
+			return Int128(t.amountMinor)
 		}
+		return changes.reduce(0) { $0 + share($1.old) - share($1.new) }
 	}
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
@@ -181,14 +223,25 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		bankBalanceMinor.map { Int128($0) - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
 
-	/// Sets the initial balance, so that the computed balance meets the bank balance. It is set for good unless
-	/// `missesOlderTransactions`: then the next refresh derives it again, and the one that brings the full history sets it.
+	/// The initial balance that the user enters in the account settings or with "Calibrate". It stays, so no refresh
+	/// and no change of the rows derives it again.
+	public mutating func enterInitialBalance(_ minor: Int64) {
+		initialBalanceMinor = minor
+		initialBalanceIsSet = true
+		initialBalanceIsDerived = false
+	}
+
+	/// Sets the initial balance, so that the computed balance meets the bank balance: at the first refresh with a
+	/// bank balance, and again when a refresh passes a manual row of a derived value. `rows` are all live rows of the
+	/// account. It is set for good unless `missesOlderTransactions`: then the next refresh derives it again, and the
+	/// one that brings the full history sets it.
 	/// False, with the account unchanged, when the initial balance would be above `Money.maxMinorUnits`.
-	mutating func deriveInitialBalance(from rows: [Transaction], calendar: Calendar = .current) -> Bool {
-		guard derivesInitialBalance, let exact = exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return true }
+	mutating func deriveInitialBalance(from rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Bool {
+		guard derivesInitialBalance || followsBankBalance, let exact = exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar) else { return true }
 		guard let value = Int64(limitedAmount: exact) else { return false }
 		initialBalanceMinor = value
 		initialBalanceIsSet = !missesOlderTransactions
+		initialBalanceIsDerived = true
 		return true
 	}
 }
@@ -315,6 +368,12 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var sourceID: String?
 	public var fileIdentity: String?
 	public var createdAt: Date
+	/// The user added the row with "Add Transaction...". It keeps the mark when a file or a migration matches it.
+	public var isManual: Bool
+
+	/// A manual row that no file and no migration matched. No source has it, so a refresh never pairs a delivered
+	/// row with it, and deleting it keeps no record. A manual row that a source matched is a row of that source.
+	public var isOnlyManual: Bool { isManual && sourceID == nil && fileIdentity == nil }
 	/// The fields that "Edit Transaction..." changes, as the source delivered them. Nil until the user changes one
 	/// of them. A merge finds the row by these values and updates them, and the fields keep what the user wrote.
 	public var original: OriginalValues?
@@ -322,7 +381,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil) {
+		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil, isManual: Bool = false) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -349,6 +408,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.sourceID = sourceID
 		self.fileIdentity = fileIdentity
 		self.createdAt = createdAt
+		self.isManual = isManual
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }

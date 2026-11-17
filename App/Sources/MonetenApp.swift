@@ -53,6 +53,8 @@ struct MonetenApp: App {
 			SettingsView()
 				.environment(model)
 		}
+		// The settings open only while the app is unlocked, so they never come back with the launch.
+		.restorationBehavior(.disabled)
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
 			MenuBarPopover()
@@ -91,6 +93,12 @@ struct AppCommands: Commands {
 			Button("About Moneten") { AboutPanel.show() }
 			Button("Check for Updates...") { model.updater.checkForUpdates() }
 				.disabled(!model.updater.canCheck)
+		}
+		// The settings need the open database, so the item waits for the unlock.
+		CommandGroup(replacing: .appSettings) {
+			SettingsLink { Text("Settings...") }
+				.keyboardShortcut(",")
+				.disabled(model.phase != .unlocked)
 		}
 		CommandGroup(after: .appSettings) {
 			Divider()
@@ -152,7 +160,7 @@ struct AppCommands: Commands {
 			Divider()
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
-				.disabled(!unlocked || model.selectedOfflineAccount == nil)
+				.disabled(!unlocked || model.selectedManualAccount == nil)
 			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
 			Button("Assign Category...") { model.openCategoryPicker() }
 				.keyboardShortcut("k")

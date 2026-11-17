@@ -1,4 +1,5 @@
 import Foundation
+import Storage
 
 /// The language of the interface. macOS picks it at the start of the app from `AppleLanguages`: the value
 /// that the "Language" setting stores in the defaults of the app, else the preferred languages of macOS.
@@ -42,12 +43,11 @@ enum AppLanguage: String, CaseIterable {
 	}
 
 	/// macOS reads the value at the next start of the app. Nil removes the stored choice, so the app follows macOS again.
-	static func store(_ language: AppLanguage?) {
-		if let language {
-			UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
-		} else {
-			UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-		}
+	/// Returns false when macOS does not keep the value for the next start. The check reads the defaults of the app
+	/// only, because `applyAtLaunch` can put another language in the arguments of this run.
+	static func store(_ language: AppLanguage?) -> Bool {
+		guard let id = Bundle.main.bundleIdentifier else { return false }
+		return UserDefaults.standard.storeSetting(language.map { [$0.rawValue] }, forKey: "AppleLanguages", inDomain: id)
 	}
 
 	/// Without a stored language, a Mac whose first language is neither German nor English gets English for

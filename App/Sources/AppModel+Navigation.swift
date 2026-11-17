@@ -58,8 +58,9 @@ extension AppModel {
 		selection.flatMap { ledger.portfolioAccounts(in: $0.scope) }
 	}
 
-	var selectedOfflineAccount: Account? {
-		selectedAccount.flatMap { $0.isOffline ? $0 : nil }
+	/// The selected account when "Add Transaction..." can add to it.
+	var selectedManualAccount: Account? {
+		selectedAccount.flatMap { $0.takesManualTransactions ? $0 : nil }
 	}
 
 	var settingsTitle: String {
@@ -241,7 +242,7 @@ extension AppModel {
 								return (read, problems, canceledAt: i)
 							}
 							sheet = .fileImport(run)
-							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, profile: name, matched: matched, store: store)
+							let preview = CSVPreviewModel(name: url.lastPathComponent, file: file, layout: start, currency: account.currency, profiles: profiles, unreadable: try store.unreadableCSVProfileNames(), profile: name, matched: matched, store: store)
 							guard let chosen = await run.choose(preview) else {
 								if run.isCanceled { return (read, problems, canceledAt: i) }
 								problems.append("\(url.lastPathComponent): \(preview.reason)")

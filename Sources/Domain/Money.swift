@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// An amount of money in the smallest unit of its currency, for example cents for EUR.
 ///
@@ -53,6 +54,38 @@ enum Currency {
 		case "JPY", "KRW", "ISK", "CLP", "VND", "XOF", "XAF": 0
 		case "BHD", "KWD", "OMR", "JOD", "TND": 3
 		default: 2
+		}
+	}
+
+	/// Whether `value` has no more decimal places than the currency, so it needs no rounding.
+	static func fits(_ value: Decimal, _ code: String) -> Bool {
+		var scaled = value * Decimal(sign: .plus, exponent: exponent(of: code), significand: 1)
+		var rounded = Decimal()
+		NSDecimalRound(&rounded, &scaled, 0, .plain)
+		return rounded == scaled
+	}
+
+	/// `text` without the code and the symbol of the currency, such as "USD" and "$", so "12.50 $" reads as an amount.
+	static func removingSigns(of code: String, from text: String) -> String {
+		var s = text.replacingOccurrences(of: code, with: "", options: .caseInsensitive)
+		let symbol = symbol(of: code)
+		if !symbol.isEmpty { s = s.replacingOccurrences(of: symbol, with: "") }
+		return s
+	}
+
+	/// The symbols found so far, by currency code. The amount field checks its text on every key, and making a
+	/// `NumberFormatter` each time cost more than reading the amount.
+	private static let symbols = Mutex<[String: String]>([:])
+
+	private static func symbol(of code: String) -> String {
+		symbols.withLock { found in
+			if let symbol = found[code] { return symbol }
+			let formatter = NumberFormatter()
+			formatter.locale = Locale(identifier: "en_US_POSIX")
+			formatter.currencyCode = code
+			let symbol = formatter.currencySymbol ?? ""
+			found[code] = symbol
+			return symbol
 		}
 	}
 }
@@ -166,11 +199,15 @@ public enum AmountParser {
 	}
 
 	/// The text of an amount for a text field, such as "1234.56", that `decimal(from:)` reads back
-	/// unchanged: no currency sign, no thousands separators, and a decimal point. Three decimal places
-	/// after at most three digits, as in "1.234", also read as a thousands group, so such a text ends
-	/// with an extra zero.
-	public static func editableText(_ money: Money) -> String {
-		let text = "\(money.decimal)"
+	/// unchanged: no currency sign, no thousands separators, every decimal place of the currency, and
+	/// `decimalMark`. Three decimal places after at most three digits, as in "1.234", also read as a
+	/// thousands group, so such a text ends with an extra zero.
+	public static func editableText(_ money: Money, decimalMark: DecimalMark = .point) -> String {
+		let places = money.decimalPlaces
+		var digits = String(money.minorUnits.magnitude)
+		if digits.count <= places { digits = String(repeating: "0", count: places + 1 - digits.count) + digits }
+		let sign = money.isNegative ? "-" : ""
+		let text = places == 0 ? sign + digits : sign + String(digits.dropLast(places)) + String(decimalMark.rawValue) + String(digits.suffix(places))
 		return decimal(from: text) == nil ? text + "0" : text
 	}
 
@@ -190,7 +227,8 @@ public enum AmountParser {
 		let parts = digits.split(separator: mark.rawValue, omittingEmptySubsequences: false)
 		guard parts.count <= 2 else { return nil }
 		let groups = parts[0].split(separator: mark.grouping, omittingEmptySubsequences: false)
-		guard groups.count == 1 || (1...3).contains(groups[0].count) && groups.dropFirst().allSatisfy({ $0.count == 3 }) else { return nil }
+		// A group of thousands never starts with a zero, so "0,500" has only the reading 0.5.
+		guard groups.count == 1 || (1...3).contains(groups[0].count) && groups[0].first != "0" && groups.dropFirst().allSatisfy({ $0.count == 3 }) else { return nil }
 		let fraction = parts.count == 2 ? parts[1] : ""
 		guard !fraction.contains(mark.grouping) else { return nil }
 		return Decimal(string: groups.joined() + "." + fraction, locale: Locale(identifier: "en_US_POSIX"))

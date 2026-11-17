@@ -950,6 +950,16 @@
         }
       }
     },
+    "-0,00" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "-0,00"
+          }
+        }
+      }
+    },
     "0,00" : {
       "localizations" : {
         "de" : {
@@ -1239,6 +1249,16 @@
         }
       }
     },
+    "A saved profile named “%@” cannot be read by this version of Moneten. Choose another name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein gespeichertes Profil namens „%@“ kann von dieser Version von Moneten nicht gelesen werden. Wählen Sie einen anderen Namen."
+          }
+        }
+      }
+    },
     "A search term is missing after %@%@." : {
       "localizations" : {
         "de" : {
@@ -1336,6 +1356,17 @@
           }
         }
       }
+    },
+    "A Volksbank or Raiffeisenbank expects the VR-NetKey or the alias of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Volksbank oder Raiffeisenbank erwartet den VR-NetKey oder den Alias des Online-Bankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "A word without a field does not search account numbers or IBANs. local_account: and remote_account: do." : {
       "localizations" : {
@@ -1607,6 +1638,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fügen Sie ein Konto hinzu, bevor Sie Umsätze importieren."
+          }
+        }
+      }
+    },
+    "Add at least the initial deposit with “Add Transaction”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie mindestens die erste Einzahlung mit „Umsatz hinzufügen“ hinzu."
+          }
+        }
+      }
+    },
+    "Add at least the initial payout with “Add Transaction”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fügen Sie mindestens die erste Auszahlung des Darlehens mit „Umsatz hinzufügen“ hinzu."
           }
         }
       }
@@ -1981,6 +2032,17 @@
         }
       }
     },
+    "apoTAN device name" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "apoTAN-Gerätename"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Apply" : {
       "localizations" : {
         "de" : {
@@ -2350,6 +2412,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gesperrt"
+          }
+        }
+      }
+    },
+    "Bonus points: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bonuspunkte: %@"
           }
         }
       }
@@ -3801,16 +3873,6 @@
         }
       }
     },
-    "Deposit" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einnahme"
-          }
-        }
-      }
-    },
     "Deposits" : {
       "localizations" : {
         "de" : {
@@ -3973,12 +4035,12 @@
         }
       }
     },
-    "Each of these settings keeps the database password in the Keychain of this Mac." : {
+    "Each of these settings keeps the database password in the Keychain of this Mac. With \"Unlock automatically at application start\", anyone who uses your user account on this Mac can open Moneten without the password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf."
+            "value" : "Jede dieser Einstellungen bewahrt das Datenbankpasswort im Schlüsselbund dieses Macs auf. Mit „Beim Programmstart automatisch entsperren“ kann jeder, der Ihr Benutzerkonto auf diesem Mac verwendet, Moneten ohne das Passwort öffnen."
           }
         }
       }
@@ -4133,15 +4195,26 @@
         }
       }
     },
-    "Enter a rate above zero with up to two decimal places." : {
+    "Enter a rate from 0.01 to 100 with up to two decimal places." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Geben Sie einen Satz über null mit höchstens zwei Nachkommastellen ein."
+            "value" : "Geben Sie einen Satz von 0,01 bis 100 mit höchstens zwei Nachkommastellen ein."
           }
         }
       }
+    },
+    "Enter an amount." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie einen Betrag ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Enter Database Password" : {
       "localizations" : {
@@ -4766,6 +4839,17 @@
       },
       "extractionState" : "manual"
     },
+    "Help page of the Volksbanken Raiffeisenbanken" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Volksbanken Raiffeisenbanken"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Holiday" : {
       "localizations" : {
         "de" : {
@@ -5289,6 +5373,17 @@
         }
       }
     },
+    "Leave the field empty, unless the bank reports an error in the next step. Then enter the name exactly as the website of apoBank shows it under Benutzereinstellungen > apoTAN verwalten. When a later refresh reports that error, enter the name with “Edit Login Data...”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lassen Sie das Feld leer, außer die Bank meldet im nächsten Schritt einen Fehler. Geben Sie dann den Namen genau so ein, wie ihn die Website der apoBank unter Benutzereinstellungen > apoTAN verwalten zeigt. Meldet eine spätere Aktualisierung diesen Fehler, geben Sie den Namen mit „Zugangsdaten bearbeiten...“ ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "License" : {
       "localizations" : {
         "de" : {
@@ -5575,6 +5670,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "macOS blockiert die Mitteilungen von Moneten. Erlauben Sie sie in den Systemeinstellungen unter „Mitteilungen“, „Moneten“."
+          }
+        }
+      }
+    },
+    "macOS did not keep this change. The setting shows the value that applies." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS hat diese Änderung nicht übernommen. Die Einstellung zeigt den Wert, der gilt."
           }
         }
       }
@@ -7604,6 +7709,16 @@
         }
       }
     },
+    "Refreshes each account as often as \"Refresh\" in its account settings says, while Moneten runs and is unlocked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktualisiert jedes Konto so oft, wie „Aktualisierung“ in seinen Kontoeinstellungen festlegt, solange Moneten läuft und entsperrt ist."
+          }
+        }
+      }
+    },
     "Refreshing accounts" : {
       "localizations" : {
         "de" : {
@@ -9232,6 +9347,39 @@
       },
       "extractionState" : "manual"
     },
+    "The amount has more decimal places than its currency." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag hat mehr Nachkommastellen als seine Währung."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount is not a number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag ist keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The amount is too large." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The amount of a selected transaction has no opposite amount that the app can store." : {
       "localizations" : {
         "de" : {
@@ -9319,6 +9467,17 @@
       },
       "extractionState" : "manual"
     },
+    "The amount should not be zero." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Betrag sollte nicht null sein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The API server" : {
       "localizations" : {
         "de" : {
@@ -9356,6 +9515,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo konnte nicht abgerufen werden."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balance in %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Saldo in %@"
           }
         }
       },
@@ -9422,6 +9592,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Saldo der Gruppe „%@“ ist zu groß."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balances add up to more than Moneten can hold." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Salden ergeben zusammen mehr, als Moneten speichern kann."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The balances are not a list of pairs of amount and currency." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Salden sind keine Liste von Paaren aus Betrag und Währung."
           }
         }
       },
@@ -9630,6 +9822,17 @@
         }
       }
     },
+    "The bonus points are not a number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bonuspunkte sind keine Zahl."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The booked transactions up to the day of the bank balance do not add up to it. Calibrate moves the initial balance by the difference." : {
       "localizations" : {
         "de" : {
@@ -9775,6 +9978,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Kopie lässt sich nur auf diesem Mac und mit diesem Benutzerkonto öffnen, mit dem Schlüssel im Schlüsselbund. Wenn Sie später ein Datenbankpasswort setzen, wird dieser Schlüssel gelöscht, und die Kopie lässt sich nicht mehr öffnen."
+          }
+        }
+      }
+    },
+    "The currency of the transaction changed, so the kept splits were removed. Enter them again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung des Umsatzes hat sich geändert, deshalb wurden die behaltenen Teile entfernt. Geben Sie sie erneut ein."
           }
         }
       }
@@ -10441,6 +10654,28 @@
           }
         }
       }
+    },
+    "The FinTS server of the bank accepts no alias longer than %lld characters. Change the alias in the online banking of the bank first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der Bank akzeptiert keinen Alias mit mehr als %lld Zeichen. Ändern Sie zuerst den Alias im Online-Banking der Bank."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The FinTS server of the bank no longer accepts a %@ of %lld characters. Set a longer %@ in the online banking of the bank first." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der Bank akzeptiert keine %1$@ mit %2$lld Zeichen mehr. Legen Sie zuerst im Online-Banking der Bank eine längere %3$@ fest."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The group \"%@\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group." : {
       "localizations" : {
@@ -11229,6 +11464,16 @@
       },
       "extractionState" : "manual"
     },
+    "The transaction changed. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz hat sich geändert. Versuchen Sie es erneut."
+          }
+        }
+      }
+    },
     "The transaction has no debit or credit mark." : {
       "localizations" : {
         "de" : {
@@ -11861,16 +12106,6 @@
         }
       }
     },
-    "Type" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Art"
-          }
-        }
-      }
-    },
     "Type to find a category" : {
       "localizations" : {
         "de" : {
@@ -12307,6 +12542,17 @@
         }
       }
     },
+    "VR-NetKey or alias" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "VR-NetKey oder Alias"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Wait until the bank has booked the transaction." : {
       "localizations" : {
         "de" : {
@@ -12383,16 +12629,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Platzhalter: * für beliebige Zeichen, ? für ein Zeichen. Ein Begriff passt auf ganze Wörter, daher findet \"REWE\" nicht REWE-Markt, \"REWE*\" aber schon."
-          }
-        }
-      }
-    },
-    "Withdrawal" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ausgabe"
           }
         }
       }

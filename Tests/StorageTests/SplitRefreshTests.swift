@@ -181,6 +181,6 @@ extension SchemaTests {
 		#expect(rows.map(\.amountMinor).sorted() == [-3000, -2000])
 		#expect(rows.map(\.fileIdentity) == ["file:original", "file:original"])
 		#expect(try queue.read { try $0.columns(in: "bankTransaction").contains { $0.name == "needsReview" } } == false)
-		#expect(try queue.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == (1...17).map { "v\($0)" } + ["v19", "v18", "v20", "v24", "v21", "v25", "v22"])
+		#expect(try queue.read { try String.fetchAll($0, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid") } == (1...17).map { "v\($0)" } + ["v19", "v18", "v20", "v24", "v21", "v25", "v22", "v26", "v23"])
 	}
 }

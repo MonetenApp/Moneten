@@ -32,6 +32,8 @@
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
 # (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
+# shows the hint of the cooperative banks and sends a VR-Kennung in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -55,6 +57,7 @@ case "$cmd" in
 '{"code":"12030000","name":"Musterbank","city":"Musterstadt","bic":"BYLADEM1001","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"12030001","name":"Musterbank","city":"Beispielstadt","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"99999999","name":"Neobank Muster","city":"Musterstadt","bic":"NEOMDEM1XXX"},'\
+'{"code":"99090000","name":"Volksbank Musterstadt","city":"Musterstadt","bic":"GENODEF1MUS","url":"https://fints2.atruvia.de/cgi-bin/hbciservlet"},'\
 '{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
 '{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
