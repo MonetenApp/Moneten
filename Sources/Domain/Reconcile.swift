@@ -135,6 +135,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
+	let moved = MovedBookings(delivery, rows: rows, fresh: fresh.filter { bookings.ofBooked[$0] == nil }, stored: stored, taken: taken)
 	// An edited row counts by the day of its source, as the pairing and the drop below read it.
 	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceBookingDate >= today && stored[$0].review == nil })
 
@@ -213,6 +214,12 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			rules.categorize(&next)
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
+		} else if let j = moved.ofDelivered[i] {
+			// The source moved a booked row to a later day: the stored row takes its day and texts and keeps the user fields.
+			var next = stored[j].takingBankFields(of: delivered)
+			if next != stored[j] { rules.categorize(&next) }
+			r.skipped += 1
+			if next != stored[j] { r.updated.append(next) }
 		} else {
 			var t = Transaction(arriving: delivered, in: account.id, fetched: fetched)
 			t.review = bookings.ofBooked[i] == .review ? .unclearBooking : nil

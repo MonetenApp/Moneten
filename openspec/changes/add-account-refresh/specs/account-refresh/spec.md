@@ -302,6 +302,46 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 - **THEN** the list shows one booked transaction with the comment "Gift"
 - **AND** the pending row is gone
 
+### Requirement: Keep a moved card booking as one transaction
+
+The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction that has the same amount and counterparty, lies at most five days after it, and fits no other stored transaction, when the refresh covers the day of the stored one but no longer delivers it. The stored transaction keeps its user fields and takes the date and the texts of the delivered one.
+
+#### Scenario: Booking moved to a later day
+
+- **GIVEN** the DKB card "Visa" has a booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024 from an earlier refresh, with the comment "Family plan", the category "Subscriptions" that the user assigned by hand, and a checkmark
+- **WHEN** a refresh from 5 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 8 March 2024
+- **THEN** "Visa" shows one transaction of -19,90 € on 10 March 2024 with the comment "Family plan", the category "Subscriptions", and the checkmark
+
+#### Scenario: Stored booking still delivered
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers that transaction again and another one of -19,90 € to "Streaming Beispiel" on 10 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: More than five days apart
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 3 March 2024
+- **WHEN** a refresh from 1 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 3 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: Day before the refresh
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 9 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: Two stored bookings fit
+
+- **GIVEN** "Visa" has two booked transactions of -19,90 € to "Streaming Beispiel", on 7 and on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers one booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 7 or 8 March 2024
+- **THEN** "Visa" shows all three transactions
+
+#### Scenario: Giro account of DKB
+
+- **GIVEN** the DKB giro account "Giro" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 8 March 2024
+- **THEN** "Giro" shows both transactions
+
 ### Requirement: Do not guess between several pending transactions
 
 The app SHALL keep all rows and mark them for review when more than one pending transaction matches a booked transaction, and it SHALL not move a comment or a category in that case.

@@ -21,6 +21,19 @@ enum DKB {
 		remoteID.count == 16 && remoteID.allSatisfy { $0.isASCII && $0.isNumber }
 	}
 
+	/// The most days by which DKB moves a booked card payment to a later day between two refreshes, from the day of the
+	/// purchase toward the day of the settlement ("Keep a moved card booking as one transaction").
+	static let maxBookingShift = 5
+
+	/// The outcome of an account, with the days by which a DKB card may move its booked payments.
+	static func outcome(_ outcome: AccountOutcome, account remoteID: String, bankCode: String?, server: URL?) -> AccountOutcome {
+		guard case var .fetched(result) = outcome, result.transactions != nil, isCard(remoteID), isDKB(bankCode: bankCode, server: server) else {
+			return outcome
+		}
+		result.transactions?.maxBookingShift = maxBookingShift
+		return .fetched(result)
+	}
+
 	/// The failure of a DKB card that allows no job that the app knows, with the card number, so that the user can
 	/// quote the error to the DKB support. Nil for any other failure or account, which keeps the failure of its error.
 	static func failure(of error: HelperError, account remoteID: String, bankCode: String?, server: URL?) -> SyncFailure? {

@@ -59,6 +59,24 @@ struct DKBTests {
 		#expect(failure.message.hasPrefix("The FinTS server of DKB offers neither the balance nor the transactions of the card 1234567890123456."))
 	}
 
+	@Test("The transactions of a DKB card may move by five days, those of a DKB giro account and of a card of another bank by none")
+	func bookingShift() async throws {
+		func shift(of account: AccountRequest, at access: Access) async throws -> Int? {
+			let report = try await Self.connector(#"""
+				read cmd
+				echo '{"type":"result","account":"\#(account.remoteID)","balance":{"amount":"-19.90","currency":"EUR"},"transactions":{"from":"2024-03-05","rows":[{"booked":"2024-03-10","value":"2024-03-10","amount":"-19.90","currency":"EUR","name":"Streaming Beispiel","purpose":"Streaming Beispiel / Musterstadt","pending":false}]},"errors":[]}'
+				"""#).refresh(RefreshRequest(access: access, accounts: [account]), Session())
+			guard case let .fetched(result) = report.outcomes[account.accountID] else { return nil }
+			#expect(result.transactions?.rows.count == 1)
+			#expect(result.balance == Money(minorUnits: -1_990, currency: "EUR"))
+			return result.transactions?.maxBookingShift
+		}
+		#expect(try await shift(of: Self.card, at: Self.dkb) == 5)
+		#expect(try await shift(of: Self.card, at: Self.dkbHost) == 5)
+		#expect(try await shift(of: Self.giro, at: Self.dkb) == 0)
+		#expect(try await shift(of: Self.card, at: Self.other) == 0)
+	}
+
 	@Test("A DKB card that the bank does not list keeps that message")
 	func cardNotListed() async throws {
 		let report = try await Self.connector(#"""
