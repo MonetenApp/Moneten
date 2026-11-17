@@ -189,7 +189,7 @@ The app SHALL show an icon in the menu bar while it runs when the setting "Show 
 
 ### Requirement: Menu bar popover
 
-The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and the balances of the sidebar row, marks each account that has new transactions with their number, and marks each account whose last refresh failed or waits for the user.
+The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and the balances of the sidebar row, shows the number of new transactions beside each account that has them, and shows a marker beside each account whose last refresh failed or waits for the user.
 
 #### Scenario: Open the popover
 
@@ -211,18 +211,17 @@ The app SHALL open a popover when the user clicks the menu bar icon. The popover
 
 ### Requirement: Popover keeps the balances of a failed refresh
 
-The app SHALL show the balances of an account whose last refresh failed beside the mark in its popover row. The sidebar row shows the error text in that place instead.
+The app SHALL show the balances of an account whose last refresh failed beside the marker in its popover row.
 
 #### Scenario: Failed refresh keeps the balances
 
 - **GIVEN** the last refresh of "Reisekasse" failed, and the account has the balances 4.567.890,00 € and 1.234.567,00 US dollars
 - **WHEN** the user opens the popover
-- **THEN** the row "Reisekasse" shows the mark of the failed refresh and then 4.567.890,00 € and 1.234.567,00 US dollars
-- **AND** the sidebar row "Reisekasse" shows the error text in place of the balances
+- **THEN** the row "Reisekasse" carries the marker of the failed refresh and then shows 4.567.890,00 € and 1.234.567,00 US dollars
 
 ### Requirement: Whole amounts in the popover
 
-The app SHALL show each balance in a popover row on one line and in full. A long account name gets shorter instead.
+The app SHALL show each balance in a popover row on one line and in full, and shorten a long account name first. When the shortest name leaves too little room, an amount ends with an ellipsis and is never cut off at the edge of the row.
 
 #### Scenario: Long name with large balances
 
@@ -230,6 +229,13 @@ The app SHALL show each balance in a popover row on one line and in full. A long
 - **WHEN** the user opens the popover
 - **THEN** the row shows 12.345.678,00 € and 9.876.543,00 US dollars each on one line and in full
 - **AND** the account name ends with an ellipsis
+
+#### Scenario: Balances wider than the row
+
+- **GIVEN** the account "Gemeinsame Reisekasse Familie Mustermann" with the balances 12.345.678,00 € and 98.765.432,00 US dollars, whose last refresh failed
+- **WHEN** the user opens the popover
+- **THEN** the row shows the name shortened with an ellipsis, the marker, and 12.345.678,00 € in full
+- **AND** the balance in US dollars ends with an ellipsis
 
 ### Requirement: Actions in the popover
 

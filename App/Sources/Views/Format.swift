@@ -105,8 +105,9 @@ struct AmountText: View {
 }
 
 /// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
-/// The balances keep their full width on one line, so that a narrow row shortens the account name beside them and never
-/// wraps or cuts an amount.
+/// The balances stay on one line and take the room they need before the account name beside them does, so a narrow
+/// row shortens the name first. Only when the shortest name leaves too little room does an amount end with an ellipsis:
+/// a shortened amount must look shortened, never cut off at the edge of the row.
 struct BalancesText: View {
 	let amounts: [Money]
 
@@ -114,7 +115,19 @@ struct BalancesText: View {
 		HStack(spacing: 8) {
 			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
 		}
-		.fixedSize()
+		.lineLimit(1)
+		.layoutPriority(1)
+	}
+}
+
+extension View {
+	/// Keeps a name that a row shortens at least as wide as an ellipsis, so it shows "…" and never a cut part of a
+	/// letter when the balances beside it take the rest of the row.
+	func atLeastEllipsisWide() -> some View {
+		ZStack(alignment: .leading) {
+			Text(verbatim: "…").fixedSize().hidden().accessibilityHidden(true)
+			self
+		}
 	}
 }
 

@@ -77,7 +77,7 @@ struct MenuBarAccountRow: View {
 	var body: some View {
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack(spacing: 6) {
-			Label { Text(account.name).lineLimit(1) } icon: { AccountIcon(account: account) }
+			Label { Text(account.name).lineLimit(1).atLeastEllipsisWide() } icon: { AccountIcon(account: account) }
 			if newCount > 0 {
 				Text("\(newCount)")
 					.font(.caption.weight(.semibold))

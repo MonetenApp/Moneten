@@ -143,7 +143,7 @@ struct GroupRow: View {
 
 	var body: some View {
 		HStack {
-			Label(group.name, systemImage: "folder")
+			Label { Text(group.name).atLeastEllipsisWide() } icon: { Image(systemName: "folder") }
 			// A collapsed group stands for its accounts and shows their markers.
 			let markers = group.isExpanded ? nil : model.ledger.markers(ofGroup: group.id)
 			if let markers, markers.newTransactions > 0 {
@@ -160,7 +160,8 @@ struct GroupRow: View {
 					.fontWeight(.medium)
 					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? Palette.red : Color.primary)
 					// As in an account row, the group name gets shorter before the sum does.
-					.fixedSize()
+					.lineLimit(1)
+					.layoutPriority(1)
 			}
 		}
 		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))
@@ -191,7 +192,7 @@ struct AccountRow: View {
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack {
 			Label {
-				Text(account.name).strikethrough(account.isClosed)
+				Text(account.name).strikethrough(account.isClosed).atLeastEllipsisWide()
 			} icon: {
 				AccountIcon(account: account)
 			}

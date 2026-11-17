@@ -151,6 +151,7 @@ final class DebugHarness {
 			log("crash intentional")
 			intentionalCrash()
 		case "snapshot": snapshot(argument)
+		// "<name>" draws the sidebar 340 points wide, "<name> <width>" that many points wide, such as "narrow 240".
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
@@ -1633,9 +1634,12 @@ final class DebugHarness {
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
 	/// window uses a material that only the window server draws.
-	private func sidebarSnapshot(_ name: String) {
+	private func sidebarSnapshot(_ argument: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
+		let parts = argument.split(separator: " ")
+		let width = parts.count > 1 ? parts.last.flatMap { Double($0) } : nil
+		let name = width == nil ? argument : parts.dropLast().joined(separator: " ")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: width ?? 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file

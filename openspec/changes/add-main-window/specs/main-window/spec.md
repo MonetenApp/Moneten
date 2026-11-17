@@ -34,7 +34,7 @@ The app SHALL draw the sidebar with the system sidebar material of macOS, Liquid
 
 ### Requirement: Whole amounts in the sidebar
 
-The app SHALL show each balance of an account and each sum of a group in the sidebar on one line and in full. A long name of the account or the group gets shorter instead.
+The app SHALL show each balance of an account and each sum of a group in the sidebar on one line and in full, and shorten a long name of the account or the group first. When the shortest name leaves too little room, an amount ends with an ellipsis and is never cut off at the edge of the row.
 
 #### Scenario: Long name with large balances
 
@@ -43,6 +43,14 @@ The app SHALL show each balance of an account and each sum of a group in the sid
 - **THEN** the group row shows 16.946.892,85 € and 11.111.110,00 US dollars in full
 - **AND** the account row shows 4.567.890,00 € and 1.234.567,00 US dollars in full
 - **AND** the names "Private" and "Reisekasse" end with an ellipsis
+
+#### Scenario: Sums wider than the narrowest sidebar
+
+- **GIVEN** a sidebar 240 points wide and the group "Private" with the sums 16.946.892,85 € and 99.999.999,00 US dollars
+- **WHEN** the user looks at the sidebar
+- **THEN** the group row shows an ellipsis in place of the name "Private"
+- **AND** it shows 16.946.892,85 € in full
+- **AND** the sum in US dollars ends with an ellipsis
 
 ### Requirement: Sidebar rows in a fixed order
 
