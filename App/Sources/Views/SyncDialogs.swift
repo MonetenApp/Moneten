@@ -94,7 +94,7 @@ struct PINSheet: View {
 			Section {
 				LabeledContent(prompt.accountNames.count == 1 ? "Account" : "Accounts", value: prompt.accountNames.joined(separator: ", "))
 				LabeledContent("Bank", value: prompt.access.bankName)
-				LabeledContent("User ID", value: prompt.access.loginName)
+				LabeledContent("User ID", value: prompt.access.shownLoginName)
 			}
 			Section {
 				SecureField(request.secretName, text: $pin, prompt: Text("Required"))
@@ -181,7 +181,7 @@ struct TwoFactorSheet: View {
 			Section {
 				Text(TwoFactorText.reason(request, bank: prompt.access.bankName))
 				if !prompt.access.loginName.isEmpty {
-					LabeledContent("User ID", value: prompt.access.loginName)
+					LabeledContent("User ID", value: prompt.access.shownLoginName)
 				}
 				if request.loginOnly {
 					Text("This TAN is used only for the login and not for the order.").foregroundStyle(.secondary)
@@ -410,7 +410,7 @@ struct ChallengeProgressSheet: View {
 		DialogFrame(title: "Two-Factor Authentication") {
 			Section {
 				LabeledContent("Bank", value: requesting.access.bankName)
-				LabeledContent("User ID", value: requesting.access.loginName)
+				LabeledContent("User ID", value: requesting.access.shownLoginName)
 				Waiting(text: Self.text(requesting.progress))
 			}
 		} buttons: {

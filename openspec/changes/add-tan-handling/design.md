@@ -32,6 +32,10 @@ hbci4java leaves out the flicker code when the challenge data of the bank does n
 
 The helper sends with each typed TAN request the code of its method (`current`) and the maximum TAN length that the bank parameters (HITANS) announce for it (`maxLength`). `CommerzbankGroup.tanField` in `Sources/FinTS` turns them into the `TANField` of the request: for the method 900 on a server of Commerzbank, 7 digits up to the announced length, which counts between 7 and 15, and 15 when the bank announces none; for the method 902 on the server of comdirect, 6 or 7 digits. Both fields are numeric, so a blank or another character never counts toward the length. The photoTAN app of Commerzbank shows 7 characters and the bank announces more, so the announced length alone would let a 6 character TAN through. Every other method keeps the field without a length, as before.
 
+### TAN in capitals
+
+Deutsche Bank, Postbank, and norisbank take a TAN with letters only in capitals. The connector gives the request of these hosts, `FinTSServer.isDeutscheBankGroup`, a `TANField` with `isUppercase`, so the field turns letters into capitals as the user types, as it does for an extension that asks for it. A numeric TAN is unchanged by it. Which methods of these banks send a TAN with letters is not recorded yet, so the bank test of issue #11 checks it.
+
 ## Deviations from the spec
 
 - The progress texts after a choice come from the bank parameters and from the names of the method. A method whose names say nothing shows "Requesting the challenge of the bank...".

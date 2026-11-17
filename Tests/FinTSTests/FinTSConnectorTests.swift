@@ -959,6 +959,10 @@ struct FinTSConnectorTests {
 			.appBlocked(BankMessage(code: "9931", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
 		(#"{"type":"failed","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
 			.bank(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}"#,
+			.loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}}"#,
+			.loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
 		(#"{"type":"failed","code":"9941","text":"TAN ungültig"}"#, .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		(#"{"type":"failed","code":"9943","text":"TAN bereits verbraucht"}"#, .tanRejected(BankMessage(code: "9943", text: "TAN bereits verbraucht"))),
 		(#"{"type":"failed","code":"9948","text":"TAN-Prüfung fehlgeschlagen"}"#, .tanRejected(BankMessage(code: "9948", text: "TAN-Prüfung fehlgeschlagen"))),
@@ -1034,6 +1038,7 @@ struct FinTSConnectorTests {
 		("ohnetan", .noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
+		("ersetzt", .loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
 	])
 	func fakeHelper(login: String, expected: SyncFailure) async throws {
 		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: login)

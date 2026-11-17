@@ -214,7 +214,7 @@ struct AccountSettingsSheet: View {
 					}
 					if let access = original.accessID.flatMap({ model.accesses[$0] }) {
 						Section("Online banking") {
-							LabeledContent("User ID", value: access.loginName)
+							LabeledContent("User ID", value: access.shownLoginName)
 							Picker("Refresh", selection: binding.refreshInterval) {
 								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
 							}
