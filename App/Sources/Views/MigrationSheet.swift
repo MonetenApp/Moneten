@@ -34,7 +34,7 @@ struct MigrationSheet: View {
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
-			onCancel: cancel, onConfirm: confirm) {
+			onCancel: { model.migrationTask?.cancel() }, closesOnCancel: cancelCloses, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
 			}
@@ -192,13 +192,12 @@ struct MigrationSheet: View {
 		}
 	}
 
-	/// Returns true when the sheet closes. A refused cancel keeps the sheet for the report of the stored migration.
-	private func cancel() -> Bool {
+	/// A refused cancel keeps the sheet open for the report of the stored migration, and its task runs on.
+	private func cancelCloses() -> Bool {
 		if let storing, !storing.cancel() {
 			step = .working(.init(step: .finishing))
 			return false
 		}
-		model.migrationTask?.cancel()
 		return true
 	}
 

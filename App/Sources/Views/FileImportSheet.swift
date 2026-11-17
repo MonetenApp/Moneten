@@ -165,7 +165,7 @@ struct AccountQuestionView: View {
 
 	var body: some View {
 		SheetFrame(title: "Import \(question.file)", confirmTitle: question.other.map { "Import into \"\($0.name)\"" } ?? "Import into the selected account",
-			width: 560, onCancel: { run.cancel(); return true }, onConfirm: { run.answer(question.other == nil ? .selected : .named); return false }) {
+			width: 560, onCancel: run.cancel, onConfirm: { run.answer(question.other == nil ? .selected : .named); return false }) {
 			Button(question.other == nil ? "Create offline account" : "Import into \"\(question.selected.name)\"") {
 				run.answer(question.other == nil ? .named : .selected)
 			}

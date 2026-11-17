@@ -182,7 +182,7 @@ struct CSVPreviewView: View {
 
 	var body: some View {
 		SheetFrame(title: "Import \(model.name)", confirmTitle: "Import", canConfirm: model.chosen != nil, width: 760,
-			onCancel: { run.cancel(); return true }, onConfirm: { run.confirm(); return false }) {
+			onCancel: run.cancel, onConfirm: { run.confirm(); return false }) {
 			if run.names.count > 1 {
 				Button("Skip File") { run.skip() }
 			}
