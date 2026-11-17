@@ -593,11 +593,19 @@ final class DebugHarness {
 				model.save(account: a)
 			}
 		case "wallet":
-			// "<group> <euros> <US dollars>" adds a wallet of a bank that reports a balance in euros and one in US dollars.
-			let parts = argument.split(separator: " ")
-			if parts.count == 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
-				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Reisekasse", kind: .other,
-					source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			// "<group> <euros> <US dollars> [<name>]" adds a wallet of a bank that reports a balance in euros and one in US
+			// dollars, named "Reisekasse" or the name, which may hold spaces. The group is the first word, so the command
+			// cannot target a group whose name has a space.
+			let parts = argument.split(separator: " ", maxSplits: 3)
+			if parts.count >= 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: parts.count == 4 ? String(parts[3]) : "Reisekasse",
+					kind: .other, source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			}
+		case "refreshfailed":
+			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
+			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				account.refreshError = RefreshError(message: "The bank refused the refresh.", date: Date())
+				model.save(account: account)
 			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.

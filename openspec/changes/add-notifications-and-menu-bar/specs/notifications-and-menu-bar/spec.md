@@ -209,6 +209,28 @@ The app SHALL open a popover when the user clicks the menu bar icon. The popover
 - **WHEN** the user opens the popover
 - **THEN** the row "Kreditkarte" carries the marker that the refresh waits for the user
 
+### Requirement: Popover keeps the balances of a failed refresh
+
+The app SHALL show the balances of an account whose last refresh failed beside the mark in its popover row. The sidebar row shows the error text in that place instead.
+
+#### Scenario: Failed refresh keeps the balances
+
+- **GIVEN** the last refresh of "Reisekasse" failed, and the account has the balances 4.567.890,00 € and 1.234.567,00 US dollars
+- **WHEN** the user opens the popover
+- **THEN** the row "Reisekasse" shows the mark of the failed refresh and then 4.567.890,00 € and 1.234.567,00 US dollars
+- **AND** the sidebar row "Reisekasse" shows the error text in place of the balances
+
+### Requirement: Whole amounts in the popover
+
+The app SHALL show each balance in a popover row on one line and in full. A long account name gets shorter instead.
+
+#### Scenario: Long name with large balances
+
+- **GIVEN** the account "Gemeinsame Reisekasse Familie Mustermann" with the balances 12.345.678,00 € and 9.876.543,00 US dollars, whose last refresh failed
+- **WHEN** the user opens the popover
+- **THEN** the row shows 12.345.678,00 € and 9.876.543,00 US dollars each on one line and in full
+- **AND** the account name ends with an ellipsis
+
 ### Requirement: Actions in the popover
 
 The app SHALL offer in the popover a command that refreshes all accounts and a command that opens the main window. A click on an account row opens the main window with that account selected.

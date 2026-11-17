@@ -34,6 +34,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [ ] 1.28 Stay responsive with a large database. Built in part: PerformanceTests measure 10 ms for a search and 3 ms for a category view at 50,000 transactions; `scripts/perf-check.sh` measures the views in the app, and most scenarios still block the main thread longer than half a second on a busy Mac. Finish it and verify it with that check.
 - [x] 1.29 Look of the sidebar and the selection: the Liquid Glass sidebar of macOS instead of MoneyMoney's opaque gray (user decision), and a slate accent color. Verified by sidebar and window snapshots of the debug harness in light and dark mode.
 - [x] 1.30 Sums beyond the range of amounts (issue #324). `AmountOverflowTests` cover the balance, the group sum, the status line, the category amounts, the charts, the notice of new transactions, and the calibration with stored rows of 50.000.000.000.000.000,00 €, and rows that cancel out in three orders. The suite crashed before the sums added up in `Int128`, gave order-dependent sums with a clamp after each step, and passes now.
+- [x] 1.31 Whole amounts in the sidebar (issue #359). `BalancesText` and the group sum keep their full width, so the name gets shorter. Verified by `sidebarsnapshot` in light and dark after the harness commands `seed` and `wallet`: before, the row "Reisekasse" showed "4.567.890,…" and "1.234.567,0…" and the group "Private" showed "11.111.110,0…"; after, both rows show every amount in full and the names end with an ellipsis.
 
 ## 2. Integration
 

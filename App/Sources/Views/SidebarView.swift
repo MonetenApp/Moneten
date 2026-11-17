@@ -159,6 +159,8 @@ struct GroupRow: View {
 					.monospacedDigit()
 					.fontWeight(.medium)
 					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? Palette.red : Color.primary)
+					// As in an account row, the group name gets shorter before the sum does.
+					.fixedSize()
 			}
 		}
 		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))

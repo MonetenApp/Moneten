@@ -105,6 +105,8 @@ struct AmountText: View {
 }
 
 /// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
+/// The balances keep their full width on one line, so that a narrow row shortens the account name beside them and never
+/// wraps or cuts an amount.
 struct BalancesText: View {
 	let amounts: [Money]
 
@@ -112,6 +114,7 @@ struct BalancesText: View {
 		HStack(spacing: 8) {
 			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
 		}
+		.fixedSize()
 	}
 }
 

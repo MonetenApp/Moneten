@@ -32,6 +32,18 @@ The app SHALL draw the sidebar with the system sidebar material of macOS, Liquid
 - **WHEN** the user selects a transaction
 - **THEN** the row is slate blue with white text
 
+### Requirement: Whole amounts in the sidebar
+
+The app SHALL show each balance of an account and each sum of a group in the sidebar on one line and in full. A long name of the account or the group gets shorter instead.
+
+#### Scenario: Long name with large balances
+
+- **GIVEN** a sidebar 340 points wide, the group "Private" with the sums 16.946.892,85 € and 11.111.110,00 US dollars, and in it the account "Reisekasse" with the balances 4.567.890,00 € and 1.234.567,00 US dollars
+- **WHEN** the user looks at the sidebar
+- **THEN** the group row shows 16.946.892,85 € and 11.111.110,00 US dollars in full
+- **AND** the account row shows 4.567.890,00 € and 1.234.567,00 US dollars in full
+- **AND** the names "Private" and "Reisekasse" end with an ellipsis
+
 ### Requirement: Sidebar rows in a fixed order
 
 The app SHALL show the sidebar rows in this order from top to bottom. "Dashboard". The section "Accounts" with account groups and accounts. The section "Payments" with "Outbox", "Scheduled", and "Templates". The section "Documents" with "Statements". The section "Searches" with the saved searches. The section "Categories" with category groups and categories, ending with "Uncategorized".
