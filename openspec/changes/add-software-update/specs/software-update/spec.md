@@ -232,7 +232,7 @@ The app SHALL refuse to update itself while macOS runs it from a temporary, read
 
 ### Requirement: Warn about several copies
 
-The app SHALL warn the user at launch when it finds more than one copy of the app on the Mac. The warning names the places of the copies and asks the user to delete the unused ones. Copies on a disk image, on a read-only volume, and in the Trash do not count.
+The app SHALL warn the user at launch when it finds more than one release copy of the app on the Mac. A release copy is signed with a Developer ID of the team that signed the running copy, and only a running release copy warns. The warning names the places of the copies and asks the user to delete the unused ones. Copies on a disk image, on a read-only volume, and in the Trash do not count.
 
 #### Scenario: Old copy in Downloads
 
@@ -244,6 +244,19 @@ The app SHALL warn the user at launch when it finds more than one copy of the ap
 
 - **GIVEN** version 0.1.3 in the Applications folder and the disk image of version 0.1.3 still mounted
 - **WHEN** the user starts version 0.1.3
+- **THEN** the app shows no warning about several copies
+
+#### Scenario: Local build next to a release
+
+- **GIVEN** release 0.1.3 in the Applications folder, signed with the Developer ID of the release team
+- **AND** a Release build in the build folder of a checkout, signed ad hoc, and another one signed with an Apple Development certificate of the same team
+- **WHEN** the user starts release 0.1.3
+- **THEN** the app shows no warning about several copies
+
+#### Scenario: Debug build runs
+
+- **GIVEN** release 0.1.3 in the Applications folder and release 0.1.1 in the Downloads folder, both signed with the Developer ID of the release team
+- **WHEN** the user starts a debug build signed with an Apple Development certificate
 - **THEN** the app shows no warning about several copies
 
 ### Requirement: Report a damaged application file

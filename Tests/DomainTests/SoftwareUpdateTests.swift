@@ -51,69 +51,90 @@ struct UpdateFailureTests {
 
 @Suite("Several copies of the app")
 struct AppCopiesTests {
-	@Test("An old copy in Downloads makes two folders, sorted")
-	func copyInDownloads() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies.reversed()) == ["/Applications", "/Users/erika/Downloads"])
+	let release = AppSignature.developerID(team: "A1B2C3D4E5")
+	let checkout = "/Users/erika/Projects/Moneten/.build/xcode/Build/Products"
+
+	/// A copy signed like a release unless `signature` says otherwise.
+	func copy(_ path: String, _ signature: AppSignature? = nil, readOnly: Bool = false, diskImage: Bool = false) -> AppCopy {
+		AppCopy(path: path, isOnReadOnlyVolume: readOnly, isOnDiskImage: diskImage, signature: signature ?? release)
 	}
 
-	@Test("A mounted disk image does not count")
-	func diskImage() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Volumes/Moneten/Moneten.app", isOnReadOnlyVolume: true, isOnDiskImage: true)]
-		#expect(AppCopies.folders(of: copies) == nil)
+	var installed: AppCopy { copy("/Applications/Moneten.app") }
+
+	@Test("An old copy in Downloads makes two folders, sorted")
+	func copyInDownloads() {
+		#expect(AppCopies.folders(of: [copy("/Users/erika/Downloads/Moneten.app"), installed], running: installed)
+			== ["/Applications", "/Users/erika/Downloads"])
 	}
 
 	@Test("A mounted writable disk image does not count")
 	func writableDiskImage() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Volumes/Moneten/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: true)]
-		#expect(AppCopies.folders(of: copies) == nil)
+		#expect(AppCopies.folders(of: [copy("/Volumes/Moneten/Moneten.app", diskImage: true)], running: installed) == nil)
 	}
 
 	@Test("A copy on another read-only volume does not count")
 	func readOnlyVolume() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Volumes/Archive/Moneten.app", isOnReadOnlyVolume: true, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies) == nil)
+		#expect(AppCopies.folders(of: [copy("/Volumes/Archive/Moneten.app", readOnly: true)], running: installed) == nil)
 	}
 
 	@Test("A copy in the Trash does not count, also in the Trash of another volume")
 	func trash() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Users/erika/.Trash/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Users/erika/.Trash/Moneten 10.42.07.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Volumes/Archive/.Trashes/501/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies) == nil)
+		let copies = [copy("/Users/erika/.Trash/Moneten.app"), copy("/Users/erika/.Trash/Moneten 10.42.07.app"),
+			copy("/Volumes/Archive/.Trashes/501/Moneten.app")]
+		#expect(AppCopies.folders(of: copies, running: installed) == nil)
 	}
 
 	/// Two copies in one folder would give the same folder twice, so the warning names the copies there.
 	@Test("Two copies in one folder count, and the warning names each copy there")
 	func twoCopiesInOneFolder() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Applications/Moneten 2.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies) == ["/Applications/Moneten 2.app", "/Applications/Moneten.app", "/Users/erika/Downloads"])
+		let copies = [copy("/Applications/Moneten 2.app"), copy("/Users/erika/Downloads/Moneten.app")]
+		#expect(AppCopies.folders(of: copies, running: installed) == ["/Applications/Moneten 2.app", "/Applications/Moneten.app", "/Users/erika/Downloads"])
 	}
 
 	@Test("The same copy twice counts once")
 	func sameCopyTwice() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies) == nil)
+		#expect(AppCopies.folders(of: [installed, installed], running: installed) == nil)
 	}
 
 	@Test("One copy needs no warning")
 	func oneCopy() {
-		#expect(AppCopies.folders(of: [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]) == nil)
-		#expect(AppCopies.folders(of: []) == nil)
+		#expect(AppCopies.folders(of: [installed], running: installed) == nil)
+		#expect(AppCopies.folders(of: [], running: installed) == nil)
 	}
 
 	@Test("A copy in a folder named like the Trash but deeper still counts")
 	func folderNamedTrash() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
-			AppCopy(path: "/Users/erika/Projects/Trash/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
-		#expect(AppCopies.folders(of: copies) == ["/Applications", "/Users/erika/Projects/Trash"])
+		#expect(AppCopies.folders(of: [copy("/Users/erika/Projects/Trash/Moneten.app")], running: installed)
+			== ["/Applications", "/Users/erika/Projects/Trash"])
+	}
+
+	/// A local build never updates, so it cannot fall behind the release that runs.
+	@Test("Builds signed ad hoc or with Apple Development next to a release do not count")
+	func localBuildsNextToRelease() {
+		let copies = [copy("\(checkout)/Release/Moneten.app", .local),
+			copy("\(checkout)/Debug/Moneten.app", .otherCertificate(team: "A1B2C3D4E5")),
+			copy("/Users/erika/Projects/Moneten/dist/Moneten.app", .local)]
+		#expect(AppCopies.folders(of: copies, running: installed) == nil)
+	}
+
+	@Test("Only the release copies count among local builds")
+	func releasesAmongLocalBuilds() {
+		let copies = [copy("\(checkout)/Release/Moneten.app", .local), copy("/Users/erika/Downloads/Moneten.app")]
+		#expect(AppCopies.folders(of: copies, running: installed) == ["/Applications", "/Users/erika/Downloads"])
+	}
+
+	@Test("A copy signed with the Developer ID of another team does not count")
+	func otherTeam() {
+		let copies = [copy("/Users/erika/Downloads/Moneten.app", .developerID(team: "Z9Y8X7W6V5"))]
+		#expect(AppCopies.folders(of: copies, running: installed) == nil)
+	}
+
+	@Test("A debug or local build that runs never warns, also next to two releases")
+	func localBuildRuns() {
+		let copies = [installed, copy("/Users/erika/Downloads/Moneten.app")]
+		for signature in [AppSignature.otherCertificate(team: "A1B2C3D4E5"), .local] {
+			let running = copy("\(checkout)/Debug/Moneten.app", signature)
+			#expect(AppCopies.folders(of: copies + [running], running: running) == nil)
+		}
 	}
 }
