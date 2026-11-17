@@ -71,14 +71,21 @@ final class SelfTest {
 		List<String> joined = new ArrayList<>();
 		for (List<String> lines : List.of(List.of("Abschlagszahlung Strom Kund", "ennummer 4711"), List.of("Abschlagszahlung Strom Kundennummer", "4711"),
 			List.of("Miete November", "Wohnung 3"), List.of("Abschlagszahlung Strom Kundenn", "ummer 4711"), List.of("Rechnung vom Elektromeister", "Musterstadt Nr 17"),
-			List.of("Miete November ", "", "Wohnung 3"), List.of("EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", "ummer 4711"),
-			List.of("EREF+RE-2026-10", "01", "SVWZ+Abschlag", "November"))) {
+			List.of("Miete November ", "", "Wohnung 3"))) {
 			joined.add(FinTSHelper.joinMt940(lines));
 		}
-		expect("MT940 purpose lines: a full line of 27 or 35 characters joins without a space, other lines and a new word with one, a reference always without",
+		expect("MT940 purpose lines: a full line of 27 or 35 characters joins without a space, other lines and a new word with one",
 			String.join(" | ", joined), "Abschlagszahlung Strom Kundennummer 4711 | Abschlagszahlung Strom Kundennummer4711 | Miete November Wohnung 3"
-				+ " | Abschlagszahlung Strom Kundenn ummer 4711 | Rechnung vom Elektromeister Musterstadt Nr 17 | Miete November Wohnung 3"
-				+ " | EREF+RE-2026-1001 SVWZ+Abschlag Strom Kundennummer 4711 | EREF+RE-2026-1001 SVWZ+Abschlag November");
+				+ " | Abschlagszahlung Strom Kundenn ummer 4711 | Rechnung vom Elektromeister Musterstadt Nr 17 | Miete November Wohnung 3");
+		List<String> tagged = new ArrayList<>();
+		for (List<String> lines : List.of(List.of("EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", "ummer 4711"), List.of("EREF+RE-2026-10", "01", "SVWZ+Abschlag", "November"),
+			List.of("SVWZ", "+Miete November"))) {
+			Map<String, Object> row = FinTSHelper.row(line("2026-11-03", "2026-11-03", "-80", lines.toArray(new String[0])), false);
+			tagged.add(row.get("endToEnd") + " / " + row.get("purpose"));
+		}
+		expect("MT940 tags read from the lines without a character, and the purpose with its spaces: a reference and a tag that a line end cuts read whole",
+			String.join(" | ", tagged), "RE-2026-1001 / Abschlag Strom Kundennummer 4711 | RE-2026-1001 / Abschlag November | null / Miete November");
+		earlierReading();
 		String full = "x".repeat(133) + "Kundenn";
 		expect("CAMT purpose lines: outer and repeated spaces go, and only a line of 140 characters joins without a space",
 			FinTSHelper.joinCamt(List.of(" Miete  November ", "", "Wohnung 3")) + " | " + FinTSHelper.joinCamt(List.of(full, "ummer 4711"))
@@ -95,6 +102,13 @@ final class SelfTest {
 			Map<String, Object> row = FinTSHelper.row(l, false);
 			originals.add(row.get("originalAmount") + " " + row.get("originalCurrency") + " " + row.get("purpose"));
 		}
+		List<String> unreadable = new ArrayList<>();
+		for (String tag : List.of("/OCMT/USD50.99/", "/OCMT/US150,00/", "/OCMT/USD50,00x/", "/OCMT/USD/", "/OCMT/usd50,00")) {
+			Map<String, Object> row = FinTSHelper.row(line("2026-11-09", "2026-11-09", "-46.12", "Laden", tag), false);
+			unreadable.add(row.get("originalAmount") + " " + row.get("originalCurrency"));
+		}
+		expect("original amount of a slash tag that does not read in full, or whose currency is no code, is left out", String.join(" | ", unreadable),
+			"null null | null null | null null | null null | 50.00 USD");
 		expect("original amount of a line of slash tags, which stays in the purpose, of :61:, which wins, with three decimals, and in a line with more text",
 			String.join(" | ", originals), "50.00 USD Coffee Shop New York /OCMT/USD50,00/ | 51 USD Coffee Shop New York /OCMT/USD50,00//CHGS/EUR1,50/"
 				+ " | 1.234 KWD Laden Kuwait /OCMT/KWD1,234/ | null null Laden /OCMT/USD50,00/ extra");
@@ -112,6 +126,55 @@ final class SelfTest {
 		}
 		expect("deviating party: ABWE+ of a debit, ABWA+ of a credit, the ultimate party of CAMT, and none", String.join(" | ", parties),
 			"Buchhandlung Beispiel / Buch 4711 | Erika Mustermann / Geschenk | Erika Mustermann / Geschenk | null / Kiosk");
+	}
+
+	/// How the helper before the joining rule read the purpose lines: the tags from the lines joined without a character, the
+	/// first value of a tag winning, and a purpose without tags as the trimmed lines joined with a space. A copy of that
+	/// code, as the reference for the identity of stored rows.
+	static String[] earlier(List<String> usage) {
+		List<String> lines = usage.stream().filter(FinTSHelper::present).toList();
+		String joined = String.join("", lines);
+		Map<String, String> tags = new java.util.LinkedHashMap<>();
+		java.util.regex.Matcher m = FinTSHelper.SEPA_TAG.matcher(joined);
+		int start = -1;
+		String tag = null;
+		while (m.find()) {
+			if (tag != null) tags.putIfAbsent(tag, joined.substring(start, m.start()).trim());
+			tag = m.group(1);
+			start = m.end();
+		}
+		if (tag != null) tags.putIfAbsent(tag, joined.substring(start).trim());
+		String purpose = tags.isEmpty() ? String.join(" ", lines.stream().map(String::trim).toList()) : tags.getOrDefault("SVWZ", "");
+		String endToEnd = FinTSHelper.text(tags.get("EREF"));
+		if ("NOTPROVIDED".equals(endToEnd)) endToEnd = null;
+		if (!FinTSHelper.present(purpose) && endToEnd != null) purpose = endToEnd;
+		return new String[] { purpose.replaceAll("\\s", ""), endToEnd, FinTSHelper.text(tags.get("MREF")), FinTSHelper.text(tags.get("CRED")) };
+	}
+
+	/// Every cut of made-up purposes into lines, as MT940 and as CAMT, reads the references as the helper before did, and
+	/// the same purpose apart from white space, which the identity of a transaction leaves out.
+	static void earlierReading() {
+		List<String> samples = List.of("EREF+RE-2026-1001 MREF+M-4711 CRED+DE98ZZZ09999999999 SVWZ+Abschlagszahlung Strom Kundennummer 4711",
+			"SVWZ+Miete November Wohnung 3 ABWE+Hausverwaltung Beispiel", "Abschlagszahlung Strom Kundennummer 4711 Zählernummer 12345",
+			"EREF+NOTPROVIDED KREF+K-77 SVWZ+Rechnung 1001 vom 12.11.2026 IBAN+DE02120300000000202051 BIC+BYLADEM1001",
+			"Coffee Shop New York/OCMT/USD50,00/", "EREF+A B C SVWZ+Kunde  Nr  7 EREF+ZWEI", "EREF+INV-2026-0042");
+		int cuts = 0;
+		List<String> differences = new ArrayList<>();
+		for (String sample : samples) {
+			for (int width = 3; width <= 40; width++) {
+				List<String> lines = new ArrayList<>();
+				for (int i = 0; i < sample.length(); i += width) lines.add(sample.substring(i, Math.min(sample.length(), i + width)));
+				for (boolean camt : new boolean[] { false, true }) {
+					UmsLine l = line("2026-11-03", "2026-11-03", "-80", lines.toArray(new String[0]));
+					l.isCamt = camt;
+					Map<String, Object> row = FinTSHelper.row(l, false);
+					String[] now = { String.valueOf(row.get("purpose")).replaceAll("\\s", ""), (String) row.get("endToEnd"), (String) row.get("mandate"), (String) row.get("creditor") };
+					if (!java.util.Arrays.equals(now, earlier(lines))) differences.add((camt ? "CAMT " : "MT940 ") + lines + " " + java.util.Arrays.toString(now));
+					cuts++;
+				}
+			}
+		}
+		expect("every cut of " + cuts + " reads the references and the purpose apart from spaces as the helper before", differences, "[]");
 	}
 
 	/// The lines that Tests/FinTSTests/helper-lines.jsonl holds, which FinTSConnectorTests decodes.
@@ -679,6 +742,10 @@ final class SelfTest {
 		GVRKreditkartenUmsatz abroad = cardStatement();
 		abroad.storeResult("content.transactions.value", "3,69");
 		abroad.storeResult("content.transactions.originalvalue", "1,234");
+		abroad.storeResult("content.transactions.originalcurrency", "KW1");
+		expect("card row with an original currency that is no code keeps its row without the original amount",
+			((Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.card(id, null, abroad, false, "EUR").get("transactions")).get("rows")).get(0)).get("originalAmount"), null);
+		abroad.storeResult("content.transactions.originalcurrency", "KWD");
 		abroad.storeResult("content.transactions.originalcurrency", "KWD");
 		abroad.storeResult("content.transactions.originalcreditdebit", "D");
 		expect("card row with an original amount of three decimals", rows(FinTSHelper.card(id, null, abroad, false, "EUR")), "-3.69 Streaming Beispiel / Musterstadt");
@@ -689,6 +756,10 @@ final class SelfTest {
 			+ ((Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.card(id, null, abroad, false, "EUR").get("transactions")).get("rows")).get(0)).get("originalAmount"),
 			"-3.69 Streaming Beispiel / Musterstadt null");
 		abroad.storeResult("content.transactions.originalvalue", "1,234");
+		abroad.storeResult("content.transactions.originalcurrency", "KW1");
+		expect("card row with an original currency that is no code keeps its row without the original amount",
+			((Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.card(id, null, abroad, false, "EUR").get("transactions")).get("rows")).get(0)).get("originalAmount"), null);
+		abroad.storeResult("content.transactions.originalcurrency", "KWD");
 		String thrown;
 		try {
 			new GVRKreditkartenUmsatz().addTransaction(abroad.getResultData(), "content.transactions");

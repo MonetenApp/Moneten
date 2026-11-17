@@ -109,6 +109,112 @@ struct PurposeLinesTests {
 		#expect(r.skipped == 4)
 	}
 
+	/// How the version before this rule read the purpose lines of a file: every line joined without a character, then the
+	/// tags, the last value of a tag winning. A copy of that code, as the reference for the identity of stored rows.
+	static func earlierReading(_ lines: [String]) -> (purpose: String, endToEnd: String?, mandate: String?, creditor: String?) {
+		let text = lines.joined()
+		let keys = ["EREF+", "KREF+", "MREF+", "CRED+", "DEBT+", "SVWZ+", "ABWA+", "ABWE+", "COAM+", "OAMT+"]
+		guard keys.contains(where: { text.contains($0) }) else { return (text, nil, nil, nil) }
+		var values: [String: String] = [:]
+		var remaining = Substring(text)
+		var current: String?
+		var buffer = ""
+		while !remaining.isEmpty {
+			if let k = keys.first(where: { remaining.hasPrefix($0) }) {
+				if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
+				current = k
+				buffer = ""
+				remaining = remaining.dropFirst(k.count)
+			} else {
+				buffer.append(remaining.removeFirst())
+			}
+		}
+		if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
+		func clean(_ v: String?) -> String? { v.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 } }
+		return (values["SVWZ+"] ?? text, clean(values["EREF+"]), clean(values["MREF+"]), clean(values["CRED+"]))
+	}
+
+	static let samples = [
+		"EREF+RE-2026-1001 MREF+M-4711 CRED+DE98ZZZ09999999999 SVWZ+Abschlagszahlung Strom Kundennummer 4711",
+		"SVWZ+Miete November Wohnung 3 ABWE+Hausverwaltung Beispiel",
+		"Abschlagszahlung Strom Kundennummer 4711 Zählernummer 12345",
+		"EREF+NOTPROVIDED KREF+K-77 SVWZ+Rechnung 1001 vom 12.11.2026 IBAN+DE02120300000000202051 BIC+BYLADEM1001",
+		"Coffee Shop New York/OCMT/USD50,00/",
+		"EREF+A B C SVWZ+Kunde  Nr  7 EREF+ZWEI",
+	]
+
+	@Test("Every cut of the lines reads the references and the purpose as the version before did, apart from spaces, and adds no copy of a stored or a deleted row")
+	func sameIdentityAsBefore() throws {
+		var lineSets: [[String]] = [["EREF+RE-2026-10", "01", "SVWZ+Miete"], ["SVWZ", "+Miete November"], ["EREF+RE-2026-1001", "SVWZ+Abschlag", "November"]]
+		for sample in Self.samples {
+			let characters = Array(sample)
+			for width in 10...40 where characters.count <= 14 * width {
+				var lines: [String] = []
+				var start = 0
+				while start < characters.count {
+					lines.append(String(characters[start..<min(start + width, characters.count)]))
+					start += width
+				}
+				lineSets.append(lines)
+			}
+		}
+		let keys = (20...29).map { String($0) } + (60...63).map { String($0) }
+		var entries = ""
+		for (i, lines) in lineSets.enumerated() {
+			let fields = lines.enumerated().map { "?\(keys[$0.offset])\($0.element)" }.joined()
+			entries += ":61:2611031103DR\(100 + i),00NDDTNONREF\n:86:105?00LASTSCHRIFT\(fields)?32Stadtwerke Musterstadt\n"
+		}
+		let rows = try mt940(entries)
+		#expect(rows.count == lineSets.count)
+		func folded(_ text: String) -> String { text.filter { !$0.isWhitespace } }
+		var earlier: [Transaction] = []
+		for (row, lines) in zip(rows, lineSets) {
+			let before = Self.earlierReading(lines)
+			#expect(row.endToEndReference == before.endToEnd, "\(lines)")
+			#expect(row.mandateReference == before.mandate, "\(lines)")
+			#expect(row.creditorID == before.creditor, "\(lines)")
+			#expect(folded(row.purpose) == folded(before.purpose), "\(lines)")
+			var old = row
+			old.purpose = before.purpose
+			old.originalAmount = nil
+			old.deviatingParty = nil
+			earlier.append(old)
+		}
+		#expect(rows.contains { $0.purpose == "Miete November" && $0.endToEndReference == nil })
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
+		let now = Date(timeIntervalSince1970: 1_794_476_460)
+		let imported = reconcile(.file(earlier), into: giro, stored: [], deleted: [], rules: rules, now: now).added
+		#expect(imported.count == rows.count)
+		var fetched = reconcile(.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: earlier, from: nil))), into: giro, stored: [], deleted: [], rules: rules, now: now).added
+		for i in fetched.indices { fetched[i].isFetched = true }
+		// Half of the stored rows stay, the other half the user deleted. Every delivery of the new reading must do what the same
+		// delivery of the earlier reading does. A refresh honors every deleted row, a file only one that a refresh delivered,
+		// so a file brings back a deleted row of a file in both readings.
+		for (fetchedRows, stored) in [(false, imported), (true, fetched)] {
+			let kept: [Transaction] = stored.enumerated().filter { $0.offset % 2 == 0 }.map { $0.element }
+			let deleted = stored.enumerated().filter { $0.offset % 2 == 1 }.map { DeletedTransaction($0.element, deletedAt: now) }
+			for isFile in [true, false] {
+				func merged(_ delivered: [Transaction]) -> Reconciliation {
+					let delivery: Delivery = isFile ? .file(delivered) : .refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: delivered, from: nil)))
+					return reconcile(delivery, into: giro, stored: kept, deleted: deleted, rules: rules, now: now)
+				}
+				let new = merged(rows), before = merged(earlier)
+				#expect(new.added.count == before.added.count && new.skipped == before.skipped)
+				#expect(new.booked.count == before.booked.count)
+				// A stored row changes as the earlier reading changes it, and gains only the original amount and the deviating party.
+				for row in new.updated {
+					var plain = row
+					plain.originalAmount = nil
+					plain.deviatingParty = nil
+					#expect(plain == (before.updated.first { $0.id == row.id } ?? kept.first { $0.id == row.id }))
+				}
+				#expect(Set(before.updated.map(\.id)).isSubset(of: Set(new.updated.map(\.id))))
+				#expect(new.added.count == (isFile && !fetchedRows ? deleted.count : 0))
+			}
+		}
+	}
+
 	@Test("The lines ?60 to ?63 follow ?20 to ?29, and empty lines are left out")
 	func mt940MoreLines() throws {
 		let rows = try mt940(":61:2611031103DR80,00NTRFNONREF\n:86:166?00UEBERWEISUNG?20Miete November?21?29Wohnung 3?32Wohnbau?60Keller 2?61Garage 1")
@@ -147,6 +253,21 @@ struct PurposeLinesTests {
 			"Erstattung /OCMT/USD27,00/", "Laden /OCMT/EUR46,00/", "Laden /OCMT/USD50,00/ extra"])
 	}
 
+	@Test("An MT940 original amount that does not read in full, or whose currency is no code, is left out")
+	func mt940UnreadableOriginalAmount() throws {
+		let rows = try mt940("""
+			:61:2611091109DR46,12NMSCNONREF
+			:86:106?00KARTENZAHLUNG?20Laden?21/OCMT/USD50.99/?32Laden
+			:61:2611091109DR46,12NMSCNONREF
+			:86:106?00KARTENZAHLUNG?20Laden?21/OCMT/US150,00/?32Laden
+			:61:2611091109DR46,12NMSCNONREF
+			:86:106?00KARTENZAHLUNG?20Laden?21/OCMT/USD50,00x/?32Laden
+			:61:2611091109DR46,12NMSCNONREF
+			:86:106?00KARTENZAHLUNG?20Laden?21/OCMT/usd50,00?32Laden
+			""")
+		#expect(rows.map(\.originalAmount) == [nil, nil, nil, Money(minorUnits: -5_000, currency: "USD")])
+	}
+
 	@Test("An MT940 original amount of three decimals keeps them")
 	func mt940ThreeDecimals() throws {
 		let rows = try mt940(":61:2611091109DR3,69NMSCNONREF\n:86:106?00KARTENZAHLUNG?20Laden Kuwait?21/OCMT/KWD1,234/?32Laden")
@@ -175,6 +296,31 @@ struct PurposeLinesTests {
 			+ camtEntry("25.00", "CRDT", details: "<AmtDtls><InstdAmt><Amt Ccy=\"CHF\">24.00</Amt></InstdAmt></AmtDtls>")
 			+ camtEntry("46.12", "DBIT", details: "<AmtDtls><TxAmt><Amt Ccy=\"USD\">50.00</Amt></TxAmt></AmtDtls>"))
 		#expect(rows.map(\.originalAmount) == [Money(minorUnits: -5_000, currency: "USD"), nil, Money(minorUnits: 2_400, currency: "CHF"), nil])
+	}
+
+	@Test("A CAMT instructed amount that does not read in full, or whose currency is no code, is left out")
+	func camtUnreadableOriginalAmount() throws {
+		let rows = try camt(camtEntry("46.12", "DBIT", details: "<AmtDtls><InstdAmt><Amt Ccy=\"USD\">50.00oops</Amt></InstdAmt></AmtDtls>")
+			+ camtEntry("46.12", "DBIT", details: "<AmtDtls><InstdAmt><Amt Ccy=\"US1\">50.00</Amt></InstdAmt></AmtDtls>")
+			+ camtEntry("46.12", "DBIT", details: "<AmtDtls><InstdAmt><Amt>50.00</Amt></InstdAmt></AmtDtls>"))
+		#expect(rows.map(\.originalAmount) == [nil, nil, nil])
+	}
+
+	@Test("A CAMT batch entry has the sum of the instructed amounts of its details in one currency, and none when a detail lacks one or has another currency")
+	func camtBatchOriginalAmount() throws {
+		let usd = "<AmtDtls><InstdAmt><Amt Ccy=\"USD\">50.00</Amt></InstdAmt></AmtDtls>"
+		let entry = { (details: [String]) in
+			"""
+			<Ntry><Amt Ccy="EUR">92.24</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+			<NtryDtls>\(details.map { "<TxDtls>\($0)</TxDtls>" }.joined())</NtryDtls></Ntry>
+			"""
+		}
+		let rows = try camt(entry([usd, usd]) + entry([usd, ""]) + entry([usd, "<AmtDtls><InstdAmt><Amt Ccy=\"CHF\">50.00</Amt></InstdAmt></AmtDtls>"])
+			+ """
+			<Ntry><Amt Ccy="EUR">92.24</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+			<AmtDtls><InstdAmt><Amt Ccy="USD">100.00</Amt></InstdAmt></AmtDtls><NtryDtls><TxDtls></TxDtls><TxDtls></TxDtls></NtryDtls></Ntry>
+			""")
+		#expect(rows.map(\.originalAmount) == [Money(minorUnits: -10_000, currency: "USD"), nil, nil, Money(minorUnits: -10_000, currency: "USD")])
 	}
 
 	@Test("The ultimate creditor of a CAMT debit and the ultimate debtor of a credit are the deviating party")

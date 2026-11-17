@@ -241,7 +241,7 @@ enum MT940Parser {
 		if let line = lines.first(where: SlashTags.isOnlySlashTags) {
 			t.originalAmount = Transaction.original(SlashTags.originalAmount(in: line), booked: t.amount)
 		}
-		let sepa = SEPAPurpose.parse(PurposeLines.mt940(lines))
+		let sepa = SEPAPurpose.parse(PurposeLines(mt940: lines))
 		t.purpose = sepa.purpose
 		t.endToEndReference = sepa.endToEnd
 		t.mandateReference = sepa.mandate
@@ -253,6 +253,7 @@ enum MT940Parser {
 /// SEPA keywords inside a purpose: EREF+, MREF+, CRED+, SVWZ+, and more.
 enum SEPAPurpose {
 	static let keys = ["EREF+", "KREF+", "MREF+", "CRED+", "DEBT+", "SVWZ+", "ABWA+", "ABWE+", "COAM+", "OAMT+"]
+	private static let keyScalars = keys.map { Array($0.unicodeScalars) }
 
 	struct Fields {
 		var purpose: String
@@ -263,53 +264,79 @@ enum SEPAPurpose {
 		var deviatingRecipient: String?
 	}
 
-	static func parse(_ text: String) -> Fields {
-		guard keys.contains(where: { text.contains($0) }) else { return Fields(purpose: text) }
-		var values: [String: String] = [:]
-		var remaining = Substring(text)
-		var current: String?
-		var buffer = ""
-		while !remaining.isEmpty {
-			if let k = keys.first(where: { remaining.hasPrefix($0) }) {
-				if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
+	/// The tags are read from the lines joined without a character, as every earlier version read them, so a reference or a
+	/// tag that a line end cuts reads as before and the identity of a stored transaction stays. Only the purpose shows the
+	/// spaces of the joining rule. A tag that comes twice keeps its last value.
+	static func parse(_ text: PurposeLines) -> Fields {
+		let scalars = text.scalars
+		var ranges: [Int: Range<Int>] = [:]
+		var current: Int?
+		var start = 0
+		var i = 0
+		while i < scalars.count {
+			// Every key is four letters and a plus, so only a position with a plus four scalars on can start one.
+			if i + 4 < scalars.count, scalars[i + 4] == "+",
+				let k = keyScalars.firstIndex(where: { key in scalars[i..<i + 5].elementsEqual(key) }) {
+				if let current { ranges[current] = start..<i }
 				current = k
-				buffer = ""
-				remaining = remaining.dropFirst(k.count)
+				i += keyScalars[k].count
+				start = i
 			} else {
-				buffer.append(remaining.removeFirst())
+				i += 1
 			}
 		}
-		if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
+		if let current { ranges[current] = start..<scalars.count }
+		guard !ranges.isEmpty else { return Fields(purpose: text.shown(0..<scalars.count)) }
+		func value(_ key: String) -> String? {
+			ranges[keys.firstIndex(of: key)!].map { String(String.UnicodeScalarView(scalars[$0])).trimmingCharacters(in: .whitespaces) }
+		}
 		func clean(_ v: String?) -> String? { v.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 } }
-		return Fields(purpose: values["SVWZ+"] ?? text, endToEnd: clean(values["EREF+"]), mandate: clean(values["MREF+"]), creditor: clean(values["CRED+"]),
-			deviatingOriginator: clean(values["ABWA+"]), deviatingRecipient: clean(values["ABWE+"]))
+		let purpose = ranges[keys.firstIndex(of: "SVWZ+")!].map(text.shown) ?? text.shown(0..<scalars.count)
+		return Fields(purpose: purpose, endToEnd: clean(value("EREF+")), mandate: clean(value("MREF+")), creditor: clean(value("CRED+")),
+			deviatingOriginator: clean(value("ABWA+")), deviatingRecipient: clean(value("ABWE+")))
 	}
 }
 
-/// The lines into which a bank splits a purpose, joined so that a word cut at a line end is whole again.
-enum PurposeLines {
-	/// An MT940 line of 27 or 35 characters is full, so the bank cut the text there, also inside a word: it joins the next
-	/// line without a character. A shorter line ended where the text did, and joins with a space. So does a full line that
-	/// ends with a lowercase letter before a line that starts with an uppercase letter, or before a line that starts with a
-	/// tag. Inside the value of a tag other than SVWZ+, such as a reference, lines always join without a character, so a
-	/// reference stays the same whatever the length of its lines. Empty lines are left out.
-	static func mt940(_ lines: [String]) -> String {
-		let tags = SEPAPurpose.keys + ["IBAN+", "BIC+"]
-		var text = ""
-		var previous: String?
-		for line in lines where !line.allSatisfy(\.isWhitespace) {
-			if let previous {
+/// The lines into which a bank splits an MT940 purpose: joined without a character for the tags, and with the spaces of the
+/// joining rule where the purpose shows them. Lengths count Unicode scalars, as the FinTS helper counts code points.
+struct PurposeLines {
+	let scalars: [Unicode.Scalar]
+	/// The positions in `scalars` before which the purpose shows a space.
+	let spaces: Set<Int>
+
+	/// A line of 27 or 35 characters is full, so the bank cut the text there, also inside a word: it joins the next line
+	/// without a character. A shorter line ended where the text did, and joins with a space. So does a full line that ends
+	/// with a lowercase letter before a line that starts with an uppercase letter, or before a line that starts with a tag.
+	/// Empty lines are left out of the rule.
+	init(mt940 lines: [String]) {
+		let tags = (SEPAPurpose.keys + ["IBAN+", "BIC+"]).map { Array($0.unicodeScalars) }
+		var scalars: [Unicode.Scalar] = []
+		var spaces: Set<Int> = []
+		var previous: [Unicode.Scalar]?
+		for text in lines {
+			let line = Array(text.unicodeScalars)
+			defer { scalars += line }
+			guard let first = line.first, !line.allSatisfy(\.properties.isWhitespace) else { continue }
+			if let previous, let last = previous.last {
 				let full = previous.count == 27 || previous.count == 35
-				let newWord = text.last?.isLowercase == true && line.first?.isUppercase == true
-				let tag = tags.contains { line.hasPrefix($0) }
-				let open = tags.compactMap { t in text.range(of: t, options: .backwards).map { (t, $0.lowerBound) } }.max { $0.1 < $1.1 }?.0
-				let inValue = open != nil && open != "SVWZ+"
-				if tag || (!inValue && (!full || newWord)), text.last?.isWhitespace == false, line.first?.isWhitespace == false { text += " " }
+				let newWord = last.properties.isLowercase && first.properties.isUppercase
+				let tag = tags.contains { line.starts(with: $0) }
+				if !full || newWord || tag, !last.properties.isWhitespace, !first.properties.isWhitespace { spaces.insert(scalars.count) }
 			}
-			text += line
 			previous = line
 		}
-		return text
+		self.scalars = scalars
+		self.spaces = spaces
+	}
+
+	/// The text of `range` with its spaces, without white space at both ends.
+	func shown(_ range: Range<Int>) -> String {
+		var view = String.UnicodeScalarView()
+		for i in range {
+			if i > range.lowerBound, spaces.contains(i) { view.append(" ") }
+			view.append(scalars[i])
+		}
+		return String(view).trimmingCharacters(in: .whitespaces)
 	}
 
 	/// A CAMT line loses its outer spaces, and repeated spaces in it become one. Only a line of 140 characters, the most that
@@ -320,7 +347,7 @@ enum PurposeLines {
 		for raw in lines {
 			let line = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
 			guard !line.isEmpty else { continue }
-			if let previous, previous.count != 140 { text += " " }
+			if let previous, previous.unicodeScalars.count != 140 { text += " " }
 			text += line
 			previous = line
 		}
@@ -332,13 +359,17 @@ enum PurposeLines {
 enum SlashTags {
 	/// A purpose line that holds only these tags, the only place in `:86:` where the original amount counts.
 	static func isOnlySlashTags(_ line: String) -> Bool {
-		line.trimmingCharacters(in: .whitespaces).wholeMatch(of: /(\/(OCMT|CHGS|EXCH)\/[^\/]*\/*)+/) != nil
+		// The plain check first: a regular expression on every purpose line of a long file takes seconds.
+		let trimmed = line.trimmingCharacters(in: .whitespaces)
+		return trimmed.hasPrefix("/") && trimmed.wholeMatch(of: /(\/(OCMT|CHGS|EXCH)\/[^\/]*\/*)+/) != nil
 	}
 
-	/// The amount of `/OCMT/`, three letters of the currency and the amount with a decimal comma. Nil when it does not read or
-	/// does not fit, because the booked amount does not depend on it.
+	/// The amount of `/OCMT/`: three letters of the currency and the amount with a decimal comma, up to the next slash or the
+	/// end. Nil when any of it does not read or the amount does not fit, because a wrong original amount is worse than none.
 	static func originalAmount(in text: String) -> Money? {
-		guard let match = text.firstMatch(of: /\/OCMT\/([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)/),
+		guard let tag = text.range(of: "/OCMT/") else { return nil }
+		let token = text[tag.upperBound...].prefix { $0 != "/" }
+		guard let match = token.wholeMatch(of: /([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)/),
 			let amount = AmountParser.decimal(from: String(match.2), decimalMark: .comma) else { return nil }
 		return Money(fitting: amount, currency: match.1.uppercased())
 	}
@@ -475,6 +506,23 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		result.account = account
 	}
 
+	/// The amount that the originator instructed in its own currency: the one of the entry, or the sum of its details when
+	/// each detail has one in the same currency. Nil when any of it does not read, because a wrong original amount is worse
+	/// than none, and the booked amount does not depend on it.
+	private func instructedAmount(debit: Bool) -> Money? {
+		func read(_ text: String?, _ code: String?) -> Money? {
+			guard let text, let code, code.wholeMatch(of: /[A-Z]{3}/) != nil, text.wholeMatch(of: /[0-9]+(\.[0-9]+)?/) != nil,
+				let amount = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+			return Money(fitting: debit ? -amount : amount, currency: code)
+		}
+		if entry["instructed"] != nil { return read(entry["instructed"], entry["instructedCurrency"]) }
+		guard !details.isEmpty else { return nil }
+		let parts = details.map { read($0["instructed"], $0["instructedCurrency"]) }
+		guard let first = parts.first ?? nil, parts.allSatisfy({ $0?.currency == first.currency }) else { return nil }
+		guard let sum = Int64(exactly: parts.reduce(Int128(0)) { $0 + Int128($1!.minorUnits) }), sum.magnitude <= Money.maxMinorUnits.magnitude else { return nil }
+		return Money(minorUnits: sum, currency: first.currency)
+	}
+
 	private func finishEntry(_ parser: XMLParser) {
 		// The bank booked nothing for an INFO entry.
 		if entry["status"] == "INFO" { return }
@@ -505,12 +553,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
 			return day
 		}
-		// An instructed amount that does not read is left out, because the booked amount does not depend on it.
-		var instructed: Money?
-		if let text = common("instructed") ?? entry["instructed"], let code = common("instructedCurrency") ?? entry["instructedCurrency"],
-			let amount = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) {
-			instructed = Money(fitting: debit ? -amount : amount, currency: code)
-		}
+		let instructed = instructedAmount(debit: debit)
 		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
 			amountMinor: money.minorUnits, currency: currency,
 			name: ofOneParty(side + "Name") ?? "",

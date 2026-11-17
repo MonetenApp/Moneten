@@ -172,6 +172,10 @@ struct ReconcileTests {
 		#expect(Transaction.original(Money(minorUnits: 5_000, currency: "USD"), booked: Money(minorUnits: 4_612, currency: "EUR")) == Money(minorUnits: 5_000, currency: "USD"))
 		#expect(Transaction.original(Money(minorUnits: 4_612, currency: "EUR"), booked: euros) == nil)
 		#expect(Transaction.original(nil, booked: euros) == nil)
+		#expect(Transaction.original(Money(minorUnits: 5_000, currency: "US1"), booked: euros) == nil)
+		#expect(Transaction.original(Money(minorUnits: 5_000, currency: "usd"), booked: euros) == nil)
+		#expect(Transaction.original(Money(minorUnits: Money.maxMinorUnits + 1, currency: "USD"), booked: euros) == nil)
+		#expect(Transaction.original(Money(minorUnits: -Money.maxMinorUnits, currency: "USD"), booked: euros) == Money(minorUnits: -Money.maxMinorUnits, currency: "USD"))
 	}
 
 	@Test("A file row without IBAN and reference finds the row that a refresh stored")

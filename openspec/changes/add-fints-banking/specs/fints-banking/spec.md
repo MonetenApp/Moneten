@@ -310,7 +310,7 @@ The app SHALL take the counterparty name, the counterparty IBAN and BIC, the boo
 
 ### Requirement: Join purpose lines
 
-The app SHALL join the lines of an MT940 purpose so that words cut at a line end are whole again and separate words stay separate. A line of 27 or 35 characters, a tag at its start included, joins the next one without a character. Other lines join with a space, as does a full line that ends in lowercase before a line that starts in uppercase or with a tag. The value of a tag other than "SVWZ+" joins without a character.
+The app SHALL join the lines of an MT940 purpose so that words cut at a line end are whole again and separate words stay separate. A line of 27 or 35 characters, a tag at its start included, joins the next one without a character. Other lines join with a space, as does a full line that ends in lowercase before a line that starts in uppercase or with a tag. The app reads the tags and their values from the lines joined without a character.
 
 #### Scenario: Word cut at the line end
 
@@ -335,6 +335,12 @@ The app SHALL join the lines of an MT940 purpose so that words cut at a line end
 - **GIVEN** the bank delivers the MT940 purpose in the lines "Rechnung vom Elektromeister" and "Musterstadt Nr 17"
 - **WHEN** the app stores the transaction
 - **THEN** the purpose reads "Rechnung vom Elektromeister Musterstadt Nr 17"
+
+#### Scenario: Tag cut at the line end
+
+- **GIVEN** the bank delivers the MT940 purpose in the lines "SVWZ" and "+Miete November"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose reads "Miete November"
 
 #### Scenario: Reference across short lines
 
@@ -374,7 +380,7 @@ The app SHALL show the end-to-end reference as the purpose of a transaction when
 
 ### Requirement: Keep the original amount and the deviating party
 
-The app SHALL store the original amount and currency of a transaction that the bank converted from another currency, and the name of the deviating party, when the bank reports them, and show both in the transaction details. The deviating party is the deviating originator of a credit and the deviating recipient of a debit. A positive original amount of a debit takes the minus of the booked amount. An original amount in the currency of the booked amount is not stored.
+The app SHALL store the original amount and currency of a transaction that the bank converted, and the deviating party, the deviating originator of a credit or the deviating recipient of a debit, and show both in the transaction details. A positive original amount of a debit takes the minus of the booked amount. An original amount in the booked currency, one that does not read in full, or one whose currency is no ISO 4217 code is not stored.
 
 #### Scenario: Card payment abroad
 
@@ -394,11 +400,11 @@ The app SHALL store the original amount and currency of a transaction that the b
 - **WHEN** the user opens the transaction details
 - **THEN** the details show no original amount
 
-#### Scenario: Sign of the original amount of an MT942 row
+#### Scenario: Original amount that does not read
 
-- **GIVEN** the bank reports a pending MT942 row of -10,00 € with the original amount 11,00 US dollars
-- **WHEN** the refresh ends
-- **THEN** the original amount is -11,00 US dollars
+- **GIVEN** an MT940 transaction of -46,12 € with the tag "/OCMT/USD50.99/"
+- **WHEN** the user opens the transaction details
+- **THEN** the details show no original amount
 
 #### Scenario: Payment through a payment service
 
@@ -412,6 +418,22 @@ The app SHALL store the original amount and currency of a transaction that the b
 - **WHEN** the user opens the transaction details
 - **THEN** the details show "Erika Mustermann" as the deviating originator
 - **AND** the list still shows the name "Zahlungsdienst Muster GmbH"
+
+### Requirement: Original amount of a CAMT batch
+
+The app SHALL give a CAMT entry with several transaction details the sum of their original amounts when each detail has one in the same currency, and no original amount otherwise.
+
+#### Scenario: Batch of converted payments
+
+- **GIVEN** a CAMT entry of -92,24 € with two transaction details of 50,00 US dollars each
+- **WHEN** the user opens the transaction details
+- **THEN** the details show -100,00 US dollars as the original amount
+
+#### Scenario: Batch with one detail in another currency
+
+- **GIVEN** a CAMT entry of -92,24 € with one transaction detail of 50,00 US dollars and one of 50,00 Swiss francs
+- **WHEN** the user opens the transaction details
+- **THEN** the details show no original amount
 
 ### Requirement: Credit cards through FinTS
 

@@ -1007,67 +1007,90 @@ public class FinTSHelper {
 
 	/// A purpose line of MT940 that holds only the slash tags of the original amount, the charges, and the exchange rate.
 	static final Pattern SLASH_TAGS = Pattern.compile("(/(OCMT|CHGS|EXCH)/[^/]*/*)+");
-	static final Pattern ORIGINAL_AMOUNT = Pattern.compile("/OCMT/([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)");
+	static final Pattern ORIGINAL_AMOUNT = Pattern.compile("([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)");
 
-	/// The MT940 lines of a purpose, joined as add-fints-banking specifies. A line of 27 or 35 characters is full, so the
-	/// bank cut the text there, also inside a word, and it joins the next line without a character. A shorter line, a full
-	/// line that ends with a lowercase letter before a line that starts with an uppercase letter, and a line before one that
-	/// starts with a tag join with a space. Inside the value of a tag other than SVWZ+, such as a reference, lines always
-	/// join without a character. TransactionFileImporter joins the lines of a file by the same rule.
-	static String joinMt940(List<String> lines) {
-		StringBuilder text = new StringBuilder();
-		String previous = null;
-		for (String line : lines) {
-			if (!present(line)) continue;
-			if (previous != null) {
-				int length = previous.codePointCount(0, previous.length());
-				boolean full = length == 27 || length == 35;
-				char last = text.charAt(text.length() - 1);
-				boolean newWord = Character.isLowerCase(last) && Character.isUpperCase(line.charAt(0));
-				boolean tag = SEPA_TAG.matcher(line).lookingAt();
-				String open = null;
-				Matcher m = SEPA_TAG.matcher(text);
-				while (m.find()) open = m.group(1);
-				boolean inValue = open != null && !open.equals("SVWZ");
-				if ((tag || (!inValue && (!full || newWord))) && !Character.isWhitespace(last) && !Character.isWhitespace(line.charAt(0))) text.append(' ');
+	/// The lines of a purpose: joined without a character for the tags, as every earlier version read them, so that a
+	/// reference or a tag that a line end cuts reads as before and the identity of a stored transaction stays, and with the
+	/// spaces of the joining rule of add-fints-banking where the purpose shows them. MT940: a line of 27 or 35 characters
+	/// is full, so the bank cut the text there, also inside a word, and it joins the next line without a character. A
+	/// shorter line, a full line that ends with a lowercase letter before a line that starts with an uppercase letter, and
+	/// a line before one that starts with a tag join with a space. CAMT: only a line of 140 characters, the most that a line
+	/// holds, joins without a character, and white space folds into one space. Lengths count code points, as
+	/// TransactionFileImporter counts Unicode scalars, and it reads the lines of a file by the same rule.
+	static final class Purpose {
+		final String joined;
+		final boolean camt;
+		/// The positions in `joined` before which the purpose shows a space.
+		final java.util.Set<Integer> spaces = new java.util.HashSet<>();
+
+		Purpose(List<String> lines, boolean camt) {
+			this.camt = camt;
+			StringBuilder text = new StringBuilder();
+			String previous = null;
+			for (String line : lines) {
+				if (previous != null) {
+					boolean space;
+					if (camt) {
+						String shown = previous.strip().replaceAll("\\s+", " ");
+						space = shown.codePointCount(0, shown.length()) != 140;
+					} else {
+						int length = previous.codePointCount(0, previous.length());
+						boolean full = length == 27 || length == 35;
+						int last = previous.codePointBefore(previous.length()), first = line.codePointAt(0);
+						boolean newWord = Character.isLowerCase(last) && Character.isUpperCase(first);
+						boolean tag = SEPA_TAG.matcher(line).lookingAt();
+						space = (!full || newWord || tag) && !Character.isWhitespace(last) && !Character.isWhitespace(first);
+					}
+					if (space) spaces.add(text.length());
+				}
+				text.append(line);
+				previous = line;
 			}
-			text.append(line);
-			previous = line;
+			joined = text.toString();
 		}
-		return text.toString();
+
+		/// The text from `start` to `end` with its spaces, without white space at both ends.
+		String shown(int start, int end) {
+			StringBuilder text = new StringBuilder();
+			for (int i = start; i < end; i++) {
+				if (i > start && spaces.contains(i)) text.append(' ');
+				text.append(joined.charAt(i));
+			}
+			String shown = text.toString().strip();
+			return camt ? shown.replaceAll("\\s+", " ") : shown;
+		}
 	}
 
-	/// The CAMT lines of a purpose: each loses its outer spaces, repeated spaces become one, and only a line of 140
-	/// characters, the most that a line holds, joins the next one without a character.
+	/// The MT940 lines of a purpose as the purpose shows them. Blank lines are left out, as `row` leaves them out.
+	static String joinMt940(List<String> lines) {
+		Purpose p = new Purpose(lines.stream().filter(FinTSHelper::present).toList(), false);
+		return p.shown(0, p.joined.length());
+	}
+
+	/// The CAMT lines of a purpose as the purpose shows them.
 	static String joinCamt(List<String> lines) {
-		StringBuilder text = new StringBuilder();
-		String previous = null;
-		for (String raw : lines) {
-			if (!present(raw)) continue;
-			String line = raw.strip().replaceAll("\\s+", " ");
-			if (previous != null && previous.codePointCount(0, previous.length()) != 140) text.append(' ');
-			text.append(line);
-			previous = line;
-		}
-		return text.toString();
+		Purpose p = new Purpose(lines.stream().filter(FinTSHelper::present).toList(), true);
+		return p.shown(0, p.joined.length());
 	}
 
-	/// The original amount of a slash tag "/OCMT/USD50,00/" as plain decimal text with every decimal place, and its currency,
-	/// or null when it does not read. The app gives it the sign of the booked amount and drops it in the same currency.
-	/// `Value` of hbci4java keeps two decimals and throws on three, so the helper keeps the amount as it is.
+	/// The original amount of a slash tag "/OCMT/USD50,00/" as plain decimal text with every decimal place, and its currency:
+	/// three letters and the amount with a decimal comma, up to the next slash or the end. Null when any of it does not read,
+	/// because a wrong original amount is worse than none. `Value` of hbci4java keeps two decimals and throws on three, so the
+	/// helper keeps the amount as it is.
 	static String[] originalAmount(String line) {
-		Matcher m = ORIGINAL_AMOUNT.matcher(line);
-		if (!m.find()) return null;
-		try {
-			return new String[] { new BigDecimal(m.group(2).replace(',', '.').replaceAll("\\.$", "")).toPlainString(), m.group(1).toUpperCase(java.util.Locale.ROOT) };
-		} catch (NumberFormatException e) {
-			return null;
-		}
+		int tag = line.indexOf("/OCMT/");
+		if (tag < 0) return null;
+		int end = line.indexOf('/', tag + 6);
+		Matcher m = ORIGINAL_AMOUNT.matcher(line.substring(tag + 6, end < 0 ? line.length() : end));
+		if (!m.matches()) return null;
+		String amount = m.group(2).replace(',', '.');
+		if (amount.endsWith(".")) amount = amount.substring(0, amount.length() - 1);
+		return new String[] { new BigDecimal(amount).toPlainString(), m.group(1).toUpperCase(java.util.Locale.ROOT) };
 	}
 
 	/// One transaction for the app. MT940 statements carry the end-to-end reference, the mandate,
 	/// the creditor ID, the deviating party, and the purpose as tagged text in the purpose lines, which the bank cuts every
-	/// 27 characters, also inside words. `joinMt940` and `joinCamt` join them.
+	/// 27 characters, also inside words. `Purpose` joins them.
 	static Map<String, Object> row(UmsLine l, boolean pending) {
 		List<String> lines = new ArrayList<>();
 		String[] original = l.orig_value == null ? null : new String[] { l.orig_value.getBigDecimalValue().toPlainString(), text(l.orig_value.getCurr()) };
@@ -1078,19 +1101,25 @@ public class FinTSHelper {
 			if (!l.isCamt && original == null && SLASH_TAGS.matcher(line.strip()).matches()) original = originalAmount(line);
 			lines.add(line);
 		}
-		String joined = l.isCamt ? joinCamt(lines) : joinMt940(lines);
+		Purpose text = new Purpose(lines, l.isCamt);
+		String joined = text.joined;
 		Map<String, String> tags = new LinkedHashMap<>();
+		int[] svwz = null;
 		Matcher m = SEPA_TAG.matcher(joined);
 		int start = -1;
 		String tag = null;
-		while (m.find()) {
-			if (tag != null) tags.putIfAbsent(tag, joined.substring(start, m.start()).trim());
+		while (true) {
+			boolean found = m.find();
+			int end = found ? m.start() : joined.length();
+			if (tag != null && !tags.containsKey(tag)) {
+				tags.put(tag, joined.substring(start, end).trim());
+				if (tag.equals("SVWZ")) svwz = new int[] { start, end };
+			}
+			if (!found) break;
 			tag = m.group(1);
 			start = m.end();
 		}
-		if (tag != null) tags.putIfAbsent(tag, joined.substring(start).trim());
-		String purpose = tags.isEmpty() ? joined.strip() : tags.getOrDefault("SVWZ", "");
-		String endToEnd = text(present(l.endToEndId) ? l.endToEndId : tags.get("EREF"));
+		String purpose = tags.isEmpty() ? text.shown(0, joined.length()) : svwz == null ? "" : text.shown(svwz[0], svwz[1]);		String endToEnd = text(present(l.endToEndId) ? l.endToEndId : tags.get("EREF"));
 		if ("NOTPROVIDED".equals(endToEnd)) endToEnd = null;
 		if (!present(purpose) && endToEnd != null) purpose = endToEnd;
 		Konto other = l.other;
@@ -1582,13 +1611,16 @@ public class FinTSHelper {
 		String booked = cardDay(data.getProperty(row + ".bookingdate")), value = cardDay(data.getProperty(row + ".valuedate"));
 		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
 		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
-		BigDecimal original = StringUtil.normalize(data.getProperty(row + ".originalcurrency")) == null ? null
+		// An original amount that does not read, or whose currency is no code of three letters, is left out.
+		String originalCurrency = StringUtil.normalize(data.getProperty(row + ".originalcurrency"));
+		if (originalCurrency != null) originalCurrency = originalCurrency.toUpperCase(java.util.Locale.ROOT);
+		BigDecimal original = originalCurrency == null || !originalCurrency.matches("[A-Z]{3}") ? null
 			: signed(data.getProperty(row + ".originalvalue"), data.getProperty(row + ".originalcreditdebit"));
 		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
 			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
 			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
 			"bookingText", "Kreditkartenzahlung",
-			"originalAmount", original == null ? null : original.toPlainString(), "originalCurrency", original == null ? null : StringUtil.normalize(data.getProperty(row + ".originalcurrency")),
+			"originalAmount", original == null ? null : original.toPlainString(), "originalCurrency", original == null ? null : originalCurrency,
 			"pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
 	}
 

@@ -362,6 +362,20 @@ struct AllDataTests {
 		#expect(imported.allSatisfy { $0.returnReason == nil })
 	}
 
+	@Test("An export refuses an original amount above the limit of amounts, one without its currency, and a currency that is no code")
+	func originalAmountChecks() throws {
+		let file = try filledStore().exportAllData(at: exportedAt).json()
+		for change in [["originalAmount": "10000000000000.01", "originalCurrency": "USD"], ["originalAmount": "1.00"], ["originalAmount": "1.00", "originalCurrency": "US1"]] {
+			var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
+			var rows = json["transactions"] as! [[String: Any]]
+			rows[0].merge(change) { $1 }
+			json["transactions"] = rows
+			#expect(throws: AllData.ReadError.self) {
+				try (try emptyStore("target-\(UUID().uuidString)")).importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+			}
+		}
+	}
+
 	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")
 	func missingOlderTransactionsMark() throws {
 		let exported = try filledStore().exportAllData(at: exportedAt).json()

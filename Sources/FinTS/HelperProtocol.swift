@@ -418,10 +418,11 @@ extension AccountResult.Row {
 	func transaction(of account: AccountRequest) throws -> Transaction {
 		guard let booked else { throw HelperFailure.noBookingDate }
 		let money = try AccountResult.money(amount, currency ?? account.currency)
-		// An original amount beyond the limit is left out, because the booked amount does not depend on it.
+		// An original amount that does not read or is beyond the limit is left out, because the booked amount does not depend
+		// on it. `Transaction.original` drops a currency that is no ISO 4217 code.
 		var original: Money?
-		if let originalAmount, let originalCurrency {
-			original = Money(fitting: try AccountResult.decimal(originalAmount), currency: originalCurrency.uppercased())
+		if let originalAmount, let originalCurrency, let amount = try? AccountResult.decimal(originalAmount) {
+			original = Money(fitting: amount, currency: originalCurrency.uppercased())
 		}
 		return Transaction(accountID: account.accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
 			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban, counterpartyBIC: bic, bookingText: bookingText,

@@ -539,7 +539,9 @@ private struct TransactionEntry: Codable {
 		case (nil, nil): break
 		case let (amount?, code?):
 			try currencyCode(code)
-			t.originalAmount = Money(minorUnits: try AmountText.minorUnits(amount, code), currency: code)
+			let minor = try AmountText.minorUnits(amount, code)
+			guard minor.magnitude <= Money.maxMinorUnits.magnitude else { throw AllData.ReadError.damaged("the original amount \"\(amount)\" is above the limit of amounts") }
+			t.originalAmount = Money(minorUnits: minor, currency: code)
 		default: throw AllData.ReadError.damaged("originalAmount and originalCurrency must come together")
 		}
 		return t
