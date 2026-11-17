@@ -154,7 +154,7 @@ struct AccountSettingsSheet: View {
 
 	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
 	private func typedInitialBalance(in currency: String) -> Money? {
-		AmountParser.decimal(from: initialBalance).flatMap { Money(fitting: $0, currency: currency) }
+		Money(typed: initialBalance, currency: currency)
 	}
 
 	var body: some View {
@@ -252,7 +252,7 @@ struct CalibrationSheet: View {
 
 	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
 	private func typedBalance(in currency: String) -> Money? {
-		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
+		Money(typed: balance, currency: currency)
 	}
 
 	/// The account with the initial balance that the typed balance gives, nil while there is none or it is above

@@ -59,4 +59,15 @@ struct DayBridgeTests {
 		#expect(shown.identifier == .buddhist)
 		#expect(shown.dateComponents([.year], from: Day(year: 2026, month: 11, day: 9).noon).year == 2569)
 	}
+
+	@Test("A booking date stored in Berlin shows the same date with the Mac in Auckland")
+	func travel() throws {
+		let booked = Day(year: 2026, month: 11, day: 9)
+		let german = Locale(identifier: "de_DE")
+		for zone in ["Europe/Berlin", "Pacific/Auckland"] {
+			var mac = Calendar(identifier: .gregorian)
+			mac.timeZone = try #require(TimeZone(identifier: zone))
+			#expect(Format.day(booked, calendar: Day.calendar(like: mac), locale: german) == "09.11.2026")
+		}
+	}
 }
