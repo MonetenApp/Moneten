@@ -2,6 +2,7 @@ import Domain
 import Foundation
 import GRDB
 @testable import Storage
+import Synchronization
 import SyncTesting
 import Testing
 @testable import Sync
@@ -348,6 +349,27 @@ final class AutoRefreshTests {
 		await until { !coordinator.isRefreshing }
 	}
 
+	@Test("An account that the user closed while an automatic refresh waited for the user stays out of the run again that a manual refresh asks for",
+		arguments: [false, true])
+	func closedStaysOutOfRetry(mixed: Bool) async {
+		let coordinator = SyncCoordinator()
+		let bank = Self.access("Musterbank")
+		let gate = FailureWithStateTests.Gate()
+		let connector = RecordingConnector(HeldFailure(request: Self.tan, account: Self.giro.accountID, gate: gate, holdsCancel: false))
+		let accounts = mixed ? [Self.giro, Self.savings] : [Self.giro]
+		coordinator.refresh(RefreshRequest(access: bank, accounts: accounts), with: connector, attended: false)
+		await until { gate.isWaiting }
+		coordinator.refresh(RefreshRequest(access: bank, accounts: accounts), with: connector, attended: true)
+		coordinator.leaveOut(account: Self.giro.accountID)
+		gate.open()
+		if mixed {
+			await until { coordinator.broker.current != nil }
+			coordinator.cancelAll()
+		}
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests == (mixed ? [[Self.giro.accountID, Self.savings.accountID], [Self.savings.accountID]] : [[Self.giro.accountID]]))
+	}
+
 	@Test("A blocked access does not run again after a manual refresh joined the automatic one")
 	func blockedAccessRunsOnce() async {
 		let coordinator = SyncCoordinator()
@@ -683,6 +705,23 @@ struct HeldFailure: BankConnector {
 			throw failure ?? error
 		}
 		return ConnectorReport(outcomes: [account: .fetched(RefreshResult(balance: nil, transactions: nil))])
+	}
+}
+
+/// Records the accounts of each request and hands it to another connector.
+final class RecordingConnector: BankConnector, Sendable {
+	private let inner: any BankConnector
+	private let log = Mutex<[[UUID]]>([])
+
+	init(_ inner: any BankConnector) {
+		self.inner = inner
+	}
+
+	var requests: [[UUID]] { log.withLock { $0 } }
+
+	func refresh(_ refresh: RefreshRequest, _ session: SyncSession) async throws -> ConnectorReport {
+		log.withLock { $0.append(refresh.accounts.map(\.accountID)) }
+		return try await inner.refresh(refresh, session)
 	}
 }
 

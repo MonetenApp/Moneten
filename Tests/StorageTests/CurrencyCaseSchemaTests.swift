@@ -15,7 +15,7 @@ extension SchemaTests {
 		let id = UUID()
 		// An earlier version stored the code of a CAMT or MT940 file as the file wrote it.
 		try queue.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 			try db.execute(sql: "UPDATE account SET currency = 'eur' WHERE id = ?", arguments: [account.id])
 			try db.execute(sql: """
 				INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
@@ -54,7 +54,7 @@ extension SchemaTests {
 		defer { try? queue.close() }
 		try Schema.migrator.migrate(queue, upTo: "v23")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
-		try queue.write { db in try account.insert(db) }
+		try queue.write { db in try account.insertOld(db) }
 		let store = Store(queue: queue)
 		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 12))!
 		// An earlier version kept the code of the file as it came, also inside the file identity of the row.
@@ -90,7 +90,7 @@ extension SchemaTests {
 		try Schema.migrator.migrate(queue, upTo: "v23")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		try queue.write { db in
-			try account.insert(db)
+			try account.insertOld(db)
 			try db.execute(sql: """
 				INSERT INTO deletedTransaction (accountID, bookingDate, amountMinor, currency, isPending, purpose, wasFetched, deletedAt, fileIdentity)
 				VALUES (?, 20261103, -8900, 'eur', 1, 'Miete', 0, '2026-11-04 12:00:00.000', ?)

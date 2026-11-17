@@ -169,14 +169,17 @@ struct ClosedAccountTests {
 
 	@Test("Neither the clearing entry nor an edit of it in a closed account moves a derived initial balance")
 	func noFollowWhileClosed() throws {
-		let l = ledger([giro], [row(giro, 28_000)])
-		let result = try l.closing(closed(giro), today: day)
+		// The close falls on the day of the bank balance, so the bank balance holds the entry, and only the rule keeps it out.
+		let bankDay = Day(giro.bankBalanceDate!)
+		let l = ledger([giro], [row(giro, 28_000, on: bankDay.adding(days: -3))])
+		let result = try l.closing(closed(giro), today: bankDay)
 		let entry = try #require(result.entry)
 		var after = applying(result, to: l)
 		#expect(try after.followingBankBalance(saving: [entry]).isEmpty)
 		var edited = entry
-		edited.edit(OriginalValues(bookingDate: day, valueDate: day, amountMinor: -40_000, name: entry.name, purpose: entry.purpose))
+		edited.edit(OriginalValues(bookingDate: bankDay, valueDate: bankDay, amountMinor: -40_000, name: entry.name, purpose: entry.purpose))
 		#expect(try after.followingBankBalance(saving: [edited]).isEmpty)
+		#expect(try after.followingBankBalance(saving: [], deleting: [entry.id]).isEmpty)
 		after.update([edited])
 		#expect(after.balance(of: result.account) == Money(minorUnits: 8_000, currency: "EUR"))
 	}

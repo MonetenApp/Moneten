@@ -385,6 +385,13 @@ The app SHALL show the computed balance of a closed account in the header, the i
 - **WHEN** the user selects "Giro" and shows the bar chart
 - **THEN** the chart shows the balance of each day before and 0,00 € from 2026-11-17
 
+#### Scenario: File import into a closed account
+
+- **GIVEN** the closed offline account "Wallet" with a balance of 0,00 €
+- **WHEN** the user imports a file with a deposit of 7,00 € into "Wallet"
+- **THEN** the list of "Wallet" shows the deposit
+- **AND** the header of "Wallet" shows 7,00 €
+
 #### Scenario: Group with a closed account
 
 - **GIVEN** the group "Private" with "Giro" at 300,00 € and the closed account "Old Savings", whose edited clearing entry leaves 50,00 €
@@ -416,7 +423,8 @@ The app SHALL reopen an account when the user turns off "The account has been cl
 
 #### Scenario: Edited clearing entry of a bank account
 
-- **GIVEN** the bank reported 500,00 € for "Giro", which matches its transactions, and the user changed the purpose of its clearing entry of -500,00 €
+- **GIVEN** the bank reported 500,00 € for "Giro" on 2026-11-17, which matches its transactions
+- **AND** the user closed "Giro" on 2026-11-17 and changed the purpose of its clearing entry of -500,00 €
 - **WHEN** the user reopens "Giro"
 - **THEN** the header shows 500,00 € and no calibration proposal
 - **AND** the bar chart ends at 500,00 €

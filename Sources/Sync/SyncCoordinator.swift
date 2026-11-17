@@ -342,13 +342,17 @@ public final class SyncCoordinator {
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
 			let accountIDs = job.request.accounts.map(\.accountID)
+			// The accounts of this run that are still requested: an account that the user closed meanwhile left them (`leaveOut(account:)`).
+			let stillRequested = Set((requested[access.id] ?? []).map(\.accountID))
+			let retried = job.request.accounts.filter { stillRequested.contains($0.accountID) }
 			endProgress(of: access.id)
 			running[access.id] = nil
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves {
-				let again = Job(request: job.request, connector: job.connector, attended: true)
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves, !retried.isEmpty {
+				let again = Job(request: RefreshRequest(access: job.request.access, state: job.request.state, accounts: retried), connector: job.connector,
+					attended: true)
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}

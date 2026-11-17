@@ -529,6 +529,18 @@ struct SyncCoordinatorTests {
 		#expect(alone.requests.isEmpty)
 	}
 
+	@Test("An account that the user closes during a running refresh stops showing its progress at once, and the run ends without a run again")
+	func closedDuringRun() async {
+		let bank = Self.access("Musterbank")
+		let connector = RecordingConnector(delay: .milliseconds(100))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.card), Self.dated(Self.giro)]), with: connector, attended: true)
+		coordinator.leaveOut(account: Self.giro.accountID)
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
+		await until { !coordinator.isRefreshing }
+		// The bank already had the request, and the app drops what it delivers for the closed account.
+		#expect(connector.requests == [["Card 2026-11-01", "Giro 2026-11-01"]])
+	}
+
 	@Test("An account that the user closes leaves the request that waits for the end of a running refresh of its access")
 	func closedLeavesAfterRun() async {
 		let bank = Self.access("Musterbank")

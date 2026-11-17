@@ -15,12 +15,12 @@ public struct ClearingEntryMark: Hashable, Sendable, Codable {
 		self.init(transactionID: entry.id, values: OriginalValues(entry))
 	}
 
-	/// The row is the entry in `account`, as the app inserted it: the values of the entry in the account currency, no
+	/// The row of `account` is the entry as the app inserted it: the values of the entry in the account currency, no
 	/// comment, no category that the user chose, and no source. A checkmark, the mark "new", and a category from a rule do
 	/// not count, because they say that the user saw the row, not that the user changed it. A row that a file matched
 	/// is a row of that file now.
 	func isUnchanged(_ t: Transaction, in account: Account) -> Bool {
-		t.id == transactionID && t.accountID == account.id && t.isOnlyManual && OriginalValues(t) == values && t.currency == account.currency
+		t.id == transactionID && t.isOnlyManual && OriginalValues(t) == values && t.currency == account.currency
 			&& t.comment == nil && t.categorizedBy != .manual
 	}
 }
