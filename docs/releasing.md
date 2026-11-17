@@ -164,7 +164,9 @@ A user who sends a crash report, from the crash sheet of the app or the bug repo
 
 A frame of macOS, such as SwiftUI or libsystem_kernel.dylib, prints "No matching dSYM", because only Apple has its symbols. When no frame of Moneten matches, the user ran another build than the release, for example a build from source, or the report names another version. Ask for the version in the About window. A crash of the extension host comes as a system report, `MonetenExtensionHost-*.ips` in `~/Library/Logs/DiagnosticReports`, and not from the crash sheet. Resolve its frames with `MonetenExtensionHost.dSYM` from the same zip: `atos -o MonetenExtensionHost.dSYM -arch arm64 -l <load address> <address>`, with the load address of the extension host from the list of images in the report.
 
-The dry run makes the zip too, and checks it with the same script. `scripts/build-app.sh` writes the dSYMs of a Release build to `dist/Moneten.dSYMs`.
+The app and its dSYMs carry the paths of the checkout they were built in, so only the release workflow builds the files of a release. Its checkout lies in `/Users/runner/`. `scripts/release.sh package` refuses to build a release whose app or whose dSYMs of the app and the extension host hold a path in another home folder, and `draft` refuses such a zip, without printing the paths. The dSYMs of Sparkle and SQLCipher come unchanged from their packages, with the paths of their own build machines.
+
+The dry run makes the zip too, and checks it with the same script. It also checks that `draft` would refuse the zip of a build outside the workflow. `scripts/build-app.sh` writes the dSYMs of a Release build to `dist/Moneten.dSYMs`.
 
 ## Update a pinned build tool
 

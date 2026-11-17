@@ -149,12 +149,13 @@ check_hardened() {
 }
 
 # Copies each dSYM in the folder $1 that belongs to a binary of the app dist/Moneten.app to
-# dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. The Java
-# runtime of the FinTS helper has none. scripts/release.sh checks that every other binary has one.
+# dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
+# before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
+# scripts/release.sh checks that every other binary has one.
 copy_symbols() {
 	mkdir dist/Moneten.dSYMs
 	UUIDS=$(mktemp)
-	find dist/Moneten.app/Contents -type f ! -path '*/Contents/Resources/FinTSHelper/*' | while read -r f; do
+	find dist/Moneten.app/Contents -type f | while read -r f; do
 		file -b "$f" | grep -q '^Mach-O' && dwarfdump --uuid "$f"
 	done | awk '{ print $2 }' > "$UUIDS"
 	for dsym in "$1"/*.dSYM; do

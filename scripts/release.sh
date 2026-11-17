@@ -123,7 +123,8 @@ detach() {
 	hdiutil detach -quiet -force "$1"
 }
 
-# Mounts the disk image $1 read-only and checks the app on it as a user would get it.
+# Mounts the disk image $1 read-only and checks the app on it as a user would get it. Writes the
+# slices of the app on it to $WORK/app-slices for the check of the dSYMs.
 check_dmg() {
 	hdiutil verify -quiet "$1"
 	hdiutil attach -quiet -nobrowse -readonly -mountpoint "$WORK/volume" "$1"
@@ -140,6 +141,7 @@ check_dmg() {
 			|| unmount_and_fail "Gatekeeper does not accept the app on the disk image as notarized."
 		xcrun stapler validate -q "$MOUNTED" || unmount_and_fail "The app on the disk image has no stapled ticket."
 	fi
+	app_slices "$MOUNTED" "$WORK/app-slices" || unmount_and_fail "The binaries of the app on the disk image cannot be read."
 	detach "$WORK/volume"
 }
 
@@ -148,27 +150,63 @@ slices() {
 	while read -r f; do dwarfdump --uuid "$f"; done < "$1" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)) .*\/\([^/]*\)$/\1 \2 \3/p' | sort
 }
 
-# Zips dist/Moneten.dSYMs to $OUT/Moneten-$2-dSYMs.zip and checks the zip against the app on the disk
-# image $1. Each slice of each Mach-O file in the app, except the Java runtime of the FinTS helper,
-# needs a dSYM with its UUID, and no dSYM may be left over. Then scripts/symbolicate-crash.sh must
-# resolve a report with one frame in each slice, at its main function or else its first function, to
-# a function and its source file, as it does for the report of a user (docs/releasing.md).
+# Writes to $2 the slices of each Mach-O file in the app $1, except the Java runtime of the FinTS
+# helper, which has no dSYM.
+app_slices() {
+	find "$1/Contents" -type f ! -path '*/Contents/Resources/FinTSHelper/*' > "$WORK/files"
+	while read -r f; do file -b "$f" | grep -q '^Mach-O' && echo "$f"; done < "$WORK/files" > "$WORK/binaries"
+	slices "$WORK/binaries" > "$2"
+	[ -s "$2" ]
+}
+
+# Fails unless the dSYMs in the folder $2 have exactly the slices in the file $1: each slice of the
+# app needs a dSYM with its UUID, and no dSYM may be left over. Writes the list of their DWARF files
+# to $WORK/dwarf.
+match_symbols() {
+	find "$2" -path '*.dSYM/Contents/Resources/DWARF/*' -type f > "$WORK/dwarf"
+	slices "$WORK/dwarf" > "$WORK/dsym-slices"
+	diff -u "$1" "$WORK/dsym-slices" >&2 || fail "The dSYMs in $2 do not match the binaries of the app (left: app, right: dSYMs)."
+}
+
+# The DWARF files of the dSYMs in the folder $1 that this build compiles: the app and the extension
+# host. The other dSYMs come unchanged from the packages Sparkle and SQLCipher, with the paths of
+# their own build machines.
+own_dwarf() {
+	echo "$1/Moneten.app.dSYM/Contents/Resources/DWARF/Moneten"
+	echo "$1/MonetenExtensionHost.dSYM/Contents/Resources/DWARF/MonetenExtensionHost"
+}
+
+# Fails when one of the files named in the file $1 holds a path in a home folder other than
+# /Users/runner/ of the GitHub runner. The app and its dSYMs carry the paths of the checkout they were
+# built in, so a release built on the Mac of a maintainer would publish the path of a home folder.
+# The message never prints the paths.
+check_build_paths() {
+	while read -r f; do [ -f "$f" ] || fail "$f is missing."; done < "$1"
+	while read -r f; do grep -aohE '/Users/[^/[:cntrl:]]+/' "$f" || true; done < "$1" | sort -u | grep -vx '/Users/runner/' > "$WORK/homes" || true
+	[ ! -s "$WORK/homes" ] || fail "The release holds paths in $(wc -l < "$WORK/homes" | tr -d ' ') home folder(s) other than /Users/runner/ of the release workflow. Build releases only in the workflow."
+}
+
+# Fails when the dSYMs that this build compiles in the zip $1 hold a path in a home folder other than
+# /Users/runner/.
+check_zip_paths() {
+	rm -rf "$WORK/zip-paths"
+	mkdir "$WORK/zip-paths"
+	ditto -x -k "$1" "$WORK/zip-paths"
+	own_dwarf "$WORK/zip-paths/Moneten.dSYMs" > "$WORK/zip-paths.txt"
+	check_build_paths "$WORK/zip-paths.txt"
+}
+
+# Zips dist/Moneten.dSYMs to $OUT/Moneten-$1-dSYMs.zip and checks the zip against the slices of the
+# app on the disk image, which check_dmg wrote. Then scripts/symbolicate-crash.sh must resolve a report
+# with one frame in each slice, at its main function or else its first function, to a function and
+# its source file, as it does for the report of a user (docs/releasing.md).
 symbols() {
-	ZIP="$OUT/Moneten-$2-dSYMs.zip"
+	ZIP="$OUT/Moneten-$1-dSYMs.zip"
 	[ -d dist/Moneten.dSYMs ] || fail "The build wrote no dist/Moneten.dSYMs."
 	ditto -c -k --keepParent dist/Moneten.dSYMs "$ZIP"
 	mkdir "$WORK/symbols"
 	ditto -x -k "$ZIP" "$WORK/symbols"
-	find "$WORK/symbols" -path '*.dSYM/Contents/Resources/DWARF/*' -type f > "$WORK/dwarf"
-	hdiutil attach -quiet -nobrowse -readonly -mountpoint "$WORK/volume" "$1"
-	find "$WORK/volume/Moneten.app/Contents" -type f ! -path '*/Contents/Resources/FinTSHelper/*' > "$WORK/files"
-	while read -r f; do file -b "$f" | grep -q '^Mach-O' && echo "$f"; done < "$WORK/files" > "$WORK/binaries"
-	slices "$WORK/binaries" > "$WORK/app-slices"
-	detach "$WORK/volume"
-	slices "$WORK/dwarf" > "$WORK/dsym-slices"
-	[ -s "$WORK/app-slices" ] || fail "No binary of the project was found in the app on the disk image."
-	diff -u "$WORK/app-slices" "$WORK/dsym-slices" >&2 \
-		|| fail "The dSYMs do not match the binaries in the app on the disk image (left: app, right: dSYMs)."
+	match_symbols "$WORK/app-slices" "$WORK/symbols"
 	while read -r f; do
 		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
 		while read -r ID ARCH; do
@@ -206,7 +244,12 @@ package() {
 		if [ "$3" != dry-run ]; then
 			check_production_key "$(plist "$APP" SUPublicEDKey)"
 			[ "$(plist "$APP" SUPublicEDKey)" = "$(committed_key)" ] || fail "The app carries another update key than App/project.yml."
+			{ echo "$APP/Contents/MacOS/Moneten"; echo "$APP/Contents/Helpers/MonetenExtensionHost"; own_dwarf dist/Moneten.dSYMs; } > "$WORK/built.txt"
+			check_build_paths "$WORK/built.txt"
 		fi
+		# The dSYMs must match before the app goes to Apple. symbols checks them again on the disk image.
+		app_slices "$APP" "$WORK/built-slices" || fail "The binaries of $APP cannot be read."
+		match_symbols "$WORK/built-slices" dist/Moneten.dSYMs
 		ditto -c -k --keepParent "$APP" "$WORK/Moneten.zip"
 		notarize "$WORK/Moneten.zip"
 		xcrun stapler staple -q "$APP"
@@ -227,7 +270,7 @@ package() {
 			|| fail "Gatekeeper does not accept the disk image as notarized."
 	fi
 	check_dmg "$DMG" "$1" "$MODE"
-	symbols "$DMG" "$1"
+	symbols "$1"
 	cat > "$OUT/build.env" <<-EOF
 	VERSION=$1
 	BUILD=$(plist "$APP" CFBundleVersion)
@@ -291,6 +334,7 @@ withdraw() {
 heading() { grep -m1 "^## $1 (" "$CHANGELOG" | sed 's/^## //'; }
 
 draft() {
+	check_zip_paths "$OUT/Moneten-$1-dSYMs.zip"
 	notes section "$1" > "$WORK/notes.md"
 	case "$1" in *-*) KIND="--prerelease --latest=false" ;; *) KIND="" ;; esac
 	gh release create "v$1" --repo "$REPO" --draft --verify-tag --title "$(heading "$1")" --notes-file "$WORK/notes.md" $KIND \
@@ -404,6 +448,23 @@ check_keys() {
 	echo "The test key is the Debug key, and the check of a release refuses it and the placeholder."
 }
 
+# The check of draft: it accepts paths in /Users/runner/ and refuses another home folder. On the
+# zip of this run, it must pass in a checkout of the GitHub runner and refuse a checkout in another
+# home folder, such as the one of a maintainer.
+check_path_rule() {
+	printf 'x /Users/runner/work/Moneten/Moneten/App/Sources/AppModel.swift y' > "$WORK/runner-path"
+	echo "$WORK/runner-path" > "$WORK/path-list"
+	check_build_paths "$WORK/path-list" || fail "The check of build paths refused a path of the GitHub runner."
+	printf 'x /Users/someone/Moneten/App/Sources/AppModel.swift y' >> "$WORK/runner-path"
+	(check_build_paths "$WORK/path-list") 2>/dev/null && fail "The check of build paths accepted a path in another home folder."
+	case "$PWD" in
+	/Users/runner/*) check_zip_paths "$OUT/Moneten-$1-dSYMs.zip"
+		echo "The dSYMs of this build hold no path in a home folder other than /Users/runner/." ;;
+	/Users/*) (check_zip_paths "$OUT/Moneten-$1-dSYMs.zip") 2>/dev/null && fail "The check of draft accepted dSYMs built in another home folder."
+		echo "The check of draft refuses the dSYMs of this build, which hold the path of a home folder other than /Users/runner/." ;;
+	esac
+}
+
 dry_run() {
 	VERSION=${1:-0.0.0-beta.1}
 	cp CHANGELOG.md "$WORK/CHANGELOG.md"
@@ -423,6 +484,7 @@ dry_run() {
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
+	check_path_rule "$VERSION"
 	check_keys
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
