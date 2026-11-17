@@ -21,9 +21,9 @@ enum DKB {
 		remoteID.count == 16 && remoteID.allSatisfy { $0.isASCII && $0.isNumber }
 	}
 
-	/// The most days by which DKB moves a booked card payment to a later day between two refreshes, from the day of the
-	/// purchase toward the day of the settlement ("Keep a moved card booking as one transaction").
-	static let maxBookingShift = 5
+	/// The most days by which DKB may move a booked card payment between two refreshes, in either direction ("Keep a
+	/// moved card booking as one transaction").
+	static let maxBookingShift = 7
 
 	/// The outcome of an account, with the days by which a DKB card may move its booked payments.
 	static func outcome(_ outcome: AccountOutcome, account remoteID: String, bankCode: String?, server: URL?) -> AccountOutcome {

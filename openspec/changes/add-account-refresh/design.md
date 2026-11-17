@@ -252,6 +252,7 @@ The coordinator calls `deliver` once for each requested account that the connect
 - Source IDs belong to one account. A known ID wins over any fingerprint, and a delivered ID never takes a stored row that has another ID.
 - A balance without a date from the bank gets the time of the merge. A balance in another currency than the account's is not stored.
 - A deleted row stays deleted for every refresh, also an enforced one. A file import brings it back only when no refresh had delivered it.
+- A connector sets `FetchedTransactions.maxBookingShift` for an account whose source moves a booked row to a later day, today only a DKB card with 7 days (`DKB` in `Sources/FinTS`). `MovedBookings` pairs a delivered booked row that found no partner with a stored booked row from an earlier refresh that the answer covers and no longer delivers, by amount, currency, and counterparty, as a pending row and its booked version, with the two days at most the shift apart in either direction. A pair counts only when each row fits no other row. The stored row takes the bank fields of the delivered row and keeps its user fields, so "Keep the history for good" still holds: no row is removed. A deleted row that moved comes back as a new row, because a deleted row keeps out only a delivered row of its own day.
 
 ### The schedule of the automatic refresh (issue #40)
 

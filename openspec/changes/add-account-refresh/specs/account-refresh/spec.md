@@ -304,7 +304,7 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 
 ### Requirement: Keep a moved card booking as one transaction
 
-The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction that has the same amount and counterparty, lies at most five days after it, and fits no other stored transaction, when the refresh covers the day of the stored one but no longer delivers it. The stored transaction keeps its user fields and takes the date and the texts of the delivered one.
+The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction that has the same amount and counterparty, lies at most seven days before or after it, and fits no other stored transaction, when the refresh covers the day of the stored one but no longer delivers it. The stored transaction keeps its user fields and takes the date and the texts of the delivered one.
 
 #### Scenario: Booking moved to a later day
 
@@ -318,10 +318,16 @@ The app SHALL update a stored booked transaction of a DKB credit card with a del
 - **WHEN** a refresh from 5 March 2024 delivers that transaction again and another one of -19,90 € to "Streaming Beispiel" on 10 March 2024
 - **THEN** "Visa" shows both transactions
 
-#### Scenario: More than five days apart
+#### Scenario: Booking moved to an earlier day
 
-- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 3 March 2024
-- **WHEN** a refresh from 1 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 3 March 2024
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024, with the comment "Family plan"
+- **WHEN** a refresh from 5 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024 and none on 10 March 2024
+- **THEN** "Visa" shows one transaction of -19,90 € on 8 March 2024 with the comment "Family plan"
+
+#### Scenario: More than seven days apart
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 16 March 2024 and none on 8 March 2024
 - **THEN** "Visa" shows both transactions
 
 #### Scenario: Day before the refresh

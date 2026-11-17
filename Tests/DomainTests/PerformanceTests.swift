@@ -204,6 +204,36 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Refreshing 300 moved card bookings in 50,000 card rows meets its budget")
+	func movedCardBookings() {
+		let account = Account(position: 0, name: "Card history", kind: .creditCard, source: .bank)
+		let today = Day(year: 2026, month: 12, day: 1)
+		var stored: [Transaction] = []
+		stored.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			var t = Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000) - 3), amountMinor: -Int64(i + 1),
+				name: "Shop \(i % 50)", purpose: "Card payment \(i)")
+			t.isFetched = true
+			stored.append(t)
+		}
+		// The bank moved the 300 newest payments two days later, so none of them is delivered on its stored day.
+		var rows: [Transaction] = []
+		for t in stored.prefix(300) {
+			let moved: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate.adding(days: 2), amountMinor: t.amountMinor,
+				name: t.name, purpose: t.purpose)
+			rows.append(moved)
+		}
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: nil, maxBookingShift: 7)))
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		var result = Reconciliation()
+		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		#expect(result.skipped == 300 && result.updated.count == 300 && result.added.isEmpty)
+		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(40))), updated=\(result.updated.count)")
+		#if !DEBUG
+		#expect(elapsed < budget(.milliseconds(40)))
+		#endif
+	}
+
 	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.

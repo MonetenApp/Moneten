@@ -268,9 +268,9 @@ public struct FetchedTransactions: Sendable {
 	/// when the answer holds everything that the bank keeps. A stored pending transaction of a covered
 	/// day that the answer lacks was dropped by the bank.
 	public let from: Day?
-	/// The most days by which the source may move a booked transaction to a later day between two refreshes, as a DKB
-	/// card moves a payment from the day of the purchase toward the day of the settlement. Zero for a source that never
-	/// moves one ("Keep a moved card booking as one transaction").
+	/// The most days by which the source may move a booked transaction to another day between two refreshes, in either
+	/// direction, as a DKB card may move a payment between the day of the purchase and the day of the settlement. Zero for
+	/// a source that never moves one ("Keep a moved card booking as one transaction").
 	public var maxBookingShift: Int
 
 	public init(rows: [Transaction], from: Day?, maxBookingShift: Int = 0) {

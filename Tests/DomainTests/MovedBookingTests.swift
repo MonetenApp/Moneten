@@ -22,7 +22,7 @@ struct MovedBookingTests {
 		return t
 	}
 
-	func refresh(_ rows: [Transaction], from: Int = 5, shift: Int = 5) -> Delivery {
+	func refresh(_ rows: [Transaction], from: Int = 5, shift: Int = 7) -> Delivery {
 		.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: day(from), maxBookingShift: shift)))
 	}
 
@@ -63,11 +63,16 @@ struct MovedBookingTests {
 		#expect(merge(refresh([row(10, purpose: "STREAMING BEISPIEL MUSTERSTADT")]), stored: after).updated == [])
 	}
 
-	@Test("A booking on the same day with other texts, and one five days later, take the place of the stored booking")
-	func sameDayAndFiveDays() {
+	@Test("A booking on the same day with other texts, one seven days later, and one seven days earlier take the place of the stored booking")
+	func sameDayAndSevenDays() {
 		let streaming = stored(row(8))
 		#expect(merge(refresh([row(8, purpose: "Streaming Beispiel Abo")]), stored: [streaming]).updated.map(\.id) == [streaming.id])
-		#expect(merge(refresh([row(13)]), stored: [streaming]).updated.map(\.id) == [streaming.id])
+		#expect(merge(refresh([row(15)]), stored: [streaming]).updated.map(\.id) == [streaming.id])
+		let tenth = stored(row(10))
+		let r = merge(refresh([row(8)], from: 1), stored: [tenth])
+		#expect(r.added == [])
+		#expect(history([tenth], after: r).map(\.bookingDate) == [day(8)])
+		#expect(merge(refresh([row(3)], from: 1), stored: [tenth]).updated.map(\.id) == [tenth.id])
 	}
 
 	@Test("A stored booking that the refresh still delivers stays, and the other delivered booking is new")
@@ -78,15 +83,15 @@ struct MovedBookingTests {
 		#expect(r.updated == [])
 	}
 
-	@Test("A booking six days later, an earlier booking, another amount, another counterparty, and a day before the refresh are new", arguments: [
-		(14, -1_990, "Streaming Beispiel", 5),
-		(7, -1_990, "Streaming Beispiel", 5),
-		(10, -2_490, "Streaming Beispiel", 5),
-		(10, -1_990, "Kino Beispiel", 5),
-		(10, -1_990, "Streaming Beispiel", 9),
+	@Test("A booking eight days later or earlier, another amount, another counterparty, and a day before the refresh are new", arguments: [
+		(8, 16, -1_990, "Streaming Beispiel", 5),
+		(10, 2, -1_990, "Streaming Beispiel", 1),
+		(8, 10, -2_490, "Streaming Beispiel", 5),
+		(8, 10, -1_990, "Kino Beispiel", 5),
+		(8, 10, -1_990, "Streaming Beispiel", 9),
 	])
-	func noMove(delivered: Int, minor: Int64, name: String, from: Int) {
-		let streaming = stored(row(8))
+	func noMove(storedDay: Int, delivered: Int, minor: Int64, name: String, from: Int) {
+		let streaming = stored(row(storedDay))
 		let r = merge(refresh([row(delivered, minor, name)], from: from), stored: [streaming])
 		#expect(r.added.count == 1)
 		#expect(r.updated == [])

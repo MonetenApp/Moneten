@@ -1,13 +1,13 @@
-/// The stored booked rows that delivered booked rows take the place of, because the source moved them to a later day
-/// ("Keep a moved card booking as one transaction"). A DKB card moves a payment from the day of the purchase toward the
-/// day of the settlement and may change its texts, so the refresh no longer delivers the stored row, and a row a few
-/// days later with the same amount and counterparty is the same payment.
+/// The stored booked rows that delivered booked rows take the place of, because the source moved them to another day
+/// ("Keep a moved card booking as one transaction"). A DKB card may move a payment between the day of the purchase and
+/// the day of the settlement and change its texts, so the refresh no longer delivers the stored row, and a row a few
+/// days apart with the same amount and counterparty is the same payment.
 ///
 /// Only a delivery whose `FetchedTransactions.maxBookingShift` is above zero moves rows. A stored row must be booked,
 /// fetched by an earlier refresh, on a day that the delivery covers, and paired with no delivered row. A delivered row
 /// must be booked and paired with nothing else. Both need the same amount and currency and a counterparty that agrees,
-/// as a pending row and its booked version do, and the delivered row lies on the day of the stored row or up to
-/// `maxBookingShift` days after it. A pair counts only when each of the two rows fits no other row, so the merge never
+/// as a pending row and its booked version do, and the two days lie at most `maxBookingShift` days apart, in either
+/// direction. A pair counts only when each of the two rows fits no other row, so the merge never
 /// guesses. No stored row is removed: a row that finds no partner stays, and the delivered row is added.
 struct MovedBookings {
 	/// The index of the stored row that a delivered row takes the place of, by the index of the delivered row.
@@ -17,23 +17,33 @@ struct MovedBookings {
 	/// that a delivered row found.
 	init(_ delivery: Delivery, rows: [Transaction], fresh: [Int], stored: [Transaction], taken: Set<Int>) {
 		guard case let .refresh(result) = delivery, let shift = result.transactions?.maxBookingShift, shift > 0, !fresh.isEmpty else { return }
-		let candidates = stored.indices.filter { (j: Int) -> Bool in
-			let t = stored[j]
-			return !taken.contains(j) && !t.isPending && t.isFetched && delivery.covers(t.sourceBookingDate)
+		let delivered = fresh.filter { !rows[$0].isPending }
+		guard !delivered.isEmpty else { return }
+		// Only a stored row with the amount of a delivered row near its day can fit, and the cheap fields come first, so a
+		// long history of a card builds no match for most of its rows.
+		let amounts = Set(delivered.map { rows[$0].sourceAmountMinor })
+		let days = Set(delivered.flatMap { (i: Int) -> ClosedRange<Int> in
+			let day = rows[i].sourceBookingDate.daysSince1970
+			return (day - shift)...(day + shift)
+		})
+		var byAmount: [Money: [(index: Int, match: PendingMatch)]] = [:]
+		for (j, t) in stored.enumerated() where amounts.contains(t.sourceAmountMinor) && days.contains(t.sourceBookingDate.daysSince1970)
+			&& !taken.contains(j) && !t.isPending && t.isFetched && delivery.covers(t.sourceBookingDate) {
+			let match = PendingMatch(t)
+			byAmount[match.amount, default: []].append((j, match))
 		}
-		guard !candidates.isEmpty else { return }
-		let old: [PendingMatch] = candidates.map { (j: Int) -> PendingMatch in PendingMatch(stored[j]) }
+		guard !byAmount.isEmpty else { return }
 		var fitsOfDelivered: [Int: [Int]] = [:]
 		var fitsOfStored: [Int: [Int]] = [:]
-		for i in fresh where !rows[i].isPending {
+		for i in delivered {
 			let new = PendingMatch(rows[i])
-			for (x, m) in old.enumerated() where m.amount == new.amount && (0...shift).contains(new.day - m.day) && Self.sameCounterparty(m, new) {
-				fitsOfDelivered[i, default: []].append(x)
-				fitsOfStored[x, default: []].append(i)
+			for (j, old) in byAmount[new.amount] ?? [] where abs(new.day - old.day) <= shift && Self.sameCounterparty(old, new) {
+				fitsOfDelivered[i, default: []].append(j)
+				fitsOfStored[j, default: []].append(i)
 			}
 		}
 		for (i, fits) in fitsOfDelivered where fits.count == 1 && fitsOfStored[fits[0]]?.count == 1 {
-			ofDelivered[i] = candidates[fits[0]]
+			ofDelivered[i] = fits[0]
 		}
 	}
 

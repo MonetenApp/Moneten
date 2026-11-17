@@ -215,7 +215,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			if fetched { next.isFetched = true }
 			r.booked.append(next)
 		} else if let j = moved.ofDelivered[i] {
-			// The source moved a booked row to a later day: the stored row takes its day and texts and keeps the user fields.
+			// The source moved a booked row to another day: the stored row takes its day and texts and keeps the user fields.
 			var next = stored[j].takingBankFields(of: delivered)
 			if next != stored[j] { rules.categorize(&next) }
 			r.skipped += 1
