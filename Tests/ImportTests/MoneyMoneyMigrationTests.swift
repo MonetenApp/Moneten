@@ -65,6 +65,53 @@ struct MoneyMoneyMigrationTests {
 		try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 	}
 
+	@Test("A transaction without a currency takes the currency of its account, and codes in lower case read in upper case", arguments: [false, true])
+	func currencyOfAccount(bankFirst: Bool) throws {
+		let usd: [[String: Any]] = [
+			["uuid": "U1", "name": "Dollar", "group": false, "indentation": 0, "type": "Giro account", "accountNumber": "DE02120300000000202051",
+				"attributes": [String: String](), "currency": "usd", "portfolio": false, "balance": [[-89.0, "usd"]]],
+		]
+		let rows: [String: Any] = ["creator": "MoneyMoney", "transactions": [
+			["id": 7, "accountUuid": "U1", "bookingDate": date(2026, 11, 3), "amount": -89.0, "name": "Stadtwerke Musterstadt", "purpose": "Abschlag November",
+				"booked": true, "checkmark": false],
+		] as [Any]]
+		// The account of a bank access with the same IBAN already holds the booking in USD.
+		let bank = Account(position: 0, name: "Dollar", kind: .giro, source: .bank, currency: "USD", iban: "DE02120300000000202051")
+		let stored = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, currency: "USD",
+			name: "Stadtwerke Musterstadt", purpose: "Abschlag November", isFetched: true)
+		let ledger = bankFirst ? Ledger(accounts: [bank], transactions: [stored]) : Ledger()
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(usd), categories: try plist(categories), transactions: try plist(rows), into: ledger)
+		if bankFirst {
+			#expect(p.transactions == [])
+			#expect(p.skippedTransactions == 1)
+		} else {
+			#expect(p.accounts.map(\.currency) == ["USD"])
+			#expect(p.transactions.map(\.currency) == ["USD"])
+			#expect(p.sources.first?.balance?.currency == "USD")
+		}
+	}
+
+	@Test("A transaction without a currency takes the currency of its account in the source, also when that account goes into one of another currency")
+	func currencyOfSourceAccount() throws {
+		let usd: [[String: Any]] = [
+			["uuid": "U1", "name": "Dollar", "group": false, "indentation": 0, "type": "Giro account", "accountNumber": "DE02120300000000202051",
+				"attributes": [String: String](), "currency": "USD", "portfolio": false, "balance": [[-89.0, "USD"]]],
+		]
+		let rows: [String: Any] = ["creator": "MoneyMoney", "transactions": [
+			["id": 7, "accountUuid": "U1", "bookingDate": date(2026, 11, 3), "amount": -89.0, "name": "Stadtwerke Musterstadt", "purpose": "Abschlag November",
+				"booked": true, "checkmark": false],
+		] as [Any]]
+		// The account here is in EUR and holds the booking in USD, which its bank delivered.
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank, currency: "EUR", iban: "DE02120300000000202051")
+		let stored = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, currency: "USD",
+			name: "Stadtwerke Musterstadt", purpose: "Abschlag November", isFetched: true)
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(usd), categories: try plist(categories), transactions: try plist(rows),
+			into: Ledger(accounts: [bank], transactions: [stored]))
+		#expect(p.accounts == [])
+		#expect(p.transactions == [])
+		#expect(p.skippedTransactions == 1)
+	}
+
 	@Test("Group tree with order and balances")
 	func groups() throws {
 		let p = try plan()
@@ -1254,9 +1301,21 @@ struct MoneyMoneyMigrationTests {
 	func ibanAndBIC() {
 		#expect(MoneyMoneyMigration.isIBAN("DE02120300000000202051"))
 		#expect(MoneyMoneyMigration.isIBAN("DE02 1203 0000 0000 2020 51"))
+		#expect(MoneyMoneyMigration.isIBAN("DE02\u{00A0}1203\u{202F}0000 0000 2020 51"))
 		#expect(!MoneyMoneyMigration.isIBAN("DE03120300000000202051"))
 		#expect(!MoneyMoneyMigration.isIBAN("202051"))
 		#expect(MoneyMoneyMigration.isBIC("BYLADEM1001") && MoneyMoneyMigration.isBIC("BYLADEM1"))
 		#expect(!MoneyMoneyMigration.isBIC("12030000"))
+	}
+}
+
+extension Categorizer {
+	/// The category that `categorize` gives a row without a category of its own.
+	func category(for t: Transaction) -> UUID? {
+		var row = t
+		row.categoryID = nil
+		row.categorizedBy = .none
+		categorize(&row)
+		return row.categoryID
 	}
 }

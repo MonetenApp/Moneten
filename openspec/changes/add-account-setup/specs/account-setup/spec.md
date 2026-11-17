@@ -284,6 +284,13 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because a Sparda-Bank calls its login name differently
 
+#### Scenario: Commerzbank
+
+- **GIVEN** the user chose Commerzbank with the Bankleitzahl 50040000, whose FinTS address is on the host `fints.commerzbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Participant number"
+- **AND** the line under it says that Commerzbank expects the 10-digit participant number, and that Commerzbank must switch on "FinTS/HBCI with photoTAN" for the user
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -292,7 +299,7 @@ The app SHALL ask for the login data in the second step with the field names tha
 
 ### Requirement: Send a login name of 17 digits to a savings bank as 16 digits
 
-The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it.
+The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it. Two login names that agree in this form are the same login.
 
 #### Scenario: Login name of 17 digits
 
@@ -318,6 +325,18 @@ The app SHALL send and store the first 16 digits of a login name that has exactl
 - **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
 - **WHEN** the user enters the login name "12345678901234567" in "Edit Login Data..." and clicks "Next"
 - **THEN** the app sends and stores "1234567890123456"
+
+#### Scenario: Access of 17 digits that the app stored before
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30" stores the login name "12345678901234567"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "1234567890123456" to the bank
+
+#### Scenario: Same login with 16 digits
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30" stores the login name "12345678901234567"
+- **WHEN** the user adds an account of the same bank with the login name "1234567890123456"
+- **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "1234567890123456"
 
 ### Requirement: Check the format of login fields
 
@@ -385,6 +404,42 @@ The app SHALL send and store a VR-Kennung in capitals and without spaces when th
 - **WHEN** the user adds an account of the same bank with the login name "VRK12345678"
 - **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "VRK12345678"
 
+### Requirement: Send a login name of 8 digits to Commerzbank as the participant number
+
+The app SHALL send and store "00" followed by the login name when the login name has exactly 8 digits and the FinTS address of the bank is on the host `fints.commerzbank.de` or `hbci.commerzbank.de`. Any other login name, and any login name at another bank, stays as the user typed it. Two login names that agree in this form are the same login.
+
+#### Scenario: Login name of 8 digits
+
+- **GIVEN** the user chose Commerzbank with the FinTS address "https://fints.commerzbank.de/fints"
+- **WHEN** the user enters the login name "12345678" and clicks "Next"
+- **THEN** the app sends the login name "0012345678"
+- **AND** the access stores the login name "0012345678"
+
+#### Scenario: Participant number of 10 digits
+
+- **GIVEN** the user chose Commerzbank with the FinTS address "https://fints.commerzbank.de/fints"
+- **WHEN** the user enters the login name "0012345678"
+- **THEN** the app sends "0012345678"
+
+#### Scenario: Login name with letters
+
+- **GIVEN** the user chose Commerzbank with the FinTS address "https://fints.commerzbank.de/fints"
+- **WHEN** the user enters the login name "mueller7"
+- **THEN** the app sends "mueller7"
+
+#### Scenario: Login name of 8 digits at another bank
+
+- **GIVEN** the user chose comdirect with the FinTS address "https://fints.comdirect.de/fints"
+- **WHEN** the user enters the login name "12345678"
+- **THEN** the app sends "12345678"
+
+#### Scenario: Access of 8 digits that the app stored before
+
+- **GIVEN** an access of Commerzbank with the FinTS address "https://fints.commerzbank.de/fints" stores the login name "12345678"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "0012345678" to the bank
+- **AND** a second setup with the login name "0012345678" joins that access
+
 ### Requirement: Show what the bank requires before the first login
 
 The app SHALL show a hint in the second step when the app, the bank directory, or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
@@ -401,6 +456,20 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows above the fields that the user logs in with the login name and the PIN of the online banking of the Sparkasse
 - **AND** the app says that the user sets up a TAN method such as pushTAN or chipTAN in the online banking before the first login
+
+#### Scenario: Commerzbank
+
+- **GIVEN** the user chose Commerzbank with the Bankleitzahl 50040000, whose FinTS address is on the host `fints.commerzbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user requests the access at "https://www.commerzbank.de/hbci" first
+- **AND** the app says that Commerzbank must switch on "FinTS/HBCI with photoTAN" for the user, also when the user already uses photoTAN on the website
+
+#### Scenario: comdirect
+
+- **GIVEN** the user chose comdirect with the Bankleitzahl 20041111, whose FinTS address is on the host `fints.comdirect.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
+- **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
 
 #### Scenario: Credit card
 
@@ -424,6 +493,12 @@ The app SHALL show the message of the bank when the login fails, keep the user o
 - **GIVEN** the user chose Consorsbank and entered the account number without "001"
 - **WHEN** the bank answers "PIN ungültig"
 - **THEN** the message asks the user to check the user ID as well and repeats that Consorsbank expects the account number followed by the Berechtigtennummer
+
+#### Scenario: Commerzbank rejects the first login
+
+- **GIVEN** the user chose Commerzbank with the Bankleitzahl 50040000
+- **WHEN** the bank answers the first login with the code 9942 and the text "PIN ungültig"
+- **THEN** the message repeats that Commerzbank expects the 10-digit participant number and must switch on "FinTS/HBCI with photoTAN" for the user
 
 #### Scenario: Login name is an alias that the bank rejects
 

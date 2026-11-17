@@ -55,7 +55,11 @@ None.
 - An account without a type and without a hint in its number or name gets the type "Other". MoneyMoney's fallback is not documented.
 - A group can contain other groups. Nesting of groups was not observed.
 - A group with accounts in several currencies shows one sum for each currency. MoneyMoney's rule was not observed.
-- When the user removes the closed mark, the app removes the clearing entry that it inserted, unless the user changed that entry. This was not observed.
+- When the user removes the closed mark, the app removes the clearing entry that it inserted, unless the user changed that entry. The entry counts as changed when the user changed its date, value date, amount, name, purpose, comment, or category, or split it. A checkmark does not count. This was not observed.
+- An account of a bank access shows the balance of the bank again when the user reopens it. This was not observed.
+- Closing leaves every transaction as it is, pending ones included. This was not observed.
+- An account without transactions whose initial balance is not zero also gets a clearing entry, so every closed account ends at zero. This was not observed.
+- A closed portfolio keeps its value and its positions and gets no clearing entry. This was not observed.
 - A closed account is left out of every refresh. MoneyMoney's help implies this and does not state it.
 - Removing the last account of an access also removes the saved login data of that access. This was not observed.
 - A removed group passes its accounts to the group above it. The target was not observed.

@@ -950,6 +950,16 @@
         }
       }
     },
+    "+ %lld more" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+ %lld weitere"
+          }
+        }
+      }
+    },
     "-0,00" : {
       "localizations" : {
         "de" : {
@@ -2397,6 +2407,17 @@
         }
       }
     },
+    "Before the first login, set up a TAN method such as photoTAN on the website of comdirect. comdirect needs about two business days before its FinTS server accepts it. If the login fails until then, try again later with “Edit Login Data...”." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie vor der ersten Anmeldung ein TAN-Verfahren wie photoTAN auf der Website der comdirect ein. Die comdirect braucht etwa zwei Werktage, bis ihr FinTS-Server es annimmt. Schlägt die Anmeldung bis dahin fehl, versuchen Sie es später mit „Zugangsdaten bearbeiten...“ erneut."
+          }
+        }
+      }
+    },
     "BIC" : {
       "localizations" : {
         "de" : {
@@ -2931,6 +2952,17 @@
         }
       }
     },
+    "Clearing entry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgleichsbuchung"
+          }
+        }
+      }
+    },
     "Clothing" : {
       "localizations" : {
         "de" : {
@@ -3018,6 +3050,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kommentar: %@"
+          }
+        }
+      }
+    },
+    "Commerzbank expects the 10-digit participant number. If the login fails, check that Commerzbank switched on “FinTS/HBCI with photoTAN” for you." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Commerzbank erwartet die 10-stellige Teilnehmernummer. Schlägt die Anmeldung fehl, prüfen Sie, ob die Commerzbank „FinTS/HBCI mit photoTAN“ für Sie freigeschaltet hat."
           }
         }
       }
@@ -4857,6 +4900,17 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Help page of Commerzbank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Commerzbank"
+          }
+        }
+      }
     },
     "Help page of Consorsbank" : {
       "localizations" : {
@@ -7317,6 +7371,17 @@
         }
       }
     },
+    "Participant number" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilnehmernummer"
+          }
+        }
+      }
+    },
     "Participate in beta tests and display pre-release versions" : {
       "localizations" : {
         "de" : {
@@ -8040,6 +8105,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf GitHub melden..."
+          }
+        }
+      }
+    },
+    "Request the access at www.commerzbank.de/hbci before the first login. Commerzbank must switch on the method “FinTS/HBCI with photoTAN” for you, also when you already use photoTAN on the website." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beantragen Sie den Zugang vor der ersten Anmeldung unter www.commerzbank.de/hbci. Die Commerzbank muss das Verfahren „FinTS/HBCI mit photoTAN“ für Sie freischalten, auch wenn Sie photoTAN auf der Website schon nutzen."
           }
         }
       }
@@ -9409,6 +9485,17 @@
         }
       }
     },
+    "The account has been marked as closed in the account settings. The app inserted this transaction to bring the balance to zero. Change it with “Edit Transaction...” if needed." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto wurde in den Kontoeinstellungen als aufgelöst markiert. Die App hat diesen Umsatz eingefügt, um den Kontostand auf null zu bringen. Ändern Sie ihn bei Bedarf mit „Umsatz bearbeiten...“."
+          }
+        }
+      }
+    },
     "the account number %@" : {
       "localizations" : {
         "de" : {
@@ -9687,6 +9774,17 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" is too large for a clearing entry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Kontostand des Kontos „%@“ ist zu groß für eine Ausgleichsbuchung."
+          }
+        }
+      }
     },
     "The balance of the account \"%@\" is too large." : {
       "localizations" : {
@@ -11349,6 +11447,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die PIN wird für jedes Konto dieses Zugangs entfernt. Die nächste Aktualisierung fragt danach."
+          }
+        }
+      }
+    },
+    "The regular expression at position %lld stopped because it is too slow." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der reguläre Ausdruck an Position %lld wurde angehalten, weil er zu langsam ist."
           }
         }
       }

@@ -165,7 +165,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
-	@ObservationIgnored private var ledgerRevision = 0
+	@ObservationIgnored private(set) var ledgerRevision = 0
 	var exportTask: Task<Void, Never>?
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
 	@ObservationIgnored private var trailRows = 0
@@ -372,7 +372,8 @@ final class AppModel {
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
-			guard let self else { return }
+			// A refresh that ran while the user closed the account delivers nothing into it. The merge checks it again in its write.
+			guard let self, self.ledger.account(accountID)?.isClosed != true else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 			if let kind = self.ledger.account(accountID)?.kind {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
@@ -1030,10 +1031,13 @@ final class AppModel {
 	}
 
 	func save(transaction t: Transaction, adding: Bool) {
-		var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
 		let categorizer = Categorizer(ledger: ledger)
-		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
-			categorizer.categorize(&changed.transactions[i])
+		let changed = categorizer.allOrNothing {
+			var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
+			for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
+				categorizer.categorize(&changed.transactions[i])
+			}
+			return changed
 		}
 		commit(changed)
 	}
@@ -1095,12 +1099,37 @@ final class AppModel {
 
 	// MARK: Accounts and groups
 
+	/// Saves the account. Marking it as closed also stores its clearing entry, and reopening it removes the entry that
+	/// the user did not change, each in one write with the account.
 	func save(account: Account) {
 		guard let store else { return }
+		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
-			try store.save(account)
-			ledger.upsert(account)
-			if let value = account.portfolioValue() { ledger.record(value) }
+			var saved = account
+			var entry: Transaction?
+			var removed: UUID?
+			if account.isClosed, wasClosed == false {
+				(saved, entry) = try ledger.closing(account, today: .today())
+			} else if !account.isClosed, wasClosed == true {
+				(saved, removed) = try ledger.reopening(account)
+			}
+			if let entry {
+				try store.save([entry], accounts: [saved])
+			} else if let removed {
+				try store.deleteTransactions([removed], accounts: [saved])
+			} else {
+				try store.save(saved)
+			}
+			ledgerChange = "account closed=\(saved.isClosed) entry=\(entry != nil) removed=\(removed != nil)"
+			// A closed account takes no refresh: it leaves the refreshes that wait, and the merge drops what a running one delivers.
+			if saved.isClosed, wasClosed == false { sync.leaveOut(account: saved.id) }
+			ledger.upsert(saved)
+			if let value = saved.portfolioValue() { ledger.record(value) }
+			if let entry { ledger.update([entry]) }
+			if let removed {
+				ledger.remove(transactionIDs: [removed])
+				selectedTransactions.remove(removed)
+			}
 			ledger.replace()
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the account."), message: String(describing: error))
@@ -1528,13 +1557,20 @@ final class AppModel {
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		guard !run.isCancelled else { return }
+		if changed.isEmpty, let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+			return
+		}
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
+			// A stopped rule gives no rows, also when a row that changed during the run stopped it.
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
 			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
-		if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
+		if let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+		} else if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
 	}
 
 	// MARK: Migration

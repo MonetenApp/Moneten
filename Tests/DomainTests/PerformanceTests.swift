@@ -204,6 +204,90 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
+	func regexRuleBudgets() throws {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		// A loop with typed values, because the type checker of the CI compiler gives up on this as one closure.
+		var ts: [Transaction] = []
+		ts.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) Kundennummer \(i * 7)"
+			ts.append(Transaction(accountID: account.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose,
+				bookingText: "LASTSCHRIFT", endToEndReference: "E2E-\(i)"))
+		}
+		let traders = Domain.Category(position: 0, name: "Haendler", rule: "/Haendler1/")
+		let rest = Domain.Category(position: 1, name: "Rest", rule: #""Rechnung""#)
+		let ledger = Ledger(accounts: [account], categories: [traders, rest], transactions: ts)
+		var count = 0
+		var stopped = false
+		let counting = fastest {
+			let rule = try! Rule(parsing: traders.rule)
+			count = RuleApplier.matchCount(category: traders, rule: rule, ledger: ledger)
+			stopped = stopped || rule.stoppedRegexPosition != nil
+		}
+		var sorted = 0
+		let categorizing = fastest {
+			let rules = Categorizer(ledger: ledger)
+			sorted = rules.allOrNothing { () -> Int in
+				var count = 0
+				for t in ts where rules.category(for: t) == traders.id { count += 1 }
+				return count
+			}
+		}
+		// Twelve rules above it that stop, six at once and six on texts of 18 "a", leave it its rows, and the batch ends soon.
+		var slow: [Domain.Category] = []
+		for k in 0..<6 { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: "purpose:/^+?4\(k)/")) }
+		for k in 1...6 { slow.append(Domain.Category(position: 5 + k, name: "Slow \(5 + k)", rule: "purpose:/(a+)+$|^z\(k)$/")) }
+		var mixedRows: [Transaction] = ts
+		let slowPurpose: String = String(repeating: "a", count: 18) + "!"
+		for i in 0..<4 {
+			let amount: Int64 = -10_000 - Int64(i)
+			mixedRows.append(Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: amount, name: "Kiosk", purpose: slowPurpose))
+		}
+		// The rules that stop come first in the sidebar.
+		var ordered: [Domain.Category] = []
+		for category in slow {
+			var above: Domain.Category = category
+			above.position -= 20
+			ordered.append(above)
+		}
+		ordered += [traders, rest]
+		let mixed = Ledger(accounts: [account], categories: ordered, transactions: mixedRows)
+		var kept = 0
+		let withStops = fastest {
+			let rules = Categorizer(ledger: mixed)
+			kept = rules.allOrNothing { () -> Int in
+				var count = 0
+				for row in mixedRows {
+					var t: Transaction = row
+					rules.categorize(&t)
+					if t.categoryID == traders.id { count += 1 }
+				}
+				return count
+			}
+		}
+		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows), with twelve rules that stop \(withStops) (\(kept) rows)")
+		#expect(kept == 7_865)
+		// Haendler1 and Haendler10 to Haendler19: 11 of each 70 rows.
+		#expect(count == 7_865)
+		#expect(sorted == 7_865)
+		#expect(!stopped)
+		// Most of the time builds a `RuleSubject` for each row, about 390 ms. The watched regular expression takes about
+		// 130 ms of it, so the limit of a run, 1 second, leaves room for several times as many rows.
+		#if !DEBUG
+		// A Mac counts in about 0.55 s and categorizes in about 0.62 s in release; a busy CI runner has taken up to three
+		// times as long. Issue #361 removes the cost of the memo and tightens these budgets again.
+		#expect(counting < budget(.milliseconds(1_500)))
+		#expect(categorizing < budget(.milliseconds(1_500)))
+		// About 1 second of it is the twelve rules until they stop, and the rest two passes over the rows. Before round 3 of
+		// #351 a repeat charged the normal rule again, and the batch took over 10 seconds.
+		#expect(withStops < budget(.seconds(6)))
+		#endif
+	}
+
 	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.

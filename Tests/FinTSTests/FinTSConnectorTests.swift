@@ -173,6 +173,17 @@ struct FinTSConnectorTests {
 		#expect(recorded.first?["user"] == "VRK12345678")
 	}
 
+	@Test("An access of a savings bank that stored a login name of 17 digits sends its first 16 digits")
+	func savingsBankLoginOf17Digits() async throws {
+		let access = Access(source: .fints(bankCode: "50850049", url: URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30")!), bankName: "Sparkasse Musterstadt",
+			loginName: "12345678901234567")
+		_ = try await connector("""
+			read cmd; printf '%s\\n' "$cmd" >> "$R"
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""").refresh(RefreshRequest(access: access, accounts: [Self.giro], enforced: false), Session())
+		#expect(recorded.first?["user"] == "1234567890123456")
+	}
+
 	@Test("apoBank asks for the name of the apoTAN device when it lists no TAN media, and the empty name goes to the helper")
 	func apoTANDevice() async throws {
 		let session = Session { request in
@@ -1133,6 +1144,23 @@ struct FinTSConnectorTests {
 		for _ in 0..<500 where !condition() {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
+	}
+
+	@Test("A helper that writes its currencies in lower case gives upper-case codes to the rows, the balance, the account, and the exchange rate")
+	func lowerCaseCurrency() throws {
+		let line = #"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"eur"},"transactions":{"rows":[{"type":"row","booked":"2026-11-03","amount":"-89","currency":"eur","purpose":"Abschlag November","pending":false},{"type":"row","booked":"2026-11-04","amount":"-5","purpose":"Kiosk","pending":false}]},"errors":[]}"#
+		let result = try JSONDecoder().decode(AccountResult.self, from: Data(line.utf8))
+		let rows = try #require(result.transactions?.rows).map { try $0.transaction(of: Self.giro) }
+		#expect(rows.map(\.currency) == ["EUR", "EUR"])
+		#expect(try AccountResult.money("10.00", "eur").currency == "EUR")
+		// The account of an accounts line.
+		let accounts = #"{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","kind":"1","currency":"usd"}]}"#
+		guard case let .accounts(found) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
+		#expect(found.map(\.currency) == ["USD"])
+		// 100,00 € plus 10,00 $ accrued interest at 1.25 USD for 1 EUR are 108,00 €.
+		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"eur","value":{"amount":"100.00","currency":"eur"},"accrued":{"amount":"10.00","currency":"usd"},"rate":{"base":"eur","quoted":"usd","rate":"1.25"}}"#
+		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro)
+		#expect(holding.value(in: "EUR") == Money(minorUnits: 10_800, currency: "EUR"))
 	}
 }
 

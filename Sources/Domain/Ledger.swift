@@ -417,7 +417,7 @@ public struct Ledger: Sendable {
 	}
 
 	/// The computed balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
-	private func exactBalance(of account: Account, through day: Day?) -> Int128 {
+	func exactBalance(of account: Account, through day: Day?) -> Int128 {
 		var sum = Int128(account.initialBalanceMinor)
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
 			if let day, t.bookingDate > day { continue }
@@ -436,7 +436,7 @@ public struct Ledger: Sendable {
 		// tells it only once the app recorded the end, so the state of the refresh covers the time before. The rows
 		// are read in place, because copying the rows of an account on each drawing of the header cost most of a
 		// frame with 50,000 rows.
-		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
+		guard account.source == .bank, account.kind != .portfolio, !account.isClosed, account.initialBalanceIsSet, account.refreshError == nil,
 			!refresh.mayLackRows(of: account.id),
 			let meeting = account.exactInitialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
 			meeting != Int128(account.initialBalanceMinor) else { return nil }
@@ -462,7 +462,10 @@ public struct Ledger: Sendable {
 		var moved: [Account] = []
 		for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
 			guard var a = account(id), a.followsBankBalance, let date = a.bankBalanceDate else { continue }
-			let move = a.moveForManualRows(changes, through: Day(date, calendar: calendar))
+			// The clearing entry of a closed account brings its computed balance to zero, so it moves nothing while the account is closed.
+			let entry = a.isClosed ? a.clearingEntry?.transactionID : nil
+			let own = entry.map { e in changes.filter { $0.old?.id != e && $0.new?.id != e } } ?? changes
+			let move = a.moveForManualRows(own, through: Day(date, calendar: calendar))
 			guard move != 0 else { continue }
 			guard let value = Int64(limitedAmount: Int128(a.initialBalanceMinor) + move) else { throw InitialBalanceTooLarge(accountName: a.name) }
 			a.initialBalanceMinor = value

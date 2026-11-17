@@ -129,6 +129,7 @@ final class SelfTest {
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
 		SavingsBanksSelfTest.run();
+		CommerzbankGroupSelfTest.run();
 
 		Out.secret("geheim42");
 		expect("PIN masked", Out.bank("PIN geheim42 sent"), "PIN ••• sent");
@@ -192,6 +193,10 @@ final class SelfTest {
 		expect("customer ID in another case on another server stays", restoredLogin("VRK12345678", "vrk12345678", "VRK12345678"), "VRK12345678 vrk12345678");
 		expect("alias in another case on a server of Atruvia stays",
 			restoredLogin("fints2.atruvia.de/cgi-bin/hbciservlet", "vrkonto1", "VRKONTO1", "vrkonto1"), "vrkonto1 VRKONTO1");
+		expect("login name of 17 digits of a savings bank goes as 16 digits, and the customer ID that was the user ID follows",
+			restoredLogin("banking-hs6.s-fints-pt-hs.de/fints30", "12345678901234567", "12345678901234567", "1234567890123456"), "1234567890123456 1234567890123456");
+		expect("customer ID of its own at a savings bank stays",
+			restoredLogin("banking-hs6.s-fints-pt-hs.de/fints30", "12345678901234567", "4711", "1234567890123456"), "1234567890123456 4711");
 		expect("TAN medium without a list asked once in a run", medium(null, "", ""), "Karte 1 Karte 1, asked 1");
 		expect("TAN medium without a list from the last refresh", medium("Karte 1", ""), "Karte 1, asked 0");
 		expect("empty TAN medium without a list from the last refresh", medium("", ""), ", asked 0");

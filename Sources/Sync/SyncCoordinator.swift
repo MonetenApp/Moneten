@@ -199,6 +199,33 @@ public final class SyncCoordinator {
 		return true
 	}
 
+	/// The user closed the account: it leaves every refresh that waits, and a waiting refresh without another account is
+	/// dropped, so no bank is asked for it. A running refresh still ends. The app then drops what it delivers for the
+	/// closed account, because a closed account takes no refresh.
+	public func leaveOut(account id: UUID) {
+		func without(_ job: Job) -> Job? {
+			var job = job
+			let accounts = job.request.accounts.filter { $0.accountID != id }
+			guard !accounts.isEmpty else { return nil }
+			job.request = RefreshRequest(access: job.request.access, state: job.request.state, accounts: accounts)
+			return job
+		}
+		var emptied: [UUID] = []
+		queue = queue.compactMap { job in
+			let kept = without(job)
+			if kept == nil { emptied.append(job.request.access.id) }
+			return kept
+		}
+		for (access, job) in afterRun {
+			afterRun[access] = without(job)
+			if afterRun[access] == nil, running[access] == nil, !held.contains(access) { emptied.append(access) }
+		}
+		for access in emptied { endProgress(of: access) }
+		for access in requested.keys { requested[access]?.removeAll { $0.accountID == id } }
+		refreshingAccounts.remove(id)
+		endRunIfIdle()
+	}
+
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
 		for job in queue { endProgress(of: job.request.access.id) }
@@ -315,13 +342,17 @@ public final class SyncCoordinator {
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
 			let accountIDs = job.request.accounts.map(\.accountID)
+			// The accounts of this run that are still requested: an account that the user closed meanwhile left them (`leaveOut(account:)`).
+			let stillRequested = Set((requested[access.id] ?? []).map(\.accountID))
+			let retried = job.request.accounts.filter { stillRequested.contains($0.accountID) }
 			endProgress(of: access.id)
 			running[access.id] = nil
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves {
-				let again = Job(request: job.request, connector: job.connector, attended: true)
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves, !retried.isEmpty {
+				let again = Job(request: RefreshRequest(access: job.request.access, state: job.request.state, accounts: retried), connector: job.connector,
+					attended: true)
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}

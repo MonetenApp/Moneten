@@ -340,9 +340,12 @@ struct CommentSheet: View {
 struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
-	@State private var date = Date()
-	/// The value date of an existing row, nil for none.
-	@State private var valueDate: Date?
+	/// The booking date, nil while its field holds a text that is not a date.
+	@State private var date: Day? = .today()
+	/// Whether an existing row has a value date.
+	@State private var hasValueDate = false
+	/// The value date, nil while its field holds a text that is not a date.
+	@State private var valueDate: Day?
 	@State private var draft = TransactionDraft()
 	@State private var comment = ""
 	@State private var problem: AmountProblem?
@@ -355,6 +358,8 @@ struct TransactionSheet: View {
 	/// "Add Transaction..." adds a row to every account but a portfolio, also to one with bank access (add-offline-accounts,
 	/// task 1.13). "Edit Transaction..." changes every row but a part of a split (add-transaction-list, task 1.16).
 	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? true }
+	/// A marked or impossible date refuses the sheet, as in the custom period.
+	private var datesAreValid: Bool { !editable || (date != nil && (!hasValueDate || valueDate != nil)) }
 
 	/// The name field of a new transaction offers earlier names. A chosen one fills the purpose and the category
 	/// while they are empty.
@@ -367,20 +372,24 @@ struct TransactionSheet: View {
 	}
 
 	var body: some View {
-		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: datesAreValid, width: 500, onConfirm: save) {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
 			if editable {
 				Section {
-					DatePicker("Date", selection: $date, displayedComponents: .date)
+					DateField(title: "Date", day: $date)
 					if existing != nil {
 						LabeledContent("Value date") {
 							HStack {
-								Toggle("Value date", isOn: Binding(get: { valueDate != nil }, set: { valueDate = $0 ? (valueDate ?? date) : nil }))
-									.labelsHidden()
-								if let shown = valueDate {
-									DatePicker("Value date", selection: Binding(get: { shown }, set: { valueDate = $0 }), displayedComponents: .date)
+								Toggle("Value date", isOn: Binding(get: { hasValueDate }, set: { on in
+									hasValueDate = on
+									if on, valueDate == nil { valueDate = date }
+								}))
+								.labelsHidden()
+								.accessibilityIdentifier("valuedate-switch")
+								if hasValueDate {
+									DateField(title: "Value date", day: $valueDate, identifier: "valuedate")
 										.labelsHidden()
 								}
 							}
@@ -440,8 +449,9 @@ struct TransactionSheet: View {
 	/// An existing row shows its values. A new one starts from the one selected row of the account, with today's date.
 	private func load() {
 		if let t = existing {
-			date = t.bookingDate.date()
-			valueDate = t.valueDate?.date()
+			date = t.bookingDate
+			hasValueDate = t.valueDate != nil
+			valueDate = t.valueDate
 			draft = TransactionDraft(template: t)
 			comment = t.comment ?? ""
 		} else if let account {
@@ -452,8 +462,9 @@ struct TransactionSheet: View {
 	private func save() -> Bool {
 		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
-		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "", isManual: true)
+		var t = existing ?? Transaction(accountID: account.id, bookingDate: date ?? .today(), amountMinor: 0, currency: account.currency, name: "", isManual: true)
 		if editable {
+			guard let date, !hasValueDate || valueDate != nil else { return false }
 			switch draft.amountMinor(in: t.currency, region: DecimalMark(region: .current), allowsZero: existing.map { !$0.isManual } ?? false) {
 			case let .failure(p):
 				problem = p
@@ -461,7 +472,7 @@ struct TransactionSheet: View {
 			case let .success(minor):
 				// `edit` keeps the values of a source, so that a refresh or a file does not add the row again. A manual
 				// row has no source and takes the values.
-				t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: draft.name, purpose: draft.purpose))
+				t.edit(OriginalValues(bookingDate: date, valueDate: hasValueDate ? valueDate : nil, amountMinor: minor, name: draft.name, purpose: draft.purpose))
 			}
 		}
 		if draft.categoryID != t.categoryID {

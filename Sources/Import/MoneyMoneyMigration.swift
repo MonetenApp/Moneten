@@ -106,16 +106,20 @@ public struct MoneyMoneyMigration: Sendable {
 
 		var plan = Plan()
 		var accountMap: [String: UUID] = [:]
-		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
+		var sourceCurrencies: [String: String] = [:]
+		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap, currencies: &sourceCurrencies)
 		var categoryMap: [String: UUID?] = [:]
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
 		var sourceRows: [String: [Transaction]] = [:]
+		// A transaction without a currency is in the currency of its account in the source, also when it goes into an
+		// account of another currency here. The same amount in another currency is another transaction, so a default of
+		// EUR would add a stored USD row a second time.
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
-			let currency = (raw["currency"] as? String) ?? "EUR"
+			let currency = (raw["currency"] as? String)?.uppercased() ?? sourceCurrencies[accountSource] ?? "EUR"
 			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
@@ -142,17 +146,27 @@ public struct MoneyMoneyMigration: Sendable {
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
-		var added: [UUID: ReviewReason?] = [:]
-		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
-		for account in ledger.accounts + plan.accounts {
-			guard let rows = delivered[account.id] else { continue }
-			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
-				rules: rules, now: Date())
-			for t in r.added { added.updateValue(t.review, forKey: t.id) }
-			plan.updatedTransactions += r.booked + r.updated + r.marked
-			plan.skippedTransactions += r.skipped
-			relinked[account.id] = r.relinked
+		// One pass of the rules over all accounts, so a rule that stops in a later account matches none in an earlier one.
+		let merged = rules.allOrNothing {
+			var added: [UUID: ReviewReason?] = [:]
+			var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
+			var updated: [Transaction] = []
+			var skipped = 0
+			for account in ledger.accounts + plan.accounts {
+				guard let rows = delivered[account.id] else { continue }
+				let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
+					rules: rules, now: Date())
+				for t in r.added { added.updateValue(t.review, forKey: t.id) }
+				updated += r.booked + r.updated + r.marked
+				skipped += r.skipped
+				relinked[account.id] = r.relinked
+			}
+			return (added: added, relinked: relinked, updated: updated, skipped: skipped)
 		}
+		let added = merged.added
+		let relinked = merged.relinked
+		plan.updatedTransactions += merged.updated
+		plan.skippedTransactions += merged.skipped
 		for var t in rows {
 			guard let review = added[t.id] else { continue }
 			t.review = review
@@ -318,7 +332,7 @@ public struct MoneyMoneyMigration: Sendable {
 		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
-	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) throws {
+	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID], currencies: inout [String: String]) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
@@ -344,12 +358,13 @@ public struct MoneyMoneyMigration: Sendable {
 			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
-			var currency = (item["currency"] as? String) ?? "EUR"
+			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
-				let amount = first[0] as? Double, let c = first[1] as? String {
+				let amount = first[0] as? Double, let c = (first[1] as? String)?.uppercased() {
 				currency = c
 				balanceMinor = try Self.money(amount, c, .accountBalance(name)).minorUnits
 			}
+			currencies[source] = currency
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			defer { if let id = map[source] { plan.sources.append(SourceAccount(sourceID: source, name: name, accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
@@ -423,7 +438,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			// A group holds no transactions of its own, so the app gives it no rule.
 			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
-				currency: (item["currency"] as? String) ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
+				currency: (item["currency"] as? String)?.uppercased() ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
@@ -531,7 +546,7 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	static func isIBAN(_ value: String) -> Bool {
-		let s = value.replacingOccurrences(of: " ", with: "").uppercased()
+		let s = TextFolding.accountKey(value)
 		guard s.count >= 15, s.count <= 34, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
 			s.prefix(2).allSatisfy(\.isLetter), s.dropFirst(2).prefix(2).allSatisfy(\.isNumber) else { return false }
 		var remainder = 0

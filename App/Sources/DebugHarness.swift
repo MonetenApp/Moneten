@@ -153,6 +153,7 @@ final class DebugHarness {
 			log("crash intentional")
 			intentionalCrash()
 		case "snapshot": snapshot(argument)
+		// "<name>" draws the sidebar 340 points wide, "<name> <width>" that many points wide, such as "narrow 240".
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
@@ -224,9 +225,10 @@ final class DebugHarness {
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
 		// "open" shows the custom period and a field that expects a future date in a sheet, and "popover" shows the
-		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there, "calendar
-		// <from|to|scheduled>" opens the calendar of a field, "pick <yyyymmdd>" clicks that day in the open calendar,
-		// and "state" logs the date that each field reads, whether it has the focus, and the open popovers.
+		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there or in the transaction
+		// sheet, "calendar <from|to|scheduled|date|valuedate>" opens the calendar of a field, "press <identifier>"
+		// presses a control, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the date that
+		// each field reads, whether it has the focus, and the open popovers.
 		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
 		// "calendarsnapshot <name>" draws the calendar alone.
 		case "datefield": dateField(argument)
@@ -568,6 +570,18 @@ final class DebugHarness {
 			model.save(transaction: t, adding: false)
 			model.sheet = .transaction(t.id)
 			log("edit done", ("original", .flag(t.original != nil)))
+		// "<account>=on" or "<account>=off" turns "The account has been closed" on or off and saves, as OK in the
+		// account settings does. It logs whether the account is closed, the count of its rows, and whether it keeps a clearing entry.
+		case "closed":
+			let parts = argument.components(separatedBy: "=")
+			guard parts.count == 2, var a = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("closed refused", ("needs", .word("account=on|off"))) }
+			var edited = a
+			edited.isClosed = parts[1] == "on"
+			a.takeSettings(from: edited, opened: a)
+			model.save(account: a)
+			let saved = model.ledger.account(a.id)
+			log("closed", ("closed", .flag(saved?.isClosed == true)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
+				("entry", .flag(saved?.clearingEntry != nil)))
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
@@ -580,6 +594,13 @@ final class DebugHarness {
 					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
+			}
+		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
+		case "manualrows":
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				let rows = model.ledger.transactions(ofAccount: account.id).filter(\.isManual)
+				for t in rows { log("manualrow", ("day", .day(t.bookingDate)), ("valueDay", .day(t.valueDate))) }
+				log("manualrows", ("", .count(rows.count)))
 			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
@@ -620,11 +641,30 @@ final class DebugHarness {
 				model.save(account: a)
 			}
 		case "wallet":
-			// "<group> <euros> <US dollars>" adds a wallet of a bank that reports a balance in euros and one in US dollars.
+			// "<group> <euros> <US dollars> [<name>]" adds a wallet of a bank that reports a balance in euros and one in US
+			// dollars, named "Reisekasse" or the name, which may hold spaces. The group is the first word, so the command
+			// cannot target a group whose name has a space.
+			let parts = argument.split(separator: " ", maxSplits: 3)
+			if parts.count >= 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: parts.count == 4 ? String(parts[3]) : "Reisekasse",
+					kind: .other, source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			}
+		case "currencies":
+			// "<group> <count>" adds the wallet "Devisen" of a bank that reports 1.250,00 € and a balance in each of up to
+			// 19 other currencies, as an extension may.
 			let parts = argument.split(separator: " ")
-			if parts.count == 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
-				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Reisekasse", kind: .other,
-					source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			let codes = ["USD", "CHF", "GBP", "JPY", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "CAD", "AUD", "NZD", "SGD", "HKD", "CNY", "INR", "ZAR", "MXN"]
+			if parts.count == 2, let count = Int(parts[1]), (1...20).contains(count), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				var others: [Money] = []
+				for (i, code) in codes.prefix(count - 1).enumerated() { others.append(Money(minorUnits: Int64(10_000 + i * 2_345), currency: code)) }
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Devisen", kind: .other,
+					source: .bank, bankBalanceMinor: 125_000, otherBankBalances: others))
+			}
+		case "refreshfailed":
+			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
+			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				account.refreshError = RefreshError(message: "The bank refused the refresh.", date: Date())
+				model.save(account: account)
 			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.
@@ -1172,6 +1212,10 @@ final class DebugHarness {
 		case "calendar" where parts.count == 2:
 			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
 			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		// "<identifier>" presses that control, such as "valuedate-switch" of the transaction sheet.
+		case "press" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == parts[1] }
+			log("datefield press", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
 		case "pick" where parts.count == 2:
 			guard let picker = calendars().first, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
 			// What a click on a day does: the picker takes the date and sends its action.
@@ -1673,7 +1717,7 @@ final class DebugHarness {
 	}
 
 	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
-	private func sidebarList() -> NSOutlineView? {
+	func sidebarList() -> NSOutlineView? {
 		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
 		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
 		return outlines(in: content).min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
@@ -1736,9 +1780,12 @@ final class DebugHarness {
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
 	/// window uses a material that only the window server draws.
-	private func sidebarSnapshot(_ name: String) {
+	private func sidebarSnapshot(_ argument: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
+		let parts = argument.split(separator: " ")
+		let width = parts.count > 1 ? parts.last.flatMap { Double($0) } : nil
+		let name = width == nil ? argument : parts.dropLast().joined(separator: " ")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: width ?? 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file

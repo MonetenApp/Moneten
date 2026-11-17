@@ -105,7 +105,7 @@ The calendar is the graphical date picker of the system in a popover. It starts 
 
 A day reaches the formatter of `Format.day` and the calendar as noon GMT (`Day.noon`), and both read it in a calendar set to GMT (`Day.calendar(like:)`). The field and its calendar use the Gregorian calendar with the first weekday of the user, because the rules of the completion count Gregorian days, months, and years. A Mac set to the Buddhist calendar shows 2569 elsewhere in the app and 2026 in a date field, which the field reads back. A date from the calendar returns as the day of its noon GMT (`Day(noon:)`). Local midnight does not exist on every day: Samoa skipped 30 December 2011, and its midnight turned into the 31st. Noon GMT exists on every day in every time zone, so the field shows and picks the day that it holds.
 
-The custom period of the transaction list uses the field. The sheet for a transaction keeps the date picker of the system until the open change for manual transactions, which rewrites that sheet, is merged. Its booking date and value date then move to the field.
+The custom period of the transaction list and the sheet for a transaction use the field. The sheet refuses to save while its booking date or its switched-on value date is not a date, as the custom period refuses to apply. The month names of `Format.monthTitle` and `Format.shortMonth` read a day at noon GMT too, so every day of the app reaches a formatter by one rule.
 
 ### The rule for an ordinary field
 

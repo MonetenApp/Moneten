@@ -57,15 +57,21 @@ extension Format {
 		return date.formatted(date: .abbreviated, time: .shortened)
 	}
 
+	/// The month and year of a day, read from noon GMT as `day` reads it.
 	static func monthTitle(_ d: Day) -> String {
-		d.date().formatted(.dateTime.month(.wide).year())
+		var style = Date.FormatStyle.dateTime.month(.wide).year()
+		style.calendar = Day.calendar(like: .current)
+		style.timeZone = style.calendar.timeZone
+		return d.noon.formatted(style)
 	}
 
-	/// A month on a chart, as MoneyMoney writes it: "Oct 26".
-	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.date()) }
+	/// A month on a chart, as MoneyMoney writes it: "Oct 26". Read from noon GMT as `day` reads it.
+	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.noon) }
 
 	private static let shortMonthFormatter: DateFormatter = {
 		let f = DateFormatter()
+		f.calendar = Day.calendar(like: .current)
+		f.timeZone = f.calendar.timeZone
 		f.setLocalizedDateFormatFromTemplate("MMMyy")
 		return f
 	}()
@@ -110,12 +116,71 @@ struct AmountText: View {
 }
 
 /// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
+/// In a sidebar or popover row they take the room they need before the account name beside them does, so a narrow row
+/// shortens the name first. When the row is too narrow for all of them, the row shows the first balance whole and the
+/// number of the others, and when even that does not fit, the first balance shortened and a short count of the others.
+/// Every amount on screen is whole or ends with an ellipsis, never cut off at the edge of the row, and no balance leaves
+/// the row without a count. The header shortens its title and the balances together.
 struct BalancesText: View {
 	let amounts: [Money]
 
 	var body: some View {
+		Group {
+			if let first = amounts.first {
+				// `ViewThatFits` takes the first option whose full width fits. Each option is a view of its own, never an
+				// empty one, because an empty view fits every width.
+				if amounts.count > 1 {
+					ViewThatFits(in: .horizontal) {
+						all
+						HStack(spacing: 8) {
+							AmountText(money: first)
+							Text("+ \(amounts.count - 1) more")
+								.foregroundStyle(Palette.detail)
+						}
+						.fixedSize()
+						// The shortest form still says how many balances it leaves out.
+						HStack(spacing: 6) {
+							shortened(first)
+							Text(verbatim: "+\(amounts.count - 1)").foregroundStyle(Palette.detail).fixedSize()
+						}
+					}
+					// Every form gives the tooltip and VoiceOver all balances, also the ones that the row leaves out.
+					.help(allAmounts)
+					.accessibilityElement(children: .ignore)
+					.accessibilityLabel(allAmounts)
+				} else {
+					// A single balance in one line is whole when it fits and ends with an ellipsis when it does not.
+					shortened(first)
+				}
+			}
+		}
+		.layoutPriority(1)
+	}
+
+	/// Every balance, for the tooltip and for VoiceOver.
+	private var allAmounts: String {
+		amounts.map { Format.money($0) }.formatted(.list(type: .and))
+	}
+
+	private var all: some View {
 		HStack(spacing: 8) {
 			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
+		}
+		.fixedSize()
+	}
+
+	private func shortened(_ money: Money) -> some View {
+		AmountText(money: money).lineLimit(1).atLeastEllipsisWide()
+	}
+}
+
+extension View {
+	/// Keeps a name that a row shortens at least as wide as an ellipsis, so it shows "…" and never a cut part of a
+	/// letter when the balances beside it take the rest of the row.
+	func atLeastEllipsisWide() -> some View {
+		ZStack(alignment: .leading) {
+			Text(verbatim: "…").fixedSize().hidden().accessibilityHidden(true)
+			self
 		}
 	}
 }
