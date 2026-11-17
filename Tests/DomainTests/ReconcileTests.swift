@@ -738,6 +738,50 @@ struct ReconcileTests {
 		#expect(merge(refresh([fresh(booked)]), stored: [pending, booked]).dropped == [pending.id])
 	}
 
+	@Test("A booking clears the review of a pending row, whether a refresh pairs it by its source ID or a file books it with or without one")
+	func bookingEndsReview() {
+		func underReview(sourceID: String?) -> Transaction {
+			var t = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true, sourceID: sourceID))
+			t.review = .unclearBooking
+			return t
+		}
+		let byID = underReview(sourceID: "p-7")
+		let refreshed = merge(refresh([row(14, -320, "Café Beispiel", "Kartenzahlung", sourceID: "p-7")]), stored: [byID])
+		#expect(refreshed.booked.map(\.id) == [byID.id])
+		#expect(refreshed.booked.map(\.isPending) == [false])
+		#expect(refreshed.booked.map(\.review) == [nil])
+		#expect(refreshed.added == [])
+
+		for sourceID in [nil, "p-8"] {
+			let pending = underReview(sourceID: sourceID)
+			let imported = merge(.file([row(14, -320, "Café Beispiel", "Kartenzahlung", sourceID: sourceID)]), stored: [pending])
+			#expect(imported.booked.map(\.id) == [pending.id])
+			#expect(imported.booked.map(\.isPending) == [false])
+			#expect(imported.booked.map(\.review) == [nil])
+			#expect(imported.added == [])
+		}
+	}
+
+	@Test("A refresh books the pending coffee under review after the user deleted the other one, and the booked coffee keeps its review")
+	func refreshBooksPendingUnderReview() {
+		var kept = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true))
+		kept.review = .unclearBooking
+		var removed = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true))
+		removed.review = .unclearBooking
+		var booked = stored(row(13, -320, "Café Beispiel", "Kartenzahlung"))
+		booked.review = .unclearBooking
+		let r = merge(refresh([fresh(booked), row(14, -320, "Café Beispiel", "Kartenzahlung")]), stored: [kept, booked],
+			deleted: [DeletedTransaction(removed, deletedAt: now)])
+		#expect(r.booked.map(\.id) == [kept.id])
+		#expect(r.booked.map(\.bookingDate) == [day(14)])
+		#expect(r.booked.map(\.review) == [nil])
+		#expect(r.added == [])
+		#expect(r.dropped == [])
+		let after = history([kept, booked], after: r)
+		#expect(after.map(\.isPending) == [false, false])
+		#expect(Set(after.map(\.review)) == [nil, .unclearBooking])
+	}
+
 	@Test("A new review clears the checkmark of a pending row, so the next refresh keeps it until the user checks it again")
 	func newReviewClearsCheckmark() {
 		for hadReview in [false, true] {
