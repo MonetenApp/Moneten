@@ -323,9 +323,11 @@ final class CommerzbankGroupSelfTest {
 		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
 		// The state after the first dialog: hbci4java went on after the approval, and the refresh withdrew it.
 		callback.lastApproval = ++callback.lastID;
+		// The cancel carries the ID of the first approval. again() forgets that ID, so it must be read before.
+		String firstApproval = String.valueOf(callback.lastApproval);
 		Answers bank = new Answers().on(SAVINGS, "KUmsAll", resend, ok);
 		bank.during = dialog -> {
-			if (dialog == 2) FinTSHelper.Inbox.queue.add(Map.of("type", "answer", "id", String.valueOf(callback.lastApproval), "skip", true));
+			if (dialog == 2) FinTSHelper.Inbox.queue.add(Map.of("type", "answer", "id", firstApproval, "skip", true));
 		};
 		String outcome;
 		try {
