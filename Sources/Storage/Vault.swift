@@ -652,11 +652,16 @@ public struct Vault: Sendable {
 
 	/// Replaces each password in the Keychain that differs from the one that just opened the database, such as
 	/// the newer password of a database that the user replaced with a backup. The next unlock without the
-	/// password then works again. An entry that cannot be read is written too. It never creates an entry: only
-	/// `setUnlockMethod(_:on:password:)` does. Every entry is written before the first failure is thrown, and a
-	/// failure may have removed an entry, so the caller reads `unlockSettings()` again.
+	/// password then works again. It rewrites an entry only after it read the entry: a read that fails, such as the
+	/// one of a locked Keychain whose prompt the user canceled, throws before anything changes, because a delete would
+	/// work there but the add would not. It never creates an entry: only `setUnlockMethod(_:on:password:)` does.
+	/// Every entry is written before the first failure is thrown, and a failed write may have removed its entry, so
+	/// the caller reads `unlockSettings()` again.
 	public func refreshStoredPassword(_ password: String) throws {
-		let stale = try unlockSettings().filter { (try? storedPassword(for: $0)) != password }
+		let stale = try unlockSettings().filter { entry in
+			guard let stored = try storedPassword(for: entry) else { return false }
+			return stored != password
+		}
 		if let failure = writeEach(password, to: stale) { throw Failure.keychain(String(describing: failure)) }
 	}
 

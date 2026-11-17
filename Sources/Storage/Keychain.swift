@@ -28,7 +28,7 @@ struct Keychain: Sendable {
 			kSecAttrAccount as String: account,
 			kSecReturnData as String: true,
 			kSecMatchLimit as String: kSecMatchLimitOne,
-		].merging(searchList) { $1 }
+		].merging(try searchList()) { $1 }
 		var item: CFTypeRef?
 		let status = SecItemCopyMatching(query as CFDictionary, &item)
 		if status == errSecItemNotFound { return nil }
@@ -44,7 +44,7 @@ struct Keychain: Sendable {
 			kSecAttrAccount as String: account,
 			kSecReturnAttributes as String: true,
 			kSecMatchLimit as String: kSecMatchLimitOne,
-		].merging(searchList) { $1 }
+		].merging(try searchList()) { $1 }
 		var attributes: CFTypeRef?
 		let status = SecItemCopyMatching(query as CFDictionary, &attributes)
 		if status == errSecItemNotFound { return false }
@@ -67,7 +67,10 @@ struct Keychain: Sendable {
 			kSecAttrSynchronizable as String: false,
 			kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
 		]
-		if let file { add[kSecUseKeychain as String] = file }
+		if let file {
+			try checkFile(file)
+			add[kSecUseKeychain as String] = file
+		}
 		let status = SecItemAdd(add as CFDictionary, nil)
 		guard status == errSecSuccess else { throw Failure(status: status) }
 	}
@@ -79,13 +82,38 @@ struct Keychain: Sendable {
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
 			kSecAttrAccount as String: account,
-		].merging(searchList) { $1 }
+		].merging(try searchList()) { $1 }
 		let status = SecItemDelete(query as CFDictionary)
 		guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure(status: status) }
 		return status == errSecSuccess
 	}
 
-	private var searchList: [String: Any] {
-		file.map { [kSecMatchSearchList as String: [$0]] } ?? [:]
+	/// The keychain file to search, after `checkFile(_:)`. Without one, the search covers the keychains of the user.
+	private func searchList() throws -> [String: Any] {
+		guard let file else { return [:] }
+		try checkFile(file)
+		return [kSecMatchSearchList as String: [file]]
 	}
+
+	/// Throws unless the keychain file exists. `SecKeychainOpen` accepts any path, and macOS adds an entry for a
+	/// keychain without a file to the default keychain of the user, so a missing file must stop every step.
+	private func checkFile(_ file: SecKeychain) throws {
+		let status = keychainStatus(file)
+		guard status == errSecSuccess else { throw Failure(status: status) }
+	}
+}
+
+/// Whether the file of a keychain exists: `SecKeychainGetStatus` for a path that never existed, and the file at the
+/// path of the keychain for one that another process deleted, which the status of this process does not notice.
+/// A locked keychain counts as one that exists. Both calls are deprecated together with the file-based Keychain.
+@available(macOS, deprecated: 10.10)
+private func keychainStatus(_ keychain: SecKeychain) -> OSStatus {
+	var flags = SecKeychainStatus()
+	let status = SecKeychainGetStatus(keychain, &flags)
+	guard status == errSecSuccess else { return status }
+	var length = UInt32(PATH_MAX)
+	var path = [CChar](repeating: 0, count: Int(PATH_MAX) + 1)
+	let pathStatus = SecKeychainGetPath(keychain, &length, &path)
+	guard pathStatus == errSecSuccess else { return pathStatus }
+	return FileManager.default.fileExists(atPath: String(cString: path)) ? errSecSuccess : errSecNoSuchKeychain
 }

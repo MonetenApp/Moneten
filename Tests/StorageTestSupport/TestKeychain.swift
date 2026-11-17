@@ -2,8 +2,8 @@ import Foundation
 import Security
 import Storage
 
-/// A keychain file in a temporary folder, for tests that write Keychain entries. No test writes or deletes an
-/// entry in the login Keychain of the Mac that runs it, and the tests run in CI, which offers no login Keychain.
+/// A keychain file in a temporary folder, for tests that write Keychain entries, so that no test writes or deletes an
+/// entry in the login Keychain of the Mac that runs it, also in CI.
 /// `security create-keychain` leaves the search list of the user alone, so nothing outside the test sees the file.
 /// The `security` tool plays another program: it plants entries and prints access lists without reading a value.
 public final class KeychainFile: @unchecked Sendable {
@@ -33,6 +33,16 @@ public final class KeychainFile: @unchecked Sendable {
 	/// Creates an entry as another program would, with an access list that lets every app read it.
 	public func plant(service: String, account: String, value: String) throws {
 		try Self.security("add-generic-password", "-A", "-s", service, "-a", account, "-w", value, path)
+	}
+
+	/// Deletes the file while `keychain` still refers to it.
+	public func removeFile() throws {
+		try Self.security("delete-keychain", path)
+	}
+
+	/// A keychain whose file does not exist. `SecKeychainOpen` accepts the path.
+	public static func missing() throws -> SecKeychain {
+		try openKeychain(folder.appendingPathComponent("Missing-\(UUID().uuidString).keychain-db").path)
 	}
 
 	/// Locks the file. Reading attributes and deleting an entry still work, but reading or adding a value fails.

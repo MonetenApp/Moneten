@@ -3,7 +3,7 @@ import Foundation
 import StorageTestSupport
 import Testing
 
-/// Tests of `Keychain` against a keychain file that each test creates and deletes, never the login Keychain.
+/// Tests of `Keychain` against keychain files of `StorageTestSupport`, never the login Keychain.
 @Suite("Keychain")
 struct KeychainTests {
 	static let service = "Moneten database password for Touch ID"
@@ -32,5 +32,26 @@ struct KeychainTests {
 		try keychain.delete(account: Self.account)
 		#expect(try keychain.read(account: Self.account) == nil)
 		#expect(try !keychain.contains(account: Self.account))
+	}
+
+	@Test("A keychain file that does not exist refuses every step, so nothing goes into another keychain")
+	func missingFileFailsClosed() throws {
+		try expectRefused(Keychain(service: "Moneten test without keychain file", file: KeychainFile.missing()))
+	}
+
+	@Test("A keychain file that was deleted after it was opened refuses every step")
+	func removedFileFailsClosed() throws {
+		let file = try KeychainFile()
+		let keychain = Keychain(service: "Moneten test without keychain file", file: file.keychain)
+		try keychain.write("korrekt-pferd-batterie", account: Self.account)
+		try file.removeFile()
+		try expectRefused(keychain)
+	}
+
+	private func expectRefused(_ keychain: Keychain) throws {
+		#expect(throws: Keychain.Failure.self) { try keychain.read(account: Self.account) }
+		#expect(throws: Keychain.Failure.self) { try keychain.contains(account: Self.account) }
+		#expect(throws: Keychain.Failure.self) { try keychain.delete(account: Self.account) }
+		#expect(throws: Keychain.Failure.self) { try keychain.write("korrekt-pferd-batterie", account: Self.account) }
 	}
 }

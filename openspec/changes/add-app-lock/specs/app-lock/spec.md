@@ -231,6 +231,13 @@ The app SHALL write a password or a key into the Keychain only as a new entry th
 - **THEN** the app shows that the Keychain did not accept the new password
 - **AND** both settings are off, and no entry holds the earlier password
 
+#### Scenario: A locked Keychain at an unlock
+
+- **GIVEN** "Unlock with Touch ID" is on, and its entry holds an earlier password of a database that the user restored from a backup
+- **WHEN** the user unlocks with the password, and the Keychain is locked and the user cancels the prompt that unlocks it
+- **THEN** the app shows that the password could not be stored in the Keychain
+- **AND** "Unlock with Touch ID" is still on
+
 #### Scenario: The Keychain refuses a new entry at an unlock
 
 - **GIVEN** "Unlock with Touch ID" is on, and its entry holds an earlier password of a database that the user restored from a backup

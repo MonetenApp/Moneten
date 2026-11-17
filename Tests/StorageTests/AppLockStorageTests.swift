@@ -131,8 +131,8 @@ struct AppLockStorageTests {
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 	}
 
-	/// A locked keychain file without prompts deletes an entry but refuses the new one, as a Keychain that fails
-	/// between the two steps of `Keychain.write` does.
+	/// A locked keychain file without prompts reads attributes and deletes an entry, but refuses to read a password or
+	/// add an entry, as a Keychain that fails between the two steps of `Keychain.write` does.
 	func vaultWithTwoSettings(refusingWrites file: KeychainFile) throws -> (Vault, Store) {
 		let vault = Vault(testing: folder, keychain: file)
 		let store = try vault.create(password: Self.password, starterCategories: [])
@@ -154,13 +154,13 @@ struct AppLockStorageTests {
 		#expect(try vault.unlockSettings().isEmpty)
 	}
 
-	@Test("An unlock that the Keychain refuses writes every stale entry, and the settings then show the ones that are gone")
-	func refusedRefreshShowsSettingsOff() throws {
+	@Test("An unlock whose Keychain cannot read an entry, such as a locked one whose prompt the user canceled, keeps every entry and setting")
+	func unreadableEntryStays() throws {
 		let file = try KeychainFile()
 		let (vault, store) = try vaultWithTwoSettings(refusingWrites: file)
 		try store.close()
 		#expect(throws: Vault.Failure.self) { try vault.refreshStoredPassword("neu-und-noch-laenger") }
-		#expect(try vault.unlockSettings().isEmpty)
+		#expect(try vault.unlockSettings() == [.automaticUnlock, .touchID])
 	}
 
 	@Test("A new database removes every entry that a renamed database left")
