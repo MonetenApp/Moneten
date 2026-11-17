@@ -94,4 +94,27 @@ extension ReconcileTests {
 		#expect(r.updated.isEmpty && r.added.isEmpty)
 		#expect(r.dropped == [old.id])
 	}
+
+	@Test("A pending row that the user deleted while it carried its entry date stays deleted on its value date",
+		arguments: ["Stadtwerke Musterstadt", ""])
+	func deletedPendingRowStoredByEntryDate(name: String) {
+		let gone = DeletedTransaction(storedByEntryDate(name, "Abschlag November"), deletedAt: now)
+		let r = merge(refresh([deliveredByValueDate(name, "Abschlag November")]), deleted: [gone], at: noon(14, month: 11))
+		#expect(r.added.isEmpty)
+		#expect(r.skipped == 1)
+	}
+
+	@Test("A deleted pending row keeps out no pending row on a later day, or one that keeps its entry date")
+	func deletedPendingRowOtherRows() {
+		var deletedRow = stored(row(14, -4_200, "", "Abschlag November", pending: true))
+		deletedRow.valueDate = day(14)
+		let gone = DeletedTransaction(deletedRow, deletedAt: now)
+		var later = row(15, -4_200, "", "Abschlag November", pending: true)
+		later.valueDate = day(15)
+		#expect(merge(refresh([later]), deleted: [gone], at: noon(15, month: 11)).added.count == 1)
+		let entryDated = DeletedTransaction(storedByEntryDate("", "Abschlag November"), deletedAt: now)
+		var expected = row(13, -4_200, "", "Abschlag November", pending: true)
+		expected.valueDate = day(12)
+		#expect(merge(refresh([expected]), deleted: [entryDated], at: noon(13, month: 11)).added.count == 1)
+	}
 }

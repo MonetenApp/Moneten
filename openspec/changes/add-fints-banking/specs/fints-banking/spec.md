@@ -341,6 +341,7 @@ The app SHALL give a pending transaction from an MT942 statement the value date 
 - **GIVEN** "Giro" at a bank with the FinTS address "https://fints.musterbank.example/fints" has a fetched pending transaction of -42,00 € with the purpose "Abschlag November", no name, no IBAN, and no reference, the date 15.11.2026, the value date 14.11.2026, and the comment "Abschlag"
 - **WHEN** a refresh delivers a pending row of -42,00 € with the purpose "Abschlag November" and the date 14.11.2026
 - **THEN** "Giro" shows one pending transaction of -42,00 € on 14.11.2026 with the comment "Abschlag"
+- **AND** when the user had deleted that pending transaction before the refresh, "Giro" shows no transaction of -42,00 €
 
 #### Scenario: Stored pending transaction gets booked
 

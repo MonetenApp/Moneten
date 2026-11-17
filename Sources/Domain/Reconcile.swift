@@ -457,6 +457,22 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	var candidates: [Candidate] = []
+	/// The day on which a fetched pending row that an earlier version dated by its entry date meets the pending row `t`,
+	/// which the bank now delivers on its value date (#374), or nil. A stored row meets it on its own value date. A
+	/// deletion record keeps no value date, so it meets a row dated by its value date up to 7 days before the record, the
+	/// way an entry date follows the value date. A later row is another one, such as a second equal card payment.
+	func entryDated(_ slot: Slot, delivered t: Transaction) -> Day? {
+		switch slot {
+		case let .live(j):
+			guard stored[j].isFetched, let value = stored[j].original?.valueDate ?? stored[j].valueDate, value == t.bookingDate else { return nil }
+			return value
+		case let .deleted(k):
+			let d = deleted[k]
+			let before = d.bookingDate.daysSince1970 - t.bookingDate.daysSince1970
+			guard d.isPending, d.wasFetched, t.valueDate == t.bookingDate, before > 0, before <= PendingMatch.maxDaysApart else { return nil }
+			return t.bookingDate
+		}
+	}
 
 	for (i, t) in rows.enumerated() {
 		let initialSlots: [Slot] = (t.isPending ? byDay[matches[i].day] : byKey[incoming[i].key]) ?? []
@@ -531,9 +547,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			// an IBAN, or a reference stays one row, and takes the delivered day as any pending row of a refresh does. The
 			// row of the delivered day itself comes first, by its distance.
 			var byValueDate = false
-			if step == nil, t.isPending, identity.isPending, delivery.isFetched, case let .live(j) = slot, stored[j].isFetched,
-				let value = stored[j].original?.valueDate ?? stored[j].valueDate, value == t.bookingDate, value != identity.key.day {
-				let byValue = identity.on(value)
+			if step == nil, t.isPending, identity.isPending, delivery.isFetched, let day = entryDated(slot, delivered: t), day != identity.key.day {
+				let byValue = identity.on(day)
 				step = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], byValue) }
 				byValueDate = step != nil
 			}
@@ -668,12 +683,9 @@ struct Identity {
 	/// The purpose is folded without white space, so the 27-character lines of an MT940 purpose and the
 	/// same text in one line have the same key.
 	struct Key: Hashable {
-		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		let day: Day
-		// periphery:ignore
 		let amount: Int64
 		/// The same amount in another currency is another transaction (#225).
-		// periphery:ignore
 		let currency: String
 		let purpose: String
 	}
