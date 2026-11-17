@@ -485,7 +485,41 @@ struct PerfScenario {
 				SupportedBanksPerf.window?.close()
 				SupportedBanksPerf.window = nil
 			}),
+		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
+		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
+		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
+		PerfScenario(name: "type-name-over-50000-names", budget: .milliseconds(100),
+			setUp: { await nameHistory($0) },
+			run: { c in
+				for character in "Zahnarzt" {
+					c.harness.run("type", String(character))
+					await c.settle()
+				}
+				if c.harness.focusedSheetText() != "Zahnarzt" { c.fail("the name field did not take the typed name") }
+			}),
 	]
+
+	/// The setup of "type-name-over-50000-names": an offline account with 50,000 different names, and the window for a
+	/// new transaction open. It is a function of its own, because inside the list of scenarios the type checker of the
+	/// CI compiler gives up on it.
+	@MainActor private static func nameHistory(_ c: PerfContext) async {
+		let account = Account(position: c.model.ledger.accounts.count, name: "Name history", kind: .cash, source: .offline)
+		c.model.save(account: account)
+		let today: Day = Day.today()
+		var rows: [Transaction] = []
+		rows.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let name: String = i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)"
+			let amount: Int64 = -Int64(100 + i % 9_000)
+			rows.append(Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000)), amountMinor: amount,
+				name: name, purpose: "Names \(i)"))
+		}
+		do { _ = try c.model.merge(.file(rows), into: account.id) }
+		catch { c.fail("name history setup failed") }
+		await c.select("Name history")
+		c.model.sheet = .transaction(nil)
+		await c.settle()
+	}
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
 	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {

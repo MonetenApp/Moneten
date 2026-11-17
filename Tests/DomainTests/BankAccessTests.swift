@@ -353,6 +353,48 @@ struct BankAccessTests {
 		#expect(current.refreshError == nil)
 	}
 
+	@Test("An initial balance that the user enters in the account settings ends the derived value, so no manual row moves it")
+	func enteredInitialBalanceIsNotDerived() {
+		var opened = Self.bankAccount("Giro")
+		opened.initialBalanceMinor = 250_000
+		opened.initialBalanceIsSet = true
+		opened.initialBalanceIsDerived = true
+		var renamed = opened
+		renamed.name = "Haushalt"
+		var kept = opened
+		kept.takeSettings(from: renamed, opened: opened)
+		#expect(kept.initialBalanceIsDerived)
+		var typed = opened
+		typed.initialBalanceMinor = 300_000
+		var current = opened
+		current.takeSettings(from: typed, opened: opened)
+		#expect(current.initialBalanceMinor == 300_000 && current.initialBalanceIsSet && !current.initialBalanceIsDerived)
+		var calibrated = opened
+		calibrated.enterInitialBalance(260_000)
+		#expect(calibrated.initialBalanceMinor == 260_000 && calibrated.initialBalanceIsSet && !calibrated.initialBalanceIsDerived)
+	}
+
+	@Test("Saving the account settings keeps a derived initial balance that a refresh set while they were open, when the user did not change the field")
+	func settingsKeepDerivedValueOfRefresh() {
+		var opened = Self.bankAccount("Giro")
+		opened.initialBalanceMinor = 10_000
+		opened.initialBalanceIsSet = true
+		opened.initialBalanceIsDerived = true
+		// A refresh past a manual row set the derived value to 15.000 while the settings showed 10.000.
+		var current = opened
+		current.initialBalanceMinor = 15_000
+		var renamed = opened
+		renamed.name = "Haushalt"
+		current.takeSettings(from: renamed, opened: opened)
+		#expect(current.name == "Haushalt")
+		#expect(current.initialBalanceMinor == 15_000 && current.initialBalanceIsDerived)
+		// A value that the user typed still wins over the one of the refresh.
+		var typed = opened
+		typed.initialBalanceMinor = 30_000
+		current.takeSettings(from: typed, opened: opened)
+		#expect(current.initialBalanceMinor == 30_000 && !current.initialBalanceIsDerived)
+	}
+
 	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, also when the user chose another type")
 	func settingsAfterPortfolioRefresh() {
 		var opened = Self.bankAccount("Depot")

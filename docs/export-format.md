@@ -94,6 +94,7 @@ The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, an
 | `bonusPoints` | Optional whole number of bonus points that the bank reported with `bankBalance` |
 | `initialBalance` | The balance before the first transaction, an amount in the currency of the account |
 | `initialBalanceIsSet` | Whether the initial balance is set, by the user or by the first refresh |
+| `initialBalanceIsDerived` | Optional `true` while the initial balance is the value that a refresh derived, so a manual row in the bank balance moves it. Missing means a value that the user entered or that came from the source. |
 | `isClosed` | Whether the account is closed |
 | `comment` | Comment |
 | `sourceID` | Identifier of the account in the source it came from, such as `moneymoney:<uuid>` |
@@ -160,13 +161,14 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `review` | Optional `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
+| `isManual` | Optional `true` for a transaction that the user added with "Add Transaction...". Missing means a transaction that a source delivered. |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 | `original` | Present only for a transaction that the user edited: the values that its source delivered, with the keys `bookingDate`, `valueDate`, `amount`, `name`, and `purpose`, in the currency of the transaction. A refresh finds the transaction by these values and keeps the edited ones. |
 
 ## Deleted transaction
 
-What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again.
+What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again. A manual transaction that no file and no migration matched leaves no record, because no source delivers it.
 
 | Key | Content |
 |---|---|
@@ -209,7 +211,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Split part
 
-Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity and v19 adds CSV profiles. The file format version is separate from these migration numbers.
+Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity, v19 adds CSV profiles, and v23 adds the manual mark. The file format version is separate from these migration numbers.
 
 Each split part has these keys.
 

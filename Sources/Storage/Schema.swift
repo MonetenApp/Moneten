@@ -391,6 +391,13 @@ enum Schema {
 				t.add(column: "bonusPoints", .integer)
 			}
 		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24, v21,
+		// v25, v22, and v26 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
+		m.registerMigration("v23") { db in
+			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
+			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
+			try db.alter(table: "account") { t in t.add(column: "initialBalanceIsDerived", .boolean).notNull().defaults(to: false) }
+		}
 		return m
 	}
 

@@ -71,10 +71,50 @@ The app SHALL refuse a manual transaction with an amount of zero, with text in t
 - **WHEN** the user enters the amount 0,00 and confirms
 - **THEN** the app says that the amount should not be zero and stores nothing
 
+#### Scenario: More decimal places than the currency has
+
+- **GIVEN** the offline account "Wallet" in euros
+- **WHEN** the user enters the amount 4,8051 and confirms
+- **THEN** the app says that the amount has more decimal places than its currency and stores nothing
+
 #### Scenario: Amount above the limit
 
 - **WHEN** the user enters the amount 92.233.720.368.547.758,07 for a new transaction
 - **THEN** the app does not accept the amount and stores nothing
+
+### Requirement: Reading a typed amount
+
+The app SHALL read a typed amount once with a decimal comma and once with a decimal point, where the other character may only separate groups of three digits. A reading with more decimal places than the currency of the account has does not count. When two readings with different values remain, the decimal mark of the region of the Mac decides. The app ignores the symbol and the code of the currency of the account.
+
+#### Scenario: Thousands in euros
+
+- **GIVEN** an offline account in euros
+- **WHEN** the user enters the amount 1.234 and confirms
+- **THEN** the list shows a transaction of 1.234,00 €
+
+#### Scenario: Thousands in yen
+
+- **GIVEN** an offline account in yen
+- **WHEN** the user enters the amount 1,200 and confirms
+- **THEN** the list shows a transaction of 1.200 JPY
+
+#### Scenario: Three decimal places, region with a decimal comma
+
+- **GIVEN** an offline account in Kuwaiti dinar and a Mac in a region with a decimal comma
+- **WHEN** the user enters the amount 12,345 and confirms
+- **THEN** the transaction has the amount 12,345 KWD
+
+#### Scenario: Three decimal places, region with a decimal point
+
+- **GIVEN** an offline account in Kuwaiti dinar and a Mac in a region with a decimal point
+- **WHEN** the user enters the amount 12,345 and confirms
+- **THEN** the transaction has the amount 12.345,000 KWD
+
+#### Scenario: Currency symbol
+
+- **GIVEN** an offline account in US dollars
+- **WHEN** the user enters the amount 12.50 $ and confirms
+- **THEN** the transaction has the amount 12,50 USD
 
 ### Requirement: Suggestions while typing
 
@@ -86,6 +126,12 @@ The app SHALL suggest completions from earlier transactions while the user types
 - **WHEN** the user types "Bäck" in the name field and chooses the suggestion "Bäckerei Gutbrot"
 - **THEN** the window shows the name "Bäckerei Gutbrot", the purpose "Brot", and the category "Groceries"
 
+#### Scenario: Typed name
+
+- **GIVEN** an earlier transaction with the name "Kiosk" and the purpose "Zeitung"
+- **WHEN** the user types "Kiosk" letter by letter in the name field
+- **THEN** the purpose stays empty
+
 ### Requirement: A selected transaction is the template
 
 The app SHALL fill the window for a new transaction with the name, the amount, the purpose, and the category of the transaction that is selected when the user calls "Add Transaction...". The date is today.
@@ -95,6 +141,12 @@ The app SHALL fill the window for a new transaction with the name, the amount, t
 - **GIVEN** a selected transaction of -12,00 € to "Kiosk am Markt" with the category "Leisure"
 - **WHEN** the user presses ⌘+
 - **THEN** the window shows "Kiosk am Markt", -12,00, "Leisure", and today's date
+
+#### Scenario: Template in another currency
+
+- **GIVEN** the account "Wallet" in euros and its selected transaction of -12,00 USD to "Kiosk am Markt" with the category "Leisure"
+- **WHEN** the user presses ⌘+
+- **THEN** the window shows "Kiosk am Markt", "Leisure", today's date, and an empty amount
 
 ### Requirement: Edit and delete manual transactions
 
@@ -287,3 +339,116 @@ The app SHALL also offer "Add Transaction..." in the view of a single account wi
 - **WHEN** the user adds a manual transaction of 10.000,00 € with the date of the deposit
 - **THEN** the account has a bar chart that starts at that date
 - **AND** the next refresh keeps the manual transaction
+
+### Requirement: A refresh never takes a manual transaction
+
+The app SHALL mark every transaction that the user adds with "Add Transaction..." as manual and SHALL keep the mark in the database and in a complete export. A refresh never pairs a delivered transaction with a manual one, and deleting a manual transaction keeps out no delivered one. A manual transaction that a file import or a migration matched is a transaction of that source from then on: a refresh pairs it, and deleting it keeps out the same booking.
+
+#### Scenario: Same day and amount
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026
+- **WHEN** a refresh delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has both transactions
+- **AND** the manual transaction keeps its name "Kiosk"
+
+#### Scenario: Deleted manual transaction
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026
+- **WHEN** the user deletes it, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has the delivered transaction
+
+#### Scenario: Deleted manual transaction that a file matched
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026, and a CSV file with a transaction of -12,00 € "KIOSK" on 03.11.2026 whose import added no transaction
+- **WHEN** the user deletes the manual transaction, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has no transaction on 03.11.2026
+- **AND** importing the CSV file again adds "KIOSK" once, as it adds any deleted transaction of a file that no refresh delivered
+
+#### Scenario: Manual transaction that a file matched, then a refresh
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026 that a CSV file with -12,00 € "KIOSK" on 03.11.2026 matched
+- **WHEN** a refresh delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
+- **THEN** the account has one transaction on 03.11.2026
+
+### Requirement: A manual transaction is part of the bank balance
+
+The app SHALL count a manual transaction in an account with bank access as part of the bank balance when its booking date is not after the day of that balance. While a refresh derived the initial balance, the app moves it by the change of a manual transaction that the user adds, changes, or deletes, as the capability `charts` states, so the computed balance keeps ending at the bank balance. An initial balance that the user entered stays.
+
+#### Scenario: Deposit after the first refresh
+
+- **GIVEN** a fixed term deposit whose first refresh on 01.11.2026 delivered the balance 10.000,00 € and no transactions
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+- **AND** the computed balance on 28.02.2026 is 6.000,00 €
+
+#### Scenario: Delete the deposit
+
+- **GIVEN** the fixed term deposit of the scenario above with its manual transaction of 4.000,00 €
+- **WHEN** the user deletes the manual transaction
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+
+#### Scenario: Manual transaction that a file matched
+
+- **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
+- **WHEN** the user deletes the manual transaction
+- **THEN** the initial balance is 1.000,00 € and the computed balance on 10.10.2026 is 1.000,00 €
+
+#### Scenario: Entered initial balance
+
+- **GIVEN** a fixed term deposit with the bank balance 10.000,00 € on 01.11.2026 and an initial balance of 3.000,00 € that the user entered
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the initial balance stays 3.000,00 €
+
+#### Scenario: Before the first refresh
+
+- **GIVEN** an account with bank access without a refresh and a manual transaction of 4.000,00 € on 01.03.2026
+- **WHEN** the first refresh delivers the balance 10.000,00 € and no transactions
+- **THEN** the computed balance on 01.11.2026 is 10.000,00 €
+- **AND** the computed balance on 28.02.2026 is 6.000,00 €
+
+### Requirement: A planned manual transaction joins the bank balance later
+
+The app SHALL count a manual transaction after the day of the bank balance on top of that balance until a refresh reports a balance of its day or a later day. From then on the bank balance holds it, whether the refresh delivered a matching booking or not, and an initial balance that a refresh derived is computed again by the rule of the capability `charts`. An initial balance that the user entered stays.
+
+#### Scenario: Refresh after a planned payment
+
+- **GIVEN** a credit card whose first refresh derived the initial balance, whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the computed balance on 10.11.2026 is 50,00 €
+- **AND** after the user deletes the manual transaction, the computed balance on 10.11.2026 is still 50,00 €
+
+#### Scenario: Refresh of a bank that reports only a balance
+
+- **GIVEN** a credit card whose first refresh derived the initial balance, whose bank reported the balance 100,00 € on 01.11.2026 and no transactions, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the computed balance on 10.11.2026 is 50,00 €
+
+#### Scenario: Refresh after a planned payment with an entered initial balance
+
+- **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, whose bank reported the balance 100,00 € on 01.11.2026, and a manual transaction of -50,00 € "Hotel Beispiel" on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 delivers the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance stays 3.000,00 €
+
+### Requirement: What a transaction in an account with bank access can change
+
+The app SHALL let the user change the date, the value date, the name, the amount, the purpose, the category, and the comment of every transaction in an account with bank access, except a part of a split transaction, which offers only its category and its comment. The app keeps the values that a refresh, a file, or a migration delivered, so that the next refresh finds the transaction by them. A manual transaction that no file and no migration matched has no such values and takes the changed ones.
+
+#### Scenario: Manual transaction
+
+- **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk"
+- **WHEN** the user changes the amount to -15,00 € with "Edit Transaction..."
+- **THEN** the transaction shows -15,00 € and keeps no delivered values
+- **AND** after the user deletes it, a refresh that delivers -15,00 € "KIOSK" adds the delivered transaction
+
+#### Scenario: Fetched transaction
+
+- **GIVEN** an account with bank access and a transaction of -12,00 € "KIOSK" from a refresh
+- **WHEN** the user changes the name to "Kiosk am Markt" with "Edit Transaction..."
+- **THEN** the transaction shows "Kiosk am Markt"
+- **AND** the next refresh that delivers -12,00 € "KIOSK" adds no second transaction
+
+#### Scenario: Part of a split transaction
+
+- **GIVEN** an account with bank access and a transaction of -80,00 € split into parts of -25,00 € and -55,00 €
+- **WHEN** the user opens "Edit Transaction..." for the part of -25,00 €
+- **THEN** the window offers only the category and the comment for a change

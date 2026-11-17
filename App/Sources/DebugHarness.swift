@@ -274,6 +274,8 @@ final class DebugHarness {
 				if !handled, argument == "tab" { sheet.sendEvent(event) }
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
+		// Moves the focus to the next field of the sheet on top, as the Tab key does.
+		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -517,6 +519,11 @@ final class DebugHarness {
 		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
 		// counts of the preview, or "rows", which logs the count and the days of its first rows.
 		case "csv": csvPreview(argument)
+		// "<kind> <name>": an empty offline account in euros, such as "loan Darlehen".
+		case "offline":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let kind = AccountKind(rawValue: parts[0]) else { return log("offline error=argument") }
+			Task { await model.addOfflineAccount(name: parts[1], kind: kind, currency: "EUR", groupID: nil); log("offline done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -1156,6 +1163,9 @@ final class DebugHarness {
 
 	/// The tables of positions in all windows.
 	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
+
+	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
+	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {

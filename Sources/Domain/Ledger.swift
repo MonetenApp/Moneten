@@ -27,7 +27,7 @@ public struct Ledger: Sendable {
 	private var transactionByPart: [UUID: UUID] = [:]
 
 	private var transactionIndex: [UUID: Int] = [:]
-	private var searchText: [UUID: String] = [:]
+	private(set) var searchText: [UUID: String] = [:]
 	/// The number of new transactions per account.
 	public private(set) var newTransactionCounts: [UUID: Int] = [:]
 	/// The accounts that have at least one transaction.
@@ -445,11 +445,48 @@ public struct Ledger: Sendable {
 			balanceToday: Money(minorUnits: Int64(clampingSum: exactBalance(of: account, through: today) + difference), currency: account.currency))
 	}
 
+	/// The accounts whose derived initial balance moves when the app saves the rows `saved` and deletes the rows
+	/// `deleted`. The caller stores them in the same write as the rows. While a refresh derived the initial balance
+	/// (`Account.followsBankBalance`), a manual row that the bank balance holds before or after the change moves it by
+	/// its own change, so the computed balance keeps ending at the bank balance and the row only shapes the history
+	/// before it. A row of the bank or of a file moves nothing, and a difference that it left stays for the
+	/// calibration proposal. A value that the user entered stays. A move to an initial balance above `Money.maxMinorUnits`
+	/// throws, so the app saves neither the rows nor the accounts.
+	public func followingBankBalance(saving saved: [Transaction], deleting deleted: Set<UUID> = [],
+		calendar: Calendar = .current) throws(InitialBalanceTooLarge) -> [Account] {
+		// Marking 50,000 rows as checked commits them all, so a ledger without a derived value skips the lookups.
+		guard accounts.contains(where: \.followsBankBalance) else { return [] }
+		let changes: [(old: Transaction?, new: Transaction?)] = saved.map { (transaction($0.id), $0) }
+			+ deleted.compactMap { transaction($0) }.map { ($0, nil) }
+		let ids = Set(changes.flatMap { [$0.old, $0.new] }.compactMap { $0 }.filter(\.isManual).map(\.accountID))
+		var moved: [Account] = []
+		for id in ids.sorted(by: { $0.uuidString < $1.uuidString }) {
+			guard var a = account(id), a.followsBankBalance, let date = a.bankBalanceDate else { continue }
+			let move = a.moveForManualRows(changes, through: Day(date, calendar: calendar))
+			guard move != 0 else { continue }
+			guard let value = Int64(limitedAmount: Int128(a.initialBalanceMinor) + move) else { throw InitialBalanceTooLarge(accountName: a.name) }
+			a.initialBalanceMinor = value
+			moved.append(a)
+		}
+		return moved
+	}
+
 	/// The initial balance at which the computed balance at the end of `today` is `balanceToday`. Every computed
 	/// balance moves by the same difference.
 	/// Nil when it would be above `Money.maxMinorUnits`, because a stored value is never clamped.
 	public func calibratedInitialBalance(of account: Account, balanceToday: Int64, today: Day) -> Int64? {
 		Int64(limitedAmount: Int128(account.initialBalanceMinor) + Int128(balanceToday) - exactBalance(of: account, through: today))
+	}
+
+	/// What "Calibrate" saves: `account` with the initial balance of `calibratedInitialBalance(of:balanceToday:today:)`,
+	/// entered by the user. It refuses an initial balance above `Money.maxMinorUnits`, so the app writes nothing.
+	public func calibrated(_ account: Account, balanceToday: Int64, today: Day) throws(InitialBalanceTooLarge) -> Account {
+		guard let value = calibratedInitialBalance(of: account, balanceToday: balanceToday, today: today) else {
+			throw InitialBalanceTooLarge(accountName: account.name)
+		}
+		var a = account
+		a.enterInitialBalance(value)
+		return a
 	}
 
 	public func sum(ofGroup group: UUID) -> MoneySums {

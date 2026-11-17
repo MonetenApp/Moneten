@@ -334,6 +334,8 @@ private struct AccountEntry: Codable {
 	var bonusPoints: Int64?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
+	/// Written only when true, so a reader before it reads the file, and the format version stays.
+	var initialBalanceIsDerived: Bool?
 	var isClosed: Bool
 	var comment: String?
 	var sourceID: String?
@@ -366,6 +368,7 @@ private struct AccountEntry: Codable {
 		bonusPoints = a.bonusPoints
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
+		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
 		comment = a.comment
 		sourceID = a.sourceID
@@ -388,7 +391,8 @@ private struct AccountEntry: Codable {
 		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
-			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
+			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
+			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
 			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
 			otherBankBalances: others, bonusPoints: bonusPoints)
@@ -439,6 +443,8 @@ private struct TransactionEntry: Codable {
 	var sourceID: String?
 	var fileIdentity: String?
 	var createdAt: Date
+	/// Written only for a manual row. A missing key means a row that a source delivered.
+	var isManual: Bool?
 	var original: OriginalEntry?
 
 	init(_ t: Transaction) {
@@ -469,6 +475,7 @@ private struct TransactionEntry: Codable {
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
+		isManual = t.isManual ? true : nil
 		original = t.original.map { OriginalEntry($0, currency: t.currency) }
 	}
 
@@ -480,7 +487,7 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
 		return t
 	}

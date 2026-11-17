@@ -788,14 +788,17 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	/// Saves the rows, with the accounts whose derived initial balance they change, and returns whether they are saved.
+	/// A locked app has no database and saves nothing.
 	@discardableResult
 	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
 		guard let store else { return false }
 		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
 		do {
-			try store.save(changed.transactions, parts: changed.parts)
+			let accounts = try ledger.followingBankBalance(saving: changed.transactions)
+			try store.save(changed.transactions, parts: changed.parts, accounts: accounts)
 			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.update(changed.transactions, parts: changed.parts)
 			return true
 		} catch {
@@ -1019,8 +1022,10 @@ final class AppModel {
 		guard !refusePartDeletion(in: ids) else { return }
 		guard let store else { return }
 		do {
-			try store.deleteTransactions(Array(ids))
+			let accounts = try ledger.followingBankBalance(saving: [], deleting: ids)
+			try store.deleteTransactions(Array(ids), accounts: accounts)
 			ledgerChange = "delete rows=\(ids.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.remove(transactionIDs: ids)
 			selectedTransactions.subtract(ids)
 		} catch {
