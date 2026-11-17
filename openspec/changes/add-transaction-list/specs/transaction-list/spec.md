@@ -153,9 +153,9 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 #### Scenario: Details in the purpose
 
 - **GIVEN** the language of the app is English
-- **AND** a row with no purpose, the comment "Paid twice?", the transaction type "Lastschrift", the mandate reference "M-2026-0042", and the creditor ID "DE98ZZZ09999999999"
+- **AND** a row with no purpose, the comment "Paid twice?", the transaction type "Lastschrift", the return reason "AC04", the end-to-end reference "E2E-9", the mandate reference "M-2026-0042", and the creditor ID "DE98ZZZ09999999999"
 - **WHEN** the user copies the row
-- **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
+- **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Return reason: AC04, End-to-end reference: E2E-9, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
 - **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, and creditor ID
 
 #### Scenario: Text that a spreadsheet would read as a formula
