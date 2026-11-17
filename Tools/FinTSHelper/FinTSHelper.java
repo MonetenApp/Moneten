@@ -1005,12 +1005,80 @@ public class FinTSHelper {
 
 	static final Pattern SEPA_TAG = Pattern.compile("(EREF|KREF|MREF|CRED|DEBT|COAM|OAMT|SVWZ|ABWA|ABWE|IBAN|BIC)\\+");
 
+	/// A purpose line of MT940 that holds only the slash tags of the original amount, the charges, and the exchange rate.
+	static final Pattern SLASH_TAGS = Pattern.compile("(/(OCMT|CHGS|EXCH)/[^/]*/*)+");
+	static final Pattern ORIGINAL_AMOUNT = Pattern.compile("/OCMT/([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)");
+
+	/// The MT940 lines of a purpose, joined as add-fints-banking specifies. A line of 27 or 35 characters is full, so the
+	/// bank cut the text there, also inside a word, and it joins the next line without a character. A shorter line, a full
+	/// line that ends with a lowercase letter before a line that starts with an uppercase letter, and a line before one that
+	/// starts with a tag join with a space. Inside the value of a tag other than SVWZ+, such as a reference, lines always
+	/// join without a character. TransactionFileImporter joins the lines of a file by the same rule.
+	static String joinMt940(List<String> lines) {
+		StringBuilder text = new StringBuilder();
+		String previous = null;
+		for (String line : lines) {
+			if (!present(line)) continue;
+			if (previous != null) {
+				int length = previous.codePointCount(0, previous.length());
+				boolean full = length == 27 || length == 35;
+				char last = text.charAt(text.length() - 1);
+				boolean newWord = Character.isLowerCase(last) && Character.isUpperCase(line.charAt(0));
+				boolean tag = SEPA_TAG.matcher(line).lookingAt();
+				String open = null;
+				Matcher m = SEPA_TAG.matcher(text);
+				while (m.find()) open = m.group(1);
+				boolean inValue = open != null && !open.equals("SVWZ");
+				if ((tag || (!inValue && (!full || newWord))) && !Character.isWhitespace(last) && !Character.isWhitespace(line.charAt(0))) text.append(' ');
+			}
+			text.append(line);
+			previous = line;
+		}
+		return text.toString();
+	}
+
+	/// The CAMT lines of a purpose: each loses its outer spaces, repeated spaces become one, and only a line of 140
+	/// characters, the most that a line holds, joins the next one without a character.
+	static String joinCamt(List<String> lines) {
+		StringBuilder text = new StringBuilder();
+		String previous = null;
+		for (String raw : lines) {
+			if (!present(raw)) continue;
+			String line = raw.strip().replaceAll("\\s+", " ");
+			if (previous != null && previous.codePointCount(0, previous.length()) != 140) text.append(' ');
+			text.append(line);
+			previous = line;
+		}
+		return text.toString();
+	}
+
+	/// The original amount of a slash tag "/OCMT/USD50,00/" as plain decimal text with every decimal place, and its currency,
+	/// or null when it does not read. The app gives it the sign of the booked amount and drops it in the same currency.
+	/// `Value` of hbci4java keeps two decimals and throws on three, so the helper keeps the amount as it is.
+	static String[] originalAmount(String line) {
+		Matcher m = ORIGINAL_AMOUNT.matcher(line);
+		if (!m.find()) return null;
+		try {
+			return new String[] { new BigDecimal(m.group(2).replace(',', '.').replaceAll("\\.$", "")).toPlainString(), m.group(1).toUpperCase(java.util.Locale.ROOT) };
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
 	/// One transaction for the app. MT940 statements carry the end-to-end reference, the mandate,
-	/// the creditor ID, and the purpose as tagged text in the purpose lines, which the bank cuts every
-	/// 27 characters, also inside words. Tagged lines therefore join without a space.
+	/// the creditor ID, the deviating party, and the purpose as tagged text in the purpose lines, which the bank cuts every
+	/// 27 characters, also inside words. `joinMt940` and `joinCamt` join them.
 	static Map<String, Object> row(UmsLine l, boolean pending) {
-		List<String> lines = l.usage == null ? List.of() : l.usage.stream().filter(FinTSHelper::present).toList();
-		String joined = String.join("", lines);
+		List<String> lines = new ArrayList<>();
+		String[] original = l.orig_value == null ? null : new String[] { l.orig_value.getBigDecimalValue().toPlainString(), text(l.orig_value.getCurr()) };
+		for (String line : l.usage == null ? List.<String>of() : l.usage) {
+			if (!present(line)) continue;
+			// A line of slash tags holds the original amount, and the one of :61:, which hbci4java reads, wins over it. The line
+			// stays in the purpose, as an earlier version sent it, so that the identity of a stored transaction does not change.
+			if (!l.isCamt && original == null && SLASH_TAGS.matcher(line.strip()).matches()) original = originalAmount(line);
+			lines.add(line);
+		}
+		String joined = l.isCamt ? joinCamt(lines) : joinMt940(lines);
 		Map<String, String> tags = new LinkedHashMap<>();
 		Matcher m = SEPA_TAG.matcher(joined);
 		int start = -1;
@@ -1021,20 +1089,26 @@ public class FinTSHelper {
 			start = m.end();
 		}
 		if (tag != null) tags.putIfAbsent(tag, joined.substring(start).trim());
-		String purpose = tags.isEmpty() ? String.join(" ", lines.stream().map(String::trim).toList()) : tags.getOrDefault("SVWZ", "");
+		String purpose = tags.isEmpty() ? joined.strip() : tags.getOrDefault("SVWZ", "");
 		String endToEnd = text(present(l.endToEndId) ? l.endToEndId : tags.get("EREF"));
 		if ("NOTPROVIDED".equals(endToEnd)) endToEnd = null;
 		if (!present(purpose) && endToEnd != null) purpose = endToEnd;
 		Konto other = l.other;
 		// hbci4java reads no date from a CAMT entry that has a date and time only.
 		if (l.bdate == null && l.valuta == null) throw new Failure("unsupported", null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
+		// The deviating party of the counterparty: hbci4java keeps the ultimate debtor of a CAMT credit or the ultimate creditor
+		// of a debit as name2. In MT940 it is ABWE+ for a debit and ABWA+ for a credit.
+		boolean debit = l.value.getBigDecimalValue().signum() < 0;
+		String deviating = l.isCamt ? (other == null ? null : text(other.name2)) : text(tags.get(debit ? "ABWE" : "ABWA"));
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
 			"name", other == null ? null : text(other.name), "iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
 			"creditor", text(other != null && present(other.creditorid) ? other.creditorid : tags.get("CRED")),
-			"bookingText", text(l.text), "pending", pending);
+			"bookingText", text(l.text),
+			"originalAmount", original == null ? null : original[0], "originalCurrency", original == null ? null : original[1],
+			"deviatingParty", deviating, "pending", pending);
 	}
 
 	/// The errors that the user must act on, in this order: a blocked access, a wrong PIN, an app that
@@ -1487,8 +1561,8 @@ public class FinTSHelper {
 	/// The rows of all parts, in the order of the answer. The merchant text of a row is also its name, because the
 	/// card statement has no other field for the other party, and a pending row pairs with its booked version only
 	/// by a name or an IBAN. A row that the bank marks with "finalized" N is not final,
-	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
-	/// the app stores it (task 1.18), so its precision cannot fail the row.
+	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row keeps every decimal
+	/// place, and one that does not read is left out, so it cannot fail the row.
 	static List<Object> cardRows(Properties data) {
 		return cardRowKeys(data).stream().map(row -> (Object) cardRow(data, row)).toList();
 	}
@@ -1508,10 +1582,14 @@ public class FinTSHelper {
 		String booked = cardDay(data.getProperty(row + ".bookingdate")), value = cardDay(data.getProperty(row + ".valuedate"));
 		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
 		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		BigDecimal original = StringUtil.normalize(data.getProperty(row + ".originalcurrency")) == null ? null
+			: signed(data.getProperty(row + ".originalvalue"), data.getProperty(row + ".originalcreditdebit"));
 		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
 			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
 			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
-			"bookingText", "Kreditkartenzahlung", "pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
+			"bookingText", "Kreditkartenzahlung",
+			"originalAmount", original == null ? null : original.toPlainString(), "originalCurrency", original == null ? null : StringUtil.normalize(data.getProperty(row + ".originalcurrency")),
+			"pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
 	}
 
 	/// A day of a row, null when the bank sent none. A day that does not read fails the row.

@@ -304,6 +304,10 @@ struct AccountResult: Decodable {
 		let mandate: String?
 		let creditor: String?
 		let bookingText: String?
+		/// The amount before the bank converted it, plain decimal text with every decimal place, as the bank sent it.
+		let originalAmount: String?
+		let originalCurrency: String?
+		let deviatingParty: String?
 		let pending: Bool
 	}
 
@@ -414,9 +418,15 @@ extension AccountResult.Row {
 	func transaction(of account: AccountRequest) throws -> Transaction {
 		guard let booked else { throw HelperFailure.noBookingDate }
 		let money = try AccountResult.money(amount, currency ?? account.currency)
+		// An original amount beyond the limit is left out, because the booked amount does not depend on it.
+		var original: Money?
+		if let originalAmount, let originalCurrency {
+			original = Money(fitting: try AccountResult.decimal(originalAmount), currency: originalCurrency.uppercased())
+		}
 		return Transaction(accountID: account.accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
 			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban, counterpartyBIC: bic, bookingText: bookingText,
-			endToEndReference: endToEnd, mandateReference: mandate, creditorID: creditor, isPending: pending)
+			endToEndReference: endToEnd, mandateReference: mandate, creditorID: creditor, isPending: pending,
+			originalAmount: Transaction.original(original, booked: money), deviatingParty: deviatingParty)
 	}
 }
 

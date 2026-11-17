@@ -66,6 +66,54 @@ final class SelfTest {
 		return l;
 	}
 
+	/// The purpose lines, the original amount, and the deviating party of a row (tasks 1.16 and 1.18), with made-up data.
+	static void purposeLines() {
+		List<String> joined = new ArrayList<>();
+		for (List<String> lines : List.of(List.of("Abschlagszahlung Strom Kund", "ennummer 4711"), List.of("Abschlagszahlung Strom Kundennummer", "4711"),
+			List.of("Miete November", "Wohnung 3"), List.of("Abschlagszahlung Strom Kundenn", "ummer 4711"), List.of("Rechnung vom Elektromeister", "Musterstadt Nr 17"),
+			List.of("Miete November ", "", "Wohnung 3"), List.of("EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", "ummer 4711"),
+			List.of("EREF+RE-2026-10", "01", "SVWZ+Abschlag", "November"))) {
+			joined.add(FinTSHelper.joinMt940(lines));
+		}
+		expect("MT940 purpose lines: a full line of 27 or 35 characters joins without a space, other lines and a new word with one, a reference always without",
+			String.join(" | ", joined), "Abschlagszahlung Strom Kundennummer 4711 | Abschlagszahlung Strom Kundennummer4711 | Miete November Wohnung 3"
+				+ " | Abschlagszahlung Strom Kundenn ummer 4711 | Rechnung vom Elektromeister Musterstadt Nr 17 | Miete November Wohnung 3"
+				+ " | EREF+RE-2026-1001 SVWZ+Abschlag Strom Kundennummer 4711 | EREF+RE-2026-1001 SVWZ+Abschlag November");
+		String full = "x".repeat(133) + "Kundenn";
+		expect("CAMT purpose lines: outer and repeated spaces go, and only a line of 140 characters joins without a space",
+			FinTSHelper.joinCamt(List.of(" Miete  November ", "", "Wohnung 3")) + " | " + FinTSHelper.joinCamt(List.of(full, "ummer 4711"))
+				+ " | " + FinTSHelper.joinCamt(List.of("Abschlag Strom Kund", "ennummer 4711")),
+			"Miete November Wohnung 3 | " + "x".repeat(133) + "Kundennummer 4711 | Abschlag Strom Kund ennummer 4711");
+
+		UmsLine abroad = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00/");
+		UmsLine both = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00//CHGS/EUR1,50/");
+		both.orig_value = new Value(new BigDecimal("51.00"), "USD");
+		UmsLine kuwait = line("2026-11-09", "2026-11-09", "-3.69", "Laden Kuwait", "/OCMT/KWD1,234/");
+		UmsLine extra = line("2026-11-09", "2026-11-09", "-46.00", "Laden", "/OCMT/USD50,00/ extra");
+		List<String> originals = new ArrayList<>();
+		for (UmsLine l : List.of(abroad, both, kuwait, extra)) {
+			Map<String, Object> row = FinTSHelper.row(l, false);
+			originals.add(row.get("originalAmount") + " " + row.get("originalCurrency") + " " + row.get("purpose"));
+		}
+		expect("original amount of a line of slash tags, which stays in the purpose, of :61:, which wins, with three decimals, and in a line with more text",
+			String.join(" | ", originals), "50.00 USD Coffee Shop New York /OCMT/USD50,00/ | 51 USD Coffee Shop New York /OCMT/USD50,00//CHGS/EUR1,50/"
+				+ " | 1.234 KWD Laden Kuwait /OCMT/KWD1,234/ | null null Laden /OCMT/USD50,00/ extra");
+
+		UmsLine debit = line("2026-11-03", "2026-11-03", "-19.90", "SVWZ+Buch 4711", "ABWA+Max Beispiel", "ABWE+Buchhandlung Beisp", "iel");
+		UmsLine credit = line("2026-11-03", "2026-11-03", "25.00", "SVWZ+Geschenk", "ABWA+Erika Mustermann", "ABWE+Max Beispiel");
+		UmsLine camtCredit = line("2026-11-03", "2026-11-03", "25.00", "Geschenk");
+		camtCredit.isCamt = true;
+		camtCredit.other.name = "Zahlungsdienst Muster GmbH";
+		camtCredit.other.name2 = "Erika Mustermann";
+		List<String> parties = new ArrayList<>();
+		for (UmsLine l : List.of(debit, credit, camtCredit, line("2026-11-03", "2026-11-03", "-1", "Kiosk"))) {
+			Map<String, Object> row = FinTSHelper.row(l, false);
+			parties.add(row.get("deviatingParty") + " / " + row.get("purpose"));
+		}
+		expect("deviating party: ABWE+ of a debit, ABWA+ of a credit, the ultimate party of CAMT, and none", String.join(" | ", parties),
+			"Buchhandlung Beispiel / Buch 4711 | Erika Mustermann / Geschenk | Erika Mustermann / Geschenk | null / Kiosk");
+	}
+
 	/// The lines that Tests/FinTSTests/helper-lines.jsonl holds, which FinTSConnectorTests decodes.
 	static final List<String> fixture = new ArrayList<>();
 
@@ -79,7 +127,8 @@ final class SelfTest {
 			FinTSHelper.Json.write(FinTSHelper.Json.parse("{\"a\":\"x\\\"y\\\\\\n\\u00fc\",\"b\":[1,true,null,-2.5],\"c\":{}}")),
 			"{\"a\":\"x\\\"y\\\\\\nü\",\"b\":[1,true,null,-2.5],\"c\":{}}");
 
-		UmsLine mt940 = line("2026-11-02", "2026-10-30", "-23.80", "EREF+RE-2026-1001 MREF+M-471", "1 CRED+DE98ZZZ09999999999 SVWZ", "+Rechnung 1001");
+		// The bank cuts the tagged text every 27 characters, also inside a value.
+		UmsLine mt940 = line("2026-11-02", "2026-10-30", "-23.80", "EREF+RE-2026-1001 MREF+M-47", "11 CRED+DE98ZZZ09999999999 ", "SVWZ+Rechnung 1001");
 		mt940.other.name = "Stadtwerke Musterstadt";
 		mt940.other.iban = "DE02120300000000202051";
 		mt940.other.bic = "BYLADEM1001";
@@ -98,6 +147,8 @@ final class SelfTest {
 		expect("CAMT row, pending", FinTSHelper.Json.write(FinTSHelper.row(camt, true)),
 			"{\"type\":\"row\",\"booked\":\"2026-11-09\",\"value\":\"2026-11-09\",\"amount\":\"-46.12\",\"currency\":\"EUR\",\"name\":\"Coffee Shop\","
 				+ "\"purpose\":\"Kartenzahlung New York\",\"endToEnd\":\"SW-778899\",\"mandate\":\"M-1\",\"creditor\":\"DE98ZZZ09999999998\",\"pending\":true}");
+
+		purposeLines();
 
 		UmsLine referenceOnly = line("2026-11-03", "2026-11-03", "120", "EREF+INV-2026-0042");
 		expect("end-to-end reference as purpose", FinTSHelper.row(referenceOnly, false).get("purpose"), "INV-2026-0042");
@@ -341,6 +392,15 @@ final class SelfTest {
 			":61:2611031103C120,00NTRFNONREF",
 			":86:166?00GUTSCHRIFT?20Miete November?32Erika Mustermann",
 			":62F:C261103EUR1096,20",
+			"-",
+			":20:STARTUMS",
+			":25:12030000/0000202051",
+			":28C:00000/003",
+			":60F:C261103EUR1096,20",
+			":61:2611041104D10,00NMSCNONREF",
+			"/OCMT/USD11,00/",
+			":86:106?00KARTENZAHLUNG?20EREF+K-1?21SVWZ+Buchladen New York Kin?22dle?23ABWE+Buchhandlung Beispiel?32Zahlungsdienst Muster GmbH",
+			":62F:C261104EUR1086,20",
 			"-") + "\r\n");
 		return result;
 	}
@@ -622,6 +682,13 @@ final class SelfTest {
 		abroad.storeResult("content.transactions.originalcurrency", "KWD");
 		abroad.storeResult("content.transactions.originalcreditdebit", "D");
 		expect("card row with an original amount of three decimals", rows(FinTSHelper.card(id, null, abroad, false, "EUR")), "-3.69 Streaming Beispiel / Musterstadt");
+		Map<?, ?> abroadRow = (Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.card(id, null, abroad, false, "EUR").get("transactions")).get("rows")).get(0);
+		expect("card row keeps its original amount with every decimal place and the sign of C or D", abroadRow.get("originalAmount") + " " + abroadRow.get("originalCurrency"), "-1.234 KWD");
+		abroad.storeResult("content.transactions.originalvalue", "1x");
+		expect("card row with an original amount that does not read keeps its row without it", rows(FinTSHelper.card(id, null, abroad, false, "EUR")) + " "
+			+ ((Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.card(id, null, abroad, false, "EUR").get("transactions")).get("rows")).get(0)).get("originalAmount"),
+			"-3.69 Streaming Beispiel / Musterstadt null");
+		abroad.storeResult("content.transactions.originalvalue", "1,234");
 		String thrown;
 		try {
 			new GVRKreditkartenUmsatz().addTransaction(abroad.getResultData(), "content.transactions");

@@ -420,8 +420,13 @@ struct TransactionSheet: View {
 				}
 			}
 			if let t = existing {
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
+				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil
+					|| t.originalAmount != nil || t.deviatingParty != nil {
 					Section("Details") {
+						if let original = t.originalAmount { LabeledContent("Original amount") { AmountText(money: original) } }
+						if let party = t.deviatingParty {
+							LabeledContent(t.amountMinor < 0 ? LocalizedStringKey("Deviating recipient") : LocalizedStringKey("Deviating originator")) { Text(party).textSelection(.enabled) }
+						}
 						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
 						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
 						if let text = t.bookingText { LabeledContent("Transaction type", value: text) }

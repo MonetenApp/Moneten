@@ -3948,6 +3948,26 @@
         }
       }
     },
+    "Deviating originator" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abweichender Auftraggeber"
+          }
+        }
+      }
+    },
+    "Deviating recipient" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abweichender Empfänger"
+          }
+        }
+      }
+    },
     "Did you cancel the authorization in the app of the bank?" : {
       "localizations" : {
         "de" : {
@@ -7127,6 +7147,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Optional"
+          }
+        }
+      }
+    },
+    "Original amount" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalbetrag"
           }
         }
       }

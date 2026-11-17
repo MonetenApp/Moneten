@@ -310,13 +310,53 @@ The app SHALL take the counterparty name, the counterparty IBAN and BIC, the boo
 
 ### Requirement: Join purpose lines
 
-The app SHALL join the lines into which a bank splits a purpose so that words that were cut at a line end are whole again and separate words stay separate.
+The app SHALL join the lines of an MT940 purpose so that words cut at a line end are whole again and separate words stay separate. A line of 27 or 35 characters, a tag at its start included, joins the next one without a character. Other lines join with a space, as does a full line that ends in lowercase before a line that starts in uppercase or with a tag. The value of a tag other than "SVWZ+" joins without a character.
 
 #### Scenario: Word cut at the line end
 
-- **GIVEN** the bank delivers the purpose in the lines "Abschlagszahlung Strom Kundenn" and "ummer 4711"
+- **GIVEN** the bank delivers the MT940 purpose in the lines "Abschlagszahlung Strom Kund" and "ennummer 4711"
 - **WHEN** the app stores the transaction
 - **THEN** the purpose reads "Abschlagszahlung Strom Kundennummer 4711"
+
+#### Scenario: Word cut after a tag
+
+- **GIVEN** the bank delivers the MT940 purpose in the lines "EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", and "ummer 4711"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose reads "Abschlag Strom Kundennummer 4711" and the end-to-end reference is "RE-2026-1001"
+
+#### Scenario: Short lines
+
+- **GIVEN** the bank delivers the MT940 purpose in the lines "Miete November" and "Wohnung 3"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose reads "Miete November Wohnung 3"
+
+#### Scenario: New word at a full line end
+
+- **GIVEN** the bank delivers the MT940 purpose in the lines "Rechnung vom Elektromeister" and "Musterstadt Nr 17"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose reads "Rechnung vom Elektromeister Musterstadt Nr 17"
+
+#### Scenario: Reference across short lines
+
+- **GIVEN** the bank delivers the MT940 purpose in the lines "EREF+RE-2026-10", "01", and "SVWZ+Miete"
+- **WHEN** the app stores the transaction
+- **THEN** the end-to-end reference is "RE-2026-1001" and the purpose is "Miete"
+
+### Requirement: Join CAMT purpose lines
+
+The app SHALL remove the spaces at both ends of each purpose line of a CAMT transaction, fold repeated spaces into one, leave out empty lines, and join a line of 140 characters to the next one without a character and any other line with a space.
+
+#### Scenario: CAMT lines
+
+- **GIVEN** a CAMT transaction with the purpose lines " Miete  November " and "Wohnung 3"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose reads "Miete November Wohnung 3"
+
+#### Scenario: Full CAMT line
+
+- **GIVEN** a CAMT transaction whose first purpose line is 140 characters long and ends with "Kundenn", and whose second line is "ummer 4711"
+- **WHEN** the app stores the transaction
+- **THEN** the purpose contains "Kundennummer 4711"
 
 ### Requirement: Use the end-to-end reference when the purpose is missing
 
@@ -334,13 +374,25 @@ The app SHALL show the end-to-end reference as the purpose of a transaction when
 
 ### Requirement: Keep the original amount and the deviating party
 
-The app SHALL store the original amount and currency of a transaction that the bank converted, and the name of a deviating originator or recipient when the bank reports one.
+The app SHALL store the original amount and currency of a transaction that the bank converted from another currency, and the name of the deviating party, when the bank reports them, and show both in the transaction details. The deviating party is the deviating originator of a credit and the deviating recipient of a debit. A positive original amount of a debit takes the minus of the booked amount. An original amount in the currency of the booked amount is not stored.
 
 #### Scenario: Card payment abroad
 
 - **GIVEN** the bank reports a card payment of -46,12 € with the original amount 50,00 US dollars
 - **WHEN** the user opens the transaction details
-- **THEN** the details show 50,00 US dollars as the original amount
+- **THEN** the details show -50,00 US dollars as the original amount
+
+#### Scenario: Sign of the original amount of an MT942 row
+
+- **GIVEN** the bank reports a pending MT942 row of -10,00 € with the original amount 11,00 US dollars
+- **WHEN** the refresh ends
+- **THEN** the original amount is -11,00 US dollars
+
+#### Scenario: Original amount in the same currency
+
+- **GIVEN** a CAMT transaction of -46,00 € with the instructed amount 46,00 €
+- **WHEN** the user opens the transaction details
+- **THEN** the details show no original amount
 
 #### Scenario: Sign of the original amount of an MT942 row
 
@@ -350,9 +402,16 @@ The app SHALL store the original amount and currency of a transaction that the b
 
 #### Scenario: Payment through a payment service
 
-- **GIVEN** the bank reports the counterparty "Zahlungsdienst Muster GmbH" and the deviating recipient "Buchhandlung Beispiel"
+- **GIVEN** the bank reports a debit with the counterparty "Zahlungsdienst Muster GmbH" and the deviating recipient "Buchhandlung Beispiel"
 - **WHEN** the user opens the transaction details
-- **THEN** the details show both names
+- **THEN** the details show the name "Zahlungsdienst Muster GmbH" and the deviating recipient "Buchhandlung Beispiel"
+
+#### Scenario: Credit on behalf of someone else
+
+- **GIVEN** the bank reports a credit of 25,00 € from "Zahlungsdienst Muster GmbH" with the MT940 tags "ABWA+Erika Mustermann" and "ABWE+Max Beispiel"
+- **WHEN** the user opens the transaction details
+- **THEN** the details show "Erika Mustermann" as the deviating originator
+- **AND** the list still shows the name "Zahlungsdienst Muster GmbH"
 
 ### Requirement: Credit cards through FinTS
 

@@ -112,6 +112,50 @@ struct ReconcileTests {
 		#expect(r.skipped == 1)
 	}
 
+	@Test("A purpose whose lines an earlier version joined with other spaces is the same transaction, and the stored row keeps its text")
+	func purposeJoinedAgain() {
+		// An earlier version joined these two lines with a space, the cut word stayed apart.
+		let refreshed = stored(row(5, -8_900, "Stadtwerke", "Abschlagszahlung Strom Kundenn ummer 4711", iban: "DE02120300000000202051"))
+		let imported = history([], after: merge(.file([row(6, -4_711, "Versand", "Rechnung 1001Kunde 77")])))[0]
+		let removed = stored(row(7, -1_250, "Kiosk", "Zeitung Wochen ende"))
+		let deleted = [DeletedTransaction(removed, deletedAt: now)]
+		let all = [refreshed, imported]
+		let r = merge(refresh([row(5, -8_900, "Stadtwerke", "Abschlagszahlung Strom Kundennummer 4711", iban: "DE02120300000000202051"),
+			row(6, -4_711, "Versand", "Rechnung 1001 Kunde 77"), row(7, -1_250, "Kiosk", "Zeitung Wochenende")]), stored: all, deleted: deleted)
+		#expect(r.added == [])
+		#expect(r.skipped == 3)
+		#expect(history(all, after: r).map(\.purpose) == ["Rechnung 1001Kunde 77", "Abschlagszahlung Strom Kundenn ummer 4711"])
+		let again = merge(.file([row(6, -4_711, "Versand", "Rechnung 1001 Kunde 77"), row(7, -1_250, "Kiosk", "Zeitung Wochenende")]), stored: all, deleted: deleted)
+		#expect(again.added == [])
+	}
+
+	@Test("A new row and a booked pending row take the original amount and the deviating party of the bank, and a booking without them keeps those of the pending row")
+	func originalAmountAndDeviatingParty() {
+		var reservation = stored(row(10, -4_612, "Coffee Shop", "Kartenzahlung New York", pending: true))
+		reservation.originalAmount = Money(minorUnits: -5_000, currency: "USD")
+		reservation.deviatingParty = "Coffee Beispiel"
+		var booked = row(11, -4_612, "Coffee Shop", "Kartenzahlung New York")
+		booked.originalAmount = Money(minorUnits: -5_010, currency: "USD")
+		var new = row(12, -1_990, "Zahlungsdienst Muster GmbH", "Buch 4711")
+		new.originalAmount = Money(minorUnits: -2_100, currency: "USD")
+		new.deviatingParty = "Buchhandlung Beispiel"
+		let r = merge(refresh([booked, new]), stored: [reservation])
+		#expect(r.booked.map(\.originalAmount) == [Money(minorUnits: -5_010, currency: "USD")])
+		#expect(r.booked.map(\.deviatingParty) == ["Coffee Beispiel"])
+		#expect(r.added.map(\.originalAmount) == [Money(minorUnits: -2_100, currency: "USD")])
+		#expect(r.added.map(\.deviatingParty) == ["Buchhandlung Beispiel"])
+	}
+
+	@Test("An original amount in the currency of the booked amount is dropped, and a positive one of a debit takes the minus")
+	func originalAmountRule() {
+		let euros = Money(minorUnits: -4_612, currency: "EUR")
+		#expect(Transaction.original(Money(minorUnits: 5_000, currency: "USD"), booked: euros) == Money(minorUnits: -5_000, currency: "USD"))
+		#expect(Transaction.original(Money(minorUnits: -5_000, currency: "USD"), booked: euros) == Money(minorUnits: -5_000, currency: "USD"))
+		#expect(Transaction.original(Money(minorUnits: 5_000, currency: "USD"), booked: Money(minorUnits: 4_612, currency: "EUR")) == Money(minorUnits: 5_000, currency: "USD"))
+		#expect(Transaction.original(Money(minorUnits: 4_612, currency: "EUR"), booked: euros) == nil)
+		#expect(Transaction.original(nil, booked: euros) == nil)
+	}
+
 	@Test("A file row without IBAN and reference finds the row that a refresh stored")
 	func fileFindsRefreshedRow() {
 		let telekom = stored(row(15, -4_999, "Telekom", "Rechnung 0815", month: 10, iban: "DE02120300000000202051", e2e: "E2E-0815"))

@@ -70,6 +70,19 @@ struct MergeTests {
 		#expect(try store.loadLedger().transactions(ofAccount: giro.id).map(\.returnReason) == ["AC04"])
 	}
 
+	@Test("A stored transaction keeps its original amount and its deviating party")
+	func originalAmountAndDeviatingParty() throws {
+		let store = try makeStore()
+		var card = row(9, -4_612, "Coffee Shop", "Kartenzahlung New York")
+		card.originalAmount = Money(minorUnits: -5_000, currency: "USD")
+		var book = row(10, -1_990, "Zahlungsdienst Muster GmbH", "Buch 4711")
+		book.deviatingParty = "Buchhandlung Beispiel"
+		_ = try store.merge(refresh([card, book]), into: giro.id)
+		let stored = try store.loadLedger().transactions(ofAccount: giro.id)
+		#expect(stored.map(\.originalAmount) == [nil, Money(minorUnits: -5_000, currency: "USD")])
+		#expect(stored.map(\.deviatingParty) == ["Buchhandlung Beispiel", nil])
+	}
+
 	@Test("An edited transaction keeps its values in the database, and neither a refresh nor a deletion brings the original back")
 	func editedTransaction() throws {
 		let store = try makeStore()

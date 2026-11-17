@@ -871,7 +871,8 @@ extension Transaction {
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
 			counterpartyBIC: delivered.counterpartyBIC, bookingText: delivered.bookingText, endToEndReference: delivered.endToEndReference,
 			mandateReference: delivered.mandateReference, creditorID: delivered.creditorID, comment: delivered.comment, isPending: delivered.isPending,
-			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason, fileIdentity: delivered.fileIdentity)
+			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason, fileIdentity: delivered.fileIdentity,
+			originalAmount: delivered.originalAmount, deviatingParty: delivered.deviatingParty)
 	}
 
 	func takingBankFields(of delivered: Transaction) -> Transaction {
@@ -890,6 +891,8 @@ extension Transaction {
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.returnReason = delivered.returnReason ?? returnReason
+		t.originalAmount = delivered.originalAmount ?? originalAmount
+		t.deviatingParty = delivered.deviatingParty ?? deviatingParty
 		t.isPending = delivered.isPending
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {

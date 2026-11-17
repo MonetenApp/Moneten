@@ -830,6 +830,9 @@ final class DebugHarness {
 			case "calibration": if case let .account(id) = model.selection { model.sheet = .calibration(id) }
 			case "newTransaction": model.sheet = .transaction(nil)
 			case "transaction": model.sheet = .transaction(model.visibleTransactions.first?.id)
+			// "transaction <name>" opens the newest shown row with that name.
+			case let a where a.hasPrefix("transaction "):
+				model.sheet = .transaction(model.visibleTransactions.first { $0.name == a.dropFirst(12) }?.id)
 			case "split": if let row = model.visibleTransactions.first { model.openSplit(row: row.id) }
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()

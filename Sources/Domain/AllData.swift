@@ -469,6 +469,10 @@ private struct TransactionEntry: Codable {
 	var mandateReference: String?
 	var creditorID: String?
 	var returnReason: String?
+	/// Written only when the bank converted the amount. Decimal text in `originalCurrency`.
+	var originalAmount: String?
+	var originalCurrency: String?
+	var deviatingParty: String?
 	var comment: String?
 	var isChecked: Bool
 	var isPending: Bool
@@ -501,6 +505,9 @@ private struct TransactionEntry: Codable {
 		mandateReference = t.mandateReference
 		creditorID = t.creditorID
 		returnReason = t.returnReason
+		originalAmount = t.originalAmount.map { AmountText.text($0.minorUnits, $0.currency) }
+		originalCurrency = t.originalCurrency
+		deviatingParty = t.deviatingParty
 		comment = t.comment
 		isChecked = t.isChecked
 		isPending = t.isPending
@@ -527,6 +534,14 @@ private struct TransactionEntry: Codable {
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
 			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
+		t.deviatingParty = deviatingParty
+		switch (originalAmount, originalCurrency) {
+		case (nil, nil): break
+		case let (amount?, code?):
+			try currencyCode(code)
+			t.originalAmount = Money(minorUnits: try AmountText.minorUnits(amount, code), currency: code)
+		default: throw AllData.ReadError.damaged("originalAmount and originalCurrency must come together")
+		}
 		return t
 	}
 }
