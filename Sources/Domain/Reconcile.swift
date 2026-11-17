@@ -907,6 +907,8 @@ extension Transaction {
 		t.originalAmount = delivered.originalAmount ?? originalAmount
 		t.deviatingParty = delivered.deviatingParty ?? deviatingParty
 		t.isPending = delivered.isPending
+		// The booked version settles which row the pending one was, so its review ends.
+		if isPending && !delivered.isPending { t.review = nil }
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
 			t.sourceID = delivered.sourceID ?? sourceID
