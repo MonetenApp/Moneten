@@ -306,6 +306,13 @@ The app SHALL offer the option "The account has been closed" in the account sett
 - **WHEN** the user turns on the option for an offline account
 - **THEN** the offline account is closed in the same way
 
+#### Scenario: Refresh during the close
+
+- **GIVEN** a refresh of the bank of "Giro" runs, and another one of that bank waits for its turn
+- **WHEN** the user marks "Giro" as closed and clicks "OK"
+- **THEN** the running refresh changes no transaction, no balance, and no refresh time of "Giro"
+- **AND** the waiting refresh does not ask the bank for "Giro"
+
 ### Requirement: Clearing entry for a closed account
 
 The app SHALL insert one transaction named "Clearing entry" when the user marks an account as closed, clicks "OK", and the computed balance at the end of that day is not zero. That balance is the initial balance plus the transactions up to that day in the account currency, pending ones included. The entry is booked, dated that day, and has the opposite amount in the account currency. A portfolio gets no entry.
@@ -406,6 +413,13 @@ The app SHALL reopen an account when the user turns off "The account has been cl
 - **WHEN** the user reopens the account
 - **THEN** the entry stays in the list as an ordinary manual transaction
 - **AND** a later close inserts a new clearing entry only for the balance that is then left
+
+#### Scenario: Edited clearing entry of a bank account
+
+- **GIVEN** the bank reported 500,00 € for "Giro", which matches its transactions, and the user changed the purpose of its clearing entry of -500,00 €
+- **WHEN** the user reopens "Giro"
+- **THEN** the header shows 500,00 € and no calibration proposal
+- **AND** the bar chart ends at 500,00 €
 
 #### Scenario: Account of a bank access
 

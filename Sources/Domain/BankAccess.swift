@@ -332,8 +332,10 @@ public enum AccountRefresh: Sendable, Equatable {
 
 extension Account {
 	/// A success records its time and clears the error ("An error ends with the next success"). A
-	/// failure keeps the time of the last success.
+	/// failure keeps the time of the last success. A closed account records neither, because the end of a refresh
+	/// that ran while the user closed it says nothing about the account any more.
 	public mutating func record(_ refresh: AccountRefresh) {
+		guard !isClosed else { return }
 		switch refresh {
 		case let .refreshed(date):
 			refreshedAt = date

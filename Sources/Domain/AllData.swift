@@ -83,9 +83,19 @@ public struct AllData: Sendable, Equatable {
 		guard version <= Self.formatVersion else { throw .newerVersion(version) }
 		do {
 			self = try decoder.decode(File.self, from: data).allData()
+			dropForeignClearingMarks()
 			try validateParentLinks()
 			try validateSplitParts()
 		} catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
+	}
+
+	/// A file can give an account the mark of a clearing entry that names a row of another account. Reopening would then
+	/// remove a row that the account never had, so the mark goes. A mark whose row is missing names nothing and stays.
+	mutating func dropForeignClearingMarks() {
+		let owners = Dictionary(transactions.map { ($0.id, $0.accountID) }, uniquingKeysWith: { first, _ in first })
+		for i in accounts.indices {
+			if let id = accounts[i].clearingEntry?.transactionID, let owner = owners[id], owner != accounts[i].id { accounts[i].clearingEntry = nil }
+		}
 	}
 
 	public func validateParentLinks() throws {
@@ -372,7 +382,7 @@ private struct AccountEntry: Codable {
 		initialBalanceIsSet = a.initialBalanceIsSet
 		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
-		clearingEntry = a.clearingEntry.map(ClearingEntryEntry.init)
+		clearingEntry = a.clearingEntry.map { ClearingEntryEntry($0, currency: a.currency) }
 		comment = a.comment
 		sourceID = a.sourceID
 		color = a.color
@@ -398,35 +408,32 @@ private struct AccountEntry: Codable {
 			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
 			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
-			otherBankBalances: others, bonusPoints: bonusPoints, clearingEntry: try clearingEntry?.mark())
+			otherBankBalances: others, bonusPoints: bonusPoints, clearingEntry: try clearingEntry?.mark(currency: currency))
 	}
 }
 
 /// The clearing entry of a closed account with the values that the app gave it, so that reopening after an import
-/// removes it the same way.
+/// removes it the same way. The amount is in the currency of the account.
 private struct ClearingEntryEntry: Codable {
 	var transactionID: UUID
 	var bookingDate: String
 	var valueDate: String?
 	var amount: String
-	var currency: String
 	var name: String
 	var purpose: String
 
-	init(_ m: ClearingEntryMark) {
+	init(_ m: ClearingEntryMark, currency: String) {
 		transactionID = m.transactionID
 		bookingDate = m.values.bookingDate.description
 		valueDate = m.values.valueDate?.description
-		amount = AmountText.text(m.values.amountMinor, m.currency)
-		currency = m.currency
+		amount = AmountText.text(m.values.amountMinor, currency)
 		name = m.values.name
 		purpose = m.values.purpose
 	}
 
-	func mark() throws -> ClearingEntryMark {
-		try currencyCode(currency)
-		return ClearingEntryMark(transactionID: transactionID, values: OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
-			amountMinor: try AmountText.minorUnits(amount, currency), name: name, purpose: purpose), currency: currency)
+	func mark(currency: String) throws -> ClearingEntryMark {
+		ClearingEntryMark(transactionID: transactionID, values: OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+			amountMinor: try AmountText.minorUnits(amount, currency), name: name, purpose: purpose))
 	}
 }
 

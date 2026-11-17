@@ -214,7 +214,7 @@ struct ClosedAccountTests {
 		let l = ledger([wallet], [row(wallet, 1_234)])
 		let closing = try l.closing(closed(wallet), today: day)
 		let after = applying(closing, to: l)
-		let result = after.reopening(reopened(closing.account))
+		let result = try after.reopening(reopened(closing.account))
 		#expect(result.removedEntry == closing.entry?.id)
 		#expect(!result.account.isClosed && result.account.clearingEntry == nil)
 		var back = after
@@ -234,7 +234,7 @@ struct ClosedAccountTests {
 		reviewed.categorizedBy = .rule
 		var after = applying(closing, to: l)
 		after.update([reviewed])
-		#expect(after.reopening(reopened(closing.account)).removedEntry == reviewed.id)
+		#expect(try after.reopening(reopened(closing.account)).removedEntry == reviewed.id)
 	}
 
 	@Test("A clearing entry that the user changed stays, and the mark is gone", arguments: ["date", "value date", "amount", "name", "purpose", "comment", "category", "split"])
@@ -259,7 +259,7 @@ struct ClosedAccountTests {
 		var after = applying(closing, to: l)
 		after.update([edited])
 		if !parts.isEmpty { after.replaceParts(of: entry.id, with: parts) }
-		let result = after.reopening(reopened(closing.account))
+		let result = try after.reopening(reopened(closing.account))
 		#expect(result.removedEntry == nil)
 		#expect(!result.account.isClosed && result.account.clearingEntry == nil)
 	}
@@ -270,7 +270,7 @@ struct ClosedAccountTests {
 		let closing = try l.closing(closed(wallet), today: day)
 		var after = applying(closing, to: l)
 		after.remove(transactionIDs: [try #require(closing.entry?.id)])
-		#expect(after.reopening(reopened(closing.account)).removedEntry == nil)
+		#expect(try after.reopening(reopened(closing.account)).removedEntry == nil)
 	}
 
 	@Test("Reopening an account of a bank access shows 500,00 € and 35,00 US$ again and keeps the initial balance")
@@ -278,7 +278,7 @@ struct ClosedAccountTests {
 		let l = ledger([giro], [row(giro, 28_000)])
 		let closing = try l.closing(closed(giro), today: day)
 		let after = applying(closing, to: l)
-		let result = after.reopening(reopened(closing.account))
+		let result = try after.reopening(reopened(closing.account))
 		var back = after
 		back.upsert(result.account)
 		back.remove(transactionIDs: [try #require(result.removedEntry)])
@@ -296,10 +296,108 @@ struct ClosedAccountTests {
 		edited.edit(OriginalValues(bookingDate: day, valueDate: day, amountMinor: -1_000, name: edited.name, purpose: edited.purpose))
 		var after = applying(first, to: l)
 		after.update([edited])
-		let reopening = after.reopening(reopened(first.account))
+		let reopening = try after.reopening(reopened(first.account))
 		after.upsert(reopening.account)
 		let second = try after.closing(closed(reopening.account), today: day.adding(days: 1))
 		#expect(second.entry?.amountMinor == -234)
 		#expect(second.entry?.bookingDate == day.adding(days: 1))
 	}
+
+	// MARK: Refreshes of a closed account
+
+	@Test("A refresh that arrives after the close changes nothing: a vanished pending row, a new booking, and a changed amount stay out")
+	func lateRefresh() throws {
+		var pending = row(giro, 2_000, on: day.adding(days: -1), pending: true)
+		pending.isFetched = true
+		var booked = row(giro, -500, on: day.adding(days: -2))
+		booked.isFetched = true
+		booked.sourceID = "bank:1"
+		let l = ledger([giro], [pending, booked])
+		let closing = try l.closing(closed(giro), today: day)
+		let after = applying(closing, to: l)
+		let account = try #require(after.account(giro.id))
+		var changed = booked
+		changed.id = UUID()
+		changed.amountMinor = -600
+		let fresh = row(giro, -300, on: day, name: "Neue Buchung")
+		let delivery = Delivery.refresh(RefreshResult(balance: Money(minorUnits: 47_000, currency: "EUR"), balanceDate: Date(),
+			transactions: FetchedTransactions(rows: [changed, fresh], from: day.adding(days: -10))))
+		let r = reconcile(delivery, into: account, stored: after.transactions, deleted: [], rules: Categorizer(ledger: after), now: Date())
+		#expect(r.added.isEmpty && r.dropped.isEmpty && r.updated.isEmpty && r.booked.isEmpty && r.marked.isEmpty)
+		#expect(r.account == nil && r.refusal == nil)
+	}
+
+	@Test("A file still merges into a closed account, because only a refresh leaves it out")
+	func fileIntoClosedAccount() throws {
+		let closing = try ledger([wallet], [row(wallet, 1_234)]).closing(closed(wallet), today: day)
+		let r = reconcile(.file([row(wallet, 700, on: day.adding(days: -5), name: "Bareinzahlung")]), into: closing.account, stored: [], deleted: [],
+			rules: Categorizer(ledger: ledger([closing.account], [])), now: Date())
+		#expect(r.added.count == 1)
+	}
+
+	@Test("The end of a refresh that ran during the close records neither its time nor its error")
+	func lateStatus() {
+		var account = closed(giro)
+		account.record(.refreshed(Date(timeIntervalSince1970: 1_763_400_000)))
+		account.record(.failed(RefreshError(message: "The bank is not available.", date: Date(timeIntervalSince1970: 1_763_400_000))))
+		#expect(account.refreshedAt == nil && account.refreshError == nil)
+	}
+
+	// MARK: Marks that do not fit
+
+	@Test("Reopening never removes a row of another account, even with the values of the entry")
+	func foreignRow() throws {
+		let l = ledger([wallet], [row(wallet, 1_234)])
+		let closing = try l.closing(closed(wallet), today: day)
+		var foreign = try #require(closing.entry)
+		foreign.accountID = giro.id
+		let other = ledger([closing.account, giro], [row(wallet, 1_234), foreign])
+		#expect(try other.reopening(reopened(closing.account)).removedEntry == nil)
+	}
+
+	@Test("Reopening keeps an entry that a file matched, because it is a row of that file now")
+	func matchedByFile() throws {
+		let l = ledger([wallet], [row(wallet, 1_234)])
+		let closing = try l.closing(closed(wallet), today: day)
+		var matched = try #require(closing.entry)
+		matched.fileIdentity = "file:1"
+		var after = applying(closing, to: l)
+		after.update([matched])
+		#expect(try after.reopening(reopened(closing.account)).removedEntry == nil)
+	}
+
+	// MARK: A kept entry and the bank balance
+
+	@Test("A kept entry of a bank account moves the derived initial balance at the reopen, so the balance meets the bank again")
+	func keptEntryMeetsBank() throws {
+		let bankDay = Day(giro.bankBalanceDate!)
+		// The derived initial balance of 200,00 € and 300,00 € of rows meet the bank balance of 500,00 €.
+		let l = ledger([giro], [row(giro, 30_000, on: bankDay.adding(days: -3))])
+		let closing = try l.closing(closed(giro), today: bankDay)
+		var edited = try #require(closing.entry)
+		edited.edit(OriginalValues(bookingDate: edited.bookingDate, valueDate: edited.valueDate, amountMinor: edited.amountMinor, name: edited.name, purpose: "Konto aufgelöst"))
+		var after = applying(closing, to: l)
+		after.update([edited])
+		let result = try after.reopening(reopened(closing.account))
+		#expect(result.removedEntry == nil)
+		var back = after
+		back.upsert(result.account)
+		let account = try #require(back.account(giro.id))
+		#expect(account.initialBalanceMinor == 70_000 && account.followsBankBalance)
+		#expect(back.computedBalance(of: account) == Money(minorUnits: 50_000, currency: "EUR"))
+		#expect(back.proposedCalibration(of: account, today: bankDay, refresh: .idle) == nil)
+		// Deleting the entry later moves the initial balance back.
+		#expect(try back.followingBankBalance(saving: [], deleting: [edited.id]).first?.initialBalanceMinor == giro.initialBalanceMinor)
+	}
+
+	@Test("While an account is closed, only its clearing entry stays out of the derived initial balance, and another manual row moves it as before")
+	func otherManualRowWhileClosed() throws {
+		let bankDay = Day(giro.bankBalanceDate!)
+		let l = ledger([giro], [row(giro, 30_000, on: bankDay.adding(days: -3))])
+		let after = applying(try l.closing(closed(giro), today: bankDay), to: l)
+		var cash = row(giro, -1_000, on: bankDay.adding(days: -1), name: "Barabhebung")
+		cash.isManual = true
+		#expect(try after.followingBankBalance(saving: [cash]).first?.initialBalanceMinor == giro.initialBalanceMinor + 1_000)
+	}
 }
+

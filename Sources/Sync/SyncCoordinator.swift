@@ -199,6 +199,33 @@ public final class SyncCoordinator {
 		return true
 	}
 
+	/// The user closed the account: it leaves every refresh that waits, and a waiting refresh without another account is
+	/// dropped, so no bank is asked for it. A running refresh still ends. The app then drops what it delivers for the
+	/// closed account, because a closed account takes no refresh.
+	public func leaveOut(account id: UUID) {
+		func without(_ job: Job) -> Job? {
+			var job = job
+			let accounts = job.request.accounts.filter { $0.accountID != id }
+			guard !accounts.isEmpty else { return nil }
+			job.request = RefreshRequest(access: job.request.access, state: job.request.state, accounts: accounts)
+			return job
+		}
+		var emptied: [UUID] = []
+		queue = queue.compactMap { job in
+			let kept = without(job)
+			if kept == nil { emptied.append(job.request.access.id) }
+			return kept
+		}
+		for (access, job) in afterRun {
+			afterRun[access] = without(job)
+			if afterRun[access] == nil, running[access] == nil, !held.contains(access) { emptied.append(access) }
+		}
+		for access in emptied { endProgress(of: access) }
+		for access in requested.keys { requested[access]?.removeAll { $0.accountID == id } }
+		refreshingAccounts.remove(id)
+		endRunIfIdle()
+	}
+
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
 		for job in queue { endProgress(of: job.request.access.id) }

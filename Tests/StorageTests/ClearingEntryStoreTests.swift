@@ -28,7 +28,7 @@ extension SchemaTests {
 
 		var reopenedWallet = try #require(closed.account(wallet.id))
 		reopenedWallet.isClosed = false
-		let reopening = closed.reopening(reopenedWallet)
+		let reopening = try closed.reopening(reopenedWallet)
 		try store.deleteTransactions([try #require(reopening.removedEntry)], accounts: [reopening.account])
 		let reopened = try store.loadLedger()
 		#expect(reopened.transactions.isEmpty)
@@ -69,4 +69,59 @@ struct ClearingEntryExportTests {
 		#expect(imported.account(wallet.id)?.clearingEntry == ClearingEntryMark(entry))
 		#expect(imported.account(savings.id)?.clearingEntry == nil)
 	}
+
+	@Test("A refresh that arrives after the close changes no row and no balance of the closed account", arguments: ["vanished pending row", "new booking", "changed amount"])
+	func lateDelivery(change: String) throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		let day = Day(year: 2026, month: 11, day: 17)
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 48_000,
+			bankBalanceDate: Date(timeIntervalSince1970: 1_794_700_000), initialBalanceMinor: 30_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let pending = Transaction(accountID: giro.id, bookingDate: day.adding(days: -1), amountMinor: -2_000, name: "Tankstelle", isPending: true, isFetched: true)
+		let booked = Transaction(accountID: giro.id, bookingDate: day.adding(days: -3), amountMinor: 20_000, name: "Beispiel GmbH", purpose: "Gehalt",
+			isFetched: true, sourceID: "bank:1")
+		try store.save(giro)
+		try store.save([pending, booked])
+		var closedGiro = giro
+		closedGiro.isClosed = true
+		let closing = try store.loadLedger().closing(closedGiro, today: day)
+		try store.save([try #require(closing.entry)], accounts: [closing.account])
+		let before = try store.loadLedger()
+
+		var rows = [Transaction(accountID: giro.id, bookingDate: pending.bookingDate, amountMinor: pending.amountMinor, name: pending.name, isPending: true),
+			Transaction(accountID: giro.id, bookingDate: booked.bookingDate, amountMinor: booked.amountMinor, name: booked.name, purpose: booked.purpose, sourceID: "bank:1")]
+		switch change {
+		case "vanished pending row": rows.removeFirst()
+		case "new booking": rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: -300, name: "Kiosk"))
+		default: rows[1].amountMinor = 19_900
+		}
+		let result = RefreshResult(balance: Money(minorUnits: 45_000, currency: "EUR"), balanceDate: Date(timeIntervalSince1970: 1_794_800_000),
+			transactions: FetchedTransactions(rows: rows, from: day.adding(days: -10)))
+		let r = try store.merge(.refresh(result), into: giro.id)
+		#expect(r.added.isEmpty && r.dropped.isEmpty && r.updated.isEmpty && r.account == nil)
+		let after = try store.loadLedger()
+		#expect(after.transactions == before.transactions)
+		#expect(after.accounts == before.accounts)
+		let account = try #require(after.account(giro.id))
+		#expect(after.balance(of: account) == Money(minorUnits: 0, currency: "EUR"))
+	}
 }
+
+extension ClearingEntryExportTests {
+	@Test("A mark that names a row of another account is dropped at the import, and a mark whose row is missing stays")
+	func foreignMark() throws {
+		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline, isClosed: true)
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline, isClosed: true)
+		let row = Transaction(accountID: savings.id, bookingDate: Day(year: 2026, month: 11, day: 17), amountMinor: -1_234, name: "Clearing entry", isManual: true)
+		var marked = wallet
+		marked.clearingEntry = ClearingEntryMark(row)
+		var missing = savings
+		missing.clearingEntry = ClearingEntryMark(transactionID: UUID(), values: OriginalValues(row))
+		let file = try AllData(accounts: [marked, missing], transactions: [row]).json()
+		let read = try AllData(json: file)
+		#expect(read.accounts.first { $0.id == wallet.id }?.clearingEntry == nil)
+		#expect(read.accounts.first { $0.id == savings.id }?.clearingEntry == missing.clearingEntry)
+	}
+}
+

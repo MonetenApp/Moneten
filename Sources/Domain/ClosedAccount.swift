@@ -5,22 +5,23 @@ import Foundation
 public struct ClearingEntryMark: Hashable, Sendable, Codable {
 	public var transactionID: UUID
 	public var values: OriginalValues
-	public var currency: String
 
-	public init(transactionID: UUID, values: OriginalValues, currency: String) {
+	public init(transactionID: UUID, values: OriginalValues) {
 		self.transactionID = transactionID
 		self.values = values
-		self.currency = currency
 	}
 
 	public init(_ entry: Transaction) {
-		self.init(transactionID: entry.id, values: OriginalValues(entry), currency: entry.currency)
+		self.init(transactionID: entry.id, values: OriginalValues(entry))
 	}
 
-	/// The row has the values of the entry, no comment, and no category that the user chose. A checkmark, the mark
-	/// "new", and a category from a rule do not count, because they say that the user saw the row, not that the user changed it.
-	func isUnchanged(_ t: Transaction) -> Bool {
-		t.id == transactionID && OriginalValues(t) == values && t.currency == currency && t.comment == nil && t.categorizedBy != .manual && !t.isPending
+	/// The row is the entry in `account`, as the app inserted it: the values of the entry in the account currency, no
+	/// comment, no category that the user chose, and no source. A checkmark, the mark "new", and a category from a rule do
+	/// not count, because they say that the user saw the row, not that the user changed it. A row that a file matched
+	/// is a row of that file now.
+	func isUnchanged(_ t: Transaction, in account: Account) -> Bool {
+		t.id == transactionID && t.accountID == account.id && t.isOnlyManual && OriginalValues(t) == values && t.currency == account.currency
+			&& t.comment == nil && t.categorizedBy != .manual
 	}
 }
 
@@ -66,13 +67,22 @@ extension Ledger {
 	/// and the ID of the clearing entry of the last close while the user has not changed it. A split entry counts as
 	/// changed. The mark always goes, so an entry that stays becomes an ordinary manual row, and a later close inserts
 	/// a new entry for the balance that is left.
-	public func reopening(_ account: Account) -> (account: Account, removedEntry: UUID?) {
+	///
+	/// While the account was closed, its entry moved no derived initial balance. A kept entry of an account that follows
+	/// its bank balance moves it now, as if the user had added the entry to the open account, so the computed balance
+	/// meets the bank balance again and a later deletion of the entry moves the value back. A move beyond
+	/// `Money.maxMinorUnits` throws, so the app writes nothing.
+	public func reopening(_ account: Account, calendar: Calendar = .current) throws(InitialBalanceTooLarge) -> (account: Account, removedEntry: UUID?) {
 		var open = account
 		open.isClosed = false
 		open.clearingEntry = nil
-		guard let mark = account.clearingEntry, let t = transaction(mark.transactionID), mark.isUnchanged(t), parts(of: t.id).isEmpty else {
-			return (open, nil)
+		guard let mark = account.clearingEntry, let t = transaction(mark.transactionID), t.accountID == account.id else { return (open, nil) }
+		if mark.isUnchanged(t, in: account), parts(of: t.id).isEmpty { return (open, t.id) }
+		if open.followsBankBalance, let date = open.bankBalanceDate {
+			let move = open.moveForManualRows([(old: nil, new: t)], through: Day(date, calendar: calendar))
+			guard let value = Int64(limitedAmount: Int128(open.initialBalanceMinor) + move) else { throw InitialBalanceTooLarge(accountName: account.name) }
+			open.initialBalanceMinor = value
 		}
-		return (open, t.id)
+		return (open, nil)
 	}
 }

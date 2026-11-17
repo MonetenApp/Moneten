@@ -115,6 +115,10 @@ public struct Reconciliation: Sendable, Equatable {
 /// and, from a file, the comment and a category set by hand.
 public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
+	// A closed account is left out of every refresh. A refresh that was already running when the user closed the account
+	// still delivers, and its rows, its balance, and its pending rows must not undo the clearing entry. The check runs in the
+	// write of the merge, so no delivery passes it after the close was stored.
+	if delivery.isFetched, account.isClosed { return Reconciliation() }
 	// No bank delivers a row that the user added by hand, so a refresh never pairs one: a delivered row with its
 	// day, amount, and purpose is another booking. A file still pairs it, so the same cash rows from a file add no copies,
 	// and from then on the row is a booking of that file, which the refresh pairs.

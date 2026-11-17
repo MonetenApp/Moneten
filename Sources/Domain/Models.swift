@@ -188,9 +188,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// A refresh derived the initial balance and the user entered none since, so a manual row in the bank balance
 	/// moves it by its own change, and a refresh whose new day passes a manual row sets it by the rule of the first refresh.
-	/// A closed account shows its computed balance, so its clearing entry and every edit while it is closed change that
-	/// balance, and the initial balance stays for a reopen.
-	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived && !isClosed }
+	/// While the account is closed, its clearing entry stays out of this rule (`Ledger.followingBankBalance`), so the entry
+	/// brings the computed balance to zero. A kept entry moves the value at the reopen (`Ledger.reopening(_:)`).
+	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived }
 
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that
 	/// day. Pending rows are not in it, with or without review, because a bank reports its booked balance.

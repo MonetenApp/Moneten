@@ -370,7 +370,8 @@ final class AppModel {
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
-			guard let self else { return }
+			// A refresh that ran while the user closed the account delivers nothing into it. The merge checks it again in its write.
+			guard let self, self.ledger.account(accountID)?.isClosed != true else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 			if let kind = self.ledger.account(accountID)?.kind {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
@@ -1095,7 +1096,7 @@ final class AppModel {
 			if account.isClosed, wasClosed == false {
 				(saved, entry) = try ledger.closing(account, today: .today())
 			} else if !account.isClosed, wasClosed == true {
-				(saved, removed) = ledger.reopening(account)
+				(saved, removed) = try ledger.reopening(account)
 			}
 			if let entry {
 				try store.save([entry], accounts: [saved])
@@ -1105,6 +1106,8 @@ final class AppModel {
 				try store.save(saved)
 			}
 			ledgerChange = "account closed=\(saved.isClosed) entry=\(entry != nil) removed=\(removed != nil)"
+			// A closed account takes no refresh: it leaves the refreshes that wait, and the merge drops what a running one delivers.
+			if saved.isClosed, wasClosed == false { sync.leaveOut(account: saved.id) }
 			ledger.upsert(saved)
 			if let value = saved.portfolioValue() { ledger.record(value) }
 			if let entry { ledger.update([entry]) }
