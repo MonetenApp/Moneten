@@ -2,7 +2,7 @@
 
 ## Context
 
-This design covers the languages of the interface and the completion of a partly typed date. The other requirements of the change, such as amount entry and the groups of an IBAN, get their design before their tasks are built.
+This design covers the languages of the interface, the completion of a partly typed date, and the relative day names of a refresh. The other requirements of the change, such as amount entry and the groups of an IBAN, get their design before their tasks are built.
 
 Today every text of the interface is English. SwiftUI already looks up the literal labels of `Text`, `Button`, and similar views, but the app has no translation, so the lookup finds nothing. Many texts are not looked up at all: a `String` built in code, an alert of the app, the title of a notification, and the messages that the libraries `Domain`, `Sync`, `Storage`, `Import`, `FinTS`, `ExtensionHost`, `ExtensionConnector`, and `ExtensionCatalog` write for the user.
 
@@ -118,6 +118,18 @@ A typed day that is less than today's day moves one month forward. A typed day a
 ### A moved date that does not exist
 
 The completion works on the numbers of the day and the month and checks the date only at the end. A date that does not exist after the move is refused like any impossible date, and the field stays in editing. On 9 March 2027, "30" gives 30.02.2027, which does not exist. The app does not move it by another month, because a second move would pick a date that the user did not type, and a marked field shows the problem at once.
+
+### Relative day names of a refresh
+
+`Format.dayAndTime(_:now:calendar:locale:)` in `Sources/Domain/RelativeDay.swift` writes the time of the last refresh and of the bank balance. It is pure: today, the calendar with its time zone, and the locale are parameters, so the tests fix all three. It counts calendar days between the starts of the two days in the calendar, not periods of 24 hours, so a refresh at 23:59 is "Yesterday" one minute after midnight, and a day of 23 or 25 hours at a change of daylight saving time still counts as one day. The day difference picks the form:
+
+- 0 is "Today" with the time, and 1 is "Yesterday" with the time.
+- 2 to 6, and every day after today, is the weekday of the locale with the time.
+- 7 or more is the date alone, in the style of `Format.day` with a four-digit year.
+
+The time is the short time of the locale without seconds. The weekday comes from the locale, so a German interface on a German Mac shows "Samstag". The catalog holds "Today, %@" and "Yesterday, %@", and the weekday form uses the existing entry "%@, %@".
+
+"Tomorrow", a number of days ago ("vor 3 Tagen"), and a number of days ahead ("in 3 Tagen") belong to the label of the next execution of a scheduled order. That label comes with the change `add-payment-outbox` in v0.2: "Today", "Yesterday", and "Tomorrow" for a difference of up to one day, the number of days from 2 to 999 days, and no label beyond. This change builds none of it, because nothing would call it.
 
 ## Risks / Trade-offs
 

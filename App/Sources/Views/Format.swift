@@ -49,14 +49,6 @@ extension Format {
 		return d.noon.formatted(style)
 	}
 
-	/// "Today, 09:41", "Yesterday, 21:19", or the date and the time.
-	static func dayAndTime(_ date: Date, calendar: Calendar = .current) -> String {
-		let time = date.formatted(date: .omitted, time: .shortened)
-		if calendar.isDateInToday(date) { return String(localized: "Today, \(time)") }
-		if calendar.isDateInYesterday(date) { return String(localized: "Yesterday, \(time)") }
-		return date.formatted(date: .abbreviated, time: .shortened)
-	}
-
 	/// The month and year of a day, read from noon GMT as `day` reads it.
 	static func monthTitle(_ d: Day) -> String {
 		var style = Date.FormatStyle.dateTime.month(.wide).year()
