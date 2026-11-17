@@ -24,15 +24,15 @@ enum CommerzbankGroup {
 	static let longestTAN = 15
 
 	/// The field of a typed TAN of the method `method`, whose bank parameters announce `maxLength` characters. The photoTAN
-	/// of Commerzbank (a code with "900") has at least 7 characters and at most the announced length, counted between 7
-	/// and 15. The photoTAN of comdirect (a code with "902") has 6 or 7. Every other method keeps a field without a length.
+	/// of Commerzbank (the method 900) has at least 7 digits and at most the announced length, counted between 7 and 15.
+	/// The photoTAN of comdirect (the method 902) has 6 or 7 digits. Both take digits only, so a blank or another character
+	/// never counts toward the length. Every other method keeps a field without a length.
 	static func tanField(method: String?, maxLength: Int?, server: URL?) -> TANField {
-		guard let method else { return TANField() }
-		if FinTSServer.isCommerzbank(server), method.contains("900") {
-			return TANField(length: 7...min(max(maxLength ?? longestTAN, 7), longestTAN))
+		if FinTSServer.isCommerzbank(server), method == "900" {
+			return TANField(length: 7...min(max(maxLength ?? longestTAN, 7), longestTAN), isNumeric: true)
 		}
-		if FinTSServer.isComdirect(server), method.contains("902") {
-			return TANField(length: 6...7)
+		if FinTSServer.isComdirect(server), method == "902" {
+			return TANField(length: 6...7, isNumeric: true)
 		}
 		return TANField()
 	}

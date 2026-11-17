@@ -638,20 +638,27 @@ The app SHALL show the text and the return code that the bank sends when the ban
 
 ### Requirement: Send a request to comdirect again when comdirect asks for it
 
-The app SHALL send the requests of an account to the FinTS server `fints.comdirect.de` a second time, once, when comdirect answers them with a text that contains "Bitte senden Sie die Anfrage erneut", instead of failing the account. The account fails with the text of the bank only when the second answer contains that text again.
+The app SHALL send a request of a refresh to the FinTS server `fints.comdirect.de` a second time, once, in a dialog of its own, when comdirect answers it with a text that contains "Bitte senden Sie die Anfrage erneut" and the request needs no TAN. A request needs no TAN when the PIN/TAN parameters of the bank mark it so and it asks for no full history. Any other request, and a second answer with that text in an error, fails its account with the text of the bank.
 
 #### Scenario: Second answer succeeds
 
-- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
 - **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
 - **THEN** the app sends the request a second time
 - **AND** the transactions of the second answer are stored, and the account shows no error
 
 #### Scenario: Second answer is the same
 
-- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
 - **WHEN** comdirect answers the transaction request twice with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
 - **THEN** the app sends no third request
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: Request that needs a TAN
+
+- **GIVEN** the first refresh of a comdirect account at `fints.comdirect.de`, which asks for the full history
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request and asks for no second TAN
 - **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
 
 #### Scenario: Another bank
@@ -659,6 +666,17 @@ The app SHALL send the requests of an account to the FinTS server `fints.comdire
 - **GIVEN** a refresh at the FinTS server of "Musterbank"
 - **WHEN** the bank answers the transaction request with the text "Bitte senden Sie die Anfrage erneut."
 - **THEN** the app sends no second request, and the account fails with that text
+
+### Requirement: Keep the other accounts when the second request to comdirect fails
+
+The app SHALL fail only the accounts with a request in the second dialog with comdirect when that dialog fails, and keep the answers of the first dialog for the other accounts of the refresh.
+
+#### Scenario: Second dialog fails
+
+- **GIVEN** a refresh of the comdirect accounts "Girokonto" and "Tagesgeld", in which comdirect asked to send the transaction request of "Girokonto" again
+- **WHEN** the second dialog fails with the code 9800 and the text "Dialog abgebrochen"
+- **THEN** "Girokonto" fails with "Dialog abgebrochen"
+- **AND** "Tagesgeld" keeps the transactions of the first answer
 
 ### Requirement: Handle a PIN change that the bank requires
 

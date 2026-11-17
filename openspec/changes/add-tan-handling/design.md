@@ -30,7 +30,7 @@ hbci4java leaves out the flicker code when the challenge data of the bank does n
 
 ### TAN length of Commerzbank and comdirect
 
-The helper sends with each typed TAN request the code of its method (`current`) and the maximum TAN length that the bank parameters (HITANS) announce for it (`maxLength`). `CommerzbankGroup.tanField` in `Sources/FinTS` turns them into the `TANField` of the request: for a method whose code contains "900" on a server of Commerzbank, 7 characters up to the announced length, which counts between 7 and 15, and 15 when the bank announces none; for a method whose code contains "902" on the server of comdirect, 6 or 7 characters. The photoTAN app of Commerzbank shows 7 characters and the bank announces more, so the announced length alone would let a 6 character TAN through. Every other method keeps the field without a length, as before.
+The helper sends with each typed TAN request the code of its method (`current`) and the maximum TAN length that the bank parameters (HITANS) announce for it (`maxLength`). `CommerzbankGroup.tanField` in `Sources/FinTS` turns them into the `TANField` of the request: for the method 900 on a server of Commerzbank, 7 digits up to the announced length, which counts between 7 and 15, and 15 when the bank announces none; for the method 902 on the server of comdirect, 6 or 7 digits. Both fields are numeric, so a blank or another character never counts toward the length. The photoTAN app of Commerzbank shows 7 characters and the bank announces more, so the announced length alone would let a 6 character TAN through. Every other method keeps the field without a length, as before.
 
 ## Deviations from the spec
 

@@ -162,7 +162,7 @@ The app SHALL offer a field for the TAN when the method needs a typed TAN. The b
 
 ### Requirement: TAN length of Commerzbank and comdirect
 
-The app SHALL accept a typed TAN of at least 7 characters for a TAN method whose code contains "900" on the FinTS host `fints.commerzbank.de` or `hbci.commerzbank.de`, up to the length that the bank parameters announce for the method, between 7 and 15. The app SHALL accept a typed TAN of 6 or 7 characters for a TAN method whose code contains "902" on the FinTS host `fints.comdirect.de`. A longer entry stops at the upper length. Every other TAN method keeps a field without a length.
+The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank and comdirect: at least 7 digits for the method 900 on `fints.commerzbank.de` or `hbci.commerzbank.de`, up to the announced length between 7 and 15, and 6 or 7 digits for the method 902 on `fints.comdirect.de`. The field drops blanks and other characters and stops at the upper length. Other methods keep a field without a length.
 
 #### Scenario: Commerzbank photoTAN
 
@@ -179,6 +179,14 @@ The app SHALL accept a typed TAN of at least 7 characters for a TAN method whose
 - **GIVEN** a TAN request of comdirect for the method 902
 - **WHEN** the user types "12345678"
 - **THEN** the field holds "1234567" and "Continue" is enabled
+
+#### Scenario: Blanks in a photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types seven blanks
+- **THEN** the field stays empty and "Continue" stays disabled
+- **WHEN** the user types "123 456 7"
+- **THEN** the field holds "1234567"
 
 #### Scenario: Another bank with the same method code
 

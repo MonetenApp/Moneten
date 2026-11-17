@@ -449,6 +449,8 @@ public class FinTSHelper {
 		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart. A
 		/// savings bank needs no rule here: the state stores the 17 digits as both IDs, which are the same text,
 		/// and the customer ID follows the 16 digits of the command.
+		/// Commerzbank needs none either: the state stores the 8 digits of a participant number as both IDs, and the
+		/// customer ID follows the 10 digits of the command.
 		static boolean sameLogin(String customerId, String userId, String host) {
 			if (customerId == null || userId == null) return false;
 			if (customerId.equals(userId)) return true;
@@ -1314,7 +1316,7 @@ public class FinTSHelper {
 		callback.withdrawApproval();
 		callback.checkSwitch();
 		requireLogin(status);
-		all = CommerzbankGroup.again(handle, accounts, all, callback);
+		all = CommerzbankGroup.again(handle, passport.getBPD(), accounts, all, callback);
 		for (Jobs jobs : all) {
 			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
 			if (card != null) {

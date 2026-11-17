@@ -89,20 +89,32 @@ struct CommerzbankGroupTests {
 	@Test("A photoTAN of Commerzbank has at least 7 characters and at most the announced length, of comdirect 6 or 7, and other methods any length")
 	func tanField() throws {
 		let commerzbank = CommerzbankGroup.tanField(method: "900", maxLength: 10, server: URL(string: Self.commerzbankURL))
-		#expect(commerzbank == TANField(length: 7...10))
+		#expect(commerzbank == TANField(length: 7...10, isNumeric: true))
 		#expect(!commerzbank.isComplete("123456"))
 		#expect(commerzbank.isComplete("1234567"))
 		#expect(commerzbank.accept("12345678901") == "1234567890")
-		#expect(CommerzbankGroup.tanField(method: "900", maxLength: nil, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...15))
-		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 6, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...7))
-		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 99, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...15))
-		#expect(CommerzbankGroup.tanField(method: "S900", maxLength: 8, server: URL(string: "https://hbci.commerzbank.de/")) == TANField(length: 7...8))
+		#expect(CommerzbankGroup.tanField(method: "900", maxLength: nil, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...15, isNumeric: true))
+		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 6, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...7, isNumeric: true))
+		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 99, server: URL(string: Self.commerzbankURL)) == TANField(length: 7...15, isNumeric: true))
+		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 8, server: URL(string: "https://hbci.commerzbank.de/")) == TANField(length: 7...8, isNumeric: true))
+		// Only the code itself counts, not a longer code that holds it.
+		#expect(CommerzbankGroup.tanField(method: "9001", maxLength: 8, server: URL(string: Self.commerzbankURL)) == TANField())
+		#expect(CommerzbankGroup.tanField(method: "1902", maxLength: 8, server: URL(string: Self.comdirectURL)) == TANField())
 
 		let comdirect = CommerzbankGroup.tanField(method: "902", maxLength: 10, server: URL(string: Self.comdirectURL))
-		#expect(comdirect == TANField(length: 6...7))
+		#expect(comdirect == TANField(length: 6...7, isNumeric: true))
 		#expect(comdirect.accept("12345678") == "1234567")
 		#expect(comdirect.isComplete("123456"))
 		#expect(!comdirect.isComplete("12345"))
+
+		// A photoTAN has digits only: blanks and other characters never count, so seven spaces do not enable "Continue".
+		for field in [commerzbank, comdirect] {
+			#expect(field.accept("       ") == "")
+			#expect(!field.isComplete(field.accept("       ")))
+			#expect(!field.isComplete(field.accept("")))
+			#expect(field.accept(" 123 456 7 ") == "1234567")
+			#expect(field.accept("12a3456-7") == "1234567")
+		}
 
 		#expect(CommerzbankGroup.tanField(method: "902", maxLength: 10, server: URL(string: Self.commerzbankURL)) == TANField())
 		#expect(CommerzbankGroup.tanField(method: "900", maxLength: 10, server: URL(string: Self.comdirectURL)) == TANField())
@@ -126,8 +138,8 @@ extension FinTSConnectorTests {
 
 	@Test("The TAN request of a photoTAN of Commerzbank and of comdirect gets the TAN length of the bank, another bank none",
 		arguments: [
-			(CommerzbankGroupTests.commerzbankURL, "900", TANField(length: 7...10)),
-			(CommerzbankGroupTests.comdirectURL, "902", TANField(length: 6...7)),
+			(CommerzbankGroupTests.commerzbankURL, "900", TANField(length: 7...10, isNumeric: true)),
+			(CommerzbankGroupTests.comdirectURL, "902", TANField(length: 6...7, isNumeric: true)),
 			("https://fints.example.com/fints", "900", TANField()),
 		])
 	func photoTANLength(url: String, method: String, field: TANField) async throws {

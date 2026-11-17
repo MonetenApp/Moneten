@@ -1,6 +1,9 @@
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import org.kapott.hbci.exceptions.AbortedException;
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.status.HBCIExecStatus;
@@ -44,48 +47,92 @@ final class CommerzbankGroup {
 		return null;
 	}
 
-	/// The answer of the jobs of one account that asks to send them again, or null.
-	static HBCIRetVal resend(FinTSHelper.Jobs jobs) {
-		for (HBCIJob job : new HBCIJob[] {jobs.balance(), jobs.statements(), jobs.card(), jobs.holdings()}) {
-			HBCIRetVal r = job == null ? null : resend(job.getJobResult());
-			if (r != null) return r;
+	/// The segment of each job that a refresh sends, by which the bank parameters say whether it needs a TAN.
+	static final Map<String, String> SEGMENTS = Map.of("SaldoReq", "HKSAL", "KUmsAll", "HKKAZ", "KUmsAllCamt", "HKCAZ",
+		"KreditkartenUmsatz", "DKKKU", "WPDepotList", "HKWPD");
+
+	/// Whether the job `name` needs no TAN in a dialog of its own: the PIN/TAN parameters of the bank (HIPINS) list its
+	/// segment with "N", and it asks for no full history, for which a bank asks a TAN for transactions older than 90
+	/// days. A job that the parameters do not list counts as one that needs a TAN.
+	static boolean tanFree(Properties bpd, String name, String from) {
+		String segment = SEGMENTS.get(name);
+		if (segment == null || bpd == null || (from == null && !name.equals("SaldoReq") && !name.equals("WPDepotList"))) return false;
+		for (String key : bpd.stringPropertyNames()) {
+			if (!key.contains(".ParPinTan.PinTanGV") || !key.endsWith(".segcode") || !segment.equals(bpd.getProperty(key))) continue;
+			return "N".equals(bpd.getProperty(key.substring(0, key.length() - "segcode".length()) + "needtan"));
 		}
-		return null;
+		return false;
 	}
 
-	/// The jobs of the refresh after comdirect asked to send the requests of some accounts again. Those accounts get
-	/// their jobs once more in a second dialog, and the other accounts keep their answers. An account whose second
-	/// answer asks again fails with that answer, and its jobs leave the list. Another bank, and a dialog in which
-	/// comdirect asked nothing again, keep `all` as it is.
-	static List<FinTSHelper.Jobs> again(FinTSHelper.Orders handle, Konto[] accounts, List<FinTSHelper.Jobs> all, FinTSHelper.Callback callback) {
+	/// The jobs of the refresh after comdirect asked to send some of them again (#229). A job whose answer asks for it
+	/// and that needs no TAN (`tanFree`) goes to the bank once more in a second dialog, so the refresh asks for no second
+	/// TAN for an order. The second dialog starts with a login of its own, for which comdirect may still ask for a TAN.
+	/// Every other job keeps its first answer, which the result reports as it reports any answer: a job that the bank
+	/// did not carry out fails its account with the text and code of the bank, and a job that it carried out with that
+	/// text as a warning keeps its data. A second answer counts the same way, and no job goes a third time. When the second
+	/// dialog fails, only the accounts with a job in it fail, with that error, and the other accounts keep their answers.
+	/// A cancel and a change of the TAN method end or restart the run, as in the first dialog. Another bank, and a
+	/// dialog in which comdirect asked nothing again, keep `all` as it is. A refresh sends no transfer, so no transfer
+	/// takes this path.
+	static List<FinTSHelper.Jobs> again(FinTSHelper.Orders handle, Properties bpd, Konto[] accounts, List<FinTSHelper.Jobs> all,
+		FinTSHelper.Callback callback) {
 		if (!comdirect(FinTSHelper.Callback.server)) return all;
 		List<FinTSHelper.Jobs> result = new ArrayList<>(all);
-		boolean[] queued = new boolean[result.size()];
+		boolean[] sent = new boolean[all.size()];
 		boolean any = false;
-		for (int i = 0; i < result.size(); i++) {
-			FinTSHelper.Jobs jobs = result.get(i);
-			Konto k = resend(jobs) == null ? null : FinTSHelper.find(accounts, jobs.id());
+		for (int i = 0; i < all.size(); i++) {
+			FinTSHelper.Jobs jobs = all.get(i);
+			Konto k = FinTSHelper.find(accounts, jobs.id());
 			if (k == null) continue;
-			result.set(i, FinTSHelper.queue(handle, k, jobs.id(), jobs.from(), callback, i));
-			queued[i] = true;
-			any = true;
+			HBCIJob[] slots = {jobs.balance(), jobs.statements(), jobs.card(), jobs.holdings()};
+			for (int slot = 0; slot < slots.length; slot++) {
+				String name = name(handle, k, slot);
+				if (slots[slot] == null || name == null || resend(slots[slot].getJobResult()) == null || !tanFree(bpd, name, jobs.from())) continue;
+				HBCIJob job = handle.newJob(name);
+				FinTSHelper.prepare(job, name, k, jobs.from());
+				job.addToQueue();
+				callback.jobs.put(job, i);
+				slots[slot] = job;
+				sent[i] = true;
+				any = true;
+			}
+			if (sent[i]) result.set(i, new FinTSHelper.Jobs(jobs.id(), jobs.from(), jobs.currency(), slots[0], slots[1], slots[2], slots[3]));
 		}
 		if (!any) return all;
 		FinTSHelper.diagnostic("FinTSHelper: comdirect asked to send the request again");
-		HBCIExecStatus status = handle.execute();
-		callback.withdrawApproval();
-		callback.checkSwitch();
-		FinTSHelper.requireLogin(status);
-		List<FinTSHelper.Jobs> answered = new ArrayList<>();
-		for (int i = 0; i < result.size(); i++) {
-			HBCIRetVal r = queued[i] ? resend(result.get(i)) : null;
-			if (r == null) {
-				answered.add(result.get(i));
-				continue;
+		try {
+			HBCIExecStatus status = handle.execute();
+			callback.withdrawApproval();
+			callback.checkSwitch();
+			FinTSHelper.requireLogin(status);
+		} catch (RuntimeException e) {
+			for (Throwable t : FinTSHelper.causes(e)) {
+				if (t instanceof FinTSHelper.SwitchMethod || t instanceof FinTSHelper.SkipHistory || t instanceof AbortedException) throw e;
 			}
-			FinTSHelper.send(FinTSHelper.message("result", "account", result.get(i).id(), "errors",
-				List.of(FinTSHelper.message("error", "code", r.code, "text", Out.withoutSecrets(r.text)))));
+			List<FinTSHelper.Jobs> answered = new ArrayList<>();
+			for (int i = 0; i < all.size(); i++) {
+				if (!sent[i]) {
+					answered.add(all.get(i));
+					continue;
+				}
+				Map<String, Object> failed = FinTSHelper.failure(e);
+				failed.put("type", "accountFailed");
+				failed.put("account", all.get(i).id());
+				FinTSHelper.send(failed);
+			}
+			return answered;
 		}
-		return answered;
+		return result;
+	}
+
+	/// The name of the job in `slot` of FinTSHelper.Jobs (the balance, the transactions, the card statement, the holdings)
+	/// for the account `k`.
+	static String name(FinTSHelper.Orders handle, Konto k, int slot) {
+		return switch (slot) {
+			case 0 -> "SaldoReq";
+			case 1 -> handle.jobs(k).stream().filter(n -> n.startsWith("KUmsAll")).findFirst().orElse(null);
+			case 2 -> "KreditkartenUmsatz";
+			default -> "WPDepotList";
+		};
 	}
 }
