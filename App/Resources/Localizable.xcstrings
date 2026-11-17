@@ -6691,6 +6691,16 @@
         }
       }
     },
+    "Not a valid date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein gültiges Datum"
+          }
+        }
+      }
+    },
     "Not imported" : {
       "localizations" : {
         "de" : {
@@ -8233,6 +8243,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Balkendiagramm anzeigen"
+          }
+        }
+      }
+    },
+    "Show Calendar" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kalender anzeigen"
           }
         }
       }

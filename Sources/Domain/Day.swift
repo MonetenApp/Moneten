@@ -17,9 +17,10 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 		return (1...length).contains(day) ? Day(year: year, month: month, day: day) : nil
 	}
 
-	/// The day of a point in time in the given calendar.
+	/// The day of a point in time in the time zone of the given calendar. A day is always Gregorian, so a Mac set to
+	/// the Buddhist calendar still gets 2026 and not 2569.
 	public init(_ date: Date, calendar: Calendar = .current) {
-		let c = calendar.dateComponents([.year, .month, .day], from: date)
+		let c = Self.gregorian(calendar).dateComponents([.year, .month, .day], from: date)
 		self.init(year: c.year!, month: c.month!, day: c.day!)
 	}
 
@@ -43,15 +44,25 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 	public var day: Int { rawValue % 100 }
 
 	public func date(in calendar: Calendar = .current) -> Date {
-		calendar.date(from: DateComponents(year: year, month: month, day: day))!
+		Self.gregorian(calendar).date(from: DateComponents(year: year, month: month, day: day))!
 	}
 
 	public func adding(days: Int, calendar: Calendar = .current) -> Day {
-		Day(calendar.date(byAdding: .day, value: days, to: date(in: calendar))!, calendar: calendar)
+		let gregorian = Self.gregorian(calendar)
+		return Day(gregorian.date(byAdding: .day, value: days, to: date(in: gregorian))!, calendar: gregorian)
 	}
 
 	public func adding(months: Int, calendar: Calendar = .current) -> Day {
-		Day(calendar.date(byAdding: .month, value: months, to: date(in: calendar))!, calendar: calendar)
+		let gregorian = Self.gregorian(calendar)
+		return Day(gregorian.date(byAdding: .month, value: months, to: date(in: gregorian))!, calendar: gregorian)
+	}
+
+	/// The Gregorian calendar in the time zone of `calendar`, which a day counts in.
+	private static func gregorian(_ calendar: Calendar) -> Calendar {
+		guard calendar.identifier != .gregorian else { return calendar }
+		var gregorian = Calendar(identifier: .gregorian)
+		gregorian.timeZone = calendar.timeZone
+		return gregorian
 	}
 
 	/// The algorithm `days_from_civil` of Howard Hinnant.
@@ -82,6 +93,34 @@ public struct Day: Hashable, Comparable, Sendable, Codable, CustomStringConverti
 	public func encode(to encoder: Encoder) throws {
 		var c = encoder.singleValueContainer()
 		try c.encode(rawValue)
+	}
+}
+
+extension Day {
+	private static let gmt = TimeZone(identifier: "GMT")!
+	private static let bridge: Calendar = {
+		var calendar = Calendar(identifier: .gregorian)
+		calendar.timeZone = gmt
+		return calendar
+	}()
+
+	/// Noon GMT of the day, the date that a formatter or a calendar of the interface gets for a day. Local midnight
+	/// does not exist on every day: Samoa skipped 30 December 2011, and its midnight turned into the 31st. Noon GMT
+	/// exists on every day, and `calendar(like:)` reads it back as the same day.
+	public var noon: Date {
+		Self.bridge.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+	}
+
+	/// The day of a date from `noon`, or the day in GMT of a date that a calendar of the interface set.
+	public init(noon date: Date) {
+		self.init(date, calendar: Self.bridge)
+	}
+
+	/// A calendar like the one of the user, with its kind and its first weekday, in GMT, which shows `noon` on its day.
+	public static func calendar(like calendar: Calendar) -> Calendar {
+		var shown = calendar
+		shown.timeZone = gmt
+		return shown
 	}
 }
 
