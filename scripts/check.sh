@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs every repository check: documentation links and paths, the window chrome rule, the time limits of the
-# tests, the changelog, OpenSpec, unused code, the German translation, the tests, and the replays of the example
+# tests, the changelog, the bank data script, OpenSpec, unused code, the German translation, the tests, and the replays of the example
 # extension and of three published extensions.
 set -e
 cd "$(dirname "$0")/.."
@@ -10,6 +10,7 @@ python3 scripts/check-time-limits.py
 python3 scripts/test-check-time-limits.py
 python3 scripts/release-notes.py check
 python3 scripts/test-release-notes.py
+python3 scripts/test-bank-data.py
 openspec validate --all --strict --no-interactive
 scripts/generate-project.sh
 # Periphery's own build folder is named after the project, not the checkout, so all worktrees would

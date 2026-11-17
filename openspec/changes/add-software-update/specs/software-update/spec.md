@@ -216,13 +216,19 @@ The app SHALL keep the running version intact when an update cannot be installed
 
 ### Requirement: Ask to move the app to the Applications folder
 
-The app SHALL refuse to update itself while macOS runs it from a temporary, read-only location, and it SHALL ask the user to move the application file to the Applications folder first.
+The app SHALL refuse to update itself while macOS runs it from a temporary, read-only location, and it SHALL ask the user to move the application file to the Applications folder first when the user checks for updates.
 
 #### Scenario: Started from the Downloads folder
 
 - **GIVEN** the user started the app from the Downloads folder right after the download
-- **WHEN** the user chooses "Install" in the update window
+- **WHEN** the user chooses "Check for Updates..."
 - **THEN** the app asks the user to drag the application file to the Applications folder and to start the update from there
+
+#### Scenario: Automatic check from the Downloads folder
+
+- **GIVEN** the user started the app from the Downloads folder right after the download
+- **WHEN** the app checks for updates automatically
+- **THEN** the app shows no message and loads no update feed
 
 ### Requirement: Warn about several copies
 
@@ -306,7 +312,7 @@ The app SHALL send only the version of the app, the version of macOS, and the pr
 
 ### Requirement: Bank data files update between releases
 
-The app SHALL update its list of banks with their server addresses and its BIC directory between releases of the app. It looks for new files at most once a day, installs a file only when its signature was made with the update key of the project, and keeps its current files otherwise.
+The app SHALL update its list of banks with their server addresses and its BIC directory between releases of the app. It looks for new files at most once a day, also when the setting "Show notification about new versions of Moneten" is off, and no setting turns this off. It installs a file only when its signature was made with the update key of the project and the file is newer than both its installed file and the file that its own version brings, and it keeps its current files otherwise.
 
 #### Scenario: Bank changes its server address
 
@@ -314,11 +320,40 @@ The app SHALL update its list of banks with their server addresses and its BIC d
 - **WHEN** the app has run for a day
 - **THEN** the app uses the new address without an update of the app
 
+#### Scenario: Notifications about new versions off
+
+- **GIVEN** the setting "Show notification about new versions of Moneten" is off
+- **WHEN** the user starts the app and uses it for two days
+- **THEN** the app sends no request for a new version
+- **AND** the app asks once a day for a new bank list
+
 #### Scenario: Unsigned file
 
 - **WHEN** the app downloads a bank list with a wrong signature
 - **THEN** the app keeps its current bank list
 - **AND** the log holds an entry about the rejected file
+
+#### Scenario: Older bank list
+
+- **GIVEN** the app installed the bank list published on 20 November 2026
+- **WHEN** the app downloads a correctly signed bank list published on 10 November 2026
+- **THEN** the app keeps the bank list of 20 November 2026
+- **AND** the log holds an entry about the rejected file
+
+#### Scenario: Server cannot be reached
+
+- **WHEN** the download of the bank list fails with a timeout
+- **THEN** the app keeps its current bank list
+- **AND** the log holds an entry about the failed download
+
+#### Scenario: New version of the app
+
+- **GIVEN** the app version 0.1.2 downloaded a bank list
+- **AND** version 0.1.3 brings a newer bank list
+- **WHEN** the user installs version 0.1.3 and starts it
+- **THEN** the app uses the bank list that version 0.1.3 brings
+- **AND** the app looks for a new bank list at this start
+- **AND** the app installs no bank list that is older than the one of version 0.1.3
 
 ### Requirement: Mark pre-release versions
 

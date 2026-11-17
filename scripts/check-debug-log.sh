@@ -20,6 +20,8 @@
 # The check also opens CSV previews, one that fails and one whose rows go to another account that the import
 # asks about, and reads their state and rows. The handoff compares the sums of the stored amounts and days with
 # the sums the check expects, so the log says "ok" or "differs" and never holds an amount.
+# Before a key or a text goes to a sheet, the check waits until the sheet window shows ("topsheet") and the field
+# has the focus ("splitui focus=amount", "focusfield"), because a loaded Mac shows them a moment after the model state.
 # The app runs with a temporary data folder and a password, so it never opens the real database and
 # leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
 # Each run has a bundle ID of its own, whose settings the end of the run deletes, so runs from several
@@ -265,6 +267,7 @@ poll "^csv state .*canImport=true" csv state
 poll "^menucommands enabled=true transferring=true migration=false$" menucommands
 poll "^csv rows" csv rows
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+poll "^topsheet shown=true$" topsheet
 start=$(lines)
 send key return
 from=$start
@@ -272,6 +275,7 @@ poll "^importfile done" state
 poll "^alert " alert
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
+poll "^topsheet shown=true$" topsheet
 start=$(lines)
 send key return
 from=$start
@@ -331,6 +335,7 @@ printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tanks
 send importfile "$WORK/Kontoauszug.csv"
 poll "^csv state .*problem=line line=3 " csv state
 poll "^csv rows" csv rows
+poll "^topsheet shown=true$" topsheet
 start=$(lines)
 send key escape
 from=$start
@@ -362,11 +367,19 @@ poll "^ext prompt login" extprompt
 poll "^status line=set " status
 send extlogin "$LOGIN|check-debug-log"
 poll "^ext account giro rows=0 balance=ok" extstate 81547
+# A refresh that comes while the access still refreshes adds nothing and is dropped, so each refresh waits for the run
+# before it to end. A line that a send writes once is looked for from before that send, as it can come before the poll.
+poll "^ext access 0 source=extension state=finished$" extstate
+start=$(lines)
 send extrefresh "Check||"
+from=$start
 poll "^ext print extension=$(digest Check) " extstate
+poll "^ext access 0 source=extension state=finished$" extstate
 send extrefresh "Check||"
 poll "^ext access [0-9] source=extension state=failed" extstate
+start=$(lines)
 send extrun "$WORK/Check.lua|Result|"
+from=$start
 poll "^ext result" state
 from=$(lines)
 send extrun "$WORK/Check.lua|Fail|"
@@ -400,37 +413,46 @@ poll "^seed done$" state
 send select Girokonto
 send search Stadtwerke
 poll "^phase=.*visible=[1-9][0-9]* " state
+# Each "type" into the split sheet waits for the amount field to have the focus, which comes a moment after the
+# sheet shows. Text typed before that goes nowhere, and the poll for "Next Split" times out on a loaded Mac.
 send sheet split
-poll "^splitui amountLabel=true nextLabel=true nextEnabled=false .*sheet=split$" splitui
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=false .*focus=amount sheet=split$" splitui
 send type 25,00
 poll "^splitui amountLabel=true nextLabel=true nextEnabled=true .*sheet=split$" splitui
 send splitnext
-poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
+poll "^splitui .*nextEnabled=false .*focus=amount sheet=split$" splitui
 send key tab
 send key return
 poll "^splitstate parts=2 .*sheet=none$" splitstate
 send selectRows 2
 poll "^deleteparts refused=true selected=2$" deleteparts
 send alert
+poll "^topsheet shown=false$" topsheet
 poll "^undosplit sheet=undoSplit$" undosplit
+poll "^topsheet shown=true$" topsheet
 send key escape
 poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^topsheet shown=false$" topsheet
 poll "^undosplit sheet=undoSplit$" undosplit
+poll "^topsheet shown=true$" topsheet
 send key return
 poll "^splitstate parts=0 .*sheet=none$" splitstate
 for value in 0,00 89,00 abc; do
 	send sheet split
+	poll "^splitui .*nextEnabled=false .*focus=amount sheet=split$" splitui
 	send type "$value"
 	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
 	send key escape
+	# The next sheet must not find this one still closing, with its field and the focus.
+	poll "^splitui amountLabel=false .*focus=none sheet=none$" splitui
 done
 for entry in 5,00 +5,00 -5,00; do
 	send sheet split
-	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
+	poll "^splitui .*nextEnabled=false .*focus=amount sheet=split$" splitui
 	send type 100,00
 	poll "^splitui .*nextEnabled=true .*sheet=split$" splitui
 	send splitnext
-	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
+	poll "^splitui .*nextEnabled=false .*focus=amount sheet=split$" splitui
 	send type "$entry"
 	send key return
 	poll "^splitstate parts=3 .*sheet=none$" splitstate
@@ -445,13 +467,17 @@ for entry in 5,00 +5,00 -5,00; do
 	assert [part["position"] for part in parts] == [0, 1, 2]
 	EOF
 	send alert
+	poll "^topsheet shown=false$" topsheet
 	poll "^undosplit sheet=undoSplit$" undosplit
+	poll "^topsheet shown=true$" topsheet
 	send key return
 	poll "^splitstate parts=0 .*sheet=none$" splitstate
 done
 send split 7%
 poll "^splitstate parts=2 .*sheet=none$" splitstate
+poll "^topsheet shown=false$" topsheet
 poll "^undosplit sheet=undoSplit$" undosplit
+poll "^topsheet shown=true$" topsheet
 send key return
 poll "^splitstate parts=0 .*sheet=none$" splitstate
 send split 19%
@@ -461,22 +487,22 @@ send split 5,00
 poll "^splitstate parts=3 .*sheet=none$" splitstate
 send vatsettings
 poll "^vatstate rates=2 matches=true error=false$" vatstate "1900,700"
-send focusfield 0
+poll "^focusfield .*position=0 editor=true$" focusfield 0
 send type 20
 poll "^vatbutton handled=true$" vatbutton save
 poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,700,2000"
 send vatbutton change-1
-send focusfield 0
+poll "^focusfield .*position=0 editor=true$" focusfield 0
 send type 8,1
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,810,2000"
-send focusfield 0
+poll "^focusfield .*position=0 editor=true$" focusfield 0
 send type 7,125
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
 send vatbutton change-0
 send vatbutton cancel
-send focusfield 0
+poll "^focusfield .*position=0 editor=true$" focusfield 0
 send type "Erika Mustermann"
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
@@ -487,7 +513,7 @@ done
 poll "^vatstate rates=0 matches=true error=false$" vatstate
 poll "^snapshot split-menu " splitmenusnapshot
 for rate in 19 7; do
-	send focusfield 0
+	poll "^focusfield .*position=0 editor=true$" focusfield 0
 	send type "$rate"
 	send vatbutton save
 done

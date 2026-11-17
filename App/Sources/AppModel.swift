@@ -1346,9 +1346,11 @@ final class AppModel {
 	/// so that the setup and the refresh run without a bank.
 	private static func makeFinTSConnector() -> FinTSConnector {
 		#if DEBUG
-		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty { return FinTSConnector(debugHelper: path) }
+		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty {
+			return FinTSConnector(debugHelper: path, bankList: { BankDataUpdates.updater?.bankList() })
+		}
 		#endif
-		return FinTSConnector()
+		return FinTSConnector(bankList: { BankDataUpdates.updater?.bankList() })
 	}
 
 	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts", and with `enforced` the commands
@@ -1411,7 +1413,12 @@ final class AppModel {
 			}
 		}
 		pathMonitor.pathUpdateHandler = { [weak self] path in
-			MainActor.assumeIsolated { self?.autoRefresh.isOnline = path.status == .satisfied }
+			MainActor.assumeIsolated {
+				self?.autoRefresh.isOnline = path.status == .satisfied
+				// The first update that finds a connection starts the bank data, so the look at launch does
+				// not run before the app knows the state of the network.
+				if path.status == .satisfied { BankDataUpdates.start { [weak self] in self?.autoRefresh.isOnline ?? false } }
+			}
 		}
 		pathMonitor.start(queue: .main)
 	}

@@ -208,6 +208,7 @@ struct GeneralSettings: View {
 	@AppStorage(RefreshSettings.automaticRefreshKey) private var automaticRefresh = true
 	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
 	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
+	@AppStorage(AppUpdater.betaKey) private var offersPreReleases = false
 	@State private var notificationsDenied = false
 	/// Nil while the app follows macOS.
 	@State private var language = AppLanguage.stored
@@ -273,7 +274,7 @@ struct GeneralSettings: View {
 						.textSelection(.enabled)
 				}
 			}
-			UpdateSettings(updater: model.updater)
+			updateSettings
 			Section {
 				LabeledContent("License") {
 					Link("GPL 3.0 or later", destination: URL(string: "https://www.gnu.org/licenses/gpl-3.0.html")!)
@@ -295,6 +296,25 @@ struct GeneralSettings: View {
 	}
 
 	private static let notificationSettings = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!
+
+	/// The two update settings of add-software-update. The automatic check is a setting of Sparkle.
+	private var updateSettings: some View {
+		@Bindable var updater = model.updater
+		return Section {
+			Toggle("Show notification about new versions of Moneten", isOn: $updater.checksAutomatically)
+			Toggle(isOn: stored(AppUpdater.betaKey, $offersPreReleases)) {
+				Text("Participate in beta tests and display pre-release versions")
+				refusal(of: AppUpdater.betaKey)
+			}
+		} header: {
+			Text("Updates")
+		} footer: {
+			if !updater.isAvailable {
+				Text("This build of Moneten does not look for updates.").foregroundStyle(.secondary)
+			}
+		}
+		.disabled(!updater.isAvailable)
+	}
 
 	/// The language has no key of its own in `refused`: macOS reads it from `AppleLanguages`.
 	private static let languageKey = "AppleLanguages"
