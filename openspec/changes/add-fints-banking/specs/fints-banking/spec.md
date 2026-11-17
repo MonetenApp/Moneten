@@ -654,6 +654,13 @@ The app SHALL send a request of a refresh to the FinTS server `fints.comdirect.d
 - **THEN** the app sends no third request
 - **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
 
+#### Scenario: TAN for the login of the second dialog
+
+- **GIVEN** the first refresh of the comdirect accounts "Girokonto" and "Tagesgeld" asks for the full history of "Girokonto", and comdirect asked to send the transaction request of "Tagesgeld" again
+- **WHEN** comdirect asks for a photoTAN for the login of the second dialog
+- **THEN** the dialog says that the TAN allows the login, and it does not offer to skip older transactions
+- **AND** a cancel of the dialog ends the refresh of the access and starts no new one
+
 #### Scenario: Request that needs a TAN
 
 - **GIVEN** the first refresh of a comdirect account at `fints.comdirect.de`, which asks for the full history

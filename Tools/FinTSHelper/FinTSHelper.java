@@ -1316,7 +1316,7 @@ public class FinTSHelper {
 		callback.withdrawApproval();
 		callback.checkSwitch();
 		requireLogin(status);
-		all = CommerzbankGroup.again(handle, passport.getBPD(), accounts, all, callback);
+		all = CommerzbankGroup.again(handle, passport, accounts, all, callback);
 		for (Jobs jobs : all) {
 			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
 			if (card != null) {

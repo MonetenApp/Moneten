@@ -101,6 +101,8 @@ final class CommerzbankGroupSelfTest {
 		int dialogs;
 		int failingDialog;
 		RuntimeException failing;
+		/// Runs while the bank answers the dialog of the number that it gets, as hbci4java calls the callback there.
+		java.util.function.IntConsumer during = dialog -> { };
 
 		Answers on(String account, String name, HBCIJobResult... answers) {
 			this.answers.put(account + " " + name, List.of(answers));
@@ -135,6 +137,7 @@ final class CommerzbankGroupSelfTest {
 
 		public HBCIExecStatus execute() {
 			dialogs++;
+			during.accept(dialogs);
 			if (failing != null && dialogs == failingDialog) throw failing;
 			return new HBCIExecStatus();
 		}
@@ -161,18 +164,31 @@ final class CommerzbankGroupSelfTest {
 		return bpd;
 	}
 
+	/// A passport of the made-up bank with the bank parameters `bpd` in addition, after the orders of a first dialog.
+	static FinTSHelper.Passport passport(Properties bpd) {
+		FinTSHelper.Passport passport = SelfTest.passport();
+		passport.getBPD().putAll(bpd);
+		passport.jobsSent = true;
+		return passport;
+	}
+
 	/// What comes of a refresh of both accounts from `from` at `host`, whose bank parameters are `bpd`: the number of
 	/// dialogs, the lines that the helper sent before the results, and then the result of each account that is left.
 	static String again(String host, Properties bpd, String from, Answers bank) {
+		return again(host, passport(bpd), from, from, bank, new FinTSHelper.Callback(Map.of()));
+	}
+
+	/// The same with the first day of each account, the passport, and the callback of the run.
+	static String again(String host, FinTSHelper.Passport passport, String giroFrom, String savingsFrom, Answers bank, FinTSHelper.Callback callback) {
 		FinTSHelper.Callback.server = host;
-		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
 		Konto[] accounts = bank.accounts();
 		List<FinTSHelper.Jobs> all = new ArrayList<>();
-		all.add(FinTSHelper.queue(bank, accounts[0], GIRO, from, callback, 0));
-		all.add(FinTSHelper.queue(bank, accounts[1], SAVINGS, from, callback, 1));
+		all.add(FinTSHelper.queue(bank, accounts[0], GIRO, giroFrom, callback, 0));
+		all.add(FinTSHelper.queue(bank, accounts[1], SAVINGS, savingsFrom, callback, 1));
+		callback.fullHistory = all.stream().anyMatch(j -> j.statements() != null && j.from() == null);
 		bank.execute();
 		List<FinTSHelper.Jobs> after = new ArrayList<>();
-		List<String> lines = SelfTest.sent(() -> after.addAll(CommerzbankGroup.again(bank, bpd, accounts, all, callback)));
+		List<String> lines = SelfTest.sent(() -> after.addAll(CommerzbankGroup.again(bank, passport, accounts, all, callback)));
 		StringBuilder results = new StringBuilder();
 		for (FinTSHelper.Jobs jobs : after) {
 			Map<String, Object> result = FinTSHelper.result(jobs.id(), jobs.from(), null, (GVRKUms) jobs.statements().getJobResult(), false);
@@ -213,13 +229,28 @@ final class CommerzbankGroupSelfTest {
 		FinTSHelper.Jobs first = FinTSHelper.queue(balances, accounts[0], GIRO, "2026-10-01", callback, 0);
 		balances.execute();
 		List<FinTSHelper.Jobs> after = new ArrayList<>();
-		SelfTest.sent(() -> after.addAll(CommerzbankGroup.again(balances, free, accounts, List.of(first), callback)));
+		SelfTest.sent(() -> after.addAll(CommerzbankGroup.again(balances, passport(free), accounts, List.of(first), callback)));
 		SelfTest.expect("only the job that asked goes again", (after.get(0).balance() == first.balance()) + " " + (after.get(0).statements() != first.statements()),
 			"true true");
 
 		Answers failing = new Answers().on(GIRO, "KUmsAll", resend, ok);
 		failing.failingDialog = 2;
 		failing.failing = new FinTSHelper.Failure(null, "9800", "Dialog abgebrochen");
+		{
+			FinTSHelper.Callback.server = COMDIRECT;
+			FinTSHelper.Callback kept = new FinTSHelper.Callback(Map.of());
+			Konto[] both = failing.accounts();
+			Answers twice = new Answers().on(GIRO, "KUmsAll", resend, ok);
+			twice.failingDialog = 2;
+			twice.failing = failing.failing;
+			List<FinTSHelper.Jobs> all = List.of(FinTSHelper.queue(twice, both[0], GIRO, "2026-10-01", kept, 0),
+				FinTSHelper.queue(twice, both[1], SAVINGS, "2026-10-01", kept, 1));
+			twice.execute();
+			List<FinTSHelper.Jobs> left = new ArrayList<>();
+			SelfTest.sent(() -> left.addAll(CommerzbankGroup.again(twice, passport(free), both, all, kept)));
+			SelfTest.expect("the account that a failed second dialog did not carry keeps the jobs of the first dialog",
+				left.size() + " " + (left.get(0).statements() == all.get(1).statements()), "1 true");
+		}
 		SelfTest.expect("a second dialog that fails fails only the account that it carried, and the other keeps its answer",
 			again(COMDIRECT, free, "2026-10-01", failing),
 			"2 [{\"type\":\"accountFailed\",\"code\":\"9800\",\"text\":\"Dialog abgebrochen\",\"account\":\"" + GIRO + "\"}] " + SAVINGS + "=[]");
@@ -227,6 +258,8 @@ final class CommerzbankGroupSelfTest {
 		canceled.failingDialog = 2;
 		canceled.failing = new org.kapott.hbci.exceptions.AbortedException("canceled");
 		SelfTest.expect("a cancel in the second dialog ends the run", SelfTest.thrown(() -> again(COMDIRECT, free, "2026-10-01", canceled)) instanceof org.kapott.hbci.exceptions.AbortedException, true);
+
+		secondLogin(free, resend, ok);
 
 		GVRKUms warning = new GVRKUms();
 		warning.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3905", "BITTE senden  Sie die Anfrage erneut", null));
@@ -243,6 +276,50 @@ final class CommerzbankGroupSelfTest {
 		passport.getBPD().putAll(free);
 		SelfTest.sent(() -> FinTSHelper.refresh(bank, passport, bank.accounts(), List.of(Map.of("id", GIRO, "from", "2026-10-01")), refresh));
 		SelfTest.expect("a refresh of comdirect runs the second dialog", bank.dialogs, 2);
+	}
+
+	/// The second dialog logs in again, and comdirect may ask for a photoTAN for that login. The refresh asks for the full
+	/// history of "Girokonto" and the transactions of "Tagesgeld" from a day, and only those of "Tagesgeld" go again.
+	/// `answer` is what the user does with the TAN of that login, as the app sends it, or null for a cancel of the run.
+	/// The result: the request of that TAN, whether the run ended, and then what again() sent and kept.
+	static String secondLogin(Properties bpd, GVRKUms resend, GVRKUms ok, Map<String, Object> answer) {
+		FinTSHelper.Passport passport = passport(bpd);
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
+		List<String> asked = new ArrayList<>();
+		Answers bank = new Answers().on(SAVINGS, "KUmsAll", resend, ok);
+		bank.during = dialog -> {
+			if (dialog != 2) return;
+			java.util.HashMap<String, Object> reply = answer == null ? null : new java.util.HashMap<>(answer);
+			if (reply == null) FinTSHelper.Inbox.queue.add(FinTSHelper.Inbox.CANCEL);
+			else {
+				reply.put("id", String.valueOf(callback.lastID + 1));
+				FinTSHelper.Inbox.queue.add(reply);
+			}
+			RuntimeException[] thrown = new RuntimeException[1];
+			asked.addAll(SelfTest.sent(() -> thrown[0] = SelfTest.thrown(() -> callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN,
+				"photoTAN\n\nBitte scannen Sie die Grafik mit Ihrer photoTAN-App.", 0, new StringBuffer())) instanceof RuntimeException r ? r : null));
+			if (thrown[0] != null) throw thrown[0];
+		};
+		String outcome;
+		try {
+			outcome = again(COMDIRECT, passport, null, "2026-10-01", bank, callback);
+		} catch (org.kapott.hbci.exceptions.AbortedException e) {
+			outcome = "ended";
+		} finally {
+			FinTSHelper.Inbox.queue.clear();
+		}
+		String request = asked.isEmpty() ? "none" : asked.get(0);
+		return (request.contains("\"purpose\":\"login\"") ? "login" : "download") + " " + (request.contains("\"history\"") ? "history" : "-") + " "
+			+ (callback.restarts() ? "restarts" : "-") + " " + outcome;
+	}
+
+	static void secondLogin(Properties free, GVRKUms resend, GVRKUms ok) {
+		SelfTest.expect("the photoTAN of the login of the second dialog is for the login and not for older transactions",
+			secondLogin(free, resend, ok, Map.of("type", "answer", "value", "1234567")), "login - - 2 [] " + GIRO + "=[] " + SAVINGS + "=[]");
+		SelfTest.expect("a cancel of the photoTAN of the login of the second dialog ends the run and restarts nothing",
+			secondLogin(free, resend, ok, null), "login - - ended");
+		SelfTest.expect("a cancel for older transactions in the second dialog fails only the account that it carried and restarts nothing",
+			secondLogin(free, resend, ok, Map.of("type", "answer", "skip", true)), "login - - 2 [{\"type\":\"accountFailed\",\"text\":\"the user canceled the challenge for older transactions\",\"account\":\"" + SAVINGS + "\"}] " + GIRO + "=[]");
 	}
 
 	/// A state of Commerzbank stores the 8 digits as the user ID and the customer ID, and the command sends the 10 digits.

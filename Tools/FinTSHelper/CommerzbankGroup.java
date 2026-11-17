@@ -6,6 +6,7 @@ import java.util.Properties;
 import org.kapott.hbci.exceptions.AbortedException;
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
+import org.kapott.hbci.passport.HBCIPassport;
 import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.status.HBCIStatus;
@@ -71,12 +72,16 @@ final class CommerzbankGroup {
 	/// did not carry out fails its account with the text and code of the bank, and a job that it carried out with that
 	/// text as a warning keeps its data. A second answer counts the same way, and no job goes a third time. When the second
 	/// dialog fails, only the accounts with a job in it fail, with that error, and the other accounts keep their answers.
-	/// A cancel and a change of the TAN method end or restart the run, as in the first dialog. Another bank, and a
-	/// dialog in which comdirect asked nothing again, keep `all` as it is. A refresh sends no transfer, so no transfer
-	/// takes this path.
-	static List<FinTSHelper.Jobs> again(FinTSHelper.Orders handle, Properties bpd, Konto[] accounts, List<FinTSHelper.Jobs> all,
+	/// The second dialog starts as a new one: its challenges before its orders are for the login, and none is for the
+	/// full history, because no job of it asks for one. So a cancel of the challenge for older transactions cannot
+	/// come from it, and if it comes anyway, it counts as a failure of the second dialog and never restarts the run. A
+	/// cancel and a change of the TAN method end or restart the run, as in the first dialog. Another bank, and a dialog
+	/// in which comdirect asked nothing again, keep `all` as it is. A refresh sends no transfer, so no transfer takes
+	/// this path.
+	static List<FinTSHelper.Jobs> again(FinTSHelper.Orders handle, HBCIPassport passport, Konto[] accounts, List<FinTSHelper.Jobs> all,
 		FinTSHelper.Callback callback) {
 		if (!comdirect(FinTSHelper.Callback.server)) return all;
+		Properties bpd = passport == null ? null : passport.getBPD();
 		List<FinTSHelper.Jobs> result = new ArrayList<>(all);
 		boolean[] sent = new boolean[all.size()];
 		boolean any = false;
@@ -100,6 +105,8 @@ final class CommerzbankGroup {
 		}
 		if (!any) return all;
 		FinTSHelper.diagnostic("FinTSHelper: comdirect asked to send the request again");
+		if (passport instanceof FinTSHelper.Passport p) p.jobsSent = false;
+		callback.fullHistory = false;
 		try {
 			HBCIExecStatus status = handle.execute();
 			callback.withdrawApproval();
@@ -107,8 +114,9 @@ final class CommerzbankGroup {
 			FinTSHelper.requireLogin(status);
 		} catch (RuntimeException e) {
 			for (Throwable t : FinTSHelper.causes(e)) {
-				if (t instanceof FinTSHelper.SwitchMethod || t instanceof FinTSHelper.SkipHistory || t instanceof AbortedException) throw e;
+				if (t instanceof FinTSHelper.SwitchMethod || t instanceof AbortedException) throw e;
 			}
+			callback.skipHistory = false;
 			List<FinTSHelper.Jobs> answered = new ArrayList<>();
 			for (int i = 0; i < all.size(); i++) {
 				if (!sent[i]) {
