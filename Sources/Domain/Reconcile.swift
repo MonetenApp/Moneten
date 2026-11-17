@@ -539,6 +539,9 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard t.isPending, identity.isPending else { continue }
 			let pendingFits = !delivery.isMigration && matches[i].fits(match)
 			guard step != nil || pendingFits else { continue }
+			// A deleted file row without a file identity, from before they were stored, keeps a file row out only by its
+			// fingerprint. Without the identity, the nearby rule could not tell another rent of the same amount from it.
+			if step == nil, case .file = delivery, case let .deleted(k) = slot, !deleted[k].wasFetched, deleted[k].fileIdentity == nil { continue }
 			guard step != nil || !delivery.isFetched || fetched || future else { continue }
 			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
 			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)

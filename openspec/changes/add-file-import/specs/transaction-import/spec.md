@@ -961,6 +961,13 @@ The app SHALL not add a transaction again that the user deleted, when a later fi
 - **AND** a pending rent of -800,00 € with the purpose "Miete Garage Dezember" on 4 December 2026 is added
 - **AND** the booked rent of 2 December 2026 is added
 
+#### Scenario: A deleted pending rent without a file identity
+
+- **GIVEN** the user deleted a pending rent of -800,00 € to "Vermieter A" on 1 December 2026 that a file had imported before the app stored file identities
+- **WHEN** the same file arrives again
+- **THEN** the rent is not added
+- **AND** a pending rent of -800,00 € to "Vermieter A" with the purpose "Miete Garage Dezember" on 4 December 2026 is added
+
 #### Scenario: A refresh after the delete
 
 - **GIVEN** the user deleted an imported payment of -89,00 € to "Stadtwerke" on 3 November 2026
@@ -1046,7 +1053,7 @@ The app SHALL treat an imported transaction like a fetched one. It can be search
 #### Scenario: Delete an imported row
 
 - **WHEN** the user deletes an imported transaction and imports the same file again
-- **THEN** the transaction comes back, because the account no longer holds it
+- **THEN** the transaction does not come back, as "Deleted transactions stay deleted at a file import" states
 
 ### Requirement: Balances and charts after an import
 

@@ -796,6 +796,19 @@ struct ReconcileTests {
 		#expect(booked.added.map(\.isPending) == [false])
 	}
 
+	@Test("A deleted pending file row without a file identity keeps out its own entry, but not another rent of the same amount nearby")
+	func deletedLegacyPendingFileRow() {
+		let december = rent(1)
+		let deleted = [DeletedTransaction(december, deletedAt: now)]
+		#expect(deleted[0].fileIdentity == nil && !deleted[0].wasFetched)
+		let same = merge(.file([fresh(december)]), deleted: deleted, at: noon(20, month: 11))
+		#expect(same.added == [])
+		#expect(same.skipped == 1)
+		let other = merge(.file([rent(4, purpose: "Miete Garage Dezember")]), deleted: deleted, at: noon(20, month: 11))
+		#expect(other.added.map(\.purpose) == ["Miete Garage Dezember"])
+		#expect(other.skipped == 0)
+	}
+
 	@Test("A refresh does not bring back a row that the user deleted after a file import")
 	func refreshAfterDeletedFileRow() {
 		let power = row(3, -8_900, "Stadtwerke", "Abschlag November", iban: "DE02120300000000202051")
