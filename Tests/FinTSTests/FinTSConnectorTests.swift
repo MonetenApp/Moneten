@@ -375,7 +375,7 @@ struct FinTSConnectorTests {
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
 		// Only a helper that ends by itself lets the run end before the grace is over.
-		#expect(ContinuousClock.now - canceled < .seconds(grace))
+		#expect(ContinuousClock.now - canceled < .seconds(grace)) // time-ok: the grace holds 120 s for a loaded runner
 		#expect(recorded.map { $0["type"] } == ["cancel"])
 	}
 
@@ -412,7 +412,7 @@ struct FinTSConnectorTests {
 		let canceled = ContinuousClock.now
 		task.cancel()
 		// A cancel that waited for the write would return only when the helper ends, 5 seconds later.
-		#expect(ContinuousClock.now - canceled < .seconds(5))
+		#expect(ContinuousClock.now - canceled < .seconds(5)) // time-ok: the helper ends at 5 s, so the limit cannot grow
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled >= .seconds(5))
 		#expect(recorded.map { $0["type"] } == ["ready", "terminated"])
@@ -466,7 +466,7 @@ struct FinTSConnectorTests {
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends")
@@ -483,7 +483,7 @@ struct FinTSConnectorTests {
 		// Without the cancel, the run would wait for the helper until its sleep ends and could not be
 		// awaited soon. The deadline lies far above the 40 seconds that the run can wait on CI for a thread.
 		let start = ContinuousClock.now
-		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) {
+		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) { // time-ok: a deadline far above the wait on CI
 			try await Task.sleep(for: .milliseconds(100))
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
@@ -503,7 +503,7 @@ struct FinTSConnectorTests {
 				""", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")

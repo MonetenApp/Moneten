@@ -199,7 +199,7 @@ struct CrashReportStoreTests {
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.1", macOSVersion: "15.3", files: [])
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		let pending = try CrashReportStore(folder: folder, keyInFolder: true).receive(diagnostic, at: Date(timeIntervalSince1970: 1_300), since: Date(timeIntervalSince1970: start))
-		if start > 1_000 && start <= 1_163 {
+		if start > 1_000 && start <= 1_163 { // time-ok: a timestamp that picks the case, not a time limit
 			#expect(pending?.diagnostic.signal == 6)
 			#expect(pending?.fallback?.date == nil)
 		} else {
@@ -313,7 +313,7 @@ struct CrashReportStoreTests {
 				state.decide(decision)
 				let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 				state.receive(diagnostic, at: Date(timeIntervalSince1970: end), since: Date(timeIntervalSince1970: start))
-				if start <= 1_163 {
+				if start <= 1_163 { // time-ok: a timestamp that picks the case, not a time limit
 					#expect(state.pending == nil)
 				} else {
 					#expect(state.pending?.date == Date(timeIntervalSince1970: end))
