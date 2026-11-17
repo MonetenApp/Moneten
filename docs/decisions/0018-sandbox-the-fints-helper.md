@@ -20,10 +20,10 @@ A test on 16 November 2026 on macOS 26 signed the java of the helper with the ap
 
 ## Decision
 
-- The java of the FinTS helper has exactly three entitlements: `com.apple.security.app-sandbox`, `com.apple.security.network.client`, and `com.apple.security.cs.allow-jit`. It has no temporary exceptions.
+- The java of the FinTS helper has exactly three entitlements: `com.apple.security.app-sandbox`, `com.apple.security.network.client`, and `com.apple.security.cs.allow-jit`. It has no temporary exceptions. A Release build signed to run locally has the hardened runtime without a team, so its java also has `com.apple.security.cs.disable-library-validation` from `App/FinTSHelperLocal.entitlements`, as [ADR 0017](0017-hardened-runtime-for-every-release-build.md) decides. A signature with a team, and every Developer ID build, never has it.
 - The java sits at the top of the helper folder, `Contents/Resources/FinTSHelper/java`, next to `runtime` and `lib`. `scripts/build-fints-helper.sh` moves it there and changes its search path for `libjli.dylib` to `runtime/lib`.
 - `scripts/build-app.sh` signs it with the identifier of the app followed by `.FinTSHelper`, so its container is `~/Library/Containers/<app identifier>.FinTSHelper`. The helper keeps no data of its own (ADR 0014), so the container holds only the temporary files of the JVM.
-- `scripts/build-app.sh` fails when the java has other entitlements or another identifier, and when it cannot finish one login over TLS in its sandbox. `scripts/fints-helper-smoke.py` runs that login against a made-up bank on 127.0.0.1. The helper gets the script as its HTTPS proxy, and the script answers the CONNECT itself and trusts only its own certificate, so no request reaches a bank.
+- `scripts/build-app.sh` fails when the java has other entitlements than these, or another identifier, and when it cannot finish one login over TLS in its sandbox. `scripts/fints-helper-smoke.py` runs that login against a made-up bank on 127.0.0.1. The helper gets the script as its HTTPS proxy, and the script answers the CONNECT itself and trusts only its own certificate, so no request reaches a bank.
 
 ## Consequences
 

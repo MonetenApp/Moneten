@@ -6,7 +6,7 @@
 # request only for that certificate, so a helper that bypassed the proxy would send nothing to a
 # bank. The made-up bank answers the dialog start with 9800, and the helper must report it.
 #   scripts/fints-helper-smoke.py <app>/Contents/Resources/FinTSHelper
-import base64, json, os, re, socket, ssl, subprocess, sys, tempfile, threading, urllib.parse, zipfile
+import base64, json, os, re, shutil, socket, ssl, subprocess, sys, tempfile, threading, urllib.parse, zipfile
 
 BANK_CODE = "12030000"
 helper = os.path.abspath(sys.argv[1])
@@ -70,6 +70,8 @@ subprocess.run(["/usr/bin/openssl", "req", "-x509", "-newkey", "rsa:2048", "-nod
 leaf = base64.b64encode(ssl.PEM_cert_to_DER_cert(open(cert).read())).decode()
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.load_cert_chain(cert, key)
+# The context holds the key now, so the throwaway files go.
+shutil.rmtree(work)
 listener = socket.socket()
 listener.bind(("127.0.0.1", 0))
 listener.listen()
@@ -90,7 +92,16 @@ def send(line):
 send({"type": "accounts", "bankCode": BANK_CODE, "url": "https://" + host + "/", "user": "smoketest", "product": "SMOKETEST", "version": "0.0.0"})
 result = None
 for line in process.stdout:
-	m = json.loads(line)
+	try:
+		m = json.loads(line)
+	except ValueError:
+		timer.cancel()
+		process.kill()
+		try:
+			stderr = process.communicate(timeout=5)[1]
+		except subprocess.TimeoutExpired:
+			stderr = ""
+		fail("it wrote a line that is not JSON", stderr)
 	# The helper masks its texts, and the made-up bank gets no secret, so a failure may show them.
 	events.append("helper: " + (json.dumps(m) if m.get("type") == "failed" else m.get("type", "?")))
 	if m.get("type") == "ask" and m.get("kind") == "pin":
