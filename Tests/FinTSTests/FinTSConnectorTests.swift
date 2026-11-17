@@ -44,9 +44,9 @@ struct FinTSConnectorTests {
 	/// terminated helper gets 30 seconds before SIGKILL, so that the trap of a script runs also when a
 	/// loaded runner of CI holds up the shell for more than the 2 seconds of the app.
 	func connector(_ script: String, productID: String? = "TESTPRODUCT", inactivity: TimeInterval = 30, grace: TimeInterval = 5,
-		killAfter: TimeInterval = 30) -> FinTSConnector {
+		killAfter: TimeInterval = 30, bankList: @escaping @Sendable () -> Data? = { nil }) -> FinTSConnector {
 		FinTSConnector(helper: .init(executable: URL(filePath: "/bin/sh"), arguments: ["-c", "R='\(record.path)'\n" + script]), productID: productID, version: "0.0.1",
-			inactivity: inactivity, grace: grace, killAfter: killAfter)
+			inactivity: inactivity, grace: grace, killAfter: killAfter, bankList: bankList)
 	}
 
 	func refresh(_ script: String, accounts: [AccountRequest] = [giro], enforced: Bool = false, session: Session = Session()) async throws -> ConnectorReport {
@@ -1154,6 +1154,28 @@ struct FinTSConnectorTests {
 		await #expect(throws: SyncFailure.bank(BankMessage(text: "hbci4java has no bank directory"))) {
 			try await connector(#"read cmd; echo '{"type":"failed","text":"hbci4java has no bank directory"}'"#).bankDirectory()
 		}
+	}
+
+	@Test("Sends the installed bank list in every command, read anew before each start of the helper")
+	func sendsBankList() async throws {
+		let list = Mutex<Data?>(Data("12030000=Musterbank|Berlin|BYLADEM1001|00||https://fints.example.com/fints|300|300|".utf8))
+		let connector = connector(#"""
+			read cmd; printf '%s\n' "$cmd" >> "$R"
+			case "$cmd" in
+			*'"type":"banks"'*) echo '{"type":"banks","banks":[]}' ;;
+			*) echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}' ;;
+			esac
+			"""#, bankList: { list.withLock { $0 } })
+		_ = try await connector.bankDirectory()
+		_ = try await connector.refresh(RefreshRequest(access: Self.access, accounts: [Self.giro], enforced: false), Session())
+		list.withLock { $0 = nil }
+		_ = try await connector.bankDirectory()
+		let sent = recorded
+		#expect(sent.count == 3)
+		#expect(sent.map { $0["type"] } == ["banks", "refresh", "banks"])
+		#expect(sent[0]["bankList"] == "12030000=Musterbank|Berlin|BYLADEM1001|00||https://fints.example.com/fints|300|300|")
+		#expect(sent[1]["bankList"] == sent[0]["bankList"])
+		#expect(sent[2]["bankList"] == nil)
 	}
 
 	/// Waits until the helper wrote `{"type":"ready"}` into `record`, which a script does once its signal

@@ -2,7 +2,9 @@
 // talks to it with one JSON object per line. stderr carries only masked diagnostics.
 //
 // The app sends one command first: banks, accounts, or refresh. Then it sends only answers
-// ({"type":"answer","id":1,"value":"…"}) and cancel. A closed stdin counts as cancel.
+// ({"type":"answer","id":1,"value":"…"}) and cancel. A closed stdin counts as cancel. A command may carry
+// bankList, the text of a newer bank list that the app checked against the update key, which the helper
+// then uses in place of the one in the jar of hbci4java.
 //
 // The helper sends:
 // - ask: a request for the user, with id and kind pin, tanMethod, tanMedium, tan, or approve. An
@@ -38,7 +40,9 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OptionalDataException;
 import java.io.PrintStream;
+import java.io.StringReader;
 import java.io.UncheckedIOException;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.net.Socket;
 import java.net.URI;
@@ -52,6 +56,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -996,14 +1001,55 @@ public class FinTSHelper {
 		return uri;
 	}
 
+	/// The table of Bankleitzahlen of hbci4java, once `useBankList` filled it with the bank list of the command.
+	static Properties bankList;
+
+	/// Replaces the bank directory of hbci4java with the bank list of the command, which the app checked
+	/// against the update key (add-software-update, "Bank data files use the same key"). hbci4java reads its
+	/// directory once from its jar and offers no way to replace it, and the dialog reads the address of a bank
+	/// from it too, so the helper fills the two maps of HBCIUtils. The self-test checks them in the pinned
+	/// version. Without a list, or with one that does not read, the directory of the jar stays.
+	static void useBankList(String text) {
+		if (text == null) return;
+		try {
+			Properties list = new Properties();
+			list.load(new StringReader(text));
+			Map<String, BankInfo> infos = new HashMap<>();
+			for (String code : list.stringPropertyNames()) {
+				BankInfo info = BankInfo.parse(list.getProperty(code));
+				info.setBlz(code);
+				infos.put(code, info);
+			}
+			if (infos.isEmpty()) throw new IllegalArgumentException("the bank list is empty");
+			Field blzs = HBCIUtils.class.getDeclaredField("blzs");
+			Field banks = HBCIUtils.class.getDeclaredField("banks");
+			blzs.setAccessible(true);
+			banks.setAccessible(true);
+			Properties codes = (Properties) blzs.get(null);
+			@SuppressWarnings("unchecked")
+			Map<String, BankInfo> directory = (Map<String, BankInfo>) banks.get(null);
+			codes.clear();
+			codes.putAll(list);
+			directory.clear();
+			directory.putAll(infos);
+			bankList = codes;
+			diagnostic("FinTSHelper: using the bank list of the app with " + infos.size() + " banks");
+		} catch (IOException | ReflectiveOperationException | RuntimeException e) {
+			diagnostic("FinTSHelper: the bank list of the app was not used: " + e.getClass().getSimpleName());
+		}
+	}
+
 	/// The bank directory of hbci4java with every Bankleitzahl, which the app searches by name.
 	static Map<String, Object> banks() {
-		Properties directory = new Properties();
-		try (InputStream in = HBCIUtils.class.getClassLoader().getResourceAsStream("blz.properties")) {
-			if (in == null) throw new IllegalStateException("hbci4java has no bank directory");
-			directory.load(new InputStreamReader(in, StandardCharsets.UTF_8));
-		} catch (IOException e) {
-			throw new UncheckedIOException(e);
+		Properties directory = bankList;
+		if (directory == null) {
+			directory = new Properties();
+			try (InputStream in = HBCIUtils.class.getClassLoader().getResourceAsStream("blz.properties")) {
+				if (in == null) throw new IllegalStateException("hbci4java has no bank directory");
+				directory.load(new InputStreamReader(in, StandardCharsets.UTF_8));
+			} catch (IOException e) {
+				throw new UncheckedIOException(e);
+			}
 		}
 		List<Map<String, Object>> banks = new ArrayList<>();
 		for (String code : new TreeSet<>(directory.stringPropertyNames())) {
@@ -1931,6 +1977,7 @@ public class FinTSHelper {
 
 	static void run(Map<?, ?> command) throws IOException {
 		String type = string(command, "type");
+		useBankList(string(command, "bankList"));
 		Properties props = new Properties();
 		props.setProperty("log.loglevel.default", "3");
 		if ("banks".equals(type)) {

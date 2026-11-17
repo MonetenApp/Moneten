@@ -1,0 +1,113 @@
+name: Bank data
+
+# Publishes the bank list between releases of the app (add-software-update, group 6). A run by hand on
+# main with "publish" builds blz.properties from the hbci4java jar that Tools/FinTSProbeJava/dependencies.lock
+# pins and BankData/corrections.properties, signs it with the update key, and uploads it with its signature
+# to the release bank-data, which is never the latest release. Without "publish", and on a pull request
+# that changes these files, it makes a dry run that signs with a throwaway key and publishes nothing.
+# docs/releasing.md lists the one-time setup.
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/bank-data.yml
+      - scripts/bank-data.py
+      - BankData/**
+      - Tools/FinTSProbeJava/dependencies.lock
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Sign with the update key of the environment bank-data and upload to the release bank-data.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bank-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dry-run:
+    if: github.event_name == 'pull_request' || inputs.publish != true
+    runs-on: macos-15
+    steps:
+      # Pinned by commit: actions/checkout v4.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      # Signs through sign_update of Sparkle, as the job publish does, and checks with OpenSSL 3, as the
+      # app checks with CryptoKit.
+      - name: Build, sign with a throwaway key, and check
+        run: python3 scripts/bank-data.py dry-run --out dist/bank-data --sign-update "$(scripts/sparkle-tools.sh)/sign_update"
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    runs-on: macos-15
+    # The update key for bank data lives in the environment bank-data, which allows only main and waits
+    # for the approval of the owner.
+    environment: bank-data
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Check the secret and the branch
+        env:
+          UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          [ -n "$UPDATE_KEY" ] || { echo "::error::The environment bank-data has no secret SPARKLE_ED_PRIVATE_KEY. docs/releasing.md explains the setup."; exit 1; }
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::Bank data is published only from main."; exit 1; }
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read the committed update key
+        run: |
+          # MONETEN_UPDATE_PUBLIC_KEY in the base settings of the target Moneten, as scripts/release.sh reads it.
+          KEY=$(sed -n 's/^ \{8\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml)
+          TEST_KEY=$(sed -n 's/^ \{10\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml)
+          case "$KEY" in
+            none|"") echo "::error::App/project.yml has no production update key yet."; exit 1 ;;
+            "$TEST_KEY") echo "::error::The update key of App/project.yml is the test key."; exit 1 ;;
+            *[!A-Za-z0-9+/=]*) echo "::error::The update key of App/project.yml is not one key in Base64."; exit 1 ;;
+          esac
+          echo "PUBLIC_KEY=$KEY" >> "$GITHUB_ENV"
+      - name: Build the bank list
+        run: python3 scripts/bank-data.py build --out dist/bank-data
+      - name: Sign with the update key
+        env:
+          UPDATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$UPDATE_KEY" > "$RUNNER_TEMP/update.key"
+          python3 scripts/bank-data.py sign --key-file "$RUNNER_TEMP/update.key" --sign-update "$(scripts/sparkle-tools.sh)/sign_update" dist/bank-data/blz.properties
+          rm "$RUNNER_TEMP/update.key"
+          # Every copy of the app refuses a file that the committed key did not sign.
+          python3 scripts/bank-data.py verify --public-key "$PUBLIC_KEY" dist/bank-data/blz.properties
+      - name: Upload to the release bank-data
+        run: |
+          if ! gh release view bank-data --repo "$REPO" >/dev/null 2>&1; then
+            # Not the latest release, or the feed URL .../releases/latest/download/appcast.xml breaks.
+            gh release create bank-data --repo "$REPO" --target main --latest=false --title "Bank data" \
+              --notes "The bank list of Moneten, signed with the update key. The app downloads it at most once a day. Not a version of the app."
+          fi
+          gh release upload bank-data --repo "$REPO" --clobber dist/bank-data/blz.properties dist/bank-data/blz.properties.sig
+      - name: Check the published files and the feed URL
+        run: |
+          mkdir -p "$RUNNER_TEMP/published"
+          for file in blz.properties blz.properties.sig; do
+            curl -fsSL --retry 3 -o "$RUNNER_TEMP/published/$file" "https://github.com/$REPO/releases/download/bank-data/$file"
+          done
+          cmp "$RUNNER_TEMP/published/blz.properties" dist/bank-data/blz.properties
+          python3 scripts/bank-data.py verify --public-key "$PUBLIC_KEY" "$RUNNER_TEMP/published/blz.properties"
+          # No latest release yet, before the first version, is fine.
+          LATEST=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null) || LATEST=""
+          [ "$LATEST" != bank-data ] || { echo "::error::bank-data is the latest release, so the feed URL breaks. Mark the newest version as latest."; exit 1; }
+          if [ -n "$LATEST" ]; then
+            curl -fsSIL -o /dev/null "https://github.com/$REPO/releases/latest/download/appcast.xml" || { echo "::error::The feed URL does not answer."; exit 1; }
+          fi
+      - name: Remove the update key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/update.key"
