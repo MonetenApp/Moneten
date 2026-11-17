@@ -57,7 +57,10 @@ None.
 - The user must confirm the warning about a lost password before the app sets a password.
 - A password that is set cannot be removed again. It can only be changed.
 - After a wrong password the app neither erases data nor adds a waiting time beyond the key derivation.
-- When the database was changed on disk, the app stops writing and offers to load the database again. MoneyMoney shows the message. What it does next was not observed.
+- When the database was changed on disk, the app stops writing and offers to load the database again. MoneyMoney shows the message. What it does next was not observed. The app notices a file that another program wrote in place as well as one that was replaced.
+- A second running copy shows that the database is in use and offers "Try Again". It opens nothing in the data folder while the first copy runs. A lock on the data folder decides this, and the system releases it when the first copy ends, also after a crash.
+- A database file that the user opens from the Finder shows that it must not be opened directly. The app declares no document type for it. The message does not point to a log window, which the app does not have.
+- A password change that fails leaves the open connection with the earlier key, so later saves still open with the earlier password.
 - The app keeps the damaged file when a repair runs, and it keeps the old file until an upgrade has passed all checks. The strings of MoneyMoney suggest the same order. The exact steps were not observed.
 - An empty database folder starts a new database. A folder that holds a database file with no content is an error.
 - The app overwrites deleted data with zeros, so that a removed saved PIN does not stay in the file or in a copy of it. SQLCipher does this for every connection with a key, and the app also sets `PRAGMA secure_delete = ON` (issues #327 and #335). How MoneyMoney treats deleted data was not observed.
