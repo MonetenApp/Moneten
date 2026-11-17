@@ -148,7 +148,7 @@ There is no transition for pending rows that an earlier version stored with the 
 
 ### Signing
 
-`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).
+`scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The java also runs in the app sandbox with the network client entitlement, and sits at the top of the helper folder, because the sandbox lets it read only that folder ([ADR 0018](../../../docs/decisions/0018-sandbox-the-fints-helper.md)). The build fails when a file cannot be signed or is not signed like the app, when the java has other entitlements, or when it cannot run in its sandbox. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).
 
 ## Risks / Trade-offs
 

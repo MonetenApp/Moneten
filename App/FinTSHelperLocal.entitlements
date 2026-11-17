@@ -3,6 +3,11 @@
 <plist version="1.0">
 <dict>
 	<!-- The entitlements of FinTSHelper.entitlements for a Release build signed to run locally (ADR 0017). -->
+	<!-- The FinTS helper reaches the network and reads its own folder, and nothing else (ADR 0018). -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>
 	<!-- Ad hoc signatures have no team, and library validation would refuse the libraries of the Java runtime. -->

@@ -1,8 +1,8 @@
 # 0014. Use hbci4java for FinTS, in a helper process
 
-Status: Accepted
+Status: Accepted, amended by [ADR 0018](0018-sandbox-the-fints-helper.md)
 
-This decision replaces [ADR 0003](0003-fints-through-hbci4swift.md).
+This decision replaces [ADR 0003](0003-fints-through-hbci4swift.md). [ADR 0018](0018-sandbox-the-fints-helper.md) runs the helper in the app sandbox and replaces the sentence about its entitlement.
 
 ## Context
 

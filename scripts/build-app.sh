@@ -37,6 +37,8 @@ fi
 # its libraries. The helper gets the hardened runtime when the app has it. Only the helper gets
 # allow-jit. Signed to run locally, it also turns off library validation, as the app does: an ad
 # hoc signature has no team, and library validation would refuse the libraries of the Java runtime.
+# Its java runs in the app sandbox with the signing identifier <app>.FinTSHelper, which names its
+# container (ADR 0018).
 embed_fints_helper() {
 	HELPER="$1/Contents/Resources/FinTSHelper"
 	scripts/build-fints-helper.sh --bundle "$HELPER" >/dev/null
@@ -54,7 +56,7 @@ embed_fints_helper() {
 	# private key of the identity in the Keychain; a certificate that only Xcode manages fails here.
 	# A Developer ID build signs with the imported certificate of ADR 0016, so it never fails here.
 	CODE=$(mktemp)
-	find "$HELPER/runtime" -type f ! -path '*/bin/java' > "$CODE.all"
+	find "$HELPER/runtime" -type f > "$CODE.all"
 	while read -r f; do file -b "$f" | grep -q Mach-O && echo "$f"; done < "$CODE.all" > "$CODE"
 	rm "$CODE.all"
 	while read -r f; do
@@ -62,7 +64,8 @@ embed_fints_helper() {
 	done < "$CODE"
 	ENTITLEMENTS=App/FinTSHelper.entitlements
 	[ "$IDENTITY" = - ] && [ -n "$RUNTIME" ] && ENTITLEMENTS=App/FinTSHelperLocal.entitlements
-	codesign --force $RUNTIME $TIMESTAMP --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$HELPER/runtime/bin/java" \
+	codesign --force $RUNTIME $TIMESTAMP --entitlements "$ENTITLEMENTS" \
+		--identifier "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$1/Contents/Info.plist").FinTSHelper" --sign "$IDENTITY" "$HELPER/java" \
 		|| { echo "Could not sign the java of the FinTS helper." >&2; exit 1; }
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
 	if [ -n "$MONETEN_FINTS_PRODUCT_ID_FILE" ]; then
@@ -82,7 +85,7 @@ else:
 	codesign --force --preserve-metadata=identifier,entitlements,requirements,flags,runtime $TIMESTAMP --sign "$IDENTITY" "$1" || { echo "Could not sign the app again after adding the FinTS helper." >&2; exit 1; }
 	signer() { codesign -dvv "$1" 2>&1 | grep -E '^(Authority|Signature|TeamIdentifier)='; }
 	APP_SIGNER=$(signer "$1")
-	echo "$HELPER/runtime/bin/java" >> "$CODE"
+	echo "$HELPER/java" >> "$CODE"
 	while read -r f; do
 		[ "$(signer "$f")" = "$APP_SIGNER" ] || { echo "$f of the FinTS helper is not signed like the app." >&2; exit 1; }
 	done < "$CODE"
@@ -104,12 +107,35 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 	[ "$(signer "$HOST")" = "$(signer "$1")" ] || { echo "The extension host is not signed like the app." >&2; exit 1; }
 }
 
+# The java of the FinTS helper holds the PIN and parses the answers of the bank (ADR 0018). This check
+# stops a build whose java could do more than reach the network or has another container, and runs one
+# login over TLS in the sandbox against a made-up bank on 127.0.0.1, so that a file or a connection the
+# sandbox refuses fails the build on this Mac and not a refresh. Only an ad hoc signature with the
+# hardened runtime may also turn library validation off (ADR 0017), never a signature with a team.
+check_fints_helper() {
+	HELPER="$1/Contents/Resources/FinTSHelper"
+	ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$1/Contents/Info.plist").FinTSHelper"
+	[ "$(codesign -dv "$HELPER/java" 2>&1 | sed -n 's/^Identifier=//p')" = "$ID" ] \
+		|| { echo "The java of the FinTS helper is not signed with the identifier $ID, which names its container." >&2; exit 1; }
+	LOCAL=no
+	codesign -dv "$HELPER/java" 2>&1 | grep -q '^CodeDirectory.*flags=.*adhoc.*runtime' && LOCAL=yes
+	codesign -d --entitlements - --xml "$HELPER/java" 2>/dev/null | python3 -c '
+import plistlib, sys
+entitlements = plistlib.loads(sys.stdin.buffer.read())
+expected = {"com.apple.security.app-sandbox": True, "com.apple.security.network.client": True, "com.apple.security.cs.allow-jit": True}
+local = dict(expected, **{"com.apple.security.cs.disable-library-validation": True})
+if entitlements != expected and not (sys.argv[1] == "yes" and entitlements == local):
+	sys.exit("The java of the FinTS helper has the entitlements %s instead of the app sandbox, the network client, and JIT." % sorted(entitlements))
+' "$LOCAL" || exit 1
+	python3 scripts/fints-helper-smoke.py "$HELPER" || exit 1
+}
+
 # A Release build is hardened (ADR 0017): the app, the extension host, and the java of the FinTS
 # helper have the hardened runtime, and none of them lets another process attach.
 check_hardened() {
 	# Only a build without a team may turn library validation off (App/Signing.xcconfig).
 	TEAM_OF_APP=$(codesign -dv "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p')
-	for code in "$1" "$1/Contents/Helpers/MonetenExtensionHost" "$1/Contents/Resources/FinTSHelper/runtime/bin/java"; do
+	for code in "$1" "$1/Contents/Helpers/MonetenExtensionHost" "$1/Contents/Resources/FinTSHelper/java"; do
 		codesign -dv "$code" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' || { echo "$code has no hardened runtime." >&2; exit 1; }
 		codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q get-task-allow && { echo "$code lets other processes attach." >&2; exit 1; }
 		if [ -n "$TEAM_OF_APP" ] && [ "$TEAM_OF_APP" != "not set" ]; then
@@ -157,6 +183,7 @@ rm -rf dist/Moneten.app
 mkdir -p dist
 cp -R "$PRODUCT" dist/
 embed_fints_helper dist/Moneten.app
+check_fints_helper dist/Moneten.app
 check_extension_host dist/Moneten.app
 [ "$CONFIG" = Debug ] || check_hardened dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
