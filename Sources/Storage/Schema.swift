@@ -391,10 +391,17 @@ enum Schema {
 				t.add(column: "bonusPoints", .integer)
 			}
 		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24, v21,
+		// v25, v22, and v26 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
+		m.registerMigration("v23") { db in
+			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
+			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
+			try db.alter(table: "account") { t in t.add(column: "initialBalanceIsDerived", .boolean).notNull().defaults(to: false) }
+		}
 		// The fingerprint of a transaction compares the currency (#225), and the parsers deliver upper-case codes. An
 		// earlier version stored the code of a CAMT or MT940 file or of the FinTS helper as it came, such as "eur", which
 		// would no longer find its copy from a new import, and a deleted row would come back. ISO 4217 codes are ASCII,
-		// so upper() of SQLite is enough. Registered after v26.
+		// so upper() of SQLite is enough. Registered after v23.
 		m.registerMigration("v27") { db in
 			for table in ["account", "bankTransaction", "deletedTransaction"] {
 				try db.execute(sql: "UPDATE \(table) SET currency = upper(currency) WHERE currency <> upper(currency)")

@@ -384,11 +384,11 @@ send select Girokonto
 send search Stadtwerke
 poll "^phase=.*visible=[1-9][0-9]* " state
 send sheet split
-poll "^splitui amountLabel=true nextLabel=true nextEnabled=false sheet=split$" splitui
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=false .*sheet=split$" splitui
 send type 25,00
-poll "^splitui amountLabel=true nextLabel=true nextEnabled=true sheet=split$" splitui
+poll "^splitui amountLabel=true nextLabel=true nextEnabled=true .*sheet=split$" splitui
 send splitnext
-poll "^splitui .*nextEnabled=false sheet=split$" splitui
+poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
 send key tab
 send key return
 poll "^splitstate parts=2 .*sheet=none$" splitstate
@@ -404,16 +404,16 @@ poll "^splitstate parts=0 .*sheet=none$" splitstate
 for value in 0,00 89,00 abc; do
 	send sheet split
 	send type "$value"
-	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
 	send key escape
 done
 for entry in 5,00 +5,00 -5,00; do
 	send sheet split
-	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
 	send type 100,00
-	poll "^splitui .*nextEnabled=true sheet=split$" splitui
+	poll "^splitui .*nextEnabled=true .*sheet=split$" splitui
 	send splitnext
-	poll "^splitui .*nextEnabled=false sheet=split$" splitui
+	poll "^splitui .*nextEnabled=false .*sheet=split$" splitui
 	send type "$entry"
 	send key return
 	poll "^splitstate parts=3 .*sheet=none$" splitstate

@@ -10,7 +10,7 @@ extension SchemaTests {
 	func currencyCodesInUpperCase() throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
-		try Schema.migrator.migrate(queue, upTo: "v26")
+		try Schema.migrator.migrate(queue, upTo: "v23")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let id = UUID()
 		// An earlier version stored the code of a CAMT or MT940 file as the file wrote it.
@@ -52,7 +52,7 @@ extension SchemaTests {
 			"""
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
-		try Schema.migrator.migrate(queue, upTo: "v26")
+		try Schema.migrator.migrate(queue, upTo: "v23")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		try queue.write { db in try account.insert(db) }
 		let store = Store(queue: queue)
@@ -87,7 +87,7 @@ extension SchemaTests {
 	func hostileFileIdentity(_ identity: String) throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
-		try Schema.migrator.migrate(queue, upTo: "v26")
+		try Schema.migrator.migrate(queue, upTo: "v23")
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		try queue.write { db in
 			try account.insert(db)

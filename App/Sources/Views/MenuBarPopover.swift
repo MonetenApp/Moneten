@@ -67,8 +67,8 @@ struct MenuBarPopover: View {
 	}
 }
 
-/// One account in the popover: name, number of new transactions, and the balance, or the mark of a
-/// failed refresh or of one that waits for the user.
+/// One account in the popover: name, number of new transactions, and the balances of the sidebar row,
+/// or the mark of a failed refresh or of one that waits for the user.
 struct MenuBarAccountRow: View {
 	@Environment(AppModel.self) private var model
 	let account: Account
@@ -94,7 +94,7 @@ struct MenuBarAccountRow: View {
 					.foregroundStyle(error.waitsForUser ? Color.orange : Palette.red)
 					.help(error.message)
 			}
-			AmountText(money: model.ledger.balance(of: account)).fontWeight(.medium)
+			BalancesText(amounts: model.ledger.balances(of: account)).fontWeight(.medium)
 		}
 		.padding(.vertical, 3)
 		.padding(.horizontal, 4)

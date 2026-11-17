@@ -189,13 +189,19 @@ The app SHALL show an icon in the menu bar while it runs when the setting "Show 
 
 ### Requirement: Menu bar popover
 
-The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and balance, marks each account that has new transactions with their number, and marks each account whose last refresh failed or waits for the user.
+The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and the balances of the sidebar row, marks each account that has new transactions with their number, and marks each account whose last refresh failed or waits for the user.
 
 #### Scenario: Open the popover
 
 - **GIVEN** "Girokonto" with 2.450,10 € and 2 new transactions, and "Tagesgeld" with 10.000,00 €
 - **WHEN** the user clicks the menu bar icon
 - **THEN** the popover lists "Girokonto" with 2.450,10 € and the count 2, and "Tagesgeld" with 10.000,00 €
+
+#### Scenario: Account with balances in two currencies
+
+- **GIVEN** the account "Reisekasse" with the balances 0,00 € and 35,00 US dollars
+- **WHEN** the user opens the popover
+- **THEN** the row "Reisekasse" shows 0,00 € and then 35,00 US dollars, as the sidebar row does
 
 #### Scenario: Account needs attention
 

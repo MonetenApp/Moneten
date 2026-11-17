@@ -85,15 +85,17 @@ public struct Reconciliation: Sendable, Equatable {
 	/// Deleted rows that keep out a row of a migration and take its source ID, so the balance of a migrated account
 	/// counts them as rows of the source while the source has them. Only a migration fills it.
 	public internal(set) var relinked: [DeletedTransaction.Relink] = []
-	/// The account with the balance and the date of this refresh, and, on its first refresh with a
-	/// balance, the initial balance that follows from them, and the mark of missing older transactions. Nil for
-	/// a file, and when the refresh brought no balance in the currency of the account and left the mark.
+	/// The account with the balance and the date of this refresh, and the mark of missing older transactions. On its
+	/// first refresh with a balance, or when the day of the balance passes a manual row of a derived value, it also
+	/// has the initial balance that follows from them. A file gives it only when a manual row that it matches moves a
+	/// derived initial balance. Nil when nothing of the account changed.
 	public internal(set) var account: Account?
 	/// The positions that replace those of the account, with the IDs of the stored positions of the same
 	/// securities. Nil when the delivery brought none.
 	public internal(set) var holdings: Holdings?
-	/// Set when the balance of a refresh gives an initial balance above `Money.maxMinorUnits`. `account` then keeps the
-	/// old initial balance, and the store refuses the whole delivery, so the account keeps its last state and shows why.
+	/// Set when the balance of a refresh, or a manual row that a refresh passes or a file matches, gives an initial balance
+	/// above `Money.maxMinorUnits`. `account` then keeps the old initial balance, and the store refuses the whole
+	/// delivery, so the account keeps its last state and shows why.
 	public internal(set) var refusal: InitialBalanceTooLarge?
 
 	public init() {}
@@ -111,8 +113,13 @@ public struct Reconciliation: Sendable, Equatable {
 /// nothing to write except the balance. `stored` must be all live rows of `account`, and `deleted` all
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
-public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
+public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
+	// No bank delivers a row that the user added by hand, so a refresh never pairs one: a delivered row with its
+	// day, amount, and purpose is another booking. A file still pairs it, so the same cash rows from a file add no copies,
+	// and from then on the row is a booking of that file, which the refresh pairs.
+	// The scan comes first, because a copy of 50,000 rows on each refresh costs more than it.
+	let stored = delivery.isFetched && all.contains(where: \.isOnlyManual) ? all.filter { !$0.isOnlyManual } : all
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
@@ -170,7 +177,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 				}
 			}
 			if fetched { next.isFetched = true }
-			if case .file = delivery, next.fileIdentity == nil, live.isPending || delivered.isPending { next.fileIdentity = delivered.fileIdentity }
+			// A manual row that a file matched is a booking of that file from now on, so its deletion keeps a record.
+			if case .file = delivery, next.fileIdentity == nil, live.isPending || delivered.isPending || live.isManual { next.fileIdentity = delivered.fileIdentity }
 			if case .file = delivery, delivered.isPending, Identity(next).endToEnd == nil {
 				next.endToEndReference = Identity(delivered).endToEnd
 			}
@@ -224,26 +232,48 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 			if delivery.covers(pending.sourceBookingDate), pending.review == nil || pending.isChecked { r.dropped.append(pending.id) }
 		}
 	}
+	// A balance whose transactions failed would set the value without the rows that the next refresh brings.
+	var rowsFailed = false
+	var balanceArrived = false
+	var a = account
 	if case let .refresh(result) = delivery {
-		var a = account
+		rowsFailed = result.transactionFailure != nil
 		// The mark goes into the same write as the rows, so a failed merge changes neither.
 		a.missesOlderTransactions = result.missesOlder(after: account.missesOlderTransactions)
 		if let balance = result.balance, balance.currency == account.currency {
-			a.bankBalanceMinor = balance.minorUnits
-			a.bankBalanceDate = result.balanceDate ?? now
-			if result.isPortfolio { a.kind = .portfolio }
+			var fresh = a
+			fresh.bankBalanceMinor = balance.minorUnits
+			fresh.bankBalanceDate = result.balanceDate ?? now
+			if result.isPortfolio { fresh.kind = .portfolio }
 			// A portfolio shows only its value. Every other account takes what this refresh reports, so a currency or
 			// bonus points that the source no longer reports disappear.
-			a.otherBankBalances = a.kind == .portfolio ? [] : result.otherBalances
-			a.bonusPoints = a.kind == .portfolio ? nil : result.bonusPoints
-			// A balance whose transactions failed would set the value without the rows that the next refresh brings.
-			if a.derivesInitialBalance, result.transactionFailure == nil {
-				// Dropped and marked rows are pending and do not count.
-				let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
-				if !a.deriveInitialBalance(from: stored.map { changed[$0.id] ?? $0 } + r.added) { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
+			fresh.otherBankBalances = fresh.kind == .portfolio ? [] : result.otherBalances
+			fresh.bonusPoints = fresh.kind == .portfolio ? nil : result.bonusPoints
+			// A new day that passes a manual row sets a derived value with the rows up to that day. Without them the
+			// crossing would be used up, and the refresh that brings them would leave the value: a planned -50,00 €
+			// and its booking would both count. So the account keeps its balance until a refresh brings the rows.
+			if !(rowsFailed && account.followsBankBalance && passesManualRow(of: all, from: account, to: fresh)) {
+				a = fresh
+				balanceArrived = true
 			}
-			r.account = a
-		} else if a != account {
+		}
+		if balanceArrived || a != account { r.account = a }
+	}
+	if !rowsFailed, (a.derivesInitialBalance && balanceArrived) || a.followsBankBalance && passesManualRow(of: all, from: account, to: a) {
+		// The first refresh with a balance derives the initial balance. A new day of the bank balance that passes a
+		// manual row sets a derived one by the same rule, whether the bank booked the row or not: the fresh bank
+		// balance is the truth, so this also takes in a difference that an older bank row left. A row of the bank
+		// alone leaves the value for the calibration proposal. Dropped and marked rows are pending and do not count.
+		let changed = Dictionary(uniqueKeysWithValues: (r.booked + r.updated).map { ($0.id, $0) })
+		if !a.deriveInitialBalance(from: all.map { changed[$0.id] ?? $0 } + r.added) { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
+		r.account = a
+	} else if case .file = delivery, a.followsBankBalance, let date = a.bankBalanceDate {
+		// A manual row that the file matched moves the value only by its own change, as an edit does.
+		let manual = Dictionary(uniqueKeysWithValues: all.lazy.filter(\.isManual).map { ($0.id, $0) })
+		let move = a.moveForManualRows((r.updated + r.booked).compactMap { new in manual[new.id].map { (old: $0, new: new) } }, through: Day(date))
+		if move != 0 {
+			// The move is exact, so an initial balance beyond the limit is refused and the account keeps the old one.
+			if let value = Int64(limitedAmount: Int128(a.initialBalanceMinor) + move) { a.initialBalanceMinor = value } else { r.refusal = InitialBalanceTooLarge(accountName: account.name) }
 			r.account = a
 		}
 	}
@@ -876,4 +906,13 @@ extension Transaction {
 		}
 		return t
 	}
+}
+
+/// A refresh moved the day of the bank balance past a manual row. `before` is the account before the refresh and
+/// `after` the account with its new bank balance.
+private func passesManualRow(of rows: [Transaction], from before: Account, to after: Account) -> Bool {
+	guard let date = before.bankBalanceDate, let newDate = after.bankBalanceDate, newDate != date else { return false }
+	let day = Day(date)
+	let newDay = Day(newDate)
+	return rows.contains { $0.isManual && after.bankBalance(through: newDay, holds: $0) && !before.bankBalance(through: day, holds: $0) }
 }

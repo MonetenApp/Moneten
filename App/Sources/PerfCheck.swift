@@ -86,7 +86,7 @@ struct PerfScenario {
 					return c.fail("the split did not start in a drawn view of 50000 rows")
 				}
 				let balance = c.model.ledger.computedBalance(of: account)
-				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) == .done else {
 					return c.fail("split failed")
 				}
 				await c.settle()
@@ -485,7 +485,41 @@ struct PerfScenario {
 				SupportedBanksPerf.window?.close()
 				SupportedBanksPerf.window = nil
 			}),
+		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
+		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
+		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
+		PerfScenario(name: "type-name-over-50000-names", budget: .milliseconds(100),
+			setUp: { await nameHistory($0) },
+			run: { c in
+				for character in "Zahnarzt" {
+					c.harness.run("type", String(character))
+					await c.settle()
+				}
+				if c.harness.focusedSheetText() != "Zahnarzt" { c.fail("the name field did not take the typed name") }
+			}),
 	]
+
+	/// The setup of "type-name-over-50000-names": an offline account with 50,000 different names, and the window for a
+	/// new transaction open. It is a function of its own, because inside the list of scenarios the type checker of the
+	/// CI compiler gives up on it.
+	@MainActor private static func nameHistory(_ c: PerfContext) async {
+		let account = Account(position: c.model.ledger.accounts.count, name: "Name history", kind: .cash, source: .offline)
+		c.model.save(account: account)
+		let today: Day = Day.today()
+		var rows: [Transaction] = []
+		rows.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let name: String = i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)"
+			let amount: Int64 = -Int64(100 + i % 9_000)
+			rows.append(Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000)), amountMinor: amount,
+				name: name, purpose: "Names \(i)"))
+		}
+		do { _ = try c.model.merge(.file(rows), into: account.id) }
+		catch { c.fail("name history setup failed") }
+		await c.select("Name history")
+		c.model.sheet = .transaction(nil)
+		await c.settle()
+	}
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
 	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {
@@ -574,7 +608,7 @@ struct PerfContext {
 
 	func checkStaleSplitWrites(_ original: Transaction) async {
 		var row = original
-		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await currencySplit.value
@@ -596,7 +630,7 @@ struct PerfContext {
 		guard let parts = try? model.ledger.splitting(row: row.id, off: [Money(minorUnits: -3000, currency: "EUR")]),
 			await model.replaceParts(of: row.id, with: parts) else { return fail("no parts for the edit race") }
 		await settle()
-		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await editedSplit.value
@@ -617,6 +651,47 @@ struct PerfContext {
 			}
 		} catch { return fail("the part edit race could not be read") }
 		guard await model.replaceParts(of: row.id, with: []) else { return fail("the part edit race did not reset") }
+		await settle()
+		await checkStaleSplitOfCategory(row)
+	}
+
+	/// ⌘K or a rule run during the drawing wait moves the row to another category. The waiting split would store
+	/// its parts in the old category, so it reports a change and stores nothing.
+	func checkStaleSplitOfCategory(_ row: Transaction) async {
+		guard let category = model.ledger.categories.first(where: { !$0.isGroup && !$0.isDefault && $0.id != row.categoryID }) else {
+			return fail("no category for the category race")
+		}
+		let split = Task { await model.split(row: row.id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await split.value
+			return fail("the category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		let outcome = await split.value
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored category race") }
+			if outcome != .changed || !model.ledger.parts(of: row.id).isEmpty || !stored.parts(of: row.id).isEmpty
+				|| stored.transaction(row.id)?.categoryID != category.id {
+				fail("a waiting split stored its parts in the old category")
+			}
+		} catch { return fail("the category race could not be read") }
+		model.assign(category: row.categoryID, to: [row.id])
+		await settle()
+		// A VAT entry has no window to stay open, so the same race shows a message.
+		let vat = Task { await model.splitVAT(row: row.id, rate: VATRate(hundredths: 1900)) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await vat.value
+			return fail("the VAT category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		if await vat.value || !model.ledger.parts(of: row.id).isEmpty
+			|| model.alert?.message != String(localized: "The transaction changed. Try again.") {
+			fail("a waiting VAT split did not report the change")
+		}
+		model.alert = nil
+		model.assign(category: row.categoryID, to: [row.id])
 		await settle()
 	}
 
