@@ -230,7 +230,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let rejections = Rejections(session: session)
-		try helper.seal?.check()
+		try await helper.seal?.check()
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, killAfter: killAfter, onLine: { line in
 			watchdog.received()
 			rejections.read(line)
