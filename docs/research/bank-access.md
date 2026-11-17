@@ -123,7 +123,7 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 1. Add the ING login and refresh the giro account. Record whether the bank parameters allow CAMT (HKCAZ) and SEPA transfers (HKCCS), and how ING lists photoTAN and "Banking to go" among its TAN methods.
 2. If ING sends MT942, record one pending row and its booked version: is the entry date of the `:61:` line the day on which ING books the row?
 3. Only with an access that has not logged in on www.ing.de for 90 days: record the code and the text of the lock. Expected: 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." and the hint of the app.
-4. During the lock, refresh by hand two or three times and record after each one whether ING counts the login toward the block of the PIN, for example a warning of a block to come, or 3938 or 9930 at the next login. The automatic refresh pauses after 3 such refreshes in a row (`RefreshError.lockedLoginLimit`), and this step decides whether that limit can go.
+4. During the lock, refresh by hand two or three times and record after each one whether ING counts the login toward the block of the PIN, for example a warning of a block to come, or 3938 or 9930 at the next login. The automatic refresh pauses after 2 such refreshes in a row (`RefreshError.lockedLoginLimit`), and this step decides whether that limit can go. Stop at the first warning of a block, because a third failed login may block the PIN and the online banking.
 5. Log in on www.ing.de with the QR log-in once, and with the user name and the password once. Record which one unlocks FinTS, and after how long.
 
 ### What each run records

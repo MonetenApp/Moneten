@@ -61,6 +61,10 @@ public final class SyncCoordinator {
 	/// Whether a refresh that may not ask the user can start now. A refresh that waits for its turn is
 	/// checked again when its turn comes, so the automatic refresh stops when the Mac goes offline or asleep.
 	@ObservationIgnored public var mayStartUnattended: @MainActor () -> Bool = { true }
+	/// Whether the automatic refresh of the access paused, because ING kept its FinTS login locked
+	/// (`Ledger.pausesAutomaticRefresh(of:)`). An automatic refresh of such an access that waits is dropped when
+	/// its turn comes. Its accounts stay due, and a refresh by hand still runs.
+	@ObservationIgnored public var pausesUnattended: @MainActor (UUID) -> Bool = { _ in false }
 	private var inRun = false
 	/// Whether the running refresh of each access may ask the user. A command that names one of its
 	/// accounts turns it on while it runs.
@@ -288,11 +292,12 @@ public final class SyncCoordinator {
 		refreshingAccounts.subtract((requested.removeValue(forKey: access) ?? []).map(\.accountID))
 	}
 
-	/// An automatic refresh whose turn comes while it may not start is dropped. Its accounts stay due.
+	/// An automatic refresh whose turn comes while it may not start, or while the automatic refresh of its access paused,
+	/// is dropped. Its accounts stay due.
 	private func startNext() {
 		while running.count < limit, !queue.isEmpty {
 			let job = queue.removeFirst()
-			if job.attended || mayStartUnattended() {
+			if job.attended || mayStartUnattended() && !pausesUnattended(job.request.access.id) {
 				start(job)
 			} else {
 				endProgress(of: job.request.access.id)
@@ -355,6 +360,12 @@ public final class SyncCoordinator {
 					attended: true)
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
+			}
+			// ING kept the login locked: an automatic refresh that waits for this run would log in again before the app
+			// counted this lock, so it is dropped. Its accounts stay due, and the next turn of the automatic refresh
+			// decides with the new count. A refresh by hand still runs.
+			if case let .fail(failure) = event, failure.isWebsiteLoginNeeded, afterRun[access.id]?.attended == false {
+				afterRun[access.id] = nil
 			}
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
 			if !Task.isCancelled, !notices.isEmpty { noticed(access, notices) }

@@ -266,10 +266,8 @@ extension Ledger {
 	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
 	/// holds the time at which the user canceled the refresh of an account.
 	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
-		// The pause for the lock of ING holds for the whole access, also for an account that has not met the lock yet.
-		let paused = Set(accounts.filter { !$0.isClosed && $0.refreshError?.waitsForUser == true && $0.refreshError?.lockedLogins != nil }.compactMap(\.accessID))
-		return refreshAccounts(.all, calendar: calendar)
-			.filter { !paused.contains($0.key) }
+		refreshAccounts(.all, calendar: calendar)
+			.filter { !pausesAutomaticRefresh(of: $0.key) }
 			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
 			.filter { !$0.value.isEmpty }
 	}
@@ -311,8 +309,9 @@ public struct RefreshError: Codable, Hashable, Sendable {
 
 	/// The automatic refreshes in a row that may end with the lock of ING before the automatic refresh pauses. 9942
 	/// means a wrong PIN, and the bank test of issue #11 has not shown yet whether ING counts these logins toward
-	/// the block of the PIN.
-	public static let lockedLoginLimit = 3
+	/// the block of the PIN. ING may block it at 3, and its count does not start again with a refresh by hand, so the
+	/// app stops at 2.
+	public static let lockedLoginLimit = 2
 
 	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
 		suggestsEditLoginData: Bool = false, lockedLogins: Int? = nil) {
@@ -345,48 +344,68 @@ public enum AccountRefresh: Sendable, Equatable {
 }
 
 extension Ledger {
+	/// Whether the automatic refresh of `access` paused, because ING kept its FinTS login locked for
+	/// `RefreshError.lockedLoginLimit` automatic refreshes in a row. The pause holds for every account of the access,
+	/// also one that the user added later.
+	public func pausesAutomaticRefresh(of access: UUID) -> Bool {
+		accounts.contains { $0.accessID == access && !$0.isClosed && $0.refreshError?.pausesForLockedLogin == true }
+	}
+
 	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them, and the
 	/// other accounts of the access whose lock of ING the refresh changed. A failure because ING waits for a login on
 	/// its website counts the automatic refreshes in a row that ended with it. The count belongs to the access, because
-	/// each of its accounts logs in with the same PIN, so every account of the access with that error takes it. A
-	/// refresh by hand starts the count again, and a success or another failure of the same refresh ends it. At
-	/// `RefreshError.lockedLoginLimit` the errors wait for the user, so the automatic refresh pauses for the access until
-	/// a refresh by hand.
+	/// each of its accounts logs in with the same PIN, so every open account of the access takes the error with the
+	/// count, also one that the refresh did not fetch. So the count stays when the user closes or deletes one of them.
+	/// A refresh by hand starts the count again. A success of the access ends the lock, and another failure ends the
+	/// count. At `RefreshError.lockedLoginLimit` the automatic refresh pauses for the access until a refresh by hand.
 	public func recorded(_ results: [UUID: AccountRefresh], of access: UUID, attended: Bool) -> [Account] {
-		let members = accounts.filter { $0.accessID == access }
-		let locked = results.values.contains { if case let .failed(error) = $0 { error.lockedLogins != nil } else { false } }
-		let before = members.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
-		let count = locked && !attended ? before + 1 : 0
+		let lock = results.values.lazy.compactMap { result -> RefreshError? in
+			if case let .failed(error) = result, error.lockedLogins != nil { error } else { nil }
+		}.first
+		let fetched = results.values.contains { if case .refreshed = $0 { true } else { false } }
+		let before = accounts.filter { $0.accessID == access && !$0.isClosed }.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
 		var changed: [Account] = []
-		for var account in members {
-			if let result = results[account.id] {
-				account.record(result)
-			} else if account.refreshError?.lockedLogins == nil || results.isEmpty {
+		for var account in accounts where account.accessID == access {
+			let result = results[account.id]
+			if let result { account.record(result) }
+			if account.isClosed {
+				if result != nil { changed.append(account) }
 				continue
 			}
-			if var error = account.refreshError, error.lockedLogins != nil {
-				error.counting(count)
+			if let lock {
+				let count = attended ? 0 : before + 1
+				var error = account.refreshError.flatMap { $0.lockedLogins != nil ? $0 : nil } ?? lock
+				error.lockedLogins = count
+				error.waitsForUser = count >= RefreshError.lockedLoginLimit
 				account.refreshError = error
+				changed.append(account)
+			} else if result != nil {
+				changed.append(account)
+			} else if !results.isEmpty, var error = account.refreshError, error.lockedLogins != nil {
+				// The login of this refresh went through, or failed for another reason, so the row of locks ended.
+				if fetched {
+					account.refreshError = nil
+				} else {
+					error.lockedLogins = 0
+					error.waitsForUser = false
+					account.refreshError = error
+				}
+				changed.append(account)
 			}
-			changed.append(account)
 		}
 		return changed
 	}
 }
 
 extension RefreshError {
-	/// The sentence that the account adds while the automatic refresh pauses for the lock of ING.
-	static var lockedLoginPause: String {
-		String(localized: "The automatic refresh paused after \(lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
-	}
+	/// The automatic refresh paused for the lock of ING.
+	public var pausesForLockedLogin: Bool { waitsForUser && lockedLogins != nil }
 
-	/// Takes the count of locked logins of the access, and pauses the automatic refresh at the limit.
-	mutating func counting(_ count: Int) {
-		let pause = "\n" + Self.lockedLoginPause
-		if message.hasSuffix(pause) { message.removeLast(pause.count) }
-		lockedLogins = count
-		waitsForUser = count >= Self.lockedLoginLimit
-		if waitsForUser { message += pause }
+	/// The text that the app shows. While the automatic refresh pauses for the lock of ING, it adds why, in the language
+	/// of the app at the time it shows it.
+	public var shownMessage: String {
+		guard pausesForLockedLogin else { return message }
+		return message + "\n" + String(localized: "The automatic refresh paused after \(Self.lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
 	}
 }
 

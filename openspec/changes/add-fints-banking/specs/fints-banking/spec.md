@@ -778,28 +778,35 @@ The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the log
 
 ### Requirement: Pause the automatic refresh while the FinTS login of ING stays locked
 
-The app SHALL pause the automatic refresh of an ING access after 3 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
+The app SHALL pause the automatic refresh of an ING access after 2 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. The count belongs to the access and stays when the user closes or deletes one of its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
 
-#### Scenario: Third locked login in a row
+#### Scenario: Second locked login in a row
 
-- **GIVEN** an ING access with the saved PIN and the automatic refresh every two hours, and the last 2 automatic refreshes ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
-- **WHEN** the next automatic refresh ends with the same answer
-- **THEN** "Giro" shows the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 3 attempts. After the login on the website, refresh the account by hand."
-- **AND** the automatic refresh skips every account of the access, also the card "Visa" that is due once a day, until the user starts a refresh
+- **GIVEN** an ING access with the accounts "Giro", refreshed every two hours, and "Visa", refreshed once a day, the saved PIN, and the last automatic refresh of "Giro" ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **WHEN** the next automatic refresh of "Giro" ends with the same answer
+- **THEN** "Giro" and "Visa" show the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 2 attempts. After the login on the website, refresh the account by hand."
+- **AND** the automatic refresh skips "Giro" and "Visa" until the user starts a refresh
+- **AND** an automatic refresh of "Visa" that waited for the end of the second refresh does not start
 - **AND** the PIN stays saved
+
+#### Scenario: Account closed or deleted during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins of "Giro"
+- **WHEN** the user closes or deletes "Giro"
+- **THEN** the automatic refresh still skips "Visa"
 
 #### Scenario: Refresh by hand during the pause
 
-- **GIVEN** the automatic refresh of the ING access paused after 3 locked logins
+- **GIVEN** the automatic refresh of the ING access paused after 2 locked logins
 - **WHEN** the user chooses "Refresh Account" and the login ends with the same answer
 - **THEN** "Giro" shows the text of the bank and the hint without the pause
-- **AND** the automatic refresh logs in again, at most 3 times in a row
+- **AND** the automatic refresh logs in again, at most 2 times in a row
 
 #### Scenario: Successful login ends the count
 
-- **GIVEN** the last 2 automatic refreshes of the ING access ended because ING waits for a login on its website
+- **GIVEN** the last automatic refresh of the ING access ended because ING waits for a login on its website
 - **WHEN** the next automatic refresh succeeds
-- **THEN** the count starts again, and 2 later locked logins in a row do not pause the automatic refresh
+- **THEN** the lock goes from every account of the access, and 1 later locked login does not pause the automatic refresh
 
 ### Requirement: Cancel and interruption
 

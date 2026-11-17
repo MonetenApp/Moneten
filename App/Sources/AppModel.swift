@@ -408,6 +408,7 @@ final class AppModel {
 		}
 		sync.userCanceled = { [weak self] accounts in self?.recordCancel(of: accounts) }
 		sync.mayStartUnattended = { [weak self] in self?.autoRefresh.allowsUnattended ?? false }
+		sync.pausesUnattended = { [weak self] access in self?.ledger.pausesAutomaticRefresh(of: access) ?? false }
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self

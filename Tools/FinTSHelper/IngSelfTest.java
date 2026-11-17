@@ -98,6 +98,13 @@ final class IngSelfTest {
 			SelfTest.expect("a block before or after the request of ING", rejected("9930: PIN gesperrt", "9942: " + RENEW) + " "
 				+ rejected("9942: " + RENEW, "9930: PIN gesperrt"), blocked + " " + blocked);
 
+			FinTSHelper.Callback earlier = new FinTSHelper.Callback(Map.of());
+			earlier.log("HBCI4Java: Meldung der Bank: 9942: " + RENEW, 1, null, null);
+			earlier.status(null, org.kapott.hbci.callback.HBCICallback.STATUS_DIALOG_INIT, (Object[]) null);
+			earlier.log("HBCI4Java: Meldung der Bank: 9942: PIN falsch", 1, null, null);
+			SelfTest.expect("a new dialog forgets the messages of the dialogs before it", FinTSHelper.Json.write(earlier.pinError),
+				"{\"type\":\"rejected\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
+
 			FinTSHelper.Callback.server = MUSTERBANK;
 			SelfTest.expect("another bank with the same text keeps its codes", SelfTest.failed(SelfTest.status("9942", RENEW)),
 				"{\"type\":\"failed\",\"code\":\"9942\",\"text\":\"" + RENEW + "\"}");

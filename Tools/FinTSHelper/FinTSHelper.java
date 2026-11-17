@@ -620,7 +620,7 @@ public class FinTSHelper {
 		Integer lastApproval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
-		/// The messages of the bank since the last rejected PIN, the newest first. `pinError` is the one that
+		/// The messages of the bank since the start of the dialog or the last rejected PIN, the newest first. `pinError` is the one that
 		/// `relevant` picks, so a later wrong PIN does not hide a block or the request of ING before it.
 		final List<HBCIRetVal> pinErrors = new ArrayList<>();
 		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
@@ -838,6 +838,11 @@ public class FinTSHelper {
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
 			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
 			if (statusTag == STATUS_DIALOG_END_DONE && passport instanceof Passport p) p.open = null;
+			// A new dialog: the messages of the dialogs before it say nothing about its PIN.
+			if (statusTag == STATUS_DIALOG_INIT) {
+				pinErrors.clear();
+				pinError = null;
+			}
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;

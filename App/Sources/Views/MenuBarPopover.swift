@@ -94,7 +94,7 @@ struct MenuBarAccountRow: View {
 			if let error = account.refreshError {
 				Image(systemName: error.waitsForUser ? "person.crop.circle.badge.exclamationmark" : "exclamationmark.triangle.fill")
 					.foregroundStyle(error.waitsForUser ? Color.orange : Palette.red)
-					.help(error.message)
+					.help(error.shownMessage)
 			}
 			BalancesText(amounts: model.ledger.balances(of: account)).fontWeight(.medium)
 		}

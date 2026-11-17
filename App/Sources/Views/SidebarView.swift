@@ -205,7 +205,7 @@ struct AccountRow: View {
 			}
 			// The error of the last refresh takes the place of the balance until a refresh succeeds.
 			if let error = account.refreshError {
-				Text(error.message)
+				Text(error.shownMessage)
 					.lineLimit(1)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: 140, alignment: .trailing)
