@@ -42,7 +42,7 @@ When upstream GRDB ships the trait "SQLCipher", switch to it in one line:
 .package(url: "https://github.com/groue/GRDB.swift", exact: "<version>", traits: ["SQLCipher"])
 ```
 
-The app builds with `swift build`, so missing trait support in Xcode does not block this project.
+The app builds with `swift build`, so missing trait support in Xcode does not block this project. (ADR 0011 replaced this sentence. Xcode now resolves the packages of the app, so the switch waits until Xcode supports traits.)
 
 ## Prototype result
 
