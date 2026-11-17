@@ -525,7 +525,18 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			if t.isPending && !identity.isPending && t.bookingDate > identity.key.day { continue }
 			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
-			let step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
+			var step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
+			// An earlier version dated a pending MT942 row by the entry date of its ":61:" line, and the bank now delivers
+			// it on its value date (#374). A refresh finds such a stored row also by its value date, so a row without a name,
+			// an IBAN, or a reference stays one row, and takes the delivered day as any pending row of a refresh does. The
+			// row of the delivered day itself comes first, by its distance.
+			var byValueDate = false
+			if step == nil, t.isPending, identity.isPending, delivery.isFetched, case let .live(j) = slot, stored[j].isFetched,
+				let value = stored[j].original?.valueDate ?? stored[j].valueDate, value == t.bookingDate, value != identity.key.day {
+				let byValue = identity.on(value)
+				step = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], byValue) }
+				byValueDate = step != nil
+			}
 			if (t.isPending || identity.isPending || step == nil) && matches[i].counterpartyConflicts(with: match) { continue }
 			let fit = step.map { $0 % 2 } ?? 2
 			let rankedFit = t.isPending && matches[i].nameConflicts(with: match) ? 3 : fit
@@ -539,7 +550,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			}
 			if sameReference && t.isPending, step != nil || (!delivery.isMigration && (identity.isPending || !delivery.isFetched)) {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .reference, historical: historical,
-					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
+					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: (step == nil || byValueDate) && delivery.isFetched ? .pending : .fingerprint))
 				continue
 			}
 			guard t.isPending, identity.isPending else { continue }
@@ -547,7 +558,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard step != nil || pendingFits else { continue }
 			guard step != nil || !delivery.isFetched || fetched || future else { continue }
 			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
-			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
+			let evidence: Partner.Evidence = step != nil && !byValueDate ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, historical: 0,
 				identityTombstone: 0, fit: rankedFit, distance: distance, evidence: evidence))
 		}
@@ -649,7 +660,7 @@ struct Identity {
 	let fileIdentity: String?
 	let sourceID: String?
 	let remoteID: String?
-	let key: Key
+	private(set) var key: Key
 	let isPending: Bool
 	let counterparty: String?
 	let endToEnd: String?
@@ -720,6 +731,13 @@ struct Identity {
 
 	static func remote(_ sourceID: String?) -> String? {
 		sourceID.flatMap { Transaction.matchingID($0).hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
+	}
+
+	/// The same identity on another day.
+	func on(_ day: Day) -> Identity {
+		var moved = self
+		moved.key = Key(day: day, amount: key.amount, currency: key.currency, purpose: key.purpose)
+		return moved
 	}
 
 	func sharesIdentity(with other: Identity) -> Bool {

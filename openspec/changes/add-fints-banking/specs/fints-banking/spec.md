@@ -313,6 +313,41 @@ The app SHALL give a pending transaction from an MT942 statement of the FinTS se
 - **WHEN** the bank sends a pending MT942 row of -9,99 € with the value date 14.11.2026 and no entry date
 - **THEN** the pending transaction of -9,99 € has the date 14.11.2026
 
+### Requirement: Date a pending MT942 transaction by its value date
+
+The app SHALL give a pending transaction from an MT942 statement the value date of its ":61:" line as its date. The FinTS servers of ING, of Commerzbank (`fints.commerzbank.de`, `hbci.commerzbank.de`), and of HypoVereinsbank (a host that ends in `.hypovereinsbank.de`) send the expected booking day as the entry date of the line, so their pending transactions take that entry date. A booked transaction keeps its booking date.
+
+#### Scenario: Pending row of another bank
+
+- **GIVEN** a refresh of "Giro" at a bank with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank sends a pending MT942 row of -42,00 € to "Stadtwerke Musterstadt" with the value date 14.11.2026 and the entry date 15.11
+- **THEN** the pending transaction of -42,00 € has the date 14.11.2026 and the value date 14.11.2026
+- **AND** a pending row of the same kind from `fints.comdirect.de` has the date 14.11.2026 too
+
+#### Scenario: Pending row of HypoVereinsbank
+
+- **GIVEN** a refresh of "Giro" at HypoVereinsbank with the FinTS address "https://hbci-01.hypovereinsbank.de/bank/hbci"
+- **WHEN** the bank sends a pending MT942 row of -120,50 € with the value date 14.11.2026 and the entry date 15.11
+- **THEN** the pending transaction of -120,50 € has the date 15.11.2026 and the value date 14.11.2026
+
+#### Scenario: Booked row of another bank
+
+- **GIVEN** a refresh of "Giro" at a bank with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank sends a booked MT940 row of -42,00 € with the value date 14.11.2026 and the entry date 15.11
+- **THEN** the booked transaction has the date 15.11.2026 and the value date 14.11.2026
+
+#### Scenario: Pending transaction stored with its entry date
+
+- **GIVEN** "Giro" at a bank with the FinTS address "https://fints.musterbank.example/fints" has a fetched pending transaction of -42,00 € with the purpose "Abschlag November", no name, no IBAN, and no reference, the date 15.11.2026, the value date 14.11.2026, and the comment "Abschlag"
+- **WHEN** a refresh delivers a pending row of -42,00 € with the purpose "Abschlag November" and the date 14.11.2026
+- **THEN** "Giro" shows one pending transaction of -42,00 € on 14.11.2026 with the comment "Abschlag"
+
+#### Scenario: Stored pending transaction gets booked
+
+- **GIVEN** "Giro" has a fetched pending transaction of -42,00 € to "Stadtwerke Musterstadt" with the date 15.11.2026, the value date 14.11.2026, and the comment "Abschlag"
+- **WHEN** a refresh delivers a booked transaction of -42,00 € to "Stadtwerke Musterstadt" on 15.11.2026
+- **THEN** "Giro" shows one booked transaction on 15.11.2026 with the comment "Abschlag"
+
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.
