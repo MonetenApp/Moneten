@@ -358,6 +358,13 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public var creditorID: String?
 	/// The ISO 20022 code with which the bank returned the payment, for example "AC04" for a closed account.
 	public var returnReason: String?
+	/// The amount in another currency that the bank converted into `amountMinor`, in the minor units of `originalCurrency`.
+	/// Both are nil or both are set: `Transaction.original(_:booked:)` decides at the edge.
+	public var originalAmountMinor: Int64?
+	public var originalCurrency: String?
+	/// The deviating originator of a credit or the deviating recipient of a debit, such as the shop behind a payment
+	/// service. `name` stays the counterparty that the bank booked.
+	public var deviatingParty: String?
 	public var comment: String?
 	public var isChecked: Bool
 	public var isPending: Bool
@@ -387,7 +394,8 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	public init(id: UUID = UUID(), accountID: UUID, bookingDate: Day, valueDate: Day? = nil, amountMinor: Int64, currency: String = "EUR", name: String, purpose: String = "",
 		counterpartyIBAN: String? = nil, counterpartyBIC: String? = nil, bookingText: String? = nil, endToEndReference: String? = nil, mandateReference: String? = nil,
 		creditorID: String? = nil, comment: String? = nil, isChecked: Bool = false, isPending: Bool = false, categoryID: UUID? = nil, categorizedBy: Categorization = .none,
-		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil, isManual: Bool = false) {
+		isNew: Bool = false, review: ReviewReason? = nil, isFetched: Bool = false, sourceID: String? = nil, createdAt: Date = Date(), returnReason: String? = nil, fileIdentity: String? = nil, isManual: Bool = false,
+		originalAmount: Money? = nil, deviatingParty: String? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.bookingDate = bookingDate
@@ -403,6 +411,9 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 		self.mandateReference = mandateReference
 		self.creditorID = creditorID
 		self.returnReason = returnReason
+		originalAmountMinor = originalAmount?.minorUnits
+		originalCurrency = originalAmount?.currency
+		self.deviatingParty = deviatingParty
 		self.comment = comment
 		self.isChecked = isChecked
 		self.isPending = isPending
@@ -418,6 +429,25 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var amount: Money { Money(minorUnits: amountMinor, currency: currency) }
+
+	/// The amount before the bank converted it, see `originalAmountMinor`.
+	public var originalAmount: Money? {
+		get { originalAmountMinor.flatMap { minor in originalCurrency.map { Money(minorUnits: minor, currency: $0) } } }
+		set {
+			originalAmountMinor = newValue?.minorUnits
+			originalCurrency = newValue?.currency
+		}
+	}
+
+	/// The original amount that a bank or a file reports, as the app stores it. An amount in the currency of the booked amount
+	/// is no conversion and is dropped, and so is one whose currency is not three capital letters or that is beyond
+	/// `Money.maxMinorUnits`, which a complete export could not hold. The bank reports the original amount of a debit mostly
+	/// without a sign, so a positive one takes the minus of the booked amount, and one that the bank sends with a minus keeps it.
+	public static func original(_ reported: Money?, booked: Money) -> Money? {
+		guard let reported, reported.currency != booked.currency, reported.currency.wholeMatch(of: /[A-Z]{3}/) != nil,
+			reported.minorUnits.magnitude <= Money.maxMinorUnits.magnitude else { return nil }
+		return booked.minorUnits < 0 && reported.minorUnits > 0 ? Money(minorUnits: -reported.minorUnits, currency: reported.currency) : reported
+	}
 
 	/// The editable fields as the source delivered them: `original` after an edit, otherwise the fields themselves.
 	public var sourceValues: OriginalValues { original ?? OriginalValues(self) }

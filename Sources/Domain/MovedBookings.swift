@@ -54,7 +54,8 @@ struct MovedBookings {
 		guard !byAmount.isEmpty else { return }
 		// The nodes of the graph: delivered row i is node i, and stored row j is node rows.count + j.
 		var parts = Parts()
-		var moves: [Int: [Int]] = [:]
+		// A delivered row with two move edges is in a part of more than two nodes, so one stored row per delivered row is enough.
+		var moves: [Int: Int] = [:]
 		for i in delivered {
 			let new = PendingMatch(rows[i])
 			for (j, old) in byAmount[new.amount] ?? [] {
@@ -62,13 +63,13 @@ struct MovedBookings {
 				let move = !rows[i].isPending && !stored[j].isPending && abs(new.day - old.day) <= shift && old.identity.agrees(with: new.identity)
 					&& Self.sameCounterparty(old, new)
 				if fingerprint || move { parts.join(i, rows.count + j) }
-				if move { moves[i, default: []].append(j) }
+				if move { moves[i] = j }
 			}
 		}
 		for i in fresh {
-			guard let j = moves[i]?.first, parts.isPair(i, rows.count + j) else { continue }
+			guard let j = moves[i], parts.isPair(i, rows.count + j) else { continue }
 			let t = stored[j]
-			guard !taken.contains(j), !t.isPending, t.isFetched, delivery.covers(t.sourceBookingDate), (first...last).contains(t.sourceBookingDate)
+			guard !taken.contains(j), t.isFetched, delivery.covers(t.sourceBookingDate), (first...last).contains(t.sourceBookingDate)
 			else { continue }
 			ofDelivered[i] = j
 		}
@@ -116,7 +117,8 @@ struct MovedBookings {
 /// The pairs of the earlier steps of the merge for a delivery that may move bookings, computed on the rows in a fixed
 /// order, so that no order of the stored, the deleted, or the delivered rows decides which of two equal rows a delivered
 /// row takes. Stored rows go by their ID, deleted and delivered rows by their fields, and delivered rows with equal fields
-/// are interchangeable. The pairs refer to the rows in the order that the caller gave.
+/// are interchangeable. Each delivered row is created at its place in the fixed order, so no tie falls back to the order
+/// of the source. The pairs refer to the rows in the order that the caller gave.
 func canonicalPartners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day,
 	checkpoint: () throws -> Void) rethrows -> [Partner?] {
 	guard mayCompete(rows, stored: stored, deleted: deleted) else {
@@ -135,7 +137,13 @@ func canonicalPartners(of rows: [Transaction], stored: [Transaction], deleted: [
 	keyed.sort { ($0.high, $0.low) < ($1.high, $1.low) }
 	let storedOrder = keyed.map(\.index)
 	let deletedOrder = deleted.indices.sorted { deletedKeys[$0].lexicographicallyPrecedes(deletedKeys[$1]) }
-	let found = try partners(of: rowOrder.map { rows[$0] }, stored: storedOrder.map { stored[$0] }, deleted: deletedOrder.map { deleted[$0] },
+	// The pairing breaks a tie between delivered rows by the time they were created, which is the order of the source.
+	let ordered = rowOrder.enumerated().map { (rank: Int, i: Int) -> Transaction in
+		var t = rows[i]
+		t.createdAt = Date(timeIntervalSince1970: TimeInterval(rank))
+		return t
+	}
+	let found = try partners(of: ordered, stored: storedOrder.map { stored[$0] }, deleted: deletedOrder.map { deleted[$0] },
 		delivery: delivery, today: today, checkpoint: checkpoint)
 	var result = [Partner?](repeating: nil, count: rows.count)
 	for (k, partner) in found.enumerated() {
@@ -182,16 +190,24 @@ private func mayCompete(_ rows: [Transaction], stored: [Transaction], deleted: [
 	return false
 }
 
-/// Every field that the merge reads of a delivered row, so that two rows with the same key are interchangeable.
+/// Every field that the merge reads of a delivered row, so that two rows with the same key are interchangeable. The
+/// key compares field by field, and a missing value sorts before any text, the empty text too.
 private func sortKey(_ t: Transaction) -> [String] {
-	[String(t.bookingDate.rawValue), String(t.amountMinor), t.currency, String(t.isPending), t.name, t.purpose, t.counterpartyIBAN ?? "",
-		t.counterpartyBIC ?? "", t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.sourceID ?? "",
-		t.fileIdentity ?? "", t.valueDate.map { String($0.rawValue) } ?? "", t.returnReason ?? "", t.comment ?? "", t.categoryID?.uuidString ?? ""]
+	[String(t.bookingDate.rawValue), String(t.amountMinor), t.currency, String(t.isPending), t.name, t.purpose, optional(t.counterpartyIBAN),
+		optional(t.counterpartyBIC), optional(t.bookingText), optional(t.endToEndReference), optional(t.mandateReference), optional(t.creditorID),
+		optional(t.sourceID), optional(t.fileIdentity), optional(t.valueDate.map { String($0.rawValue) }), optional(t.returnReason),
+		optional(t.comment), optional(t.categoryID?.uuidString)]
 }
 
+/// Every field that the merge reads of a deleted row, in the same form as the key of a delivered row.
 private func sortKey(_ d: DeletedTransaction) -> [String] {
-	[String(d.bookingDate.rawValue), String(d.amountMinor), d.currency, String(d.isPending), d.purpose, d.counterpartyIBAN ?? "", d.endToEndReference ?? "",
-		d.sourceID ?? "", d.fileIdentity ?? "", String(d.wasFetched), String(d.deletedAt.timeIntervalSince1970)]
+	[String(d.bookingDate.rawValue), String(d.amountMinor), d.currency, String(d.isPending), d.purpose, optional(d.counterpartyIBAN),
+		optional(d.endToEndReference), optional(d.sourceID), optional(d.fileIdentity), String(d.wasFetched), String(d.deletedAt.timeIntervalSince1970)]
+}
+
+/// A missing value as "0", and a value as "1" before its text, so that a missing value and an empty text differ.
+private func optional(_ value: String?) -> String {
+	value.map { "1" + $0 } ?? "0"
 }
 
 extension Delivery {

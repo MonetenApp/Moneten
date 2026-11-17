@@ -43,7 +43,7 @@ final class DeutscheBankGroupSelfTest {
 	}
 
 	static Object name(UmsLine l, boolean pending) {
-		return FinTSHelper.row(l, pending).get("name");
+		return FinTSHelper.row(l, pending, null).get("name");
 	}
 
 	/// A pending card payment of Postbank without a name takes it from the purpose.
@@ -51,7 +51,7 @@ final class DeutscheBankGroupSelfTest {
 		String before = FinTSHelper.Callback.server;
 		try {
 			FinTSHelper.Callback.server = POSTBANK;
-			SelfTest.expect("a pending Postbank card payment takes the name after the slash", FinTSHelper.Json.write(FinTSHelper.row(card("Kartenzahlung / Buchhandlung Beispiel"), true)),
+			SelfTest.expect("a pending Postbank card payment takes the name after the slash", FinTSHelper.Json.write(FinTSHelper.row(card("Kartenzahlung / Buchhandlung Beispiel"), true, null)),
 				"{\"type\":\"row\",\"booked\":\"2026-11-09\",\"value\":\"2026-11-09\",\"amount\":\"-23.8\",\"currency\":\"EUR\",\"name\":\"Buchhandlung Beispiel\","
 					+ "\"purpose\":\"Kartenzahlung / Buchhandlung Beispiel\",\"bookingText\":\"Kartenzahlung\",\"pending\":true}");
 			SelfTest.expect("a pending Postbank card payment of one word takes the word", name(card("PayPal"), true), "PayPal");

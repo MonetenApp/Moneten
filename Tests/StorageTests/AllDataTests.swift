@@ -233,7 +233,7 @@ struct AllDataTests {
 				categoryID: food.id, categorizedBy: .rule, isNew: true, review: .unclearBooking, sourceID: "moneymoney:2"),
 			{
 				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
-					isFetched: true, sourceID: "bank-4711")
+					isFetched: true, sourceID: "bank-4711", originalAmount: Money(minorUnits: -2_468, currency: "KWD"), deviatingParty: "Diner Beispiel")
 				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
 					name: "Diner", purpose: "Dinner with a client"))
 				return t
@@ -281,6 +281,9 @@ struct AllDataTests {
 		let before = try source.loadLedger()
 		let after = try target.loadLedger()
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.originalAmount == Money(minorUnits: -2_468, currency: "KWD"))
+		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.deviatingParty == "Diner Beispiel")
+		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.originalAmount == nil)
 		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
 			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
 		#expect(Set(after.accounts) == Set(before.accounts))
@@ -357,6 +360,20 @@ struct AllDataTests {
 		let imported = try target.loadLedger().transactions
 		#expect(imported.count == 3)
 		#expect(imported.allSatisfy { $0.returnReason == nil })
+	}
+
+	@Test("An export refuses an original amount above the limit of amounts, one without its currency, and a currency that is no code")
+	func originalAmountChecks() throws {
+		let file = try filledStore().exportAllData(at: exportedAt).json()
+		for change in [["originalAmount": "10000000000000.01", "originalCurrency": "USD"], ["originalAmount": "1.00"], ["originalAmount": "1.00", "originalCurrency": "US1"]] {
+			var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
+			var rows = json["transactions"] as! [[String: Any]]
+			rows[0].merge(change) { $1 }
+			json["transactions"] = rows
+			#expect(throws: AllData.ReadError.self) {
+				try (try emptyStore("target-\(UUID().uuidString)")).importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+			}
+		}
 	}
 
 	@Test("The mark of missing older transactions goes with the account, and a file without it imports the account without the mark")

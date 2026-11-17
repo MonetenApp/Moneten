@@ -35,12 +35,12 @@ final class IngSelfTest {
 		String before = FinTSHelper.Callback.server;
 		try {
 			FinTSHelper.Callback.server = ING;
-			SelfTest.expect("a pending MT942 row of ING has the day on which ING expects to book it", FinTSHelper.Json.write(FinTSHelper.row(pending(), true)),
+			SelfTest.expect("a pending MT942 row of ING has the day on which ING expects to book it", FinTSHelper.Json.write(FinTSHelper.row(pending(), true, null)),
 				"{\"type\":\"row\",\"booked\":\"2026-11-15\",\"value\":\"2026-11-14\",\"amount\":\"-9.99\",\"currency\":\"EUR\",\"name\":\"Musterverlag\","
 					+ "\"purpose\":\"Musterverlag Abo 11/2026\",\"pending\":true}");
 			UmsLine withoutEntryDate = pending();
 			withoutEntryDate.bdate = null;
-			SelfTest.expect("a pending MT942 row of ING without an entry date has its value date", FinTSHelper.row(withoutEntryDate, true).get("booked"),
+			SelfTest.expect("a pending MT942 row of ING without an entry date has its value date", FinTSHelper.row(withoutEntryDate, true, null).get("booked"),
 				"2026-11-14");
 		} finally {
 			FinTSHelper.Callback.server = before;

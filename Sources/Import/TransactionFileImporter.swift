@@ -145,6 +145,11 @@ enum MT940Parser {
 			var t = Transaction(accountID: placeholder, bookingDate: line.booking, valueDate: line.value,
 				amountMinor: money.minorUnits, currency: currency, name: "")
 			if i + 1 < fields.count, fields[i + 1].tag == "86" { apply86(fields[i + 1].value, to: &t) }
+			// The original amount in the supplementary details of `:61:`, its second line, wins over one in `:86:`.
+			if let details = f.value.split(separator: "\n", maxSplits: 1).dropFirst().first,
+				let original = SlashTags.originalAmount(in: String(details)) {
+				t.originalAmount = Transaction.original(original, booked: t.amount)
+			}
 			result.append(t)
 		}
 		return TransactionFileImporter.Parsed(transactions: result, account: try TransactionFileImporter.accountDecision(account(fields.filter { $0.tag == "25" }.map(\.value))).account, declaredCurrency: declaredCurrency)
@@ -212,7 +217,7 @@ enum MT940Parser {
 		return Line61(value: value, booking: booking, amount: negative ? -amount : amount)
 	}
 
-	/// The structured `:86:` field of German banks: ?00 booking text, ?20-?29 and ?60-?63 purpose,
+	/// The structured `:86:` field of German banks: ?00 booking text, ?20-?29 and ?60-?63 purpose lines,
 	/// ?30 BIC, ?31 IBAN, ?32-?33 name.
 	static func apply86(_ raw: String, to t: inout Transaction) {
 		let s = raw.replacingOccurrences(of: "\n", with: "")
@@ -221,49 +226,160 @@ enum MT940Parser {
 			return
 		}
 		var parts: [String: String] = [:]
-		var order: [String] = []
 		for chunk in s.split(separator: "?").dropFirst() where chunk.count >= 2 {
 			let key = String(chunk.prefix(2))
 			parts[key, default: ""] += String(chunk.dropFirst(2))
-			order.append(key)
 		}
 		t.bookingText = parts["00"]
 		t.counterpartyBIC = parts["30"].flatMap { $0.isEmpty ? nil : $0 }
 		t.counterpartyIBAN = parts["31"].flatMap { $0.isEmpty ? nil : $0 }
 		t.name = (parts["32"] ?? "") + (parts["33"] ?? "")
 		let purposeKeys = (20...29).map { String($0) } + (60...63).map { String($0) }
-		let purpose = purposeKeys.compactMap { parts[$0] }.joined()
-		let sepa = SEPAPurpose.parse(purpose)
+		let lines = purposeKeys.compactMap { parts[$0] }
+		// A line of slash tags holds the original amount. It stays in the purpose, as an earlier version stored it, so that
+		// the identity of a stored transaction does not change.
+		if let line = lines.first(where: SlashTags.isOnlySlashTags) {
+			t.originalAmount = Transaction.original(SlashTags.originalAmount(in: line), booked: t.amount)
+		}
+		let sepa = SEPAPurpose.parse(PurposeLines(mt940: lines))
 		t.purpose = sepa.purpose
 		t.endToEndReference = sepa.endToEnd
 		t.mandateReference = sepa.mandate
 		t.creditorID = sepa.creditor
+		t.deviatingParty = t.amountMinor < 0 ? sepa.deviatingRecipient : sepa.deviatingOriginator
 	}
 }
 
-/// SEPA keywords inside a purpose: EREF+, MREF+, CRED+, SVWZ+.
+/// SEPA keywords inside a purpose: EREF+, MREF+, CRED+, SVWZ+, and more.
 enum SEPAPurpose {
-	static func parse(_ text: String) -> (purpose: String, endToEnd: String?, mandate: String?, creditor: String?) {
-		let keys = ["EREF+", "KREF+", "MREF+", "CRED+", "DEBT+", "SVWZ+", "ABWA+", "ABWE+", "COAM+", "OAMT+"]
-		guard keys.contains(where: { text.contains($0) }) else { return (text, nil, nil, nil) }
-		var values: [String: String] = [:]
-		var remaining = Substring(text)
-		var current: String?
-		var buffer = ""
-		while !remaining.isEmpty {
-			if let k = keys.first(where: { remaining.hasPrefix($0) }) {
-				if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
+	static let keys = ["EREF+", "KREF+", "MREF+", "CRED+", "DEBT+", "SVWZ+", "ABWA+", "ABWE+", "COAM+", "OAMT+"]
+	private static let keyScalars = keys.map { Array($0.unicodeScalars) }
+
+	struct Fields {
+		var purpose: String
+		var endToEnd: String?
+		var mandate: String?
+		var creditor: String?
+		var deviatingOriginator: String?
+		var deviatingRecipient: String?
+	}
+
+	/// The tags are read from the lines joined without a character, as every earlier version read them, so a reference or a
+	/// tag that a line end cuts reads as before and the identity of a stored transaction stays. Only the purpose shows the
+	/// spaces of the joining rule. A tag that comes twice keeps its last value.
+	static func parse(_ text: PurposeLines) -> Fields {
+		let scalars = text.scalars
+		var ranges: [Int: Range<Int>] = [:]
+		var current: Int?
+		var start = 0
+		var i = 0
+		while i < scalars.count {
+			// Every key is four letters and a plus, so only a position with a plus four scalars on can start one.
+			if i + 4 < scalars.count, scalars[i + 4] == "+",
+				let k = keyScalars.firstIndex(where: { key in scalars[i..<i + 5].elementsEqual(key) }) {
+				if let current { ranges[current] = start..<i }
 				current = k
-				buffer = ""
-				remaining = remaining.dropFirst(k.count)
+				i += keyScalars[k].count
+				start = i
 			} else {
-				buffer.append(remaining.removeFirst())
+				i += 1
 			}
 		}
-		if let current { values[current] = buffer.trimmingCharacters(in: .whitespaces) }
-		let purpose = values["SVWZ+"] ?? text
+		if let current { ranges[current] = start..<scalars.count }
+		guard !ranges.isEmpty else { return Fields(purpose: text.shown(0..<scalars.count)) }
+		func value(_ key: String) -> String? {
+			ranges[keys.firstIndex(of: key)!].map { String(String.UnicodeScalarView(scalars[$0])).trimmingCharacters(in: .whitespaces) }
+		}
 		func clean(_ v: String?) -> String? { v.flatMap { $0.isEmpty || $0 == "NOTPROVIDED" ? nil : $0 } }
-		return (purpose, clean(values["EREF+"]), clean(values["MREF+"]), clean(values["CRED+"]))
+		let purpose = ranges[keys.firstIndex(of: "SVWZ+")!].map(text.shown) ?? text.shown(0..<scalars.count)
+		return Fields(purpose: purpose, endToEnd: clean(value("EREF+")), mandate: clean(value("MREF+")), creditor: clean(value("CRED+")),
+			deviatingOriginator: clean(value("ABWA+")), deviatingRecipient: clean(value("ABWE+")))
+	}
+}
+
+/// The lines into which a bank splits an MT940 purpose: joined without a character for the tags, and with the spaces of the
+/// joining rule where the purpose shows them. Lengths count Unicode scalars, as the FinTS helper counts code points.
+struct PurposeLines {
+	let scalars: [Unicode.Scalar]
+	/// The positions in `scalars` before which the purpose shows a space.
+	let spaces: Set<Int>
+	/// The scalars of lines of white space only, which count for the tags, as before, and not for the purpose.
+	let hidden: IndexSet
+	/// A line that starts with one of these joins the line before with a space.
+	private static let tags = (SEPAPurpose.keys + ["IBAN+", "BIC+"]).map { Array($0.unicodeScalars) }
+
+	/// A line of 27 or 35 characters is full, so the bank cut the text there, also inside a word: it joins the next line
+	/// without a character. A shorter line ended where the text did, and joins with a space. So does a full line that ends
+	/// with a lowercase letter before a line that starts with an uppercase letter, or before a line that starts with a tag.
+	/// Empty lines are left out of the rule.
+	init(mt940 lines: [String]) {
+		var scalars: [Unicode.Scalar] = []
+		var spaces: Set<Int> = []
+		var hidden = IndexSet()
+		var previous: [Unicode.Scalar]?
+		for text in lines {
+			let line = Array(text.unicodeScalars)
+			defer { scalars += line }
+			guard let first = line.first, !line.allSatisfy(\.properties.isWhitespace) else {
+				hidden.insert(integersIn: scalars.count..<scalars.count + line.count)
+				continue
+			}
+			if let previous, let last = previous.last {
+				let full = previous.count == 27 || previous.count == 35
+				let newWord = last.properties.isLowercase && first.properties.isUppercase
+				let tag = Self.tags.contains { line.starts(with: $0) }
+				if !full || newWord || tag, !last.properties.isWhitespace, !first.properties.isWhitespace { spaces.insert(scalars.count) }
+			}
+			previous = line
+		}
+		self.scalars = scalars
+		self.spaces = spaces
+		self.hidden = hidden
+	}
+
+	/// The text of `range` with its spaces, without white space at both ends.
+	func shown(_ range: Range<Int>) -> String {
+		var view = String.UnicodeScalarView()
+		for i in range where !hidden.contains(i) {
+			if !view.isEmpty, spaces.contains(i) { view.append(" ") }
+			view.append(scalars[i])
+		}
+		return String(view).trimmingCharacters(in: .whitespaces)
+	}
+
+	/// A CAMT line loses its outer spaces, and repeated spaces in it become one. Only a line of 140 characters, the most that
+	/// a line holds, joins the next one without a character.
+	static func camt(_ lines: [String]) -> String {
+		var text = ""
+		var previous: String?
+		for raw in lines {
+			let line = raw.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+			guard !line.isEmpty else { continue }
+			if let previous, previous.unicodeScalars.count != 140 { text += " " }
+			text += line
+			previous = line
+		}
+		return text
+	}
+}
+
+/// The slash tags of MT940 for the original amount, the charges, and the exchange rate, such as "/OCMT/USD50,00//CHGS/EUR1,50/".
+enum SlashTags {
+	/// A purpose line that holds only these tags, the only place in `:86:` where the original amount counts.
+	static func isOnlySlashTags(_ line: String) -> Bool {
+		// The plain check first: a regular expression on every purpose line of a long file takes seconds.
+		let trimmed = line.trimmingCharacters(in: .whitespaces)
+		return trimmed.hasPrefix("/") && trimmed.wholeMatch(of: /(\/(OCMT|CHGS|EXCH)\/[^\/]*\/*)+/) != nil
+	}
+
+	/// The amount of `/OCMT/`: three letters of the currency and the amount with a decimal comma, up to the next slash or the
+	/// end. Nil when any of it does not read or the amount does not fit, because a wrong original amount is worse than none.
+	static func originalAmount(in text: String) -> Money? {
+		guard let tag = text.range(of: "/OCMT/") else { return nil }
+		let token = text[tag.upperBound...].prefix { $0 != "/" }
+		guard let match = token.wholeMatch(of: /([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)/),
+			let amount = AmountParser.decimal(from: String(match.2), decimalMark: .comma) else { return nil }
+		return Money(fitting: amount, currency: match.1.uppercased())
 	}
 }
 
@@ -278,6 +394,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 	private var details: [[String: String]] = []
 	private var detail: [String: String] = [:]
 	private var purposes: [String] = []
+	private var instructedCurrency: String?
 	private var inEntry = false
 	private var accounts: Set<FileAccount> = []
 	private let currency: String
@@ -317,6 +434,9 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			// An ISO 4217 code is upper case, and the fingerprint of a transaction compares it as it is.
 			entry["currency"] = attributes["Ccy"]?.uppercased()
 		}
+		if inEntry, name == "Amt", path.count >= 3, path[path.count - 2] == "InstdAmt", path[path.count - 3] == "AmtDtls" {
+			instructedCurrency = attributes["Ccy"]?.uppercased()
+		}
 	}
 
 	/// The parser stops after the first error and moves on, so its position after `parse()` can lie lines
@@ -353,6 +473,15 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		case "Id" where ends("CdtrSchmeId/Id/PrvtId/Othr/Id"): detail["creditor"] = value
 		case "Nm" where ends("RltdPties/Cdtr/Nm") || ends("RltdPties/Cdtr/Pty/Nm"): detail["creditorName"] = value
 		case "Nm" where ends("RltdPties/Dbtr/Nm") || ends("RltdPties/Dbtr/Pty/Nm"): detail["debtorName"] = value
+		case "Nm" where ends("RltdPties/UltmtCdtr/Nm") || ends("RltdPties/UltmtCdtr/Pty/Nm"): detail["ultimateCreditor"] = value
+		case "Nm" where ends("RltdPties/UltmtDbtr/Nm") || ends("RltdPties/UltmtDbtr/Pty/Nm"): detail["ultimateDebtor"] = value
+		// The amount that the originator instructed, in its own currency. `TxAmt` is the amount of the account.
+		case "Amt" where ends("Ntry/AmtDtls/InstdAmt/Amt"):
+			entry["instructed"] = value
+			entry["instructedCurrency"] = instructedCurrency
+		case "Amt" where ends("TxDtls/AmtDtls/InstdAmt/Amt"):
+			detail["instructed"] = value
+			detail["instructedCurrency"] = instructedCurrency
 		case "IBAN" where ends("RltdPties/CdtrAcct/Id/IBAN"): detail["creditorIBAN"] = value
 		case "IBAN" where ends("RltdPties/DbtrAcct/Id/IBAN"): detail["debtorIBAN"] = value
 		case "BICFI" where ends("RltdAgts/CdtrAgt/FinInstnId/BICFI"), "BIC" where ends("RltdAgts/CdtrAgt/FinInstnId/BIC"): detail["creditorBIC"] = value
@@ -385,6 +514,23 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		result.account = account
 	}
 
+	/// The amount that the originator instructed in its own currency: the one of the entry, or the sum of its details when
+	/// each detail has one in the same currency. Nil when any of it does not read, because a wrong original amount is worse
+	/// than none, and the booked amount does not depend on it.
+	private func instructedAmount(debit: Bool) -> Money? {
+		func read(_ text: String?, _ code: String?) -> Money? {
+			guard let text, let code, code.wholeMatch(of: /[A-Z]{3}/) != nil, text.wholeMatch(of: /[0-9]+(\.[0-9]+)?/) != nil,
+				let amount = Decimal(string: text, locale: Locale(identifier: "en_US_POSIX")) else { return nil }
+			return Money(fitting: debit ? -amount : amount, currency: code)
+		}
+		if entry["instructed"] != nil { return read(entry["instructed"], entry["instructedCurrency"]) }
+		guard !details.isEmpty else { return nil }
+		let parts = details.map { read($0["instructed"], $0["instructedCurrency"]) }
+		guard let first = parts.first ?? nil, parts.allSatisfy({ $0?.currency == first.currency }) else { return nil }
+		guard let sum = Int64(exactly: parts.reduce(Int128(0)) { $0 + Int128($1!.minorUnits) }), sum.magnitude <= Money.maxMinorUnits.magnitude else { return nil }
+		return Money(minorUnits: sum, currency: first.currency)
+	}
+
 	private func finishEntry(_ parser: XMLParser) {
 		// The bank booked nothing for an INFO entry.
 		if entry["status"] == "INFO" { return }
@@ -415,16 +561,18 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			if day == nil { result.warnings.append(.unreadableValueDate(line: parser.lineNumber, cell: text)) }
 			return day
 		}
+		let instructed = instructedAmount(debit: debit)
 		let t = Transaction(accountID: UUID(), bookingDate: booking, valueDate: valueDate,
 			amountMinor: money.minorUnits, currency: currency,
 			name: ofOneParty(side + "Name") ?? "",
-			purpose: purposes.joined(separator: " "),
+			purpose: PurposeLines.camt(purposes),
 			counterpartyIBAN: ofOneParty(side + "IBAN"),
 			counterpartyBIC: ofOneParty(side + "BIC"),
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
-			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR", returnReason: common("returnReason"))
+			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR", returnReason: common("returnReason"),
+			originalAmount: Transaction.original(instructed, booked: money), deviatingParty: ofOneParty(debit ? "ultimateCreditor" : "ultimateDebtor"))
 		if result.transactions.isEmpty { result.declaredCurrency = entry["currency"] }
 		result.transactions.append(t)
 	}

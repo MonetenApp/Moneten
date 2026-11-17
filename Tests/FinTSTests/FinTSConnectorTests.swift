@@ -746,13 +746,18 @@ struct FinTSConnectorTests {
 		#expect(giro.transactions?.from == Day(year: 2026, month: 10, day: 1))
 		#expect(!giro.isPortfolio)
 		let mt940 = giro.transactions?.rows ?? []
-		#expect(mt940.count == 2)
-		if mt940.count == 2 {
+		#expect(mt940.count == 3)
+		if mt940.count == 3 {
 			#expect(mt940[0] == Transaction(id: mt940[0].id, accountID: Self.giro.accountID, bookingDate: Day(year: 2026, month: 11, day: 2),
 				valueDate: Day(year: 2026, month: 11, day: 2), amountMinor: -2380, currency: "EUR", name: "Stadtwerke Musterstadt", purpose: "Rechnung 1001",
 				counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "BYLADEM1001", bookingText: "FOLGELASTSCHRIFT", endToEndReference: "RE-2026-1001",
 				mandateReference: "M-4711", creditorID: "DE98ZZZ09999999999", createdAt: mt940[0].createdAt))
 			#expect(mt940[1].amountMinor == 12_000 && mt940[1].name == "Erika Mustermann" && mt940[1].purpose == "Miete November")
+			// The original amount of the debit comes without a sign and takes the minus of the booked amount.
+			#expect(mt940[2].originalAmount == Money(minorUnits: -1_100, currency: "USD"))
+			#expect(mt940[2].deviatingParty == "Buchhandlung Beispiel" && mt940[2].name == "Zahlungsdienst Muster GmbH")
+			#expect(mt940[2].purpose == "Buchladen New York Kindle")
+			#expect(mt940[0].originalAmount == nil && mt940[0].deviatingParty == nil)
 		}
 
 		guard case let .fetched(savings) = report.outcomes[Self.savings.accountID] else { Issue.record("savings not fetched"); return }
@@ -790,6 +795,17 @@ struct FinTSConnectorTests {
 		guard case let .fetched(result) = report.outcomes[dollars.accountID] else { Issue.record("not fetched"); return }
 		#expect(result.transactions?.rows.map(\.currency) == ["USD"])
 		#expect(result.transactions?.rows.map(\.amountMinor) == [-1_250])
+	}
+
+	@Test("The original amount of a pending debit takes its minus, one with a minus or of three decimals stays, and one in the booked currency, one that does not read, one with a currency that is no code, and one above the limit go without failing the refresh")
+	func originalAmountSign() async throws {
+		let report = try await refresh(#"""
+			read cmd
+			echo '{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"type":"row","booked":"2026-11-14","amount":"-10.00","currency":"EUR","name":"Shop","originalAmount":"11.00","originalCurrency":"usd","pending":true},{"type":"row","booked":"2026-11-14","amount":"-3.69","currency":"EUR","name":"Laden","originalAmount":"-1.234","originalCurrency":"KWD","deviatingParty":"Laden Kuwait","pending":false},{"type":"row","booked":"2026-11-14","amount":"-46.00","currency":"EUR","name":"Laden","originalAmount":"46.00","originalCurrency":"EUR","pending":false},{"type":"row","booked":"2026-11-14","amount":"-46.00","currency":"EUR","name":"Laden","originalAmount":"50.00x","originalCurrency":"USD","pending":false},{"type":"row","booked":"2026-11-14","amount":"-46.00","currency":"EUR","name":"Laden","originalAmount":"50.00","originalCurrency":"US1","pending":false},{"type":"row","booked":"2026-11-14","amount":"-46.00","currency":"EUR","name":"Laden","originalAmount":"10000000000000.01","originalCurrency":"USD","pending":false}]},"errors":[]}'
+			"""#)
+		guard case let .fetched(result) = report.outcomes[Self.giro.accountID] else { Issue.record("not fetched"); return }
+		#expect(result.transactions?.rows.map(\.originalAmount) == [Money(minorUnits: -1_100, currency: "USD"), Money(minorUnits: -1_234, currency: "KWD"), nil, nil, nil, nil])
+		#expect(result.transactions?.rows.map(\.deviatingParty) == [nil, "Laden Kuwait", nil, nil, nil, nil])
 	}
 
 	@Test("Fails two requests for the same account of the bank, and fetches the others")

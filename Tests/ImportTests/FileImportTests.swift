@@ -832,23 +832,21 @@ struct FileImportTests {
 		#expect(try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions.map(\.amountMinor) == [amountMinor])
 	}
 
-	@Test("A cancel while the decimal mark of a large CSV file is collected ends the reading at once")
+	@Test("A cancel while the decimal mark of a large CSV file is collected stops before the next row")
 	func csvCanceledWhileCollectingDecimalMark() async throws {
-		let text = "Datum;Name;Betrag\n01.11.2026;Kiosk;1,234\n" + String(repeating: "02.11.2026;Kiosk;4.50\n", count: 300_000)
-		let data = Data(text.utf8)
-		let clock = ContinuousClock()
-		// "1,234" collects the decimal mark from all amounts. That pass runs from about 5 to 11 times the
-		// time of the split, measured in a debug build, so the cancel comes at 8 times.
-		let split = try clock.measure { _ = try CSVFile.split(text, delimiter: ";") }
-		let reading = Task.detached { Result { try TransactionFileImporter.parse(data, currency: "EUR") } }
-		try await Task.sleep(for: split * 8)
-		let canceled = clock.now
-		reading.cancel()
-		let result = await reading.value
-		// Without the cancel the reading goes on for several times the split. The limit grows with the measured split,
-		// so a runner that is slow for all tests at once does not fail the test, and never drops below one second.
-		#expect(clock.now - canceled < max(.seconds(1), split * 2)) // time-ok: the limit grows with the measured split
+		// "1,234" makes the reading collect the decimal mark from the amounts of all rows. The rows here count
+		// how many the collection reads, and the 1,000th of 300,000 cancels the task.
+		let (result, reads) = await Task {
+			var reads = 0
+			let rows = (1...300_000).lazy.map { row -> [String] in
+				reads += 1
+				if row == 1_000 { withUnsafeCurrentTask { $0?.cancel() } }
+				return ["4.50"]
+			}
+			return (Result { try CSVFile.commonDecimalMark(rows) }, reads)
+		}.value
 		#expect(throws: CancellationError.self) { try result.get() }
+		#expect(reads == 1_000)
 	}
 	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])
 	func csvDelimiterSample(lineBreak: String) {

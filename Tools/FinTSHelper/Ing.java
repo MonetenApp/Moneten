@@ -3,8 +3,8 @@ import java.util.regex.Pattern;
 /// The rules of the dialog with the FinTS server of ING, fints.ing.de (issue #235). Each bank group keeps its rules
 /// in a file of its own. A host is the one that hbci4java keeps, with its path, such as "fints.ing.de/fints/".
 ///
-/// A pending MT942 row of ING needs no rule here: ING sends the day on which it expects to book the row as the entry
-/// date of the ":61:" line, and `FinTSHelper.row` takes the entry date of every row. IngSelfTest checks it.
+/// ING sends the day on which it expects to book a pending MT942 row as the entry date of the ":61:" line, so
+/// `PendingDates` takes the entry date of its pending rows, and the value date only without one. IngSelfTest checks it.
 final class Ing {
 	private Ing() {
 	}

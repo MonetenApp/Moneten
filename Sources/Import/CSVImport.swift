@@ -347,6 +347,17 @@ public struct CSVFile: Sendable {
 		return try rows[start...].filter(isDated)[...]
 	}
 
+	/// The decimal mark that all amounts show, or nil when they show none or both. Each element holds the amounts of
+	/// one row. A large file takes a while, so a cancel stops the collection before the next row.
+	static func commonDecimalMark(_ rows: some Sequence<[String]>) throws -> DecimalMark? {
+		var marks = Set<DecimalMark>()
+		for amounts in rows {
+			try Task.checkCancellation()
+			marks.formUnion(amounts.compactMap(AmountParser.decimalMark(of:)))
+		}
+		return marks.count == 1 ? marks.first : nil
+	}
+
 	/// The transactions of the file in the layout. A row that cannot be read fails with its line.
 	func read(_ layout: CSVLayout, currency: String) throws -> TransactionFileImporter.Parsed {
 		// Without an amount column, every missing debit and credit cell would read as zero.
@@ -379,12 +390,7 @@ public struct CSVFile: Sendable {
 		var collectedMark: DecimalMark??
 		func fileMark() throws -> DecimalMark? {
 			if let collectedMark { return collectedMark }
-			var marks = Set<DecimalMark>()
-			for row in dated {
-				try Task.checkCancellation()
-				marks.formUnion(amountCells(row.cells).compactMap(AmountParser.decimalMark(of:)))
-			}
-			let mark = marks.count == 1 ? marks.first : nil
+			let mark = try Self.commonDecimalMark(dated.lazy.map { amountCells($0.cells) })
 			collectedMark = .some(mark)
 			return mark
 		}
