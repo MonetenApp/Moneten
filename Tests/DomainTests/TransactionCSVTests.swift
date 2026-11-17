@@ -42,7 +42,9 @@ struct TransactionCSVTests {
 	@Test("Formula prefixes are text in every bank-controlled column, while Amount stays numeric", arguments: [
 		("=HYPERLINK(\"http://x.example\",\"Klick\")", "\"'=HYPERLINK(\"\"http://x.example\"\",\"\"Klick\"\")\""),
 		("+1+1", "'+1+1"), ("-1+1", "'-1+1"), ("@SUM(1)", "'@SUM(1)"),
-		("\tText", "'\tText"), ("\rText", "\"'\rText\""), ("\n=HYPERLINK(1)", "\"'\n=HYPERLINK(1)\"")
+		("\tText", "'\tText"), ("\rText", "\"'\rText\""), ("\n=HYPERLINK(1)", "\"'\n=HYPERLINK(1)\""),
+		("＝HYPERLINK(1)", "'＝HYPERLINK(1)"), ("＋1+1", "'＋1+1"), ("－1+1", "'－1+1"), ("＠SUM(1)", "'＠SUM(1)"),
+		(" =1+1", "' =1+1"), ("\u{3000}＝1+1", "'\u{3000}＝1+1"), ("\u{00A0} ＠SUM(1)", "'\u{00A0} ＠SUM(1)")
 	])
 	func formulaProtection(_ input: String, _ cell: String) throws {
 		let category = Domain.Category(position: 0, name: input)

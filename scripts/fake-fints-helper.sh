@@ -15,6 +15,8 @@
 # The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
 # The login "kreditkarte" lists "Girokonto" and the credit card "Visa Card" with a 16 digit card number, whose refresh
 # brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does.
+# The login "karteohnejobs" lists only "Visa Card" with a 16 digit card number, whose refresh fails as an account that
+# allows no job that the helper knows.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -24,15 +26,19 @@
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
 # The setup login and the refresh of the login "gesperrt" fail with the block 3938, and those of "deaktiviert" with the
-# answer of a Sparkasse whose user blocked the app in its online banking. The refresh of "ohnetan" fails
+# answer of a Sparkasse whose user blocked the app in its online banking, and those of "erneuern" with the answer of ING
+# that it accepts the login only after a login on its website. The setup of "ingsperre" works, and each of its refreshes fails
+# with that answer of ING. The refresh of "ohnetan" fails
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
+# The refresh of "ersetzt" fails with the answer of the Deutsche Bank group to a login that a new login replaced.
 # The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
 # the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
 # (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# ING (50010517) has its real FinTS address too, so the setup shows the login hint of ING.
 # Frankfurter Sparkasse (50050201) and 1822direkt (50050222) have their real FinTS addresses too, so an IBAN with
 # 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
 # The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
@@ -40,7 +46,10 @@
 # Commerzbank (50040000) and comdirect (20041111) have their real FinTS addresses, so the setup shows their hints and sends
 # a login name of 8 digits to Commerzbank with 00 in front. Their login asks for a photoTAN of method 900 with 10 characters
 # in the bank parameters, or of method 902.
-# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
+# Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
+# shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
+# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB, the DKB step for "ohnetan", and the DKB
+# message of a card without jobs for "karteohnejobs". The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
@@ -57,6 +66,7 @@ answer() {
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 blocked='{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
 deactivated='{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}'
+renew='{"type":"failed","kind":"websiteLogin","code":"9942","text":"Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."}'
 
 case "$cmd" in
 *'"type":"banks"'*)
@@ -69,6 +79,10 @@ case "$cmd" in
 '{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
 '{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
 '{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
+'{"code":"37070060","name":"Deutsche Bank","city":"Köln","bic":"DEUTDEDKXXX","url":"https://fints.deutsche-bank.de/"},'\
+'{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
+'{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
+'{"code":"50010517","name":"ING-DiBa","city":"Frankfurt am Main","bic":"INGDDEFFXXX","url":"https://fints.ing.de/fints/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
@@ -83,6 +97,10 @@ case "$cmd" in
 	;;
 	*'"user":"deaktiviert"'*)
 		echo "$deactivated"
+		exit 0
+	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
 		exit 0
 	;; esac
 	if [ "$value" = 0000 ]; then
@@ -121,6 +139,11 @@ case "$cmd" in
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
+	*'"user":"karteohnejobs"'*)
+		echo '{"type":"accounts","accounts":[{"number":"1234567890123456","product":"Visa Card","kind":"50","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
 	*'"user":"unterkonten"'*)
 		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
@@ -151,8 +174,26 @@ case "$cmd" in
 		echo "$deactivated"
 		exit 0
 	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
+		exit 0
+	;;
+	*'"user":"ingsperre"'*)
+		echo "$renew"
+		exit 0
+	;;
 	*'"user":"ohnetan"'*)
 		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
+		exit 0
+	;;
+	*'"user":"karteohnejobs"'*)
+		# The card allows no job that the helper knows, as a DKB card without the card statement would.
+		echo '{"type":"accountFailed","account":"1234567890123456","kind":"noJobs","text":"The FinTS server of the bank offers neither the balance nor the transactions of this account."}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
+	*'"user":"ersetzt"'*)
+		echo '{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}'
 		exit 0
 	;;
 	*'"user":"falschetan"'*)

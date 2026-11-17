@@ -412,6 +412,16 @@
         }
       }
     },
+    "%@ of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ von %2$@"
+          }
+        }
+      }
+    },
     "%@ of “%@” needs a confirmation %@." : {
       "localizations" : {
         "de" : {
@@ -542,6 +552,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@, Durchschnitt"
+          }
+        }
+      }
+    },
+    "%@, Pre-release" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, Vorabversion"
           }
         }
       }
@@ -1185,6 +1205,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Minus vor einem Begriff bedeutet NOT."
+          }
+        }
+      }
+    },
+    "A new version of Moneten is available!" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine neue Version von Moneten ist verfügbar!"
           }
         }
       }
@@ -2792,6 +2822,16 @@
         }
       }
     },
+    "Check for Updates..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Updates suchen..."
+          }
+        }
+      }
+    },
     "Check Now" : {
       "localizations" : {
         "de" : {
@@ -2808,6 +2848,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geprüft"
+          }
+        }
+      }
+    },
+    "Checking for updates..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche nach Updates..."
           }
         }
       }
@@ -3218,6 +3268,16 @@
         }
       }
     },
+    "Could not display release notes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Versionshinweise konnten nicht angezeigt werden."
+          }
+        }
+      }
+    },
     "Could not export to file." : {
       "localizations" : {
         "de" : {
@@ -3603,6 +3663,7 @@
       }
     },
     "Creditor ID" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3938,15 +3999,27 @@
         }
       }
     },
-    "Development build" : {
+    "Deutsche Bank expects the Deutsche Bank ID. Unless you chose an ID of your own, it is your branch and account number without the subaccount number." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entwicklerversion"
+            "value" : "Die Deutsche Bank erwartet die Deutsche Bank ID. Wenn Sie keine eigene ID gewählt haben, ist das Ihre Filial- und Kontonummer ohne die Unterkontonummer."
           }
         }
-      }
+      },
+      "extractionState" : "manual"
+    },
+    "Deutsche Bank ID" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Bank ID"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Did you cancel the authorization in the app of the bank?" : {
       "localizations" : {
@@ -4056,6 +4129,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Fertig"
+          }
+        }
+      }
+    },
+    "Downloading update..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update wird geladen..."
           }
         }
       }
@@ -4181,6 +4264,7 @@
       }
     },
     "End-to-end reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4780,6 +4864,17 @@
         }
       }
     },
+    "Guide of Postbank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anleitung der Postbank"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Hairdresser" : {
       "localizations" : {
         "de" : {
@@ -4858,6 +4953,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfeseite der Consorsbank"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Help page of Deutsche Bank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Deutschen Bank"
           }
         }
       },
@@ -5186,6 +5292,17 @@
         }
       }
     },
+    "ING asks for a login on its website first: %@\nLog in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ING verlangt zuerst eine Anmeldung auf ihrer Website: %@\nMelden Sie sich einmal auf https://www.ing.de/ mit dem Benutzernamen und dem Passwort an, nicht mit dem QR-Code. Nach ungefähr 24 Stunden funktioniert die Anmeldung von Moneten wieder."
+          }
+        }
+      }
+    },
     "ING expects the user name that you chose for its online banking." : {
       "localizations" : {
         "de" : {
@@ -5263,6 +5380,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Installation ist erst möglich, wenn der Katalog erreichbar ist."
+          }
+        }
+      }
+    },
+    "Installing update..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update wird installiert..."
           }
         }
       }
@@ -5783,6 +5910,7 @@
       }
     },
     "Mandate reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5893,6 +6021,16 @@
         }
       }
     },
+    "Moneten %@ has not been checked with macOS %lld." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten %1$@ wurde nicht mit macOS %2$lld geprüft."
+          }
+        }
+      }
+    },
     "Moneten %@ has upgraded this database. Moneten %@ or newer is needed to open it, and Moneten %@ is running. The database file has not been changed." : {
       "localizations" : {
         "de" : {
@@ -5903,6 +6041,36 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Moneten %@ is available. You have %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten %1$@ ist verfügbar. Sie haben %2$@."
+          }
+        }
+      }
+    },
+    "Moneten %@ is currently the newest version available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten %@ ist die neueste verfügbare Version."
+          }
+        }
+      }
+    },
+    "Moneten %@ needs macOS %@ or later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten %1$@ benötigt macOS %2$@ oder neuer."
+          }
+        }
+      }
     },
     "Moneten cannot read the record of %@. Remove it and install it again from the catalog." : {
       "localizations" : {
@@ -5920,6 +6088,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten kann die Versionen des Katalogs, die es zuvor angenommen hat, nicht lesen, und nimmt daher keine neue Liste von Erweiterungen an."
+          }
+        }
+      }
+    },
+    "Moneten cannot update itself while it runs from the place it was downloaded to or from a read-only disk. Quit Moneten, drag it to the Applications folder, start it from there, and choose \"Check for Updates...\" again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten kann sich nicht selbst aktualisieren, solange es an dem Ort läuft, an den es geladen wurde, oder auf einem schreibgeschützten Datenträger. Beenden Sie Moneten, ziehen Sie es in den Ordner „Programme“, starten Sie es dort und wählen Sie erneut „Nach Updates suchen...“."
+          }
+        }
+      }
+    },
+    "Moneten could not check for updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten konnte nicht nach Updates suchen."
+          }
+        }
+      }
+    },
+    "Moneten could not install the update." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten konnte das Update nicht installieren."
           }
         }
       }
@@ -6019,6 +6217,16 @@
         }
       }
     },
+    "Moneten is in these folders:\n%@\n\nDelete the copies that you do not use, so that you always start the newest version." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten liegt in diesen Ordnern:\n%@\n\nLöschen Sie die Kopien, die Sie nicht verwenden, damit Sie immer die neueste Version starten."
+          }
+        }
+      }
+    },
     "Moneten is locked" : {
       "localizations" : {
         "de" : {
@@ -6085,6 +6293,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten liest Ihre Kontengruppen, Konten, Kategorien mit ihren Regeln und Umsätze über den AppleScript-Export von MoneyMoney. MoneyMoney bleibt unverändert."
+          }
+        }
+      }
+    },
+    "Moneten restarts to install it when the refresh and the dialogs with the bank have ended." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten startet neu, um es zu installieren, sobald die Aktualisierung und die Dialoge mit der Bank beendet sind."
+          }
+        }
+      }
+    },
+    "Moneten restarts when the update is installed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten startet neu, wenn das Update installiert ist."
           }
         }
       }
@@ -6299,6 +6527,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Move Moneten to the Applications folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bewegen Sie Moneten in den Ordner „Programme“."
+          }
+        }
+      }
     },
     "Move to Group" : {
       "localizations" : {
@@ -7080,6 +7318,16 @@
         }
       }
     },
+    "Open Release Page" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Release-Seite öffnen"
+          }
+        }
+      }
+    },
     "Open the app for “%@” on your phone and approve the request there." : {
       "localizations" : {
         "de" : {
@@ -7188,6 +7436,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Teilnehmernummer"
+          }
+        }
+      }
+    },
+    "Participate in beta tests and display pre-release versions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "An Betatests teilnehmen und Vorabversionen anzeigen"
           }
         }
       }
@@ -7371,6 +7629,48 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nicht gezeigte Depots: %@"
+          }
+        }
+      }
+    },
+    "Postbank expects the Postbank ID. For a business profile, enter the Postbank ID followed by # and the profile name, in the form Postbank-⁠ID#Profil." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Postbank erwartet die Postbank ID. Für ein Geschäftskundenprofil geben Sie die Postbank ID, ein # und den Profilnamen ein, in der Form Postbank-⁠ID#Profil."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Postbank ID" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Postbank ID"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Pre-release" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorabversion"
+          }
+        }
+      }
+    },
+    "Preparing update..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update wird vorbereitet..."
           }
         }
       }
@@ -7698,6 +7998,16 @@
         }
       }
     },
+    "Remind Me Later" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Später erinnern"
+          }
+        }
+      }
+    },
     "Remove" : {
       "localizations" : {
         "de" : {
@@ -7956,6 +8266,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beschränken auf"
+          }
+        }
+      }
+    },
+    "Return reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgabegrund"
           }
         }
       }
@@ -8264,6 +8585,17 @@
       },
       "extractionState" : "manual"
     },
+    "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie zuerst auf der Website der DKB die DKB-App als Freigabeverfahren ein und wählen Sie dann „Zugangsdaten bearbeiten...“."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Setting up Accounts..." : {
       "localizations" : {
         "de" : {
@@ -8300,6 +8632,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mehrere Konten in Moneten passen. Wählen Sie das Konto, das verbunden werden soll. Es behält seine Umsätze."
+          }
+        }
+      }
+    },
+    "Several copies of Moneten are installed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es sind mehrere Kopien von Moneten installiert."
           }
         }
       }
@@ -8474,6 +8816,16 @@
         }
       }
     },
+    "Show notification about new versions of Moneten" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über neue Versionen von Moneten benachrichtigen"
+          }
+        }
+      }
+    },
     "Show pie chart" : {
       "localizations" : {
         "de" : {
@@ -8570,6 +8922,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kleiner"
+          }
+        }
+      }
+    },
+    "Software Update" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Softwareupdate"
           }
         }
       }
@@ -9439,6 +9801,27 @@
         }
       }
     },
+    "The application file of Moneten is damaged. Move Moneten to the Trash, then download and install it again. Your accounts stay, because Moneten keeps its data in another place." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Programmdatei von Moneten ist beschädigt. Legen Sie Moneten in den Papierkorb, laden Sie es erneut und installieren Sie es. Ihre Konten bleiben erhalten, weil Moneten seine Daten an einem anderen Ort speichert."
+          }
+        }
+      }
+    },
+    "The automatic refresh paused after %lld attempts. After the login on the website, refresh the account by hand." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die automatische Aktualisierung pausiert nach %lld Versuchen. Aktualisieren Sie das Konto nach der Anmeldung auf der Website von Hand."
+          }
+        }
+      }
+    },
     "The balance" : {
       "localizations" : {
         "de" : {
@@ -9653,6 +10036,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Bank kennt Moneten noch nicht. Banken brauchen einige Wochen, um eine neue App zuzulassen. Versuchen Sie es später erneut."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The bank no longer accepts this login: %@\nChoose “Edit Login Data...” and enter the new login that the bank gave you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank akzeptiert diese Zugangsdaten nicht mehr: %@\nWählen Sie „Zugangsdaten bearbeiten...“ und geben Sie die neuen Zugangsdaten ein, die Ihnen die Bank gegeben hat."
           }
         }
       },
@@ -10563,6 +10957,17 @@
         }
       }
     },
+    "The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Dateien des FinTS-Helfers passen nicht zur Signatur von Moneten. Laden Sie Moneten erneut und ersetzen Sie diese Kopie."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The FinTS helper could not start: %@" : {
       "localizations" : {
         "de" : {
@@ -10638,6 +11043,17 @@
           }
         }
       }
+    },
+    "The FinTS server of DKB offers neither the balance nor the transactions of the card %@. Try again later, or contact the DKB support with this message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der DKB bietet weder den Kontostand noch die Umsätze der Karte %@ an. Versuchen Sie es später noch einmal, oder wenden Sie sich mit dieser Meldung an den Support der DKB."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The FinTS server of the bank accepts no alias longer than %lld characters. Change the alias in the online banking of the bank first." : {
       "localizations" : {
@@ -11521,6 +11937,36 @@
       },
       "extractionState" : "manual"
     },
+    "The update feed has no revision." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Update-Feed hat keine Revision."
+          }
+        }
+      }
+    },
+    "The update feed is revision %lld, but Moneten already read revision %lld." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Update-Feed hat die Revision %1$lld, aber Moneten hat bereits die Revision %2$lld gelesen."
+          }
+        }
+      }
+    },
+    "The update is ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Update ist bereit."
+          }
+        }
+      }
+    },
     "The upgraded copy failed the integrity check." : {
       "localizations" : {
         "de" : {
@@ -11711,6 +12157,16 @@
       },
       "extractionState" : "manual"
     },
+    "This build of Moneten does not look for updates." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Build von Moneten sucht nicht nach Updates."
+          }
+        }
+      }
+    },
     "This build of Moneten has no catalog keys, so it cannot show the catalog." : {
       "localizations" : {
         "de" : {
@@ -11743,6 +12199,16 @@
       },
       "extractionState" : "manual"
     },
+    "This Mac cannot install the newest version. Your version of Moneten keeps working." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac kann die neueste Version nicht installieren. Ihre Version von Moneten funktioniert weiterhin."
+          }
+        }
+      }
+    },
     "This Mac has no Touch ID sensor." : {
       "localizations" : {
         "de" : {
@@ -11769,6 +12235,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diese Version verlangt mehr als die installierte. Die installierte Version ist nicht mehr im Katalog, daher lassen sich ihre Konten erst nach diesem Update aktualisieren."
+          }
+        }
+      }
+    },
+    "This version of Moneten was released before macOS %lld. Some functions may not work as expected. Moneten looks for a newer version now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Version von Moneten wurde vor macOS %lld veröffentlicht. Einige Funktionen arbeiten möglicherweise nicht wie erwartet. Moneten sucht jetzt nach einer neueren Version."
           }
         }
       }
@@ -11959,6 +12435,7 @@
       }
     },
     "Transaction type" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12258,6 +12735,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aktualisiert"
+          }
+        }
+      }
+    },
+    "Updates" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Updates"
           }
         }
       }
@@ -12637,6 +13124,26 @@
         }
       }
     },
+    "You can look for a new version on the release page of Moneten." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie können auf der Release-Seite von Moneten nach einer neuen Version suchen."
+          }
+        }
+      }
+    },
+    "You're up-to-date!" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sie sind auf dem neuesten Stand!"
+          }
+        }
+      }
+    },
     "Your Mac user account has no login password." : {
       "localizations" : {
         "de" : {
@@ -12657,6 +13164,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Your version of Moneten keeps working. You can download the new version from the release page of Moneten." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre Version von Moneten funktioniert weiterhin. Sie können die neue Version von der Release-Seite von Moneten laden."
+          }
+        }
+      }
     },
     "“%@”" : {
       "localizations" : {

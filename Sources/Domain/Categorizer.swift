@@ -14,13 +14,14 @@ public struct Categorizer: Sendable {
 
 	let entries: [Entry]
 	let accountsByID: [UUID: Account]
-	/// The results of the rules with a regular expression for each text of a row, so a repeat of `allOrNothing` reads them
-	/// instead of running the regular expressions again, and a rule that did not stop pays for each text once.
-	private let results = Results()
+	/// The decision for the texts of each row, so a row with the same texts and every row of a repeat of `allOrNothing`
+	/// read it instead of building the `RuleSubject` and testing the rules again.
+	private let memo = Memo()
 
-	/// The processor time that the regular expressions of all rules of one categorizer may spend together. Each rule also
+	/// The processor time that the slow regex calls of all rules of one categorizer may spend together. Each rule also
 	/// stops by its own limits, so this bounds a batch with many slow rules: twelve rules of one second each would
-	/// otherwise take twelve seconds.
+	/// otherwise take twelve seconds. Only calls of `Rule.heavyCall` or more count, because 20 normal rules over a long
+	/// history take 3 seconds too.
 	static let batchLimit: UInt64 = 3_000_000_000
 
 	public init(ledger: Ledger) {
@@ -92,43 +93,123 @@ public struct Categorizer: Sendable {
 		}
 	}
 
-	private struct ResultKey: Hashable {
-		// The synthesized Hashable conformance reads it, which Periphery cannot see.
-		// periphery:ignore
-		let entry: Int
-		let texts: Texts
-	}
-
-	private final class Results: Sendable {
-		let known = Mutex<[ResultKey: Bool]>([:])
-	}
-
-	/// The first category whose rule matches, and whether a stopped rule stood before it, which could have matched first.
-	private func decision(for t: Transaction) -> (category: UUID?, passedStop: Bool) {
-		let subject = RuleSubject(t, account: accountsByID[t.accountID])
-		var texts: Texts?
+	/// What the rules give the texts of one row.
+	private struct Decision {
+		/// The index in `entries` of the first rule that matched, or nil.
+		var match: Int?
+		/// A stopped rule stands before the match, and could have matched first.
 		var passedStop = false
-		for (i, e) in entries.enumerated() {
-			if let accounts = e.accounts, !accounts.contains(t.accountID) { continue }
-			if matches(e.rule, i, subject, t, &texts) { return (e.categoryID, passedStop) }
-			if e.rule.stoppedRegexPosition != nil { passedStop = true }
-		}
-		return (nil, passedStop)
+		/// The number of stops in `State.stops` that the decision takes into account.
+		var stops = 0
 	}
 
-	private func matches(_ rule: Rule, _ entry: Int, _ subject: RuleSubject, _ t: Transaction, _ texts: inout Texts?) -> Bool {
+	private struct State {
+		/// The number of each row's texts, an index into `decisions`.
+		var rows: [Texts: Int] = [:]
+		var decisions: [Decision?] = []
+		/// The entries whose rule stopped, in the order of the stops. A stop lasts for the categorizer, so this only grows.
+		var stops: [Int] = []
+		var stopped: Set<Int> = []
+		/// The processor time of the regex calls of all rules that took `Rule.heavyCall` or more each.
+		var heavy: UInt64 = 0
+		/// The decisions that the current pass of `allOrNothing` used and that a later stop could change, or nil outside
+		/// a pass.
+		var used: [(account: UUID, decision: Decision)]?
+
+		mutating func noteStop(_ entry: Int) {
+			if stopped.insert(entry).inserted { stops.append(entry) }
+		}
+	}
+
+	/// The categorizer runs on one thread in practice. The lock keeps it safe to share, and it is not held while a rule runs.
+	private final class Memo: Sendable {
+		let state = Mutex(State())
+	}
+
+	/// The decision for the texts of a row. A known decision takes the stops since it was made into account, so only a row
+	/// that a stopped rule matched tests the rules after that one, and no rule tests one text twice.
+	private func decision(for t: Transaction) -> Decision {
+		let texts = Texts(t)
+		let (row, known, stops) = memo.state.withLock { s -> (Int, Decision?, Int) in
+			if let row = s.rows[texts] { return (row, s.decisions[row], s.stops.count) }
+			s.rows[texts] = s.decisions.count
+			s.decisions.append(nil)
+			return (s.decisions.count - 1, nil, s.stops.count)
+		}
+		var d = known ?? Decision(stops: stops)
+		var from: Int? = known == nil ? 0 : nil
+		var subject: RuleSubject?
+		while true {
+			if let from {
+				let s = subject ?? RuleSubject(t, account: accountsByID[t.accountID])
+				subject = s
+				evaluate(&d, from: from, t.accountID, s)
+			}
+			from = memo.state.withLock { s in
+				guard let next = update(&d, account: t.accountID, stops: s.stops) else {
+					s.decisions[row] = d
+					if canChange(d) { s.used?.append((t.accountID, d)) }
+					return nil
+				}
+				return next
+			}
+			if from == nil { return d }
+		}
+	}
+
+	/// Tests the rules from the entry `start` on, after a decision for all rules before it.
+	private func evaluate(_ d: inout Decision, from start: Int, _ account: UUID, _ subject: RuleSubject) {
+		d.match = nil
+		for i in start..<entries.count {
+			let e = entries[i]
+			if let accounts = e.accounts, !accounts.contains(account) { continue }
+			if matches(i, subject) {
+				d.match = i
+				return
+			}
+			if e.rule.stoppedRegexPosition != nil { d.passedStop = true }
+		}
+	}
+
+	private func matches(_ entry: Int, _ subject: RuleSubject) -> Bool {
+		let rule = entries[entry].rule
 		guard rule.hasRegex else { return rule.matches(subject) }
 		guard rule.stoppedRegexPosition == nil else { return false }
-		let key = ResultKey(entry: entry, texts: texts ?? Texts(t))
-		texts = key.texts
-		if let known = results.known.withLock({ $0[key] }) { return known }
+		let heavy = rule.heavySpent
 		let found = rule.matches(subject)
-		if entries.reduce(0, { $0 + $1.rule.regexSpent }) >= Self.batchLimit {
-			for e in entries where e.rule.hasRegex { e.rule.stopAtFirstRegex() }
+		let added = rule.heavySpent - heavy
+		if added > 0 || rule.stoppedRegexPosition != nil {
+			memo.state.withLock { s in
+				s.heavy += added
+				if s.heavy >= Self.batchLimit {
+					for (i, e) in entries.enumerated() where e.rule.hasRegex {
+						e.rule.stopAtFirstRegex()
+						s.noteStop(i)
+					}
+				}
+				if rule.stoppedRegexPosition != nil { s.noteStop(entry) }
+			}
 		}
-		guard rule.stoppedRegexPosition == nil else { return false }
-		results.known.withLock { $0[key] = found }
-		return found
+		return found && rule.stoppedRegexPosition == nil
+	}
+
+	/// Takes the stops since the decision into account. A stopped rule before the match only marks the stop, because it
+	/// did not match. A stop of the matched rule itself leaves the row to the rules after it, from the returned entry on.
+	private func update(_ d: inout Decision, account: UUID, stops: [Int]) -> Int? {
+		var next: Int?
+		for e in stops[d.stops...] {
+			if let match = d.match, e > match { continue }
+			if let accounts = entries[e].accounts, !accounts.contains(account) { continue }
+			d.passedStop = true
+			if e == d.match { next = e + 1 }
+		}
+		d.stops = stops.count
+		return next
+	}
+
+	/// A later stop can only change a decision whose match has a regular expression, or one that passed no stop yet.
+	private func canChange(_ d: Decision) -> Bool {
+		!d.passedStop || d.match.map { entries[$0].rule.hasRegex } == true
 	}
 
 	/// Sets the category of a transaction that has none, or whose category came from a rule.
@@ -138,8 +219,8 @@ public struct Categorizer: Sendable {
 		guard t.categorizedBy != .manual else { return }
 		let decision = decision(for: t)
 		if decision.passedStop, t.categorizedBy == .rule { return }
-		if let c = decision.category {
-			t.categoryID = c
+		if let match = decision.match {
+			t.categoryID = entries[match].categoryID
 			t.categorizedBy = .rule
 		} else {
 			t.categoryID = nil
@@ -148,21 +229,35 @@ public struct Categorizer: Sendable {
 	}
 
 	/// Runs one batch of categorization, such as the merge of one refresh. When a rule stops during the batch, the rows
-	/// before the stop could have taken its category, so the batch runs again, and the stopped rule then matches none of
-	/// its rows. The result never depends on the order of the rows. `body` must start from its inputs each time. A repeat
-	/// reads the results of the rules that did not stop, so it adds no time to their limits.
+	/// before the stop could have taken its category, so the batch runs again when a stop changed a decision that it
+	/// used, and the stopped rule then matches none of its rows. The result never depends on the order of the rows.
+	/// `body` must start from its inputs each time. A repeat reads the decision of each row, so it tests no rule again
+	/// except the ones after a stopped rule that matched the row. Batches of one categorizer do not nest.
 	public func allOrNothing<T>(_ body: () throws -> T) rethrows -> T {
-		var stops = stopCount
 		while true {
-			let result = try body()
-			// Each repetition stops at least one more rule, so this ends after at most one repetition for each rule.
-			let now = stopCount
-			if now == stops { return result }
-			stops = now
+			let stops = memo.state.withLock { s in
+				s.used = []
+				return s.stops.count
+			}
+			let result: T
+			do {
+				result = try body()
+			} catch {
+				memo.state.withLock { $0.used = nil }
+				throw error
+			}
+			// Each repetition follows at least one more stop, so this ends after at most one repetition for each rule.
+			let changed = memo.state.withLock { s in
+				defer { s.used = nil }
+				guard s.stops.count > stops else { return false }
+				return (s.used ?? []).contains { used in
+					var d = used.decision
+					return update(&d, account: used.account, stops: s.stops) != nil || d.passedStop != used.decision.passedStop
+				}
+			}
+			if !changed { return result }
 		}
 	}
-
-	private var stopCount: Int { entries.count(where: { $0.rule.stoppedRegexPosition != nil }) }
 }
 
 /// How a changed rule is applied to transactions that already exist.

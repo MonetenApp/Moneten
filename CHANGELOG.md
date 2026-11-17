@@ -11,3 +11,4 @@
 - See the balance history and the spending by category in charts.
 - Keep all data in an encrypted database on your Mac, protected by an optional database password.
 - Refresh accounts automatically and get a notification about new transactions.
+- Check for updates from the application menu, see what changed since your version, and install a new version with one click.

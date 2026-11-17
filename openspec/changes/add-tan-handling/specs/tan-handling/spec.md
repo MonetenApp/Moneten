@@ -96,6 +96,13 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 - **THEN** the app says that there are no available TAN methods and names both steps
 - **AND** the account shows this text as its error
 
+#### Scenario: DKB
+
+- **GIVEN** a new access to DKB, with the Bankleitzahl 12030000 or a FinTS address on a host that ends in ".dkb.de"
+- **WHEN** the bank reports no TAN method for the login
+- **THEN** the setup says that there are no available TAN methods
+- **AND** it says to set up the DKB app as the approval method on the website of DKB first, and then to choose "Edit Login Data..."
+
 #### Scenario: Only the one-step method allowed
 
 - **GIVEN** the bank allows the user only the one-step method 999
@@ -193,6 +200,23 @@ The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank 
 - **GIVEN** a TAN request of "Musterbank" for the method 900, whose bank parameters announce 6 characters
 - **WHEN** the user types "123456"
 - **THEN** "Continue" is enabled
+
+### Requirement: Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals
+
+The app SHALL turn the letters of a typed TAN into capitals as the user types, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. A TAN typed in lower case then does not count as a wrong TAN at the bank. The TAN of any other bank stays as the user types it.
+
+#### Scenario: TAN in lower case
+
+- **GIVEN** a Postbank access on `hbci.postbank.de` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the field shows "AB12CD"
+- **AND** the app sends "AB12CD"
+
+#### Scenario: Other bank
+
+- **GIVEN** a "Musterbank" access on `fints.musterbank.example` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the app sends "ab12cd"
 
 ### Requirement: Approval in an app without typing
 

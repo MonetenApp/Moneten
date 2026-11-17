@@ -408,9 +408,10 @@ public class FinTSHelper {
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
 		/// The login name of the command, which replaces the user ID of the state, so that a login name that
-		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, or the first 16 digits of a
-		/// login name of 17 digits that an older access of a savings bank stored. A customer ID that was the user
-		/// ID follows it.
+		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, the first 16 digits of a
+		/// login name of 17 digits that an older access of a savings bank stored, or a login name without the
+		/// spaces that an older access of the Deutsche Bank group stored. A customer ID that was the user ID
+		/// follows it.
 		static String user;
 
 		record State(PassportData data, String tanMedium) { }
@@ -444,8 +445,9 @@ public class FinTSHelper {
 			setCurrentTANMethod(d.tanMethod);
 		}
 
-		/// Whether the customer ID of a state names the login of its user ID: the same text, or on a server of
-		/// the cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals.
+		/// Whether the customer ID of a state names the login of its user ID: the same text, on a server of the
+		/// cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals, or on a
+		/// server of the Deutsche Bank group the same text without white space, which the app sends without spaces.
 		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart. A
 		/// savings bank needs no rule here: the state stores the 17 digits as both IDs, which are the same text,
 		/// and the customer ID follows the 16 digits of the command.
@@ -454,6 +456,7 @@ public class FinTSHelper {
 		static boolean sameLogin(String customerId, String userId, String host) {
 			if (customerId == null || userId == null) return false;
 			if (customerId.equals(userId)) return true;
+			if (DeutscheBankGroup.group(host) && DeutscheBankGroup.withoutSpaces(customerId).equals(DeutscheBankGroup.withoutSpaces(userId))) return true;
 			String vrk = vrKennung(customerId);
 			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
 		}
@@ -499,7 +502,8 @@ public class FinTSHelper {
 		/// challenge may still wait.
 		DialogContext open;
 
-		/// The warning 3938 of a dialog initialization. hbci4java counts such an answer as a successful login and
+		/// The answer of a dialog initialization after which no order succeeds (`blocking`): the warning 3938, or the
+		/// answer of the Deutsche Bank group to a replaced login. hbci4java counts a warning as a successful login and
 		/// would send the orders and further dialogs, so every later message and order fails with it.
 		Failure block;
 
@@ -510,7 +514,7 @@ public class FinTSHelper {
 			if (event == DialogEvent.JOBS_CREATED) jobsSent = true;
 			if (event == DialogEvent.MSG_SENT && block == null) {
 				HBCIRetVal w = blocking(ctx.getMsgStatus());
-				if (w != null) block = new Failure(null, w.code, Out.withoutSecrets(w.text));
+				if (w != null) block = new Failure(kind(w.code, w.text), w.code, Out.withoutSecrets(w.text));
 			}
 			if (block != null) throw block;
 			super.onDialogEvent(event, ctx);
@@ -601,7 +605,9 @@ public class FinTSHelper {
 
 	/// Answers the callbacks of hbci4java through the app.
 	static class Callback extends AbstractHBCICallback {
-		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*)");
+		/// One message of the bank in a log line of hbci4java. A line can hold several, so the text of each ends where
+		/// the next message starts, and a rule that reads the text sees only its own message.
+		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*?)(?=[;,]?\\s*Meldung der Bank: \\d{4}:|$)", Pattern.MULTILINE);
 		final Map<?, ?> command;
 		String host;
 		int port;
@@ -620,6 +626,9 @@ public class FinTSHelper {
 		Integer lastApproval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
+		/// The messages of the bank since the start of the dialog or the last rejected PIN, the newest first. `pinError` is the one that
+		/// `relevant` picks, so a later wrong PIN does not hide a block or the request of ING before it.
+		final List<HBCIRetVal> pinErrors = new ArrayList<>();
 		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
 		/// bank rejected it.
 		String pin;
@@ -729,7 +738,15 @@ public class FinTSHelper {
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
-			if (m.find()) pinError = message("rejected", "kind", kind(m.group(1), m.group(2)), "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
+			boolean found = false;
+			while (m.find()) {
+				pinErrors.add(0, new HBCIRetVal(null, null, null, m.group(1), m.group(2).trim(), null));
+				found = true;
+			}
+			if (found) {
+				HBCIRetVal r = relevant(pinErrors);
+				pinError = message("rejected", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
+			}
 			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
@@ -748,6 +765,7 @@ public class FinTSHelper {
 				case NEED_FILTER -> set(retData, "Base64");
 				case WRONG_PIN -> {
 					rejectedPIN = pinError != null ? pinError : message("rejected", "text", "The bank did not accept the PIN.");
+					pinErrors.clear();
 					pin = null;
 				}
 				case NEED_PT_PIN -> {
@@ -827,6 +845,11 @@ public class FinTSHelper {
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
 			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
 			if (statusTag == STATUS_DIALOG_END_DONE && passport instanceof Passport p) p.open = null;
+			// A new dialog: the messages of the dialogs before it say nothing about its PIN.
+			if (statusTag == STATUS_DIALOG_INIT) {
+				pinErrors.clear();
+				pinError = null;
+			}
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;
@@ -1031,7 +1054,8 @@ public class FinTSHelper {
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
-			"name", other == null ? null : text(other.name), "iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
+			"name", DeutscheBankGroup.name(Callback.server, pending, other == null ? null : text(other.name), text(l.text), purpose),
+			"iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
 			"creditor", text(other != null && present(other.creditorid) ? other.creditorid : tags.get("CRED")),
 			"bookingText", text(l.text), "pending", pending);
@@ -1050,11 +1074,14 @@ public class FinTSHelper {
 	/// did not happen.
 	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
-	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, the first urgent one,
-	/// or else the first one.
+	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, a login of the Deutsche
+	/// Bank group that a new login replaced, the first urgent one, or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
 		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
+		for (HBCIRetVal r : errors) if (DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text)) return r;
 		for (String code : URGENT) {
+			// The request of ING for a login on its website comes before a wrong PIN of the same code.
+			if (code.equals("9942")) for (HBCIRetVal r : errors) if (Ing.websiteLoginNeeded(Callback.server, r.code, r.text)) return r;
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
 		return errors.isEmpty() ? null : errors.get(0);
@@ -1065,7 +1092,7 @@ public class FinTSHelper {
 		List<HBCIRetVal> all = new ArrayList<>();
 		for (HBCIStatus status : statuses) {
 			all.addAll(List.of(status.getErrors()));
-			for (HBCIRetVal w : status.getWarnings()) if (BLOCKING_WARNINGS.contains(w.code)) all.add(w);
+			for (HBCIRetVal w : status.getWarnings()) if (blocking(w)) all.add(w);
 		}
 		return all;
 	}
@@ -1078,9 +1105,12 @@ public class FinTSHelper {
 	}
 
 	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
-	/// savings bank, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	/// savings bank, a login of the Deutsche Bank group that a new login replaced, a login that ING refuses until the user
+	/// logged in to its website, or a refused TAN after an approval in the app, which means that the approval did not happen.
 	static String kind(String code, String text) {
 		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		if (DeutscheBankGroup.loginReplaced(Callback.server, code, text)) return "loginReplaced";
+		if (Ing.websiteLoginNeeded(Callback.server, code, text)) return "websiteLogin";
 		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 
@@ -1097,11 +1127,17 @@ public class FinTSHelper {
 		}
 	}
 
-	/// The warning 3938 "Zugang vorläufig gesperrt" of an answer, after which no order succeeds, or null.
+	/// The return value of an answer after which no order succeeds (`blocking(HBCIRetVal)`), or null.
 	static HBCIRetVal blocking(HBCIMsgStatus status) {
 		if (status == null) return null;
-		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (BLOCKING_WARNINGS.contains(r.code)) return r;
+		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (blocking(r)) return r;
 		return null;
+	}
+
+	/// A return value after which no order succeeds: the warning 3938 "Zugang vorläufig gesperrt", or the answer of the
+	/// Deutsche Bank group that a new login replaced the login of the access, the error 9940 or the warning 3960.
+	static boolean blocking(HBCIRetVal r) {
+		return BLOCKING_WARNINGS.contains(r.code) || DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text);
 	}
 
 	/// The user has no TAN method for the FinTS server: the bank allowed only the one-step method 999
@@ -1253,10 +1289,11 @@ public class FinTSHelper {
 		return "FinTSHelper: account without jobs: type=" + (present(k.acctype) ? k.acctype.trim() : "none") + " allowed=" + allowed;
 	}
 
-	/// The failure of an account that allows none of the jobs.
+	/// The failure of an account that allows none of the jobs. The kind "noJobs" lets the app name a DKB card and its card
+	/// number in the error (`DKB` in Sources/FinTS); every other account shows the text.
 	static Map<String, Object> nothingAllowed(String id, Konto k) {
-		return message("accountFailed", "account", id, "kind", "unsupported", "text", securities(k) ? "Moneten can't read this securities account at this bank yet."
-			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+		if (securities(k)) return message("accountFailed", "account", id, "kind", "unsupported", "text", "Moneten can't read this securities account at this bank yet.");
+		return message("accountFailed", "account", id, "kind", "noJobs", "text", "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 	}
 
 	/// The jobs of one account: the balance and the transactions, the card statement, or the holdings of a

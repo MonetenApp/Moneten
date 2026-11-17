@@ -283,6 +283,36 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the pending transaction has the booking date 31.12.2025
 
+#### Scenario: Pending Postbank card payment without a name
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, the purpose "Kartenzahlung / Buchhandlung Beispiel", and the amount -23,80 €
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "Buchhandlung Beispiel", the text after the first " / " of the purpose
+- **AND** when the bank later books -23,80 € to "Buchhandlung Beispiel", the booked transaction replaces the pending one
+
+#### Scenario: Pending Postbank card payment of one word
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, and the purpose "PayPal"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "PayPal"
+- **AND** a purpose of several words without " / ", a booked row, a row with a counterparty, and a row of another bank keep the name that the bank sent
+
+### Requirement: Date a pending MT942 transaction of ING by its expected day
+
+The app SHALL give a pending transaction from an MT942 statement of the FinTS server of ING (`fints.ing.de`) the entry date of its ":61:" line as its date, because ING sends there the day on which it expects to book the transaction. A line without an entry date keeps its value date.
+
+#### Scenario: Pending ING row with an expected date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € to "Musterverlag" with the value date 14.11.2026 and the entry date 15.11.2026
+- **THEN** the pending transaction of -9,99 € has the date 15.11.2026 and the value date 14.11.2026
+
+#### Scenario: Pending row without an entry date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € with the value date 14.11.2026 and no entry date
+- **THEN** the pending transaction of -9,99 € has the date 14.11.2026
+
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.
@@ -457,6 +487,22 @@ The app SHALL fetch the transactions and the balance of a credit card from its c
 - **WHEN** the card statement of "Visa" has a row without an amount
 - **THEN** "Visa" fails with "The bank sent a card transaction that does not read, so nothing of this card was stored." and keeps its transactions
 - **AND** "Giro" gets its balance and its transactions
+
+### Requirement: Name the DKB card that the bank offers no statement for
+
+The app SHALL name the card number, DKB, and the DKB support in the error of a DKB credit card whose account data allow no job that the app knows, so that the user can quote the error to the DKB support. A DKB access has the Bankleitzahl 12030000 or a FinTS address on a host that ends in ".dkb.de", and a DKB card has the 16 digit card number as its account number.
+
+#### Scenario: DKB card without a job that the app knows
+
+- **GIVEN** a DKB login whose account data list the card 1234567890123456 with no job that the app knows, neither the card statement nor the balance nor a transaction list
+- **WHEN** the refresh of the card ends
+- **THEN** the card fails with "The FinTS server of DKB offers neither the balance nor the transactions of the card 1234567890123456. Try again later, or contact the DKB support with this message."
+
+#### Scenario: Card of another bank without a job that the app knows
+
+- **GIVEN** a login at a bank other than DKB whose account data list the card 1234567890123456 with no job that the app knows
+- **WHEN** the refresh of the card ends
+- **THEN** the card fails with "The FinTS server of the bank offers neither the balance nor the transactions of this account."
 
 ### Requirement: Read the value of a securities account
 
@@ -796,6 +842,74 @@ The app SHALL stop when a bank on the FinTS servers of the savings banks answers
 - **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
 - **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
 - **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
+
+### Requirement: Say how to unlock the FinTS login of ING
+
+The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the login with the code 9942 and "Bitte erneuern Sie ihre Authentifizierung", show the text and code of the bank, and add that the user logs in once at https://www.ing.de/ with the user name and the password, not with the QR code, and that the login works again after about 24 hours. The app keeps the PIN and opens no PIN sheet.
+
+#### Scenario: Login locked until a login on the website
+
+- **GIVEN** the app has the PIN of the ING access saved, and a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9800 "Der Dialog wurde abgebrochen." and the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** "Giro" shows that ING asks for a login on its website first, the text "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." with the code 9942, and "Log in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again."
+- **AND** the app opens no PIN sheet and keeps the saved PIN
+- **AND** the next automatic refresh logs in to ING again
+
+#### Scenario: Login locked during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** the assistant lists no accounts and says that the user logs in once at https://www.ing.de/ with the user name and the password
+
+#### Scenario: Wrong PIN at ING
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no https://www.ing.de/
+
+#### Scenario: Same sentence with another code or from another bank
+
+- **WHEN** ING answers with the code 9010 "Bitte erneuern Sie ihre Authentifizierung.", or "Musterbank" with the FinTS address "https://fints.musterbank.example/fints" answers with the code 9942 and the same sentence
+- **THEN** the app shows the text of the bank with its code as for any other answer with that code, and names no https://www.ing.de/
+
+### Requirement: Pause the automatic refresh while the FinTS login of ING stays locked
+
+The app SHALL pause the automatic refresh of an ING access after 2 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. The count belongs to the access and stays when the user closes, reopens, or deletes its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
+
+#### Scenario: Second locked login in a row
+
+- **GIVEN** an ING access with the accounts "Giro", refreshed every two hours, and "Visa", refreshed once a day, the saved PIN, and the last automatic refresh of "Giro" ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **WHEN** the next automatic refresh of "Giro" ends with the same answer
+- **THEN** "Giro" and "Visa" show the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 2 attempts. After the login on the website, refresh the account by hand."
+- **AND** the automatic refresh skips "Giro" and "Visa" until the user starts a refresh
+- **AND** an automatic refresh of "Visa" that waited for the end of the second refresh does not start
+- **AND** the PIN stays saved
+
+#### Scenario: Account closed or deleted during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins of "Giro"
+- **WHEN** the user closes or deletes "Giro"
+- **THEN** the automatic refresh still skips "Visa"
+
+#### Scenario: Account closed and reopened during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins
+- **WHEN** the user closes "Giro", reopens "Giro", and then closes "Visa"
+- **THEN** "Giro" shows the lock with the pause, and the automatic refresh still skips "Giro"
+
+#### Scenario: Refresh by hand during the pause
+
+- **GIVEN** the automatic refresh of the ING access paused after 2 locked logins
+- **WHEN** the user chooses "Refresh Account" and the login ends with the same answer
+- **THEN** "Giro" shows the text of the bank and the hint without the pause
+- **AND** the automatic refresh logs in again, at most 2 times in a row
+
+#### Scenario: Successful login ends the count
+
+- **GIVEN** the last automatic refresh of the ING access ended because ING waits for a login on its website
+- **WHEN** the next automatic refresh succeeds
+- **THEN** the lock goes from every account of the access, and 1 later locked login does not pause the automatic refresh
 
 ### Requirement: Cancel and interruption
 

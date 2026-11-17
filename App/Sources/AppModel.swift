@@ -128,6 +128,8 @@ final class AppModel {
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
 	let extensions = ExtensionLibrary()
+	/// The updates of the app through Sparkle.
+	let updater = AppUpdater()
 	/// The connector of each extension that the debug harness loaded from a path, by the name of its package.
 	/// An installed extension of the same name goes first.
 	var extensionConnectors: [String: ExtensionConnector] = [:]
@@ -390,9 +392,11 @@ final class AppModel {
 				Task {
 					while self.tableUndrawn { await self.drawn() }
 					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+					self.sync.recordedRefresh(of: access)
 				}
 			} else {
 				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+				self.sync.recordedRefresh(of: access)
 			}
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
@@ -408,6 +412,7 @@ final class AppModel {
 		}
 		sync.userCanceled = { [weak self] accounts in self?.recordCancel(of: accounts) }
 		sync.mayStartUnattended = { [weak self] in self?.autoRefresh.allowsUnattended ?? false }
+		sync.pausesUnattended = { [weak self] access in self?.ledger.pausesAutomaticRefresh(of: access) ?? false }
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self
@@ -419,6 +424,9 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
+		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
+		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
+		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
 	}
 
 	// MARK: Opening and locking
@@ -438,8 +446,15 @@ final class AppModel {
 	/// or a password in the Keychain that does not open a database restored from a backup.
 	private(set) var lockNotice: String?
 
+	/// Opens the database after the seal check of the app, which runs away from the main thread. A command of
+	/// the debug harness that opened or created the database meanwhile wins.
 	func start() {
-		Task { await startOpening() }
+		let from = phase
+		Task {
+			if let damaged = await LaunchChecks.damagedApp { return phase = .failed(damaged) }
+			guard phase == from else { return }
+			await startOpening()
+		}
 	}
 
 	private func startOpening() async {
@@ -1461,7 +1476,7 @@ final class AppModel {
 	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
 	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh], attended: Bool) {
 		guard let store else { return }
-		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
+		let accounts = ledger.recorded(results, of: access, attended: attended)
 		guard state != nil || !accounts.isEmpty else { return }
 		do {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)

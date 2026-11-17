@@ -165,7 +165,7 @@ public struct RefreshResult: Sendable {
 	/// then takes the time of the refresh.
 	public let balanceDate: Date?
 	/// Nil when the connector fetched only the balance. A merge then removes no pending transaction.
-	public let transactions: FetchedTransactions?
+	public var transactions: FetchedTransactions?
 	/// The bank has no transactions before the first one returned.
 	public let isComplete: Bool
 	/// The error of a transaction request that failed beside a balance that worked ("Fetch the balance
@@ -268,9 +268,14 @@ public struct FetchedTransactions: Sendable {
 	/// when the answer holds everything that the bank keeps. A stored pending transaction of a covered
 	/// day that the answer lacks was dropped by the bank.
 	public let from: Day?
+	/// The most days by which the source may move a booked transaction to another day between two refreshes, in either
+	/// direction, as a DKB card may move a payment between the day of the purchase and the day of the settlement. Zero for
+	/// a source that never moves one ("Keep a moved card booking as one transaction").
+	public var maxBookingShift: Int
 
-	public init(rows: [Transaction], from: Day?) {
+	public init(rows: [Transaction], from: Day?, maxBookingShift: Int = 0) {
 		self.rows = rows
 		self.from = from
+		self.maxBookingShift = maxBookingShift
 	}
 }
