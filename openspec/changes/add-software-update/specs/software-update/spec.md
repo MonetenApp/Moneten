@@ -221,8 +221,14 @@ The app SHALL refuse to update itself while macOS runs it from a temporary, read
 #### Scenario: Started from the Downloads folder
 
 - **GIVEN** the user started the app from the Downloads folder right after the download
-- **WHEN** the user chooses "Install" in the update window
+- **WHEN** the user chooses "Check for Updates..."
 - **THEN** the app asks the user to drag the application file to the Applications folder and to start the update from there
+
+#### Scenario: Automatic check from the Downloads folder
+
+- **GIVEN** the user started the app from the Downloads folder right after the download
+- **WHEN** the app checks for updates automatically
+- **THEN** the app shows no message and loads no update feed
 
 ### Requirement: Warn about several copies
 

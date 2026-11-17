@@ -45,18 +45,10 @@ final class AppUpdater: NSObject {
 		}
 	}
 
-	/// "Participate in beta tests and display pre-release versions", off by default.
-	var offersPreReleases: Bool {
-		get {
-			access(keyPath: \.offersPreReleases)
-			return UserDefaults.standard.bool(forKey: Self.betaKey)
-		}
-		set {
-			withMutation(keyPath: \.offersPreReleases) { UserDefaults.standard.set(newValue, forKey: Self.betaKey) }
-		}
-	}
-
-	private static let betaKey = "offerPreReleaseVersions"
+	/// "Participate in beta tests and display pre-release versions", off by default. The general
+	/// settings write it, and the updater reads it before each check.
+	static let betaKey = "offerPreReleaseVersions"
+	static var offersPreReleases: Bool { UserDefaults.standard.bool(forKey: betaKey) }
 	/// The highest revision of the feeds that the app read, the floor of `FeedRevision`.
 	private static let feedFloorKey = "highestFeedRevision"
 	/// The element in each item of the feed that holds the revision of the feed (`scripts/release-notes.py`).
@@ -151,7 +143,18 @@ final class AppUpdater: NSObject {
 extension AppUpdater: SPUUpdaterDelegate {
 	func feedURLString(for updater: SPUUpdater) -> String? { Self.debugFeed }
 
-	func allowedChannels(for updater: SPUUpdater) -> Set<String> { offersPreReleases ? ["beta"] : [] }
+	func allowedChannels(for updater: SPUUpdater) -> Set<String> {
+		let channels = UpdateChannel.allowed(preReleases: Self.offersPreReleases)
+		UpdateLog.write("update channels", ("beta", .flag(channels.contains(UpdateChannel.beta))))
+		return channels
+	}
+
+	/// Sparkle ends a canceled request for the password of an administrator without a message.
+	func updater(_ updater: SPUUpdater, didAbortWithError error: any Error) {
+		let code = (error as NSError).code
+		UpdateLog.write("update aborted", ("code", .count(code)))
+		driver.showSilentAbort(code: code)
+	}
 
 	/// Sparkle calls this only for a feed whose signature it checked, with every item of every channel.
 	func updater(_ updater: SPUUpdater, didFinishLoading appcast: SUAppcast) {
@@ -176,7 +179,7 @@ extension AppUpdater: SPUUpdaterDelegate {
 		guard let refused = refusedFeed else { return }
 		let reason = refused.revision.map { String(localized: "The update feed is revision \($0), but Moneten already read revision \(refused.floor ?? $0).") }
 			?? String(localized: "The update feed has no revision.")
-		throw NSError(domain: "io.github.moneten.update", code: 1, userInfo: [NSLocalizedDescriptionKey: reason])
+		throw NSError(domain: "io.github.moneten.update", code: UpdateFailure.Code.feedRefused, userInfo: [NSLocalizedDescriptionKey: reason])
 	}
 
 	func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem, untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {

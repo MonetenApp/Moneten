@@ -6257,6 +6257,16 @@
         }
       }
     },
+    "Moneten needs the permission of an administrator to replace the app in its folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten braucht die Erlaubnis eines Administrators, um die App in ihrem Ordner zu ersetzen."
+          }
+        }
+      }
+    },
     "Moneten on GitHub..." : {
       "localizations" : {
         "de" : {
