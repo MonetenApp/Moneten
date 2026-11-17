@@ -26,6 +26,24 @@ The app keeps all accounts, categories, and transactions of the open database in
 - Migrated categories count as assigned by hand.
 - When the database has no transactions yet, the plan leaves out the starter categories, and they are removed after the user confirms the import. Categories the user made stay.
 
+## Refreshes during migration
+
+`Sync` pauses new refreshes and waits for the running refreshes, including their final state and account writes, before the migration transaction starts. The app disables new manual refresh commands while storage runs. Due automatic accounts stay due for the next tick. No untracked task can restart a command after "Cancel Refresh". The coordinator awaits its final account callback before releasing an access. Queued refreshes resume after the pause. This keeps synchronous bank writes from waiting behind the migration writer on the main actor.
+
+Menu commands, Settings, and extension management stay disabled during storage, and only then: a file import or an export does not disable them, while Lock and cancellation remain available. Storage also waits for an existing extension installation to finish; new installs wait for the next update pass after migration. Catalog persistence uses an async database write, so a download finishing during migration cannot block the main actor. Catalog checks run one at a time and publish only into the store they started with.
+
+The preview retains the cached exports and calendar. Inside its write transaction, `Storage` reads the current ledger and deleted rows and rebuilds the plan with `Import` before saving anything. The assistant reports this rebuilt plan, so a refresh after the preview cannot add a duplicate or lose newer bank fields or user edits. The same cancellation flag covers rebuilding and writing. When the app locks during storage, it cancels first and closes that store in background work so a database read or rollback cannot block the lock screen.
+
+The shared `Domain` reconciliation keeps its full-account matching scope and accepts a throwing checkpoint. Stored and deleted fingerprint indexes check it too. Matching index construction publishes a zero completed count and checks cancellation. Row reconciliation then publishes completed counts. Existing callers use its nonthrowing entry point.
+
+## Progress and portfolio exports
+
+`Import` owns a typed progress value with a step, completed count, optional total, and optional account name. Its publication decision is a pure function of the previous value and elapsed time. A new account waits for the second like a new count, because an export sorted by date changes the account on nearly every row. Row loops check cancellation and report at least once per second, on a step change, and on completion. The app consumes these updates on the main actor. Parsing, reconciliation, saving, ledger loading, and report building run in background work. Cancellation propagates to that work. The storage transaction checks cancellation between writes and before commit and includes starter category replacement. A cancel of the task only sets the cancel token, so GRDB never interrupts a statement of the migration. A rollback of thousands of rows can move `PRAGMA data_version` although no other program wrote, so a failed `Store.write` rolls back to a savepoint and commits the then empty transaction, which keeps the version and holds the write lock from the check to the end. Its last check seals the cancel. A later Cancel is refused and does not cancel the task, because a task cancel would still abort the commit in the database. The assistant then stays open and shows the report.
+
+The source returns each complete export in one Apple event. It provides no intermediate counts. The assistant shows a waiting message until it can read the total. It does not infer progress from file size or elapsed time. The debug harness logs step codes and integer counts only.
+
+The research documents `export portfolio` with account and asset class parameters and a property-list result. Neither the research nor `Fixtures/moneymoney` records its root shape, position key names, account link, units, price currency, or purchase-price encoding. The extension fixtures describe a different interface and are not evidence of AppleScript export keys. The migration does not guess a parser or request that export. The existing account balance and portfolio history come over. Each exported portfolio gets an explicit not-migrated note on every run, even when it matches an existing account. The note of a portfolio without a bank access asks to connect it, and the note of a connected one says that its bank access fetches the positions. Existing bank positions stay unchanged. Task 1.15 records the operator step required before position import can be built.
+
 ## Risks / Trade-offs
 
 - The tests use synthetic exports with the structure of the real export. No real names or amounts are in the repository.

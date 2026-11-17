@@ -1,5 +1,6 @@
 import Domain
 import Import
+import Storage
 import SwiftUI
 
 struct MigrationSheet: View {
@@ -7,9 +8,8 @@ struct MigrationSheet: View {
 
 	enum Step {
 		case intro
-		case reading(String)
+		case working(MoneyMoneyMigration.Progress)
 		case summary(MoneyMoneyMigration.Plan)
-		case importing
 		case nothingNew
 		case fileAccount
 		case done(MoneyMoneyMigration.Plan, MoneyMoneyMigration.Report)
@@ -24,17 +24,17 @@ struct MigrationSheet: View {
 	#endif
 
 	@State private var step = Step.intro
-	@State private var task: Task<Void, Never>?
 	@State private var confirmSave = false
 	@State private var savingReport = false
 	@State private var reportText = ""
 	@State private var fileAccountID: UUID?
+	@State private var storing: MigrationCancel?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
-			onCancel: { task?.cancel() }, onConfirm: confirm) {
+			onCancel: { model.migrationTask?.cancel() }, closesOnCancel: cancelCloses, onConfirm: confirm) {
 			if case .done = step {
 				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
 			}
@@ -67,19 +67,19 @@ struct MigrationSheet: View {
 				} header: {
 					Text("Choose an account for the file import")
 				}
-			case let .reading(what):
+			case let .working(progress):
 				Section {
-					HStack(spacing: 8) { ProgressView().controlSize(.small); Text(what) }
+					HStack(spacing: 8) { ProgressView().controlSize(.small); Text(progress.text()).monospacedDigit() }
+					if let account = progress.account { Text(account).foregroundStyle(.secondary) }
+					if let total = progress.total, total > 0 {
+						ProgressView(value: Double(progress.completed), total: Double(total))
+					}
 				}
 			case let .summary(plan):
 				summary(plan)
 			case .nothingNew:
 				Section {
 					Text("Everything from MoneyMoney is already here. There is nothing new to import.")
-				}
-			case .importing:
-				Section {
-					HStack(spacing: 8) { ProgressView().controlSize(.small); Text("Importing...") }
 				}
 			case let .done(plan, report):
 				Section {
@@ -130,7 +130,7 @@ struct MigrationSheet: View {
 			}
 		}
 		.environment(\.sheetHasScrollAreas, true)
-		.onDisappear { task?.cancel() }
+		.onDisappear { model.migrationTask?.cancel() }
 		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
 			Button("Save Report...") {
 				if case let .done(_, report) = step { reportText = report.text() }
@@ -175,7 +175,7 @@ struct MigrationSheet: View {
 		case .nothingNew: nil
 		case .done: "Done"
 		case .failed: "Check again"
-		case .reading, .importing: nil
+		case .working: nil
 		}
 	}
 
@@ -186,9 +186,19 @@ struct MigrationSheet: View {
 
 	private var cancelTitle: LocalizedStringKey? {
 		switch step {
-		case .done, .importing: nil
+		case .done: nil
+		case let .working(progress) where progress.step == .finishing: nil
 		default: "Cancel"
 		}
+	}
+
+	/// A refused cancel keeps the sheet open for the report of the stored migration, and its task runs on.
+	private func cancelCloses() -> Bool {
+		if let storing, !storing.cancel() {
+			step = .working(.init(step: .finishing))
+			return false
+		}
+		return true
 	}
 
 	/// Returns true when the sheet closes.
@@ -202,7 +212,7 @@ struct MigrationSheet: View {
 			return true
 		case let .summary(plan): commit(plan); return false
 		case .done: return true
-		case .reading, .importing, .nothingNew: return false
+		case .working, .nothingNew: return false
 		}
 	}
 
@@ -228,21 +238,26 @@ struct MigrationSheet: View {
 	}
 
 	private func start() {
-		task = Task {
+		model.migrationTask = Task {
 			do {
-				step = .reading(String(localized: "Reading accounts..."))
+				step = .working(.init(step: .accounts))
 				let accounts = try await export("accounts", MoneyMoneyExporter.exportAccounts)
-				step = .reading(String(localized: "Reading categories..."))
+				step = .working(.init(step: .categories))
 				let categories = try await export("categories", MoneyMoneyExporter.exportCategories)
-				step = .reading(String(localized: "Reading transactions... This can take a minute for a long history."))
+				step = .working(.init(step: .waitingTransactions))
 				let transactions = try await export("transactions", MoneyMoneyExporter.exportTransactions)
 				try Task.checkCancellation()
 				let ledger = model.ledgerForMigration
 				let deleted = try model.deletedTransactions()
-				let plan = try await Task.detached {
-					try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger, deleted: deleted)
-				}.value
-				switch plan.review(in: ledger) {
+				let plan = try await withProgress { publish in
+					let work = Task.detached {
+						try MoneyMoneyMigration().plan(accounts: accounts, categories: categories, transactions: transactions, into: ledger, deleted: deleted, progress: publish)
+					}
+					return try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
+				}
+				let review = await Task.detached { plan.review(in: ledger) }.value
+				try Task.checkCancellation()
+				switch review {
 				case .nothingNew: step = .nothingNew
 				case .importChanges: step = .summary(plan)
 				case let .report(report): step = .done(plan, report)
@@ -255,21 +270,51 @@ struct MigrationSheet: View {
 	}
 
 	private func export(_ name: String, _ read: () async throws -> Data) async throws -> Data {
+		try Task.checkCancellation()
 		#if DEBUG || PERF_HARNESS
 		if let failure = Self.simulatedFailure { throw failure }
-		if let folder = Self.fixtureFolder { return try Data(contentsOf: folder.appendingPathComponent("\(name).plist")) }
+		if let folder = Self.fixtureFolder {
+			return try await Task.detached { try Data(contentsOf: folder.appendingPathComponent("\(name).plist")) }.value
+		}
 		#endif
 		return try await read()
 	}
 
+	private func withProgress<T: Sendable>(_ operation: @Sendable (@escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> T) async throws -> T {
+		let (stream, continuation) = AsyncStream<MoneyMoneyMigration.Progress>.makeStream()
+		let updates = Task {
+			for await progress in stream {
+				guard !Task.isCancelled else { return }
+				// A refused cancel shows "Finishing..." while the last import count may still be queued.
+				if case let .working(current) = step, current.step == .finishing { continue }
+				step = .working(progress)
+				#if DEBUG || PERF_HARNESS
+				DebugHarness.shared?.logMigration(progress)
+				#endif
+			}
+		}
+		defer { continuation.finish(); updates.cancel() }
+		let result = try await operation { continuation.yield($0) }
+		continuation.finish()
+		await updates.value
+		return result
+	}
+
 	private func commit(_ plan: MoneyMoneyMigration.Plan) {
-		step = .importing
-		Task {
+		let cancel = MigrationCancel()
+		storing = cancel
+		step = .working(.init(step: .preparing))
+		model.migrationTask = Task {
+			defer { storing = nil }
 			do {
-				try await model.runMigration(plan: plan)
-				step = .done(plan, plan.report(after: model.ledger))
+				let imported = try await withProgress { publish in try await model.runMigration(plan: plan, cancel: cancel, progress: publish) }
+				step = .working(.init(step: .finishing))
+				let ledger = model.ledger
+				let report = await Task.detached { imported.report(after: ledger) }.value
+				step = .done(imported, report)
+			} catch is CancellationError {
 			} catch {
-				step = .failed(String(localized: "Nothing was imported. \(String(describing: error))"))
+				step = .failed(String(localized: "The migration could not finish. \(String(describing: error))"))
 			}
 		}
 	}

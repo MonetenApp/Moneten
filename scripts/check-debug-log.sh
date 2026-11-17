@@ -263,6 +263,8 @@ for header in "" "Date;Name;Amount"; do
 done
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
+# A file import holds back neither the commands nor the settings and extensions. Only a migration that stores does.
+poll "^menucommands enabled=true transferring=true migration=false$" menucommands
 poll "^csv rows" csv rows
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
 poll "^topsheet shown=true$" topsheet
@@ -523,6 +525,12 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 poll "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
 send setup cancel
+poll "^alert " alert
+send migrationfixture "$PWD/Fixtures/moneymoney"
+sleep 0.5
+poll "^migration step=5 completed=5 total=5$" key return
+poll "^migration step=6 completed=5 total=5$" key return
+send key return
 poll "^crash inject frames=1 pending=true" crashinject private
 poll "^crash url characters=" crashurl
 for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
@@ -540,6 +548,7 @@ send quit
 
 found=0
 for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 1800000000 check-debug-log \
+	"Private" "Giro" "Savings" "Depot" "Household" "Food" "Pets" "Salary" "Sonstiges" "REWE Markt" "KARTENZAHLUNG" "Wocheneinkauf" "Stadtwerke Musterstadt" "Abschlag" "E2E-1" "M-1" "DE98ZZZ09999999999" "Gehalt Oktober" "Zinsen" "Synthetic migration" \
 	234015 501240 12000 12500 320000 95000 4250 229765 471123 "4711,23" 81547 815.47 1234 2345 3579 2500 92500 \
 	"Baumarkt Beispiel" "Weekly shop" "REWE SAGT DANKE" "REWE receipt" "Receipt" "demo-split" "Handoff Synthetic" 88776655 Kiosk \
 	Girokonto Tagesgeld Kreditkarte Extrakonto "Erika Mustermann" Erika Mustermann erika-mustermann "Private Access" Musterbank "Check Bank" \

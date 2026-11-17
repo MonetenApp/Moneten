@@ -146,7 +146,7 @@ extension AppModel {
 	}
 
 	func backupDatabase() {
-		guard let store else { return }
+		guard !isStoringMigration, let store else { return }
 		if !hasPassword {
 			let warning = NSAlert()
 			warning.messageText = String(localized: "No database password is set.")

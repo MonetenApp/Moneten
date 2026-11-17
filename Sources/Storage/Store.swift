@@ -22,32 +22,45 @@ public final class Store: SavedPINStore {
 	/// The only write path of the store. Each transaction first checks that the file did not change on disk, with
 	/// the write lock already held, so no other program can commit between the check and the commit.
 	func write<T>(_ updates: (Database) throws -> T) throws -> T {
-		try queue.write { db in
-			try diskWatch.checkBeforeWrite(db)
-			return try updates(db)
-		}
+		try queue.writeWithoutTransaction { db in try Self.transaction(db, diskWatch, updates) }
 	}
 
 	func write<T: Sendable>(_ updates: @escaping @Sendable (Database) throws -> T) async throws -> T {
 		let diskWatch = diskWatch
-		return try await queue.write { db in
+		return try await queue.writeWithoutTransaction { db in try Self.transaction(db, diskWatch, updates) }
+	}
+
+	/// The transaction of `write`. A failed write rolls back to a savepoint and commits the transaction, which then holds no
+	/// change. A rollback of the whole transaction moved `PRAGMA data_version` after SQLite had spilled pages of a large write
+	/// into the file, such as a canceled migration of thousands of rows, and the store then counted its own file as changed on
+	/// disk. A commit of the store never moves it, and the write lock stays held from the check to the end. A GRDB task cancel
+	/// or a SQLite error that ends the transaction by itself, such as a full disk, still rolls back the whole transaction, so a
+	/// large write must stop through a token that it checks, as the migration and the file import do.
+	private static func transaction<T>(_ db: Database, _ diskWatch: DiskWatch, _ updates: (Database) throws -> T) throws -> T {
+		var result: T?
+		var failure: (any Error)?
+		try db.inTransaction {
 			try diskWatch.checkBeforeWrite(db)
-			return try updates(db)
+			do {
+				try db.inSavepoint {
+					result = try updates(db)
+					return .commit
+				}
+			} catch {
+				failure = error
+				// SQLite itself ends the transaction after some errors, such as a full disk.
+				return db.isInsideTransaction ? .commit : .rollback
+			}
+			return .commit
 		}
+		if let failure { throw failure }
+		return result!
 	}
 
 	/// Reads everything into memory. A portfolio whose value of its balance day is missing or
 	/// differs gets that value recorded first, such as one saved before the history existed.
 	public func loadLedger() throws -> Ledger {
-		var ledger = try queue.read { db in
-			Ledger(groups: try AccountGroup.fetchAll(db),
-				accounts: try Account.fetchAll(db),
-				categories: try Domain.Category.fetchAll(db),
-				transactions: try Transaction.fetchAll(db),
-				portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
-				holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
-				parts: try SplitPart.fetchAll(db))
-		}
+		var ledger = try queue.read { db in try Self.loadLedger(in: db) }
 		let missing = ledger.missingPortfolioValues
 		if !missing.isEmpty {
 			try write { db in
@@ -56,6 +69,16 @@ public final class Store: SavedPINStore {
 			for v in missing { ledger.record(v) }
 		}
 		return ledger
+	}
+
+	static func loadLedger(in db: Database) throws -> Ledger {
+		Ledger(groups: try AccountGroup.fetchAll(db),
+			accounts: try Account.fetchAll(db),
+			categories: try Domain.Category.fetchAll(db),
+			transactions: try Transaction.fetchAll(db),
+			portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
+			holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
+			parts: try SplitPart.fetchAll(db))
 	}
 
 	public func save(_ group: AccountGroup) throws { try write { db in try group.save(db) } }
@@ -82,23 +105,36 @@ public final class Store: SavedPINStore {
 	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = [],
 		relinking relinks: [DeletedTransaction.Relink] = []) throws {
 		try write { db in
-			for g in groups { try g.save(db) }
-			for a in accounts {
-				try a.save(db)
-				try a.portfolioValue()?.save(db)
-			}
-			for c in categories { try c.save(db) }
-			for t in transactions { try t.save(db) }
-			for r in relinks {
-				let d = r.row
-				try db.execute(sql: """
-					UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
-						AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
-						AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
-					""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
-						d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
-			}
+			try Self.save(groups: groups, accounts: accounts, categories: categories, transactions: transactions, relinking: relinks, in: db)
 		}
+	}
+
+	static func save(groups: [AccountGroup], accounts: [Account], categories: [Domain.Category], transactions: [Transaction],
+		relinking relinks: [DeletedTransaction.Relink], in db: Database, check: () throws -> Void = {}, progress: (Int, UUID?) -> Void = { _, _ in }) throws {
+		for g in groups { try check(); try g.save(db) }
+		for a in accounts {
+			try check()
+			try a.save(db)
+			try a.portfolioValue()?.save(db)
+		}
+		for c in categories { try check(); try c.save(db) }
+		progress(0, nil)
+		for (index, t) in transactions.enumerated() {
+			try check()
+			try t.save(db)
+			progress(index + 1, t.accountID)
+		}
+		for r in relinks {
+			try check()
+			let d = r.row
+			try db.execute(sql: """
+				UPDATE deletedTransaction SET sourceID = ? WHERE rowid = (SELECT rowid FROM deletedTransaction WHERE accountID = ?
+					AND sourceID IS ? AND bookingDate = ? AND amountMinor = ? AND currency = ? AND isPending = ? AND purpose = ?
+					AND counterpartyIBAN IS ? AND endToEndReference IS ? AND wasFetched = ? AND fileIdentity IS ? LIMIT 1)
+				""", arguments: [r.sourceID, d.accountID, d.sourceID, d.bookingDate.rawValue, d.amountMinor, d.currency, d.isPending, d.purpose,
+					d.counterpartyIBAN, d.endToEndReference, d.wasFetched, d.fileIdentity])
+		}
+		try check()
 	}
 
 	/// Clears the "new" mark of every transaction of an account in one statement. Saving each
@@ -268,8 +304,8 @@ public final class Store: SavedPINStore {
 		}
 	}
 
-	public func saveCatalog(_ catalog: StoredCatalog) throws {
-		try write { db in
+	public func saveCatalog(_ catalog: StoredCatalog) async throws {
+		try await write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", signature, floors) VALUES (1, ?, ?, ?)",
 				arguments: [catalog.index, catalog.signature, catalog.floors])
 		}
@@ -331,10 +367,12 @@ public final class Store: SavedPINStore {
 
 	/// Removes a category and its subcategories. Their transactions become uncategorized.
 	public func deleteCategory(_ id: UUID) throws {
-		try write { db in
-			_ = try Domain.Category.deleteOne(db, key: id)
-			try db.execute(sql: "UPDATE bankTransaction SET categorizedBy = 'none' WHERE categoryID IS NULL AND categorizedBy != 'none'")
-		}
+		try write { db in try Self.deleteCategory(id, in: db) }
+	}
+
+	static func deleteCategory(_ id: UUID, in db: Database) throws {
+		_ = try Domain.Category.deleteOne(db, key: id)
+		try db.execute(sql: "UPDATE bankTransaction SET categorizedBy = 'none' WHERE categoryID IS NULL AND categorizedBy != 'none'")
 	}
 
 	/// Copies the encrypted database file. The copy opens with the password of this moment.

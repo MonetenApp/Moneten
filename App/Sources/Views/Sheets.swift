@@ -12,12 +12,14 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	var canCancel: Bool
 	var width: CGFloat
 	var onCancel: () -> Void
+	/// Decides whether "Cancel" closes the sheet. A cancel that comes too late to stop the work keeps it open.
+	var closesOnCancel: () -> Bool
 	var onConfirm: () -> Bool
 	var leading: Leading
 	var content: Content
 
 	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
-		width: CGFloat = 460, onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool,
+		width: CGFloat = 460, onCancel: @escaping () -> Void = {}, closesOnCancel: @escaping () -> Bool = { true }, onConfirm: @escaping () -> Bool,
 		@ViewBuilder leading: () -> Leading, @ViewBuilder content: () -> Content) {
 		self.title = title
 		self.confirmTitle = confirmTitle
@@ -26,6 +28,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 		self.canCancel = canCancel
 		self.width = width
 		self.onCancel = onCancel
+		self.closesOnCancel = closesOnCancel
 		self.onConfirm = onConfirm
 		self.leading = leading()
 		self.content = content()
@@ -42,7 +45,11 @@ struct SheetFrame<Content: View, Leading: View>: View {
 				leading
 				Spacer(minLength: 16)
 				if let cancelTitle {
-					Button(cancelTitle, role: .cancel) { onCancel(); dismiss() }.keyboardShortcut(.cancelAction).disabled(!canCancel)
+					Button(cancelTitle, role: .cancel) {
+						guard closesOnCancel() else { return }
+						onCancel()
+						dismiss()
+					}.keyboardShortcut(.cancelAction).disabled(!canCancel)
 				}
 				if let confirmTitle {
 					Button(confirmTitle) { if onConfirm() { dismiss() } }

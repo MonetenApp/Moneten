@@ -107,6 +107,10 @@ final class DebugHarness {
 		log(LogLine(event, values: values))
 	}
 
+	func logMigration(_ progress: MoneyMoneyMigration.Progress) {
+		log("migration", ("step", .count(progress.step.rawValue)), ("completed", .count(progress.completed)), ("total", .count(progress.total ?? -1)))
+	}
+
 	func run(_ command: String, _ argument: String) {
 		guard let model else { return }
 		switch command {
@@ -452,7 +456,11 @@ final class DebugHarness {
 			let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
-		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
+		// Also whether a file import or an export runs, and whether a migration stores, which alone holds back the commands,
+		// the settings, and the extensions.
+		case "menucommands":
+			log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)), ("transferring", .flag(model.isTransferringTransactions)),
+				("migration", .flag(model.isStoringMigration)))
 		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
 		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
 		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
