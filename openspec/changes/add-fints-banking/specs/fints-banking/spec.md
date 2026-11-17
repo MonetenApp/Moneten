@@ -776,6 +776,31 @@ The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the log
 - **WHEN** ING answers with the code 9010 "Bitte erneuern Sie ihre Authentifizierung.", or "Musterbank" with the FinTS address "https://fints.musterbank.example/fints" answers with the code 9942 and the same sentence
 - **THEN** the app shows the text of the bank with its code as for any other answer with that code, and names no https://www.ing.de/
 
+### Requirement: Pause the automatic refresh while the FinTS login of ING stays locked
+
+The app SHALL pause the automatic refresh of an ING access after 3 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
+
+#### Scenario: Third locked login in a row
+
+- **GIVEN** an ING access with the saved PIN and the automatic refresh every two hours, and the last 2 automatic refreshes ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **WHEN** the next automatic refresh ends with the same answer
+- **THEN** "Giro" shows the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 3 attempts. After the login on the website, refresh the account by hand."
+- **AND** the automatic refresh skips the access until the user starts a refresh
+- **AND** the PIN stays saved
+
+#### Scenario: Refresh by hand during the pause
+
+- **GIVEN** the automatic refresh of the ING access paused after 3 locked logins
+- **WHEN** the user chooses "Refresh Account" and the login ends with the same answer
+- **THEN** "Giro" shows the text of the bank and the hint without the pause
+- **AND** the automatic refresh logs in again, at most 3 times in a row
+
+#### Scenario: Successful login ends the count
+
+- **GIVEN** the last 2 automatic refreshes of the ING access ended because ING waits for a login on its website
+- **WHEN** the next automatic refresh succeeds
+- **THEN** the count starts again, and 2 later locked logins in a row do not pause the automatic refresh
+
 ### Requirement: Cancel and interruption
 
 The app SHALL end the FinTS dialog with the bank when the user cancels a refresh, and it SHALL store nothing for an account whose fetch was canceled, timed out, or lost its connection. Accounts that were complete before stay stored.

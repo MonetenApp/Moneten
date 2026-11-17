@@ -1461,7 +1461,7 @@ final class AppModel {
 	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
 	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh], attended: Bool) {
 		guard let store else { return }
-		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
+		let accounts = ledger.recorded(results, of: access, attended: attended)
 		guard state != nil || !accounts.isEmpty else { return }
 		do {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)

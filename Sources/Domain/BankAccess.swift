@@ -301,18 +301,28 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	/// the error popover names "Edit Login Data..." (`SyncFailure.mayAskForNewSetup`). The failure can come
 	/// at the login or after it, so the command is a suggestion.
 	public var suggestsEditLoginData: Bool
+	/// Set only when ING refused the login until a login on its website (`SyncFailure.websiteLoginNeeded`): the
+	/// automatic refreshes of the access in a row since the last refresh by hand that ended with it. At
+	/// `lockedLoginLimit` the automatic refresh pauses (`Ledger.recorded`).
+	public var lockedLogins: Int?
+
+	/// The automatic refreshes in a row that may end with the lock of ING before the automatic refresh pauses. 9942
+	/// means a wrong PIN, and the bank test of issue #11 has not shown yet whether ING counts these logins toward
+	/// the block of the PIN.
+	public static let lockedLoginLimit = 3
 
 	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
-		suggestsEditLoginData: Bool = false) {
+		suggestsEditLoginData: Bool = false, lockedLogins: Int? = nil) {
 		self.message = message
 		self.code = code
 		self.date = date
 		self.notices = notices
 		self.waitsForUser = waitsForUser
 		self.suggestsEditLoginData = suggestsEditLoginData
+		self.lockedLogins = lockedLogins
 	}
 
-	/// An error stored before `waitsForUser` or `suggestsEditLoginData` existed has no such key.
+	/// An error stored before `waitsForUser`, `suggestsEditLoginData`, or `lockedLogins` existed has no such key.
 	public init(from decoder: Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
 		message = try c.decode(String.self, forKey: .message)
@@ -321,6 +331,7 @@ public struct RefreshError: Codable, Hashable, Sendable {
 		notices = try c.decode([String].self, forKey: .notices)
 		waitsForUser = try c.decodeIfPresent(Bool.self, forKey: .waitsForUser) ?? false
 		suggestsEditLoginData = try c.decodeIfPresent(Bool.self, forKey: .suggestsEditLoginData) ?? false
+		lockedLogins = try c.decodeIfPresent(Int.self, forKey: .lockedLogins)
 	}
 }
 
@@ -328,6 +339,32 @@ public struct RefreshError: Codable, Hashable, Sendable {
 public enum AccountRefresh: Sendable, Equatable {
 	case refreshed(Date)
 	case failed(RefreshError)
+}
+
+extension Ledger {
+	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them. A failure
+	/// because ING waits for a login on its website counts the automatic refreshes in a row that ended with it, over all
+	/// accounts of the access, because each of them logs in with the same PIN. A refresh by hand starts the count again,
+	/// and a success or another failure ends it. At `RefreshError.lockedLoginLimit` the error waits for the user, so the
+	/// automatic refresh pauses for the access until a refresh by hand.
+	public func recorded(_ results: [UUID: AccountRefresh], of access: UUID, attended: Bool) -> [Account] {
+		let before = accounts.filter { $0.accessID == access }.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
+		return results.compactMap { id, result in
+			guard var account = account(id) else { return nil }
+			guard case var .failed(error) = result, error.lockedLogins != nil else {
+				account.record(result)
+				return account
+			}
+			let count = attended ? 0 : before + 1
+			error.lockedLogins = count
+			if count >= RefreshError.lockedLoginLimit {
+				error.waitsForUser = true
+				error.message += "\n" + String(localized: "The automatic refresh paused after \(RefreshError.lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
+			}
+			account.record(.failed(error))
+			return account
+		}
+	}
 }
 
 extension Account {
@@ -370,7 +407,8 @@ extension SyncState {
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
 		func error(_ failure: SyncFailure, at date: Date, ofAccess: Bool = false) -> AccountRefresh {
 			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),
-				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup))
+				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup,
+				lockedLogins: failure.isWebsiteLoginNeeded ? 0 : nil))
 		}
 		switch self {
 		case let .finished(summary):

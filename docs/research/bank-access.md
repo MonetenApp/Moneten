@@ -118,6 +118,14 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 2. Expected: the dialog shows the flicker code or the image, or asks for the TAN medium and then for the SMS code. Type a wrong TAN once. Expected: "The bank did not accept the entered TAN" with the code of the bank (9941 or another), and no second request.
 3. Change the method inside the dialog, if the bank offers two. Expected: a new challenge with the new method.
 
+### Run 4: ING (issue #235)
+
+1. Add the ING login and refresh the giro account. Record whether the bank parameters allow CAMT (HKCAZ) and SEPA transfers (HKCCS), and how ING lists photoTAN and "Banking to go" among its TAN methods.
+2. If ING sends MT942, record one pending row and its booked version: is the entry date of the `:61:` line the day on which ING books the row?
+3. Only with an access that has not logged in on www.ing.de for 90 days: record the code and the text of the lock. Expected: 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." and the hint of the app.
+4. During the lock, refresh by hand two or three times and record after each one whether ING counts the login toward the block of the PIN, for example a warning of a block to come, or 3938 or 9930 at the next login. The automatic refresh pauses after 3 such refreshes in a row (`RefreshError.lockedLoginLimit`), and this step decides whether that limit can go.
+5. Log in on www.ing.de with the QR log-in once, and with the user name and the password once. Record which one unlocks FinTS, and after how long.
+
 ### What each run records
 
 - The return codes that the bank sends for a declined approval, a wrong TAN, and a blocked access, when they occur. The app maps 9941, 9943, 9948, and 9951 (`HelperError` in `Sources/FinTS/HelperProtocol.swift`), and a code it does not know shows as the text of the bank.

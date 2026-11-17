@@ -25,7 +25,8 @@
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
 # The setup login and the refresh of the login "gesperrt" fail with the block 3938, and those of "deaktiviert" with the
 # answer of a Sparkasse whose user blocked the app in its online banking, and those of "erneuern" with the answer of ING
-# that it accepts the login only after a login on its website. The refresh of "ohnetan" fails
+# that it accepts the login only after a login on its website. The setup of "ingsperre" works, and each of its refreshes fails
+# with that answer of ING. The refresh of "ohnetan" fails
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
@@ -150,6 +151,10 @@ case "$cmd" in
 		exit 0
 	;;
 	*'"user":"erneuern"'*)
+		echo "$renew"
+		exit 0
+	;;
+	*'"user":"ingsperre"'*)
 		echo "$renew"
 		exit 0
 	;;

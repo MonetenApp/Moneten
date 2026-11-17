@@ -9395,6 +9395,17 @@
         }
       }
     },
+    "The automatic refresh paused after %lld attempts. After the login on the website, refresh the account by hand." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die automatische Aktualisierung pausiert nach %lld Versuchen. Aktualisieren Sie das Konto nach der Anmeldung auf der Website von Hand."
+          }
+        }
+      }
+    },
     "The balance" : {
       "localizations" : {
         "de" : {

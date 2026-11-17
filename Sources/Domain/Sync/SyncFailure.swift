@@ -90,6 +90,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// ING refused the login until a login on its website, which the automatic refresh counts (`Ledger.recorded`).
+	public var isWebsiteLoginNeeded: Bool {
+		if case .websiteLoginNeeded = self { true } else { false }
+	}
+
 	/// No answer in a dialog resolves the failure: the bank blocked the access, or the user has no TAN
 	/// method. So a command after an automatic refresh that failed with it does not run again with dialogs.
 	public var dialogResolves: Bool {

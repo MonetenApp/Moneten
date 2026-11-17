@@ -47,6 +47,15 @@ final class IngSelfTest {
 		}
 	}
 
+	static final String WEBSITE = "{\"type\":\"rejected\",\"kind\":\"websiteLogin\",\"code\":\"9942\",\"text\":\"" + RENEW + "\"}";
+
+	/// The rejection of the PIN after hbci4java logged each of `lines` as messages of the bank.
+	static String rejected(String... lines) {
+		FinTSHelper.Callback callback = new FinTSHelper.Callback(Map.of());
+		for (String line : lines) callback.log("HBCI4Java: Meldung der Bank: " + line, 1, null, null);
+		return FinTSHelper.Json.write(callback.pinError);
+	}
+
 	/// The FinTS login that ING refuses until the user logged in to its online banking.
 	static void websiteLogin() {
 		String before = FinTSHelper.Callback.server;
@@ -76,6 +85,18 @@ final class IngSelfTest {
 			callback.log("HBCI4Java: Meldung der Bank: 9942: " + RENEW, 1, null, null);
 			SelfTest.expect("a rejected PIN with the request of ING", FinTSHelper.Json.write(callback.pinError),
 				"{\"type\":\"rejected\",\"kind\":\"websiteLogin\",\"code\":\"9942\",\"text\":\"" + RENEW + "\"}");
+
+			FinTSHelper.Callback borrowed = new FinTSHelper.Callback(Map.of());
+			borrowed.log("HBCI4Java: Meldung der Bank: 9942: PIN falsch; Meldung der Bank: 9010: " + RENEW, 1, null, null);
+			SelfTest.expect("a wrong PIN does not borrow the sentence of ING from another message of the same line", FinTSHelper.Json.write(borrowed.pinError),
+				"{\"type\":\"rejected\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
+			SelfTest.expect("the request of ING and a wrong PIN in one line, in either order", rejected("9942: PIN falsch; Meldung der Bank: 9942: " + RENEW) + " "
+				+ rejected("9942: " + RENEW + "; Meldung der Bank: 9942: PIN falsch"), WEBSITE + " " + WEBSITE);
+			SelfTest.expect("the request of ING before or after a wrong PIN in another line", rejected("9942: " + RENEW, "9942: PIN falsch") + " "
+				+ rejected("9942: PIN falsch", "9942: " + RENEW), WEBSITE + " " + WEBSITE);
+			String blocked = "{\"type\":\"rejected\",\"code\":\"9930\",\"text\":\"PIN gesperrt\"}";
+			SelfTest.expect("a block before or after the request of ING", rejected("9930: PIN gesperrt", "9942: " + RENEW) + " "
+				+ rejected("9942: " + RENEW, "9930: PIN gesperrt"), blocked + " " + blocked);
 
 			FinTSHelper.Callback.server = MUSTERBANK;
 			SelfTest.expect("another bank with the same text keeps its codes", SelfTest.failed(SelfTest.status("9942", RENEW)),

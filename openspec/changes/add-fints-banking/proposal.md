@@ -62,3 +62,5 @@ None.
 - A Sparkasse answer that the user deactivated the app in the online banking is recognized by its text on the servers of the savings banks, because its code was not observed. The app then names "Kontozugriffe" in the online banking as the place to unblock it.
 - The hint for the FinTS login of ING that waits for a login on the website does not name the user name of the access. MoneyMoney names it.
 - A pending MT942 row of ING without an entry date keeps its value date. MoneyMoney stores no row of that statement.
+- A pending MT942 row takes the entry date of its ":61:" line for every bank, and the value date only without an entry date. MoneyMoney takes the entry date only for ING, Commerzbank, and HypoVereinsbank, and the value date for other banks. This holds until issue #374, which aligns it.
+- After 3 automatic refreshes in a row that end because ING waits for a login on its website, the automatic refresh of the access pauses until a refresh by hand. MoneyMoney goes on, but no source says whether ING counts these logins toward the block of the PIN.
