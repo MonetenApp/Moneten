@@ -303,6 +303,9 @@ final class DebugHarness {
 			}
 		// Moves the focus to the next field of the sheet on top, as the Tab key does.
 		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
+		// Whether a sheet window is on screen. The window shows a moment after the state of the model, and a closing one
+		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
+		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -913,7 +916,7 @@ final class DebugHarness {
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
 				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
 				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
-				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+				("focus", splitFocus(amount)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }
 			offscreenSnapshot(VStack(alignment: .leading, spacing: 8) {
@@ -1319,6 +1322,15 @@ final class DebugHarness {
 
 	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
 	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
+
+	/// Which field of the split sheet takes the text of "type": "amount", "other", or "none". The check waits for "amount"
+	/// before it types, because the sheet sets the focus a moment after it shows, later still on a loaded Mac.
+	private func splitFocus(_ amount: NSObject?) -> LogValue {
+		guard let field = (topSheet?.firstResponder as? NSTextView)?.delegate as? NSTextField else { return .word("none") }
+		// SwiftUI keeps the identifier on an accessibility child of the AppKit field, not on the field.
+		let children = field.accessibilityChildren() ?? []
+		return amount != nil && children.contains { ($0 as AnyObject) === amount } ? .word("amount") : .word("other")
+	}
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
