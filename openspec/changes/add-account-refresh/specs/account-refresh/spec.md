@@ -249,7 +249,7 @@ The app SHALL keep every fetched transaction until the user deletes it or remove
 
 ### Requirement: Do not store a transaction twice
 
-The app SHALL recognize a fetched transaction that it already stored and not add it again. It uses the ID of the source when the source gives one. Otherwise it compares account, booking date, amount, counterparty account, end-to-end reference, and purpose, and ignores case and spacing in the purpose.
+The app SHALL recognize a fetched transaction that it already stored and not add it again. It uses the ID of the source when the source gives one. Otherwise it compares account, booking date, amount, currency, counterparty account, end-to-end reference, and purpose, and ignores case and spacing in the purpose.
 
 #### Scenario: Overlapping fetch
 
@@ -262,6 +262,13 @@ The app SHALL recognize a fetched transaction that it already stored and not add
 - **GIVEN** a stored transaction with the purpose "Rechnung 1001  Kundennr 4711"
 - **WHEN** the bank delivers the same transaction with the purpose "RECHNUNG 1001 KUNDENNR 4711"
 - **THEN** the app adds no transaction
+
+#### Scenario: Same amount in another currency
+
+- **GIVEN** "Giro" holds a booked transaction of -800,00 USD on 3 November 2026 with the purpose "Miete November"
+- **WHEN** the bank delivers a booked transaction of -800,00 € on 3 November 2026 with the purpose "Miete November"
+- **THEN** "Giro" has both transactions
+- **AND** the balance in euros counts the new -800,00 €
 
 ### Requirement: Update a transaction that the source changed
 
