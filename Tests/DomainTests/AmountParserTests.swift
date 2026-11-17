@@ -45,6 +45,15 @@ struct AmountParserTests {
 		#expect(AmountParser.decimalMark(of: text) == mark)
 	}
 
+	@Test("A typed amount is the money of its one reading, and nil without one or above the limit")
+	func typedMoney() {
+		#expect(Money(typed: "1.234,5", currency: "EUR") == Money(minorUnits: 123_450, currency: "EUR"))
+		#expect(Money(typed: "-1,5", currency: "JPY") == Money(minorUnits: -2, currency: "JPY"))
+		#expect(Money(typed: "12,3,4", currency: "EUR") == nil)
+		#expect(Money(typed: "1,234", currency: "EUR") == nil)
+		#expect(Money(typed: "100000000000000000000", currency: "EUR") == nil)
+	}
+
 	@Test("Writes an amount for a text field with every decimal place of its currency, and reads it back unchanged", arguments: [
 		(Money(minorUnits: 123_456, currency: "EUR"), DecimalMark.point, "1234.56"), (Money(minorUnits: -150, currency: "EUR"), .point, "-1.50"),
 		(Money(minorUnits: 1_234, currency: "KWD"), .point, "1.2340"), (Money(minorUnits: 1_234, currency: "JPY"), .point, "1234"),

@@ -46,9 +46,6 @@ struct TransactionDraftTests {
 		let germany = DecimalMark(region: Locale(identifier: "de_DE"))
 		#expect(draft(amount: "1.234,5").amountMinor(in: "EUR", region: germany) == .success(123_450))
 		#expect(draft(amount: "12,3,4").amountMinor(in: "EUR", region: germany) == .failure(.notANumber))
-		#expect(Money(typed: "1.234,5", currency: "EUR") == Money(minorUnits: 123_450, currency: "EUR"))
-		#expect(Money(typed: "12,3,4", currency: "EUR") == nil)
-		#expect(Money(typed: "100000000000000000000", currency: "EUR") == nil)
 	}
 
 	@Test("A row from a source keeps an amount of zero when the user edits it, and a manual one refuses it")

@@ -60,7 +60,7 @@ struct DayBridgeTests {
 		#expect(shown.dateComponents([.year], from: Day(year: 2026, month: 11, day: 9).noon).year == 2569)
 	}
 
-	@Test("A booking date stored in Berlin shows the same date with the Mac in Auckland")
+	@Test("A booking date stored in Berlin shows the same date with the Mac in Auckland, because the date is read in GMT")
 	func travel() throws {
 		let booked = Day(year: 2026, month: 11, day: 9)
 		let german = Locale(identifier: "de_DE")
@@ -69,5 +69,9 @@ struct DayBridgeTests {
 			mac.timeZone = try #require(TimeZone(identifier: zone))
 			#expect(Format.day(booked, calendar: Day.calendar(like: mac), locale: german) == "09.11.2026")
 		}
+		// Noon GMT is 01:00 of the next day in Auckland, so the calendar of the Mac itself would show the 10th.
+		var auckland = Calendar(identifier: .gregorian)
+		auckland.timeZone = try #require(TimeZone(identifier: "Pacific/Auckland"))
+		#expect(Format.day(booked, calendar: auckland, locale: german) == "10.11.2026")
 	}
 }
