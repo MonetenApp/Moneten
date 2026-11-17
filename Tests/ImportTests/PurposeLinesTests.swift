@@ -325,6 +325,16 @@ struct PurposeLinesTests {
 		#expect(rows.map(\.originalAmount) == [Money(minorUnits: -10_000, currency: "USD"), nil, nil, Money(minorUnits: -10_000, currency: "USD")])
 	}
 
+	@Test("The instructed amount of a CAMT entry wins over the amount of its detail")
+	func camtEntryOriginalAmount() throws {
+		let rows = try camt("""
+			<Ntry><Amt Ccy="EUR">70.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+			<AmtDtls><InstdAmt><Amt Ccy="USD">77.00</Amt></InstdAmt></AmtDtls>
+			<NtryDtls><TxDtls><AmtDtls><InstdAmt><Amt Ccy="USD">50.00</Amt></InstdAmt></AmtDtls></TxDtls></NtryDtls></Ntry>
+			""")
+		#expect(rows.map(\.originalAmount) == [Money(minorUnits: -7_700, currency: "USD")])
+	}
+
 	@Test("The ultimate creditor of a CAMT debit and the ultimate debtor of a credit are the deviating party")
 	func camtDeviatingParty() throws {
 		let rows = try camt(camtEntry("19.90", "DBIT", details: """

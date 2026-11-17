@@ -81,7 +81,7 @@ final class SelfTest {
 		List<String> tagged = new ArrayList<>();
 		for (List<String> lines : List.of(List.of("EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", "ummer 4711"), List.of("EREF+RE-2026-10", "01", "SVWZ+Abschlag", "November"),
 			List.of("SVWZ", "+Miete November"))) {
-			Map<String, Object> row = FinTSHelper.row(line("2026-11-03", "2026-11-03", "-80", lines.toArray(new String[0])), false);
+			Map<String, Object> row = FinTSHelper.row(line("2026-11-03", "2026-11-03", "-80", lines.toArray(new String[0])), false, null);
 			tagged.add(row.get("endToEnd") + " / " + row.get("purpose"));
 		}
 		expect("MT940 tags read from the lines without a character, and the purpose with its spaces: a reference and a tag that a line end cuts read whole",
@@ -107,7 +107,7 @@ final class SelfTest {
 		}
 		List<String> unreadable = new ArrayList<>();
 		for (String tag : List.of("/OCMT/USD50.99/", "/OCMT/US150,00/", "/OCMT/USD50,00x/", "/OCMT/USD/", "/OCMT/usd50,00")) {
-			Map<String, Object> row = FinTSHelper.row(line("2026-11-09", "2026-11-09", "-46.12", "Laden", tag), false);
+			Map<String, Object> row = FinTSHelper.row(line("2026-11-09", "2026-11-09", "-46.12", "Laden", tag), false, null);
 			unreadable.add(row.get("originalAmount") + " " + row.get("originalCurrency"));
 		}
 		expect("original amount of a slash tag that does not read in full, or whose currency is no code, is left out", String.join(" | ", unreadable),
@@ -126,7 +126,7 @@ final class SelfTest {
 		camtCredit.other.name2 = "Erika Mustermann";
 		List<String> parties = new ArrayList<>();
 		for (UmsLine l : List.of(debit, credit, camtCredit, line("2026-11-03", "2026-11-03", "-1", "Kiosk"))) {
-			Map<String, Object> row = FinTSHelper.row(l, false);
+			Map<String, Object> row = FinTSHelper.row(l, false, null);
 			parties.add(row.get("deviatingParty") + " / " + row.get("purpose"));
 		}
 		expect("deviating party: ABWE+ of a debit, ABWA+ of a credit, the ultimate party of CAMT, and none", String.join(" | ", parties),
@@ -146,6 +146,42 @@ final class SelfTest {
 			":62F:C261102EUR800,00", "-") + "\r\n");
 		expect("original amount of :61: from the raw text through the real MT940 job: after a bank reference, not from a token that reads in part, "
 			+ "of the purpose without one, of :61: before the purpose, and with three decimals in the purpose, which hbci4java does not parse", originals(mt940), "50.00 USD | null | 49.00 USD | 51.00 USD | 1.234 KWD");
+
+		// Only an LF ends this :61:, so hbci4java and the raw text may find other rows. The rows of hbci4java must get
+		// their own original amount or none: -10 EUR 11 USD, -30 EUR 33 USD, never 22 USD.
+		GVRKUms mixed = statements(":20:STARTUMS\r\n:25:12030000/0000202051\r\n:28C:00000/001\r\n:60F:C261101EUR1000,00"
+			+ "\r\n:61:2611021102D10,00NMSCNONREF\r\n/OCMT/USD11,00/\r\n:86:106?00KARTENZAHLUNG?20Laden?32Laden"
+			+ "\n:61:2611021102D20,00NMSCNONREF\n/OCMT/USD22,00/\n:86:106?00KARTENZAHLUNG?20Laden?32Laden"
+			+ "\r\n-:61:2611021102D30,00NMSCNONREF\r\n/OCMT/USD33,00/\r\n:86:106?00KARTENZAHLUNG?20Laden?32Laden"
+			+ "\r\n:62F:C261102EUR940,00\r\n-\r\n");
+		List<String> wrong = new ArrayList<>();
+		for (Object o : (List<?>) ((Map<?, ?>) FinTSHelper.result("1", null, null, mixed, false).get("transactions")).get("rows")) {
+			Map<?, ?> row = (Map<?, ?>) o;
+			Object original = row.get("originalAmount");
+			String expected = Map.of("-10", "11.00", "-20", "22.00", "-30", "33.00").get(String.valueOf(row.get("amount")));
+			if (original != null && !original.equals(expected)) wrong.add(row.get("amount") + " " + original);
+		}
+		expect("statement whose :61: ends with LF only: each row of hbci4java gets its own original amount or none", wrong, "[]");
+
+		String two = String.join("\r\n", ":20:STARTUMS", ":25:12030000/0000202051", ":28C:00000/001", ":60F:C261101EUR1000,00",
+			":61:2611021102D10,00NMSCNONREF", "/OCMT/USD11,00/", ":86:106?00KARTENZAHLUNG?20Laden?32Laden",
+			":61:2611021102RC30,00NMSCNONREF", "/OCMT/USD33,00/", ":86:106?00KARTENZAHLUNG?20Laden?32Laden", ":62F:C261102EUR960,00", "-") + "\r\n";
+		expect("raw text and rows of hbci4java that agree pair, also on a reversal of a credit", originals(statements(two)), "11.00 USD | 33.00 USD");
+		GVRKUms otherAmounts = statements(two);
+		otherAmounts.storeResult(FinTSHelper.RAW_BOOKED, two.replace("RC30,00", "RC31,00"));
+		GVRKUms otherDay = statements(two);
+		otherDay.storeResult(FinTSHelper.RAW_BOOKED, two.replace(":61:2611021102D10", ":61:2611031103D10"));
+		GVRKUms extra = statements(two);
+		extra.storeResult(FinTSHelper.RAW_BOOKED, two.replace(":62F:", ":61:2611021102D5,00NMSCNONREF\r\n/OCMT/USD6,00/\r\n:62F:"));
+		expect("raw text with the same count but another amount, with another day, and with one more :61: pairs no original amount on any row",
+			originals(otherAmounts) + " / " + originals(otherDay) + " / " + originals(extra), "null | null / null | null / null | null");
+
+		GVRKUms pending = statements(String.join("\r\n", ":20:STARTUMS", ":25:12030000/0000202051", ":28C:00000/001", ":60F:C261101EUR1000,00",
+			":62F:C261101EUR1000,00", "-") + "\r\n", "\r\n:20:STARTUMS\r\n:25:12030000/0000202051\r\n:28C:1/1\r\n:34F:EURD0,\r\n:13D:2611141200+0100"
+			+ "\r\n:61:2611141114D10,00NMSCNONREF\r\n/OCMT/USD11,00/\r\n:86:106?00KARTENZAHLUNG?20Laden?32Laden\r\n:90D:1EUR10,00\r\n:90C:0EUR0,\r\n-\r\n");
+		Map<?, ?> pendingRow = (Map<?, ?>) ((List<?>) ((Map<?, ?>) FinTSHelper.result("1", null, null, pending, false).get("transactions")).get("rows")).get(0);
+		expect("pending MT942 row through the real MT940 job gets the original amount of its :61:",
+			pendingRow.get("pending") + " " + pendingRow.get("originalAmount") + " " + pendingRow.get("originalCurrency"), "true 11.00 USD");
 
 		String usd50 = "<AmtDtls><InstdAmt><Amt Ccy=\"USD\">50.00</Amt></InstdAmt></AmtDtls>";
 		GVRKUms camt = camtStatements(List.of(camtReport(
@@ -235,7 +271,7 @@ final class SelfTest {
 				for (boolean camt : new boolean[] { false, true }) {
 					UmsLine l = line("2026-11-03", "2026-11-03", "-80", lines.toArray(new String[0]));
 					l.isCamt = camt;
-					Map<String, Object> row = FinTSHelper.row(l, false);
+					Map<String, Object> row = FinTSHelper.row(l, false, null);
 					String[] now = { String.valueOf(row.get("purpose")).replaceAll("\\s", ""), (String) row.get("endToEnd"), (String) row.get("mandate"), (String) row.get("creditor") };
 					if (!java.util.Arrays.equals(now, earlier(lines))) differences.add((camt ? "CAMT " : "MT940 ") + lines + " " + java.util.Arrays.toString(now));
 					cuts++;
@@ -264,7 +300,7 @@ final class SelfTest {
 		mt940.other.iban = "DE02120300000000202051";
 		mt940.other.bic = "BYLADEM1001";
 		mt940.text = "FOLGELASTSCHRIFT";
-		expect("MT940 row with tagged purpose", FinTSHelper.Json.write(FinTSHelper.row(mt940, false)),
+		expect("MT940 row with tagged purpose", FinTSHelper.Json.write(FinTSHelper.row(mt940, false, null)),
 			"{\"type\":\"row\",\"booked\":\"2026-11-02\",\"value\":\"2026-10-30\",\"amount\":\"-23.8\",\"currency\":\"EUR\","
 				+ "\"name\":\"Stadtwerke Musterstadt\",\"iban\":\"DE02120300000000202051\",\"bic\":\"BYLADEM1001\",\"purpose\":\"Rechnung 1001\","
 				+ "\"endToEnd\":\"RE-2026-1001\",\"mandate\":\"M-4711\",\"creditor\":\"DE98ZZZ09999999999\",\"bookingText\":\"FOLGELASTSCHRIFT\",\"pending\":false}");
@@ -275,17 +311,17 @@ final class SelfTest {
 		camt.mandateId = "M-1";
 		camt.other.name = "Coffee Shop";
 		camt.other.creditorid = "DE98ZZZ09999999998";
-		expect("CAMT row, pending", FinTSHelper.Json.write(FinTSHelper.row(camt, true)),
+		expect("CAMT row, pending", FinTSHelper.Json.write(FinTSHelper.row(camt, true, null)),
 			"{\"type\":\"row\",\"booked\":\"2026-11-09\",\"value\":\"2026-11-09\",\"amount\":\"-46.12\",\"currency\":\"EUR\",\"name\":\"Coffee Shop\","
 				+ "\"purpose\":\"Kartenzahlung New York\",\"endToEnd\":\"SW-778899\",\"mandate\":\"M-1\",\"creditor\":\"DE98ZZZ09999999998\",\"pending\":true}");
 
 		purposeLines();
 
 		UmsLine referenceOnly = line("2026-11-03", "2026-11-03", "120", "EREF+INV-2026-0042");
-		expect("end-to-end reference as purpose", FinTSHelper.row(referenceOnly, false).get("purpose"), "INV-2026-0042");
+		expect("end-to-end reference as purpose", FinTSHelper.row(referenceOnly, false, null).get("purpose"), "INV-2026-0042");
 		UmsLine placeholder = line("2026-11-03", "2026-11-03", "120");
 		placeholder.endToEndId = "NOTPROVIDED";
-		expect("placeholder reference", FinTSHelper.row(placeholder, false).get("purpose") + "|" + FinTSHelper.row(placeholder, false).get("endToEnd"), "|null");
+		expect("placeholder reference", FinTSHelper.row(placeholder, false, null).get("purpose") + "|" + FinTSHelper.row(placeholder, false, null).get("endToEnd"), "|null");
 
 		Konto plain = new Konto(), sub = new Konto(), withIBAN = new Konto();
 		plain.number = "9";
@@ -537,6 +573,11 @@ final class SelfTest {
 	/// The result of a real MT940 job of the helper, `StatementJob`, that hbci4java fills from an answer with `raw` as
 	/// its booked transactions, as in a dialog.
 	static GVRKUms statements(String raw) {
+		return statements(raw, null);
+	}
+
+	/// The same with `notBooked` as its pending transactions in MT942.
+	static GVRKUms statements(String raw, String notBooked) {
 		FinTSHelper.Passport passport = passport();
 		passport.getBPD().setProperty("Params_3.KUmsZeitPar7.SegHead.code", "HKKAZ");
 		org.kapott.hbci.manager.HBCIHandler handle = new org.kapott.hbci.manager.HBCIHandler("300", passport, true);
@@ -545,6 +586,7 @@ final class SelfTest {
 		HBCIMsgStatus answer = answer(3);
 		answer.getData().setProperty("GVRes_1.KUmsZeitRes7.SegHead.ref", "3");
 		answer.getData().setProperty("GVRes_1.KUmsZeitRes7.booked", raw);
+		if (notBooked != null) answer.getData().setProperty("GVRes_1.KUmsZeitRes7.notbooked", notBooked);
 		job.fillJobResult(answer, 0);
 		return (GVRKUms) job.getJobResult();
 	}

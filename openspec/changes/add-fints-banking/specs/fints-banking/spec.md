@@ -394,7 +394,7 @@ The app SHALL show the end-to-end reference as the purpose of a transaction when
 
 ### Requirement: Keep the original amount and the deviating party
 
-The app SHALL store the original amount and currency of a transaction that the bank converted, and the deviating party, the deviating originator of a credit or the deviating recipient of a debit, and show both in the transaction details. A positive original amount of a debit takes the minus of the booked amount. An original amount in the booked currency, one that does not read in full, or one whose currency is not three capital letters is not stored.
+The app SHALL store the original amount and currency of a transaction that the bank converted, and the deviating party, the deviating originator of a credit or the deviating recipient of a debit, and show both in the transaction details. A positive original amount of a debit takes the minus of the booked amount. An original amount in the booked currency, one that does not read in full, or one whose currency is not three letters, case ignored, is not stored.
 
 #### Scenario: Card payment abroad
 
