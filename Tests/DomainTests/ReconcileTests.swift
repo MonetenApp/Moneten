@@ -1100,4 +1100,51 @@ struct ReconcileTests {
 		#expect(again.dropped == [])
 		#expect(again.updated == [])
 	}
+
+	func inCurrency(_ t: Transaction, _ currency: String) -> Transaction {
+		var t = t
+		t.currency = currency
+		return t
+	}
+
+	@Test("A pending file row in USD and a bank row in EUR with the same day, amount, and purpose stay two rows, in either order",
+		arguments: [false, true], [false, true])
+	func currencySeparatesPendingFileRow(bankFirst: Bool, bankPending: Bool) {
+		// The file row is planned for a day after today, so a refresh that does not deliver it keeps it.
+		let fileRow = inCurrency(row(20, -80_000, "Vermieter A", "Miete November", pending: true), "USD")
+		let bankRow = inCurrency(row(20, -80_000, "Vermieter A", "Miete November", pending: bankPending), "EUR")
+		let first = bankFirst ? merge(refresh([bankRow])) : merge(.file([fileRow]))
+		let stored = history([], after: first)
+		let second = bankFirst ? merge(.file([fileRow]), stored: stored) : merge(refresh([bankRow]), stored: stored)
+		#expect(second.skipped == 0 && second.booked == [] && second.updated == [] && second.dropped == [])
+		let rows = history(stored, after: second)
+		#expect(rows.map(\.currency).sorted() == ["EUR", "USD"])
+		#expect(rows.map(\.amountMinor) == [-80_000, -80_000])
+	}
+
+	@Test("A booked row in another currency is a new transaction, for a refresh and for a file", arguments: [false, true])
+	func currencySeparatesBookedRow(fromFile: Bool) {
+		let usd = stored(inCurrency(row(3, -80_000, "Vermieter A", "Miete November", iban: "DE02120300000000202051"), "USD"))
+		let eur = inCurrency(fresh(usd), "EUR")
+		let r = fromFile ? merge(.file([eur]), stored: [usd]) : merge(refresh([eur]), stored: [usd])
+		#expect(r.skipped == 0 && r.updated == [])
+		#expect(r.added.map(\.currency) == ["EUR"])
+		// The balance in euros counts the new -800,00 €, and the USD row stays out of it.
+		var ledger = Ledger(accounts: [giro], transactions: [usd])
+		ledger.apply(r)
+		#expect(ledger.balance(of: giro) == Money(minorUnits: -80_000, currency: "EUR"))
+		// The same row in its own currency is still found, also a foreign currency.
+		let again = fromFile ? merge(.file([inCurrency(fresh(usd), "USD")]), stored: [usd]) : merge(refresh([inCurrency(fresh(usd), "USD")]), stored: [usd])
+		#expect(again.skipped == 1 && again.added == [])
+	}
+
+	@Test("A deleted row keeps out only a delivered row of its own currency")
+	func currencySeparatesDeletedRow() {
+		let usd = stored(inCurrency(row(3, -80_000, "Vermieter A", "Miete November"), "USD"))
+		let deleted = DeletedTransaction(usd, deletedAt: now)
+		let eur = merge(refresh([inCurrency(fresh(usd), "EUR")]), deleted: [deleted])
+		#expect(eur.added.map(\.currency) == ["EUR"] && eur.skipped == 0)
+		let same = merge(refresh([inCurrency(fresh(usd), "USD")]), deleted: [deleted])
+		#expect(same.added == [] && same.skipped == 1)
+	}
 }

@@ -135,7 +135,8 @@ enum MT940Parser {
 		for (i, f) in fields.enumerated() {
 			try Task.checkCancellation()
 			if f.tag == "60F" || f.tag == "60M", f.value.count >= 10 {
-				currency = String(f.value.dropFirst(7).prefix(3))
+				// An ISO 4217 code is upper case, and the fingerprint of a transaction compares it as it is.
+				currency = String(f.value.dropFirst(7).prefix(3)).uppercased()
 				if result.isEmpty { declaredCurrency = currency }
 			}
 			guard f.tag == "61" else { continue }
@@ -313,7 +314,8 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			purposes = []
 		}
 		if inEntry, name == "Amt", path.count >= 2, path[path.count - 2] == "Ntry" {
-			entry["currency"] = attributes["Ccy"]
+			// An ISO 4217 code is upper case, and the fingerprint of a transaction compares it as it is.
+			entry["currency"] = attributes["Ccy"]?.uppercased()
 		}
 	}
 

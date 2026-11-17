@@ -1134,6 +1134,23 @@ struct FinTSConnectorTests {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
 	}
+
+	@Test("A helper that writes its currencies in lower case gives upper-case codes to the rows, the balance, the account, and the exchange rate")
+	func lowerCaseCurrency() throws {
+		let line = #"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"eur"},"transactions":{"rows":[{"type":"row","booked":"2026-11-03","amount":"-89","currency":"eur","purpose":"Abschlag November","pending":false},{"type":"row","booked":"2026-11-04","amount":"-5","purpose":"Kiosk","pending":false}]},"errors":[]}"#
+		let result = try JSONDecoder().decode(AccountResult.self, from: Data(line.utf8))
+		let rows = try #require(result.transactions?.rows).map { try $0.transaction(of: Self.giro) }
+		#expect(rows.map(\.currency) == ["EUR", "EUR"])
+		#expect(try AccountResult.money("10.00", "eur").currency == "EUR")
+		// The account of an accounts line.
+		let accounts = #"{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","kind":"1","currency":"usd"}]}"#
+		guard case let .accounts(found) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
+		#expect(found.map(\.currency) == ["USD"])
+		// 100,00 € plus 10,00 $ accrued interest at 1.25 USD for 1 EUR are 108,00 €.
+		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"eur","value":{"amount":"100.00","currency":"eur"},"accrued":{"amount":"10.00","currency":"usd"},"rate":{"base":"eur","quoted":"usd","rate":"1.25"}}"#
+		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro)
+		#expect(holding.value(in: "EUR") == Money(minorUnits: 10_800, currency: "EUR"))
+	}
 }
 
 /// A session that answers every request at once, and waits on an approval until it is withdrawn.

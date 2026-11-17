@@ -216,6 +216,40 @@ struct FileImportTests {
 		#expect(throws: TransactionFileImporter.Failure.empty) { try TransactionFileImporter.parse(Data(), currency: "EUR") }
 	}
 
+	@Test("A file that writes its currency in lower case gives the upper-case code, so a stored and a deleted EUR row still find it")
+	func lowerCaseCurrency() throws {
+		let camt = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="eur">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls><TxDtls><RmtInf><Ustrd>Abschlag November</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let mt940 = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:28C:00001/001
+		:60F:C261031eur1000,00
+		:61:2611031103DR89,00NDDTNONREF
+		:86:105?00SEPA-BASISLASTSCHRIFT?20SVWZ+Abschlag November
+		:62F:C261103eur911,00
+		-
+		"""
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
+		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 4, hour: 12))!
+		for text in [camt, mt940] {
+			let file = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+			#expect(file.map(\.currency) == ["EUR"])
+			let stored = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -8_900, name: "", purpose: "Abschlag November",
+				isFetched: true)
+			let againstStored = reconcile(.file(file), into: giro, stored: [stored], deleted: [], rules: rules, now: now)
+			#expect(againstStored.skipped == 1 && againstStored.added == [])
+			let againstDeleted = reconcile(.file(file), into: giro, stored: [], deleted: [DeletedTransaction(stored, deletedAt: now)], rules: rules, now: now)
+			#expect(againstDeleted.skipped == 1 && againstDeleted.added == [])
+		}
+	}
+
 	@Test("MT940 with a structured field 86")
 	func mt940() throws {
 		let text = """

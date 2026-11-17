@@ -336,8 +336,9 @@ struct AccountResult: Decodable {
 	}
 
 	/// An amount above `Money.maxMinorUnits` fails the account, so that no sum of stored amounts can overflow.
+	/// The code of the currency is upper case, as the rest of the app and the fingerprint of a transaction expect it.
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.tooLarge }
+		guard let money = Money(fitting: try decimal(amount), currency: currency.uppercased()) else { throw HelperFailure.tooLarge }
 		return money
 	}
 
@@ -390,9 +391,9 @@ extension AccountResult {
 		func holding(of account: AccountRequest) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
-			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
+			let exchangeRate = try rate.map { ExchangeRate(base: $0.base.uppercased(), quoted: $0.quoted.uppercased(), rate: try AccountResult.decimal($0.rate)) }
 			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
-				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency : nil,
+				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency?.uppercased() : nil,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
 				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
 			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
@@ -401,7 +402,7 @@ extension AccountResult {
 		}
 
 		private static func quote(_ a: Amount) throws -> Quote {
-			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency, day: try a.day.map(AccountResult.day))
+			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency?.uppercased(), day: try a.day.map(AccountResult.day))
 		}
 	}
 }
@@ -430,7 +431,7 @@ private struct AccountLine: Decodable {
 
 	var account: FinTSAccount {
 		FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
-			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency ?? "EUR")
+			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency?.uppercased() ?? "EUR")
 	}
 }
 
