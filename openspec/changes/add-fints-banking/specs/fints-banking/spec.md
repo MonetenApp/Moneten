@@ -336,40 +336,6 @@ The app SHALL give a pending transaction from an MT942 statement the value date 
 - **WHEN** the bank sends a booked MT940 row of -42,00 € with the value date 14.11.2026 and the entry date 15.11
 - **THEN** the booked transaction has the date 15.11.2026 and the value date 14.11.2026
 
-### Requirement: Keep a pending transaction from before the value date rule as one transaction
-
-The app SHALL let a refresh find a fetched pending transaction that the app stored before it dated pending MT942 rows by their value date, and whose date differs from its value date, by its value date alone, when the bank delivers a pending row whose date is its value date. A deleted pending transaction of that time keeps out such a row up to 7 days before its date. A transaction or a deletion from later keeps the usual rules.
-
-#### Scenario: Pending transaction stored with its entry date
-
-- **GIVEN** "Giro" has a fetched pending transaction of -42,00 € with the purpose "Abschlag November", no name, no IBAN, and no reference, the date 15.11.2026, the value date 14.11.2026, and the comment "Abschlag", which the app stored before the value date rule
-- **WHEN** a refresh delivers a pending row of -42,00 € with the purpose "Abschlag November", the date 14.11.2026, and the value date 14.11.2026
-- **THEN** "Giro" shows one pending transaction of -42,00 € on 14.11.2026 with the comment "Abschlag"
-
-#### Scenario: Two pending transactions on neighboring days
-
-- **GIVEN** "Giro" has two such pending transactions of -42,00 € with the purpose "Abschlag", one with the date 15.11.2026, the value date 14.11.2026, and the comment "first", one with the date 16.11.2026, the value date 15.11.2026, and the comment "second"
-- **WHEN** a refresh delivers the same two rows with the dates 14.11.2026 and 15.11.2026, each equal to its value date
-- **THEN** "Giro" shows "first" on 14.11.2026 and "second" on 15.11.2026, and no third transaction
-
-#### Scenario: Deleted pending transaction
-
-- **GIVEN** the user deleted such a pending transaction of -42,00 € with the date 15.11.2026 before the value date rule
-- **WHEN** a refresh delivers a pending row of -42,00 € with the same purpose, the date 14.11.2026, and the value date 14.11.2026
-- **THEN** "Giro" shows no transaction of -42,00 €
-
-#### Scenario: Rows that are not the same transaction
-
-- **GIVEN** "Giro" has a fetched pending transaction of -42,00 € with the purpose "Subscription", no name, the date 13.11.2026, and the value date 15.11.2026, and the user deleted a pending transaction of -42,00 € with the purpose "Abschlag November" and the date 15.11.2026 after the value date rule
-- **WHEN** a refresh delivers a pending row of -42,00 € "Subscription" with the date 15.11.2026 and the value date 17.11.2026, and one of -42,00 € "Abschlag November" with the date 14.11.2026 and the value date 14.11.2026
-- **THEN** "Giro" shows both delivered rows as new transactions, and "Subscription" of 13.11.2026 is gone with its comment
-
-#### Scenario: Stored pending transaction gets booked
-
-- **GIVEN** "Giro" has a fetched pending transaction of -42,00 € to "Stadtwerke Musterstadt" with the date 15.11.2026, the value date 14.11.2026, and the comment "Abschlag"
-- **WHEN** a refresh delivers a booked transaction of -42,00 € to "Stadtwerke Musterstadt" on 15.11.2026
-- **THEN** "Giro" shows one booked transaction on 15.11.2026 with the comment "Abschlag"
-
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.

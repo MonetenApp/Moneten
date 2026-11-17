@@ -114,7 +114,7 @@ public struct Reconciliation: Sendable, Equatable {
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
 public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
-	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date, entryDatedBefore: Date? = nil) -> Reconciliation {
+	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
 	// A closed account is left out of every refresh. A refresh that was already running when the user closed the account
 	// still delivers, and its rows, its balance, and its pending rows must not undo the clearing entry. The check runs in the
 	// write of the merge, so no delivery passes it after the close was stored.
@@ -129,9 +129,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let honored = deleted.filter(delivery.honors)
 	let today = Day(now)
 	// A source that moves bookings pairs on a fixed order of the rows, so that no order decides a move (`MovedBookings`).
-	let partners = delivery.maxBookingShift > 0
-		? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, entryDatedBefore: entryDatedBefore)
-		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, entryDatedBefore: entryDatedBefore)
+	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
@@ -394,8 +393,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	return result
 }
 
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day,
-	entryDatedBefore: Date? = nil) -> [Partner?] {
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
 	let days = Set(rows.flatMap { t in
 		let day = t.bookingDate.daysSince1970
 		return (-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { day + $0 }
@@ -459,28 +457,6 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	var candidates: [Candidate] = []
-	/// The day on which a pending row that an earlier version dated by the entry date of its ":61:" line meets the pending
-	/// row `t` of a refresh, which the bank now dates by its value date (#374), or nil. Only a row or a deletion record from
-	/// before the change (`entryDatedBefore`) and a delivered row whose day is its value date take part. Such a stored row
-	/// meets the delivered rows only on its value date, which its next delivery carries, and never on its entry date, so two
-	/// such rows of neighboring days each meet their own delivery. A row whose two dates are the same day needs no change.
-	/// A deletion record keeps no value date, so it meets a row up to 7 days before the record, the way an entry date
-	/// follows the value date. A later row is another one, such as a second equal card payment.
-	func valueDay(_ slot: Slot, for t: Transaction) -> Day? {
-		guard let before = entryDatedBefore, delivery.isFetched, t.isPending, t.valueDate == t.bookingDate else { return nil }
-		switch slot {
-		case let .live(j):
-			let s = stored[j]
-			guard s.isPending, s.isFetched, s.createdAt < before, let value = s.original.map(\.valueDate) ?? s.valueDate,
-				value != s.sourceBookingDate else { return nil }
-			return value
-		case let .deleted(k):
-			let d = deleted[k]
-			let days = d.bookingDate.daysSince1970 - t.bookingDate.daysSince1970
-			guard d.isPending, d.wasFetched, d.deletedAt < before, days > 0, days <= PendingMatch.maxDaysApart else { return nil }
-			return t.bookingDate
-		}
-	}
 
 	for (i, t) in rows.enumerated() {
 		let initialSlots: [Slot] = (t.isPending ? byDay[matches[i].day] : byKey[incoming[i].key]) ?? []
@@ -494,8 +470,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			}
 		}
 		for slot in slots {
-			var identity: Identity
-			var match: PendingMatch
+			let identity: Identity
+			let match: PendingMatch
 			let fetched: Bool
 			let future: Bool
 			switch slot {
@@ -510,13 +486,6 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				match = deadMatches[k]!
 				fetched = true
 				future = false
-			}
-			// A stored row that an earlier version dated by its entry date counts on its value date here, for the fingerprint
-			// and the distance. A deletion record keeps its day for the distance, so a stored row comes first.
-			let valueDay = valueDay(slot, for: t)
-			if let valueDay {
-				identity = identity.on(valueDay)
-				if case .live = slot { match = match.on(valueDay) }
 			}
 			let distance = abs(matches[i].day - match.day)
 			if !t.isPending && !identity.isPending && identity.fileIdentity == nil {
@@ -557,8 +526,6 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
 			let step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
-			// A row found on its value date takes the delivered day, as any pending row of a refresh does.
-			let byValueDate = valueDay != nil
 			if (t.isPending || identity.isPending || step == nil) && matches[i].counterpartyConflicts(with: match) { continue }
 			let fit = step.map { $0 % 2 } ?? 2
 			let rankedFit = t.isPending && matches[i].nameConflicts(with: match) ? 3 : fit
@@ -572,7 +539,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			}
 			if sameReference && t.isPending, step != nil || (!delivery.isMigration && (identity.isPending || !delivery.isFetched)) {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .reference, historical: historical,
-					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: (step == nil || byValueDate) && delivery.isFetched ? .pending : .fingerprint))
+					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: step == nil && delivery.isFetched ? .pending : .fingerprint))
 				continue
 			}
 			guard t.isPending, identity.isPending else { continue }
@@ -580,7 +547,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard step != nil || pendingFits else { continue }
 			guard step != nil || !delivery.isFetched || fetched || future else { continue }
 			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
-			let evidence: Partner.Evidence = step != nil && !byValueDate ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
+			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
 			candidates.append(Candidate(delivered: i, slot: slot, priority: priority, historical: 0,
 				identityTombstone: 0, fit: rankedFit, distance: distance, evidence: evidence))
 		}
@@ -682,7 +649,7 @@ struct Identity {
 	let fileIdentity: String?
 	let sourceID: String?
 	let remoteID: String?
-	private(set) var key: Key
+	let key: Key
 	let isPending: Bool
 	let counterparty: String?
 	let endToEnd: String?
@@ -690,9 +657,12 @@ struct Identity {
 	/// The purpose is folded without white space, so the 27-character lines of an MT940 purpose and the
 	/// same text in one line have the same key.
 	struct Key: Hashable {
+		// The synthesized Hashable conformance reads these properties, which Periphery cannot see.
 		let day: Day
+		// periphery:ignore
 		let amount: Int64
 		/// The same amount in another currency is another transaction (#225).
+		// periphery:ignore
 		let currency: String
 		let purpose: String
 	}
@@ -750,13 +720,6 @@ struct Identity {
 
 	static func remote(_ sourceID: String?) -> String? {
 		sourceID.flatMap { Transaction.matchingID($0).hasPrefix(Transaction.migrationIDPrefix) ? nil : $0 }
-	}
-
-	/// The same identity on another day.
-	func on(_ day: Day) -> Identity {
-		var moved = self
-		moved.key = Key(day: day, amount: key.amount, currency: key.currency, purpose: key.purpose)
-		return moved
 	}
 
 	func sharesIdentity(with other: Identity) -> Bool {
@@ -845,10 +808,10 @@ struct PendingMatch {
 	static let maxDaysApart = 7
 
 	let amount: Money
-	private(set) var day: Int
+	let day: Int
 	let iban: String?
 	let words: [Substring]
-	private(set) var identity: Identity
+	let identity: Identity
 
 	init(_ t: Transaction) {
 		let delivered = t.sourceValues
@@ -875,14 +838,6 @@ struct PendingMatch {
 
 	func nameConflicts(with other: PendingMatch) -> Bool {
 		!words.isEmpty && !other.words.isEmpty && !words.starts(with: other.words) && !other.words.starts(with: words)
-	}
-
-	/// The same row on another day.
-	func on(_ day: Day) -> PendingMatch {
-		var moved = self
-		moved.day = day.daysSince1970
-		moved.identity = identity.on(day)
-		return moved
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {

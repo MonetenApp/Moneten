@@ -32,10 +32,9 @@ struct ReconcileTests {
 	}
 
 	func merge(_ delivery: Delivery, into account: Account? = nil, stored: [Transaction] = [], deleted: [DeletedTransaction] = [],
-		categories: [Domain.Category] = [], at time: Date? = nil, entryDatedBefore: Date? = nil) -> Reconciliation {
+		categories: [Domain.Category] = [], at time: Date? = nil) -> Reconciliation {
 		let rules = Categorizer(ledger: Ledger(accounts: [giro, savings], categories: categories))
-		return reconcile(delivery, into: account ?? giro, stored: stored, deleted: deleted, rules: rules, now: time ?? now,
-			entryDatedBefore: entryDatedBefore)
+		return reconcile(delivery, into: account ?? giro, stored: stored, deleted: deleted, rules: rules, now: time ?? now)
 	}
 
 	func history(_ stored: [Transaction], after r: Reconciliation) -> [Transaction] {
