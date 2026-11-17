@@ -4,7 +4,7 @@ import GRDB
 
 extension Store {
 	public func replaceParts(of transactionID: UUID, with parts: [SplitPart]) throws {
-		try queue.write { db in
+		try write { db in
 			let original = try Transaction.find(db, key: transactionID)
 			if !parts.isEmpty {
 				guard !original.isPending else { throw SplitError.pending }

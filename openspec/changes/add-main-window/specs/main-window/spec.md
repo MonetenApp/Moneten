@@ -32,6 +32,39 @@ The app SHALL draw the sidebar with the system sidebar material of macOS, Liquid
 - **WHEN** the user selects a transaction
 - **THEN** the row is slate blue with white text
 
+### Requirement: Whole amounts in the sidebar
+
+The app SHALL show each balance of an account and each sum of a group in the sidebar on one line and in full, and shorten a long name of the account or the group first. When the balances of an account do not all fit, the row shows the first balance and the number of the others. An amount that does not fit ends with an ellipsis and is never cut off at the edge of the row.
+
+#### Scenario: Long name with large balances
+
+- **GIVEN** a sidebar 340 points wide, the group "Private" with the sums 16.946.892,85 € and 11.111.110,00 US dollars, and in it the account "Reisekasse" with the balances 4.567.890,00 € and 1.234.567,00 US dollars
+- **WHEN** the user looks at the sidebar
+- **THEN** the group row shows 16.946.892,85 € and 11.111.110,00 US dollars in full
+- **AND** the account row shows 4.567.890,00 € and 1.234.567,00 US dollars in full
+- **AND** the names "Private" and "Reisekasse" end with an ellipsis
+
+#### Scenario: Sums wider than the narrowest sidebar
+
+- **GIVEN** a sidebar 240 points wide and the group "Private" with the sums 16.946.892,85 € and 99.999.999,00 US dollars
+- **WHEN** the user looks at the sidebar
+- **THEN** the group row shows an ellipsis in place of the name "Private"
+- **AND** it shows 16.946.892,85 € in full
+- **AND** the sum in US dollars ends with an ellipsis
+
+#### Scenario: Balances in eight currencies in a narrow row
+
+- **GIVEN** a sidebar 240 points wide and the account "Devisen" with 1.250,00 € and balances in seven other currencies
+- **WHEN** the user looks at the sidebar
+- **THEN** the row "Devisen" shows 1.250,00 € in full and then "+ 7 more"
+- **AND** it shows no part of the other seven balances
+
+#### Scenario: Balances in twenty currencies in a narrow row
+
+- **GIVEN** a sidebar 240 points wide and the account "Devisen" with 1.250,00 € and balances in nineteen other currencies
+- **WHEN** the user looks at the sidebar
+- **THEN** the row "Devisen" shows 1.250,00 € and then "+19"
+
 ### Requirement: Sidebar rows in a fixed order
 
 The app SHALL show the sidebar rows in this order from top to bottom. "Dashboard". The section "Accounts" with account groups and accounts. The section "Payments" with "Outbox", "Scheduled", and "Templates". The section "Documents" with "Statements". The section "Searches" with the saved searches. The section "Categories" with category groups and categories, ending with "Uncategorized".
@@ -62,6 +95,17 @@ The app SHALL let the user collapse and expand each sidebar section and each gro
 
 - **WHEN** the user collapses the section "Categories" and restarts the app
 - **THEN** the section "Categories" is still collapsed
+
+### Requirement: Sums beyond the range of amounts
+
+The app SHALL keep running when a balance or a sum of stored amounts exceeds the largest amount it can hold. Such a sum shows that largest amount, 92.233.720.368.547.758,07 € for the euro, with its sign.
+
+#### Scenario: Database with absurd amounts
+
+- **GIVEN** a database holds two transactions of 50.000.000.000.000.000,00 € in the CSV account "Giro"
+- **WHEN** the user unlocks the database
+- **THEN** the main window opens and the account "Giro" shows 92.233.720.368.547.758,07 €
+- **AND** the user can delete the two transactions
 
 ### Requirement: Account rows show name, balance, and currency
 
@@ -232,7 +276,7 @@ The app SHALL let the user copy the sum in the status line to the pasteboard.
 #### Scenario: Copy
 
 - **GIVEN** the status line shows the sum 74,50 €
-- **WHEN** the user copies the sum and pastes it into a text document
+- **WHEN** the user chooses "Copy Sum" in the context menu of the sum and pastes it into a text document
 - **THEN** the text document shows 74,50
 
 ### Requirement: The Account menu follows the selection

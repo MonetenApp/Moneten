@@ -1,6 +1,7 @@
 @testable import ExtensionHost
 import Foundation
 import Testing
+import TestSupport
 
 @Suite("Performance of the extension host", .serialized)
 struct ExtensionHostPerformanceTests {
@@ -28,7 +29,7 @@ struct ExtensionHostPerformanceTests {
 		let times = try (0..<5).map { _ in try clock.measure { _ = try Run(package).session.load() } }.sorted()
 		print("ext load_ms=\(times[2] / .milliseconds(1)) for \(lines) lines")
 		#if !DEBUG
-		#expect(times[2] < .milliseconds(30))
+		#expect(times[2] < budget(.milliseconds(30)))
 		#endif
 	}
 
@@ -46,8 +47,8 @@ struct ExtensionHostPerformanceTests {
 		times.sort()
 		print("ext session_start_ms p50=\(times[10] / .milliseconds(1)) p95=\(times[18] / .milliseconds(1))")
 		#if !DEBUG
-		#expect(times[10] < .milliseconds(150))
-		#expect(times[18] < .milliseconds(300))
+		#expect(times[10] < budget(.milliseconds(150)))
+		#expect(times[18] < budget(.milliseconds(300)))
 		#endif
 	}
 }

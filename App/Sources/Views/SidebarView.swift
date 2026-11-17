@@ -143,7 +143,7 @@ struct GroupRow: View {
 
 	var body: some View {
 		HStack {
-			Label(group.name, systemImage: "folder")
+			Label { Text(group.name).atLeastEllipsisWide() } icon: { Image(systemName: "folder") }
 			// A collapsed group stands for its accounts and shows their markers.
 			let markers = group.isExpanded ? nil : model.ledger.markers(ofGroup: group.id)
 			if let markers, markers.newTransactions > 0 {
@@ -151,7 +151,7 @@ struct GroupRow: View {
 			}
 			Spacer()
 			if let markers, !markers.failedAccounts.isEmpty {
-				RefreshErrorButton(accounts: markers.failedAccounts, help: "The last refresh of an account in this group failed")
+				RefreshErrorButton(accounts: markers.failedAccounts, help: String(localized: "The last refresh of an account in this group failed"))
 			}
 			if group.showSum {
 				let sums = model.ledger.sum(ofGroup: group.id)
@@ -159,6 +159,9 @@ struct GroupRow: View {
 					.monospacedDigit()
 					.fontWeight(.medium)
 					.foregroundStyle(sums.amounts.contains(where: \.isNegative) && sums.amounts.count == 1 ? Palette.red : Color.primary)
+					// As in an account row, the group name gets shorter before the sum does.
+					.lineLimit(1)
+					.layoutPriority(1)
 			}
 		}
 		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))
@@ -186,11 +189,10 @@ struct AccountRow: View {
 	let account: Account
 
 	var body: some View {
-		let balance = model.ledger.balance(of: account)
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack {
 			Label {
-				Text(account.name).strikethrough(account.isClosed)
+				Text(account.name).strikethrough(account.isClosed).atLeastEllipsisWide()
 			} icon: {
 				AccountIcon(account: account)
 			}
@@ -202,21 +204,21 @@ struct AccountRow: View {
 				ProgressView().controlSize(.small)
 			}
 			// The error of the last refresh takes the place of the balance until a refresh succeeds.
-			if let error = account.refreshError {
-				Text(error.message)
+			if let error = account.shownRefreshError {
+				Text(error.shownMessage)
 					.lineLimit(1)
 					.foregroundStyle(.secondary)
 					.frame(maxWidth: 140, alignment: .trailing)
 				RefreshErrorButton(accounts: [account])
 			} else if !account.isClosed {
 				// A closed account stays in the sidebar without its balance, as in MoneyMoney.
-				AmountText(money: balance).fontWeight(.medium)
+				BalancesText(amounts: model.ledger.balances(of: account)).fontWeight(.medium)
 			}
 		}
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: account.groupID) }
 			Button("Add Account Group") { model.sheet = .newGroup }
-			if account.isOffline {
+			if account.takesManualTransactions {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
 			Divider()
@@ -297,7 +299,7 @@ struct CategoryRow: View {
 			if let error = category.ruleError {
 				Image(systemName: "exclamationmark.triangle.fill")
 					.foregroundStyle(.yellow)
-					.help("The rule cannot be read. New transactions do not get this category. \(error)")
+					.help("The rule cannot be read. New transactions do not get this category. \(String(describing: error))")
 					.accessibilityLabel("The rule cannot be read.")
 			}
 			if let amount {
@@ -389,6 +391,8 @@ struct NewCountBadge: View {
 			.padding(.vertical, 1)
 			.background(Capsule().fill(.tint))
 			.foregroundStyle(.white)
+			// A count never shortens: the balances and the name beside it shorten instead.
+			.fixedSize()
 			.accessibilityLabel(count == 1 ? "1 new transaction" : "\(count) new transactions")
 	}
 }

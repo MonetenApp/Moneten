@@ -50,7 +50,7 @@ struct UpdateConfirmation: View {
 		.frame(width: 440)
 	}
 
-	private var confirmTitle: String {
+	private var confirmTitle: LocalizedStringKey {
 		switch question {
 		case .fileWarning: "Install"
 		case .allow: "Continue"

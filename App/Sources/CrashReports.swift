@@ -17,9 +17,21 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 
 	static var appVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Unknown" }
 
+	/// True once `start()` ran. A second running copy of the app starts only after it got the lock of the data folder.
+	private(set) var started = false
+
 	init(folder: DataFolder) {
-		store = CrashReportStore(folder: folder)
+		// Only a run with its own data folder keeps the key there, so the real crash reports keep theirs in the
+		// Keychain also when the debug harness drives the real data folder.
+		store = CrashReportStore(folder: folder, keyInFolder: DataFolder.requestedPath != nil)
 		super.init()
+	}
+
+	/// Records the launch, offers a saved report, and listens for the reports of macOS. It writes into the data
+	/// folder, so the app calls it only while it holds the lock of the folder, once per run.
+	func start() {
+		guard !started else { return }
+		started = true
 		do {
 			let start = Date()
 			let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
@@ -32,7 +44,7 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 			}
 			pending = try store.startLaunch(at: start, appVersion: Self.appVersion, macOSVersion: CrashReports.macOSVersion(), files: dates)
 		}
-		catch { failed("Could not read the saved crash report.") }
+		catch { failed(String(localized: "Could not read the saved crash report.")) }
 		MXMetricManager.shared.add(self)
 		didReceive(MXMetricManager.shared.pastDiagnosticPayloads)
 	}
@@ -59,7 +71,7 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 		do {
 			pending = try store.receive(crash.diagnostic, at: crash.date, since: start)
 			error = nil
-		} catch { failed("Could not save the crash report on this Mac.") }
+		} catch { failed(String(localized: "Could not save the crash report on this Mac.")) }
 	}
 
 	func decide(_ decision: PendingCrashReport.Decision) {
@@ -68,16 +80,16 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 		switch decision {
 		case .github:
 			let url = pending.githubURL
-			guard NSWorkspace.shared.open(url) else { return failed("Could not open GitHub. You can copy the report instead.") }
+			guard NSWorkspace.shared.open(url) else { return failed(String(localized: "Could not open GitHub. You can copy the report instead.")) }
 		case .copy:
 			NSPasteboard.general.clearContents()
-			guard NSPasteboard.general.setString(report, forType: .string) else { return failed("Could not copy the report. Try again.") }
+			guard NSPasteboard.general.setString(report, forType: .string) else { return failed(String(localized: "Could not copy the report. Try again.")) }
 		case .decline: break
 		}
 		do {
 			self.pending = try store.decide(decision)
 			error = nil
-		} catch { failed("Could not remove the saved crash report. Try again.") }
+		} catch { failed(String(localized: "Could not remove the saved crash report. Try again.")) }
 	}
 
 	private func failed(_ message: String) {

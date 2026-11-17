@@ -4,6 +4,40 @@ import Testing
 
 @Suite("Split arithmetic")
 struct SplitTests {
+	@Test("A rate reads with up to two decimals and must be above zero")
+	func rateInput() {
+		#expect(VATRate(text: "19")?.hundredths == 1900)
+		#expect(VATRate(text: "8,1")?.hundredths == 810)
+		#expect(VATRate(text: "7.5")?.hundredths == 750)
+		for text in ["0", "-5", "7,125", "abc"] {
+			#expect(VATRate(text: text) == nil)
+		}
+	}
+
+	@Test("Rate input refuses malformed and overflowing values without rounding")
+	func rateInputBoundaries() {
+		#expect(VATRate(text: "0.01")?.hundredths == 1)
+		#expect(VATRate(text: " 7,50 ")?.hundredths == 750)
+		#expect(VATRate(text: "100")?.hundredths == 10000)
+		#expect(VATRate(text: "100,00")?.hundredths == 10000)
+		for text in ["", " ", "0.00", "+5", "−5", "1,000", "7.125", "1.2.3", "1,2.3", "19%", "1e2", "1 000", ".5", "7.", "７",
+			"100,01", "190", "92233720368547758.07", "92233720368547758.08"] {
+			#expect(VATRate(text: text) == nil)
+		}
+	}
+
+	@Test("The list holds each rate once and keeps its order")
+	func rateList() {
+		let r19 = VATRate(hundredths: 1900), r7 = VATRate(hundredths: 700), r20 = VATRate(hundredths: 2000)
+		#expect(VATRate.setting(r20, at: nil, in: [r19, r7]) == [r19, r7, r20])
+		#expect(VATRate.setting(r19, at: nil, in: [r19, r7]) == [r19, r7])
+		#expect(VATRate.setting(VATRate(hundredths: 810), at: 1, in: [r19, r7, r20]).map(\.hundredths) == [1900, 810, 2000])
+		#expect(VATRate.setting(r7, at: 2, in: [r19, r7, r20]) == [r19, r7])
+		#expect(VATRate.setting(r20, at: 0, in: [r19, r7, r20]) == [r20, r7])
+		#expect(VATRate.setting(r7, at: 1, in: [r19, r7]) == [r19, r7])
+		#expect(VATRate.list(hundredths: [1900, 700, 1900, 19000, 0, -5, 10000]).map(\.hundredths) == [1900, 700, 10000])
+	}
+
 	func money(_ minor: Int64, _ currency: String = "EUR") -> Money { Money(minorUnits: minor, currency: currency) }
 
 	@Test("An amount without a sign takes the sign of the row, and a sign stays")
@@ -86,11 +120,13 @@ struct SplitTests {
 		#expect(VATRate(hundredths: 805).text == "8.05%")
 		#expect(VATRate.standard.map(\.hundredths) == [1900, 700])
 	}
-	@Test("Amounts outside Int64 and fractional minor units are refused")
+	@Test("Amounts above the limit of one amount and fractional minor units are refused")
 	func amountBounds() {
-		#expect(Split.amount(from: "92233720368547758,07", on: money(1), decimalMark: .comma) == money(.max))
-		#expect(Split.amount(from: "-92233720368547758,08", on: money(1), decimalMark: .comma) == money(.min))
-		#expect(Split.amount(from: "92233720368547758,08", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "10000000000000,00", on: money(1), decimalMark: .comma) == money(Money.maxMinorUnits))
+		#expect(Split.amount(from: "-10000000000000,00", on: money(1), decimalMark: .comma) == money(-Money.maxMinorUnits))
+		#expect(Split.amount(from: "10000000000000,01", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "92233720368547758,07", on: money(1), decimalMark: .comma) == nil)
+		#expect(Split.amount(from: "-92233720368547758,08", on: money(1), decimalMark: .comma) == nil)
 		#expect(Split.amount(from: "1,001", on: money(1), decimalMark: .comma) == nil)
 	}
 

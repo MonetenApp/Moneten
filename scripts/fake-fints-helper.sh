@@ -12,6 +12,9 @@
 # broken helper could send it.
 # The login and every refresh send the notice of the bank about maintenance.
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
+# The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
+# The login "kreditkarte" lists "Girokonto" and the credit card "Visa Card" with a 16 digit card number, whose refresh
+# brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -20,15 +23,29 @@
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
-# The setup login and the refresh of the login "gesperrt" fail with the block 3938. The refresh of "ohnetan" fails
+# The setup login and the refresh of the login "gesperrt" fail with the block 3938, and those of "deaktiviert" with the
+# answer of a Sparkasse whose user blocked the app in its online banking, and those of "erneuern" with the answer of ING
+# that it accepts the login only after a login on its website. The setup of "ingsperre" works, and each of its refreshes fails
+# with that answer of ING. The refresh of "ohnetan" fails
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
+# The refresh of "ersetzt" fails with the answer of the Deutsche Bank group to a login that a new login replaced.
 # The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
 # the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
 # (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# ING (50010517) has its real FinTS address too, so the setup shows the login hint of ING.
+# Frankfurter Sparkasse (50050201) and 1822direkt (50050222) have their real FinTS addresses too, so an IBAN with
+# 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
+# The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
+# shows the hint of the cooperative banks and sends a VR-Kennung in capitals.
+# Commerzbank (50040000) and comdirect (20041111) have their real FinTS addresses, so the setup shows their hints and sends
+# a login name of 8 digits to Commerzbank with 00 in front. Their login asks for a photoTAN of method 900 with 10 characters
+# in the bank parameters, or of method 902.
+# Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
+# shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -45,6 +62,8 @@ answer() {
 }
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 blocked='{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
+deactivated='{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}'
+renew='{"type":"failed","kind":"websiteLogin","code":"9942","text":"Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."}'
 
 case "$cmd" in
 *'"type":"banks"'*)
@@ -52,16 +71,33 @@ case "$cmd" in
 '{"code":"12030000","name":"Musterbank","city":"Musterstadt","bic":"BYLADEM1001","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"12030001","name":"Musterbank","city":"Beispielstadt","url":"https://fints.musterbank.example/fints"},'\
 '{"code":"99999999","name":"Neobank Muster","city":"Musterstadt","bic":"NEOMDEM1XXX"},'\
-'{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
-'{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking.s-fints-pt-muster.example/fints30"},'\
+'{"code":"99090000","name":"Volksbank Musterstadt","city":"Musterstadt","bic":"GENODEF1MUS","url":"https://fints2.atruvia.de/cgi-bin/hbciservlet"},'\
+'{"code":"40099999","name":"Sparkasse Münsterland Muster","city":"Münster","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
+'{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
+'{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
+'{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
+'{"code":"37070060","name":"Deutsche Bank","city":"Köln","bic":"DEUTDEDKXXX","url":"https://fints.deutsche-bank.de/"},'\
+'{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
+'{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
+'{"code":"50010517","name":"ING-DiBa","city":"Frankfurt am Main","bic":"INGDDEFFXXX","url":"https://fints.ing.de/fints/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
-'{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
+'{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
+'{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
+'{"code":"20041111","name":"comdirect bank AG","city":"Quickborn, Kr Pinneberg","bic":"COBADEHDXXX","url":"https://fints.comdirect.de/fints"}]}'
 	;;
 *'"type":"accounts"'*)
 	echo "$pin"
 	answer
 	case "$cmd" in *'"user":"gesperrt"'*)
 		echo "$blocked"
+		exit 0
+	;;
+	*'"user":"deaktiviert"'*)
+		echo "$deactivated"
+		exit 0
+	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
 		exit 0
 	;; esac
 	if [ "$value" = 0000 ]; then
@@ -74,7 +110,12 @@ case "$cmd" in
 		echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
 		exit 0
 	;; esac
-	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
+	photoTAN='{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.","maxLength":10,"current":'
+	case "$cmd" in
+	*'"bankCode":"50040000"'*) echo "$photoTAN"'"900"}' ;;
+	*'"bankCode":"20041111"'*) echo "$photoTAN"'"902"}' ;;
+	*) echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}' ;;
+	esac
 	answer
 	if [ "$method" = 901 ]; then
 		sleep 2
@@ -87,6 +128,11 @@ case "$cmd" in
 	echo '{"type":"notice","text":"Wartungsarbeiten am 14.11.2026 von 1 bis 5 Uhr."}'
 	case "$cmd" in *'"user":"langtext"'*)
 		echo '{"type":"accounts","accounts":[{"number":"1234567890","product":"Tagesgeld","kind":"10","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
+	*'"user":"kreditkarte"'*)
+		echo '{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","bic":"BYLADEM1001","product":"Girokonto","kind":"1","owner":"Erika Mustermann","currency":"EUR"},{"number":"1234567890123456","product":"Visa Card","kind":"50","owner":"Erika Mustermann","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
@@ -116,8 +162,24 @@ case "$cmd" in
 		echo "$blocked"
 		exit 0
 	;;
+	*'"user":"deaktiviert"'*)
+		echo "$deactivated"
+		exit 0
+	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
+		exit 0
+	;;
+	*'"user":"ingsperre"'*)
+		echo "$renew"
+		exit 0
+	;;
 	*'"user":"ohnetan"'*)
 		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
+		exit 0
+	;;
+	*'"user":"ersetzt"'*)
+		echo '{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}'
 		exit 0
 	;;
 	*'"user":"falschetan"'*)
@@ -173,7 +235,12 @@ case "$cmd" in
 		*'"from":"'*) from="\"$(day 90)\""; oldest= ;;
 		*) from=null; oldest="{\"booked\":\"$(day 30)\",\"value\":\"$(day 30)\",\"amount\":\"-9.90\",\"currency\":\"EUR\",\"name\":\"Musterbank\",\"purpose\":\"Kontoführung\",\"pending\":false}," ;;
 		esac
-		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}]},\"errors\":[]}"
+		extra=
+		case "$cmd" in *'"user":"neu"'*)
+			sign=; [ $(( ${runs:-0} % 2 )) = 1 ] && sign=-
+			extra=",{\"booked\":\"$(day 0)\",\"value\":\"$(day 0)\",\"amount\":\"${sign}25.00\",\"currency\":\"EUR\",\"name\":\"Max Mustermann\",\"purpose\":\"Umbuchung ${runs:-0}\",\"pending\":false}"
+		;; esac
+		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}$extra]},\"errors\":[]}"
 	;; esac
 	echo '{"type":"progress","done":1,"of":3}'
 	case "$cmd" in *'"id":"1234567890"'*)
@@ -184,6 +251,9 @@ case "$cmd" in
 		fi
 	;; esac
 	echo '{"type":"progress","done":2,"of":3}'
+	case "$cmd" in *'"id":"1234567890123456"'*)
+		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}"
+	;; esac
 	case "$cmd" in *'"id":"4711"'*)
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
 	;; esac

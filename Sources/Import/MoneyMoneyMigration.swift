@@ -41,11 +41,42 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	public enum Failure: Error, CustomStringConvertible {
-		case unreadable(String)
+		/// The export of one kind of object is not the property list that the plan reads.
+		public enum Export: Sendable {
+			case accounts, categories, transactions
+		}
+
+		/// What holds an amount that fails, so the message can name it.
+		public enum Amount: Sendable {
+			/// A transaction with its ID in the export, if it has one.
+			case transaction(Int?)
+			case accountBalance(String)
+			case groupBalance(String)
+		}
+
+		case unreadable(Export)
+		/// An amount above `Money.maxMinorUnits`.
+		case tooLarge(Amount)
+		/// An amount that is not a finite number.
+		case unreadableAmount(Amount)
+		/// An initial balance derived from the bank balance that is above `Money.maxMinorUnits`, with the name of its account.
+		case initialBalanceTooLarge(String)
 
 		public var description: String {
 			switch self {
-			case let .unreadable(what): "The export of \(what) could not be read."
+			case .unreadable(.accounts): String(localized: "The export of the accounts could not be read.")
+			case .unreadable(.categories): String(localized: "The export of the categories could not be read.")
+			case .unreadable(.transactions): String(localized: "The export of the transactions could not be read.")
+			// The ID is a String in the text, so it is not grouped like a number, as in "4.711".
+			case let .tooLarge(.transaction(id?)): String(localized: "The amount of transaction \(String(id)) is too large.")
+			case .tooLarge(.transaction(nil)): String(localized: "The amount of a transaction is too large.")
+			case let .tooLarge(.accountBalance(name)): String(localized: "The balance of the account \"\(name)\" is too large.")
+			case let .tooLarge(.groupBalance(name)): String(localized: "The balance of the group \"\(name)\" is too large.")
+			case let .unreadableAmount(.transaction(id?)): String(localized: "The amount of transaction \(String(id)) cannot be read.")
+			case .unreadableAmount(.transaction(nil)): String(localized: "The amount of a transaction cannot be read.")
+			case let .unreadableAmount(.accountBalance(name)): String(localized: "The balance of the account \"\(name)\" cannot be read.")
+			case let .unreadableAmount(.groupBalance(name)): String(localized: "The balance of the group \"\(name)\" cannot be read.")
+			case let .initialBalanceTooLarge(name): String(localized: "The initial balance of the account \"\(name)\" is too large.")
 			}
 		}
 	}
@@ -63,29 +94,33 @@ public struct MoneyMoneyMigration: Sendable {
 	public func plan(accounts accountsData: Data, categories categoriesData: Data, transactions transactionsData: Data, into ledger: Ledger,
 		deleted: [DeletedTransaction] = []) throws -> Plan {
 		guard let rawAccounts = try PropertyListSerialization.propertyList(from: accountsData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("accounts")
+			throw Failure.unreadable(.accounts)
 		}
 		guard let rawCategories = try PropertyListSerialization.propertyList(from: categoriesData, format: nil) as? [[String: Any]] else {
-			throw Failure.unreadable("categories")
+			throw Failure.unreadable(.categories)
 		}
 		guard let rawTransactionsRoot = try PropertyListSerialization.propertyList(from: transactionsData, format: nil) as? [String: Any],
 			let rawTransactions = rawTransactionsRoot["transactions"] as? [[String: Any]] else {
-			throw Failure.unreadable("transactions")
+			throw Failure.unreadable(.transactions)
 		}
 
 		var plan = Plan()
 		var accountMap: [String: UUID] = [:]
-		mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap)
+		var sourceCurrencies: [String: String] = [:]
+		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap, currencies: &sourceCurrencies)
 		var categoryMap: [String: UUID?] = [:]
 		mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap)
 
 		var rows: [Transaction] = []
 		var sourceRows: [String: [Transaction]] = [:]
+		// A transaction without a currency is in the currency of its account in the source, also when it goes into an
+		// account of another currency here. The same amount in another currency is another transaction, so a default of
+		// EUR would add a stored USD row a second time.
 		for raw in rawTransactions {
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
-			let currency = (raw["currency"] as? String) ?? "EUR"
-			guard let amount = Money(fitting: Decimal((raw["amount"] as? Double) ?? 0), currency: currency) else { throw Failure.unreadable("transactions") }
+			let currency = (raw["currency"] as? String)?.uppercased() ?? sourceCurrencies[accountSource] ?? "EUR"
+			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
@@ -111,26 +146,36 @@ public struct MoneyMoneyMigration: Sendable {
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
-		var added: [UUID: ReviewReason?] = [:]
-		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
-		for account in ledger.accounts + plan.accounts {
-			guard let rows = delivered[account.id] else { continue }
-			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
-				rules: rules, now: Date())
-			for t in r.added { added.updateValue(t.review, forKey: t.id) }
-			plan.updatedTransactions += r.booked + r.updated + r.marked
-			plan.skippedTransactions += r.skipped
-			relinked[account.id] = r.relinked
+		// One pass of the rules over all accounts, so a rule that stops in a later account matches none in an earlier one.
+		let merged = rules.allOrNothing {
+			var added: [UUID: ReviewReason?] = [:]
+			var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
+			var updated: [Transaction] = []
+			var skipped = 0
+			for account in ledger.accounts + plan.accounts {
+				guard let rows = delivered[account.id] else { continue }
+				let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
+					rules: rules, now: Date())
+				for t in r.added { added.updateValue(t.review, forKey: t.id) }
+				updated += r.booked + r.updated + r.marked
+				skipped += r.skipped
+				relinked[account.id] = r.relinked
+			}
+			return (added: added, relinked: relinked, updated: updated, skipped: skipped)
 		}
+		let added = merged.added
+		let relinked = merged.relinked
+		plan.updatedTransactions += merged.updated
+		plan.skippedTransactions += merged.skipped
 		for var t in rows {
 			guard let review = added[t.id] else { continue }
 			t.review = review
 			plan.transactions.append(t)
 		}
-		Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
+		try Self.setInitialBalances(of: &plan, ledger: ledger, stored: stored, deleted: tombstones, relinked: relinked, exported: Set(accountMap.values),
 			delivered: delivered.mapValues { Set($0.compactMap(\.sourceID)) })
 		if !rawCategories.contains(where: { ($0["default"] as? Bool) != true && Self.string($0["rules"]) != nil }) {
-			plan.notes.append("The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten.")
+			plan.notes.append(String(localized: "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten."))
 		}
 		let accountNumbers = Set(rawAccounts.filter { ($0["uuid"] as? String).flatMap { accountMap[$0] } != nil }
 			.flatMap { [Self.string($0["accountNumber"]), Self.string($0["iban"])] }.compactMap { $0 }.map(TextFolding.accountKey)
@@ -144,23 +189,23 @@ public struct MoneyMoneyMigration: Sendable {
 		}
 		for c in plan.categories + unchangedCategories {
 			if let error = c.ruleError {
-				plan.notes.append("The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings.")
+				plan.notes.append(String(localized: "The rule of \"\(c.name)\" cannot be read at position \(error.position + 1): \(error.message) \"\(c.name)\" receives no transaction through its rule until you correct the rule in its settings."))
 			}
 			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
-		plan.notes += Self.groupSumNotes(rawAccounts)
+		plan.notes += try Self.groupSumNotes(rawAccounts)
 		if !plan.portfolioAccounts.isEmpty {
-			plan.notes.append("Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported.")
+			plan.notes.append(String(localized: "Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported."))
 		}
 		plan.notes += Self.notMigratedNotes
 		let budgets = rawCategories.filter(Self.hasBudget).count
 		if budgets == 1 {
-			plan.notes.append("1 category has a budget in MoneyMoney. Moneten did not take the budget over.")
+			plan.notes.append(String(localized: "1 category has a budget in MoneyMoney. Moneten did not take the budget over."))
 		} else if budgets > 1 {
-			plan.notes.append("\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over.")
+			plan.notes.append(String(localized: "\(budgets) categories have a budget in MoneyMoney. Moneten did not take the budgets over."))
 		}
 		if (rawAccounts + rawCategories).contains(where: { $0["icon"] is Data }) {
-			plan.notes.append("Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures.")
+			plan.notes.append(String(localized: "Moneten takes the color of each icon of MoneyMoney and shows its own icons instead of the pictures."))
 		}
 		return plan
 	}
@@ -186,10 +231,10 @@ public struct MoneyMoneyMigration: Sendable {
 	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
 		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
 		let chars = Array(category.rule)
+		let name = category.name
 		var notes: [String] = []
 		for (i, entry) in tokens.enumerated() {
 			if i > 0, case .field = tokens[i - 1].token { continue }
-			let prefix = "The rule of \"\(category.name)\""
 			switch entry.token {
 			case let .word(term), let .quoted(term):
 				let number = TextFolding.accountKey(term)
@@ -199,17 +244,19 @@ public struct MoneyMoneyMigration: Sendable {
 					&& Self.ruleIBANLengths[String(number.prefix(2))] == number.count && Self.isIBAN(number)
 				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
 				if iban || knownNumber {
-					notes.append("\(prefix) has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty.")
+					notes.append(String(localized: "The rule of \"\(name)\" has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty."))
 				}
 			case .and, .or, .not:
 				let length = entry.token == .or ? 2 : 3
 				let word = String(chars[entry.position...].prefix(length))
 				if ["and", "or", "not"].contains(word.lowercased()), word != word.uppercased() {
-					notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself.")
+					notes.append(String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as an operator. Write \"\(word)\" in quotation marks to search the word itself."))
 				}
 			case let .constant(value):
 				let word = String(chars[entry.position...].prefix(value ? 4 : 5))
-				notes.append("\(prefix) reads \"\(word)\" at position \(entry.position + 1) as a constant that matches \(value ? "every transaction" : "no transaction"). Write \"\(word)\" in quotation marks to search the word itself.")
+				notes.append(value
+					? String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches every transaction. Write \"\(word)\" in quotation marks to search the word itself.")
+					: String(localized: "The rule of \"\(name)\" reads \"\(word)\" at position \(entry.position + 1) as a constant that matches no transaction. Write \"\(word)\" in quotation marks to search the word itself."))
 			default: break
 			}
 		}
@@ -227,11 +274,16 @@ public struct MoneyMoneyMigration: Sendable {
 	/// A deleted row in another currency never moves the balance, like a stored one.
 	private static func setInitialBalances(of plan: inout Plan, ledger: Ledger, stored: [UUID: [Transaction]],
 		deleted: [UUID: [DeletedTransaction]], relinked: [UUID: [DeletedTransaction.Relink]], exported: Set<UUID>,
-		delivered: [UUID: Set<String>]) {
+		delivered: [UUID: Set<String>]) throws {
+		// An initial balance is stored, so one above `Money.maxMinorUnits` fails the migration instead of holding at a bound.
+		func limited(_ value: Int128, of account: Account) throws -> Int64 {
+			guard let minor = Int64(limitedAmount: value) else { throw Failure.initialBalanceTooLarge(account.name) }
+			return minor
+		}
 		let added = Dictionary(grouping: plan.transactions, by: \.accountID)
 		for i in plan.accounts.indices {
 			guard let balance = plan.accounts[i].bankBalanceMinor else { continue }
-			plan.accounts[i].initialBalanceMinor = initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? [])
+			plan.accounts[i].initialBalanceMinor = try limited(initialBalance(balance, of: plan.accounts[i], rows: added[plan.accounts[i].id] ?? []), of: plan.accounts[i])
 		}
 		let changed = Dictionary(uniqueKeysWithValues: plan.updatedTransactions.map { ($0.id, $0) })
 		for old in ledger.accounts where old.source == .migrated && old.kind != .portfolio {
@@ -248,12 +300,12 @@ public struct MoneyMoneyMigration: Sendable {
 			var a = k.map { plan.updatedAccounts[$0] } ?? old
 			guard let balance = a.bankBalanceMinor else { continue }
 			let before = stored[old.id] ?? []
-			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
-			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(0) { $0 + $1.amountMinor }
+			let deletedBefore = tombstones.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
+			let deletedAfter = after.filter { isCounted($0) && $0.currency == old.currency }.reduce(Int128(0)) { $0 + Int128($1.amountMinor) }
 			let target = initialBalance(balance, of: a, rows: before.map { changed[$0.id] ?? $0 } + (added[old.id] ?? [])) - deletedAfter
-			a.initialBalanceMinor = old.bankBalanceMinor.map {
-				old.initialBalanceMinor + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
-			} ?? target
+			a.initialBalanceMinor = try limited(old.bankBalanceMinor.map {
+				Int128(old.initialBalanceMinor) + target - (initialBalance($0, of: old, rows: before) - deletedBefore)
+			} ?? target, of: old)
 			if let k {
 				plan.updatedAccounts[k] = a
 			} else if a != old {
@@ -266,9 +318,9 @@ public struct MoneyMoneyMigration: Sendable {
 	/// migration ID. A row that the user imported carries none, and a row that a file or a bank booked while the
 	/// source has it pending carries the booked form of the ID, so both count on top. `v13` in `Schema` repairs stored
 	/// values by the same rule, so this filter is spelled out here and in its SQL.
-	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int64 {
-		rows.reduce(balance) { sum, t in
-			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - t.amountMinor : sum
+	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int128 {
+		rows.reduce(Int128(balance)) { sum, t in
+			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - Int128(t.amountMinor) : sum
 		}
 	}
 
@@ -280,7 +332,7 @@ public struct MoneyMoneyMigration: Sendable {
 		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
-	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID]) {
+	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID], currencies: inout [String: String]) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
@@ -306,12 +358,13 @@ public struct MoneyMoneyMigration: Sendable {
 			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
-			var currency = (item["currency"] as? String) ?? "EUR"
+			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
 			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
-				let amount = first[0] as? Double, let c = first[1] as? String {
+				let amount = first[0] as? Double, let c = (first[1] as? String)?.uppercased() {
 				currency = c
-				balanceMinor = Money(Decimal(amount), currency: c).minorUnits
+				balanceMinor = try Self.money(amount, c, .accountBalance(name)).minorUnits
 			}
+			currencies[source] = currency
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			defer { if let id = map[source] { plan.sources.append(SourceAccount(sourceID: source, name: name, accountID: id, balance: balanceMinor.map { Money(minorUnits: $0, currency: currency) })) } }
@@ -368,7 +421,7 @@ public struct MoneyMoneyMigration: Sendable {
 			positions[parent] = position + 1
 			let isGroup = (item["group"] as? Bool) == true
 			if isGroup, Self.string(item["rules"]) != nil {
-				plan.notes.append("The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group.")
+				plan.notes.append(String(localized: "The rule of the group \"\(name)\" was not taken over, because a group holds no transactions. Move it to a category below the group."))
 			}
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
 			if let existing = known.first(where: { $0.sourceID == source || ($0.name == name && $0.parentID == parent && !$0.isDefault) }) {
@@ -385,7 +438,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}
 			// A group holds no transactions of its own, so the app gives it no rule.
 			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
-				currency: (item["currency"] as? String) ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
+				currency: (item["currency"] as? String)?.uppercased() ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
@@ -426,10 +479,10 @@ public struct MoneyMoneyMigration: Sendable {
 
 	/// The scripting dictionary of MoneyMoney has no command that exports these.
 	static let notMigratedNotes = [
-		"Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there.",
-		"Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them.",
-		"Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before.",
-		"Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.",
+		String(localized: "Login data was not migrated, because the AppleScript export of MoneyMoney does not contain it. Connect a migrated account to its bank with \"Add Account...\" and enter the login data there."),
+		String(localized: "Transfer templates were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Export Transfer Templates...\" in MoneyMoney to keep them."),
+		String(localized: "Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before."),
+		String(localized: "Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them."),
 	]
 
 	/// The key layout of a budget in `export categories` was not recorded with the real export. A
@@ -454,12 +507,14 @@ public struct MoneyMoneyMigration: Sendable {
 	/// Lists the groups whose balance in MoneyMoney differs from the sum of their accounts.
 	/// MoneyMoney leaves closed accounts out of the sum of their group, and the export does not say
 	/// which accounts are closed.
-	static func groupSumNotes(_ raw: [[String: Any]]) -> [String] {
-		func balances(_ item: [String: Any]) -> [String: Decimal] {
+	static func groupSumNotes(_ raw: [[String: Any]]) throws -> [String] {
+		func balances(_ item: [String: Any]) throws -> [String: Decimal] {
 			var r: [String: Decimal] = [:]
+			let name = item["name"] as? String ?? ""
+			let what: Failure.Amount = (item["group"] as? Bool) == true ? .groupBalance(name) : .accountBalance(name)
 			for case let entry as [Any] in (item["balance"] as? [Any]) ?? [] where entry.count >= 2 {
 				if let amount = entry[0] as? Double, let currency = entry[1] as? String {
-					r[currency, default: 0] += Money(Decimal(amount), currency: currency).decimal
+					r[currency, default: 0] += try money(amount, currency, what).decimal
 				}
 			}
 			return r
@@ -471,19 +526,27 @@ public struct MoneyMoneyMigration: Sendable {
 			for child in raw[(i + 1)...] {
 				if ((child["indentation"] as? Int) ?? 0) <= indentation { break }
 				if (child["group"] as? Bool) == true { continue }
-				for (c, v) in balances(child) { sum[c, default: 0] += v }
+				for (c, v) in try balances(child) { sum[c, default: 0] += v }
 			}
-			let shown = balances(item)
+			let shown = try balances(item)
 			let currencies = Set(shown.keys).union(sum.keys)
 			if currencies.contains(where: { shown[$0, default: 0] != sum[$0, default: 0] }) {
-				notes.append("The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group.")
+				notes.append(String(localized: "The group \"\(item["name"] as? String ?? "")\" has a different balance in MoneyMoney than the sum of its accounts. MoneyMoney leaves closed accounts out of the sum, and its export does not say which accounts are closed. Turn on \"The account has been closed\" in the settings of each closed account of this group."))
 			}
 		}
 		return notes
 	}
 
+	/// An amount of the export, named by `what` in the error, such as the transaction 4711. A number that is
+	/// not finite fails before its conversion, because `Decimal(Double.infinity)` stops the app.
+	static func money(_ value: Double, _ currency: String, _ what: Failure.Amount) throws -> Money {
+		guard value.isFinite else { throw Failure.unreadableAmount(what) }
+		guard let money = Money(fitting: Decimal(value), currency: currency) else { throw Failure.tooLarge(what) }
+		return money
+	}
+
 	static func isIBAN(_ value: String) -> Bool {
-		let s = value.replacingOccurrences(of: " ", with: "").uppercased()
+		let s = TextFolding.accountKey(value)
 		guard s.count >= 15, s.count <= 34, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
 			s.prefix(2).allSatisfy(\.isLetter), s.dropFirst(2).prefix(2).allSatisfy(\.isNumber) else { return false }
 		var remainder = 0
@@ -532,15 +595,15 @@ public enum MoneyMoneyExporter {
 		public var description: String {
 			switch self {
 			case .notInstalled:
-				"MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead."
+				String(localized: "MoneyMoney is not installed on this Mac. You can import transactions from CSV, CAMT, or MT940 files into an account instead.")
 			case .notRunning:
-				"MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\"."
+				String(localized: "MoneyMoney is not running. Open MoneyMoney and unlock it, then choose \"Check again\".")
 			case .locked:
-				"MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\"."
+				String(localized: "MoneyMoney is locked. Unlock MoneyMoney with its database password, then choose \"Check again\".")
 			case .notAllowed:
-				"macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\"."
+				String(localized: "macOS does not allow Moneten to read data from MoneyMoney. Allow it in System Settings → Privacy & Security → Automation → Moneten, then choose \"Check again\".")
 			case let .failed(message):
-				"MoneyMoney did not answer: \(message)"
+				String(localized: "MoneyMoney did not answer: \(message)")
 			}
 		}
 
@@ -584,7 +647,7 @@ public enum MoneyMoneyExporter {
 					if let code = reply.paramDescriptor(forKeyword: 0x6572726e)?.int32Value, code != 0 {
 						throw Failure.of(code: Int(code), message: reply.paramDescriptor(forKeyword: 0x65727273)?.stringValue ?? "Error \(code)")
 					}
-					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed("The export returned no property list.") }
+					guard let text = reply.paramDescriptor(forKeyword: 0x2d2d2d2d)?.stringValue else { throw Failure.failed(String(localized: "The export returned no property list.")) }
 					continuation.resume(returning: Data(text.utf8))
 				} catch let failure as Failure {
 					continuation.resume(throwing: failure)

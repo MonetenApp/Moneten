@@ -1,6 +1,8 @@
 # 0016. Sign releases with a Developer ID certificate that CI holds
 
-Status: Accepted
+Status: Partly superseded by 0019
+
+[ADR 0019](0019-ext-releases-in-the-build-environment.md) also allows the tags `ext-v*` in the environment `build`, for the signed releases of `ext`.
 
 This decision replaces the signing points of [ADR 0011](0011-app-target-in-an-xcode-project.md): "Xcode manages that certificate in the team account, so no private key leaves Apple", the Xcode account that `scripts/build-app.sh developer-id` needed, and "CI will need an App Store Connect API key for the same".
 

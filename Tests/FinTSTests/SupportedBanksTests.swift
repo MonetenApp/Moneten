@@ -41,10 +41,10 @@ struct SupportedBanksTests {
 			Self.bank("70150000", "Stadtsparkasse München", "München"),
 			Self.bank("12030000", "Musterbank", "Musterstadt"),
 			Self.bank("21099999", "Sparkasse Altstadt -alt-", "Altstadt"),
-			Self.bank("10010010", "Aachener Bank", "Aachen"),
+			Self.bank("39060180", "Aachener Bank", "Aachen"),
 			Self.bank("12030001", "Musterbank", "Altdorf"),
 		]
-		let expected = ["10010010", "12030001", "12030000", "21099999", "70150000"]
+		let expected = ["39060180", "12030001", "12030000", "21099999", "70150000"]
 		var generator = SystemRandomNumberGenerator()
 		for order in [banks, banks.reversed()] + (0..<8).map({ _ in banks.shuffled(using: &generator) }) {
 			let list = SupportedBanks(directory: BankDirectory(order), services: [])

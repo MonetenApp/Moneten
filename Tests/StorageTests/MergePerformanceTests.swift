@@ -1,6 +1,7 @@
 import Domain
 import Foundation
 import Testing
+import TestSupport
 @testable import Storage
 
 @Suite("Performance of the merge")
@@ -45,7 +46,7 @@ struct MergePerformanceTests {
 		#expect(ledger.transactions.count == 50_150)
 		#if !DEBUG
 		// The budget of the import in PerformanceTests: both add rows to a ledger of 50,000.
-		#expect(merge < .milliseconds(300))
+		#expect(merge < budget(.milliseconds(300)))
 		#endif
 	}
 }

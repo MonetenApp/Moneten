@@ -51,7 +51,7 @@ public final class SyncCoordinator {
 	/// Runs on the main actor when the refresh of an access ended, before `ended`, with the notices that its
 	/// bank sent, such as planned maintenance, also when the access failed after them (`FailureWithNotices`).
 	/// A canceled refresh brings none.
-	@ObservationIgnored public var noticed: @MainActor (UUID, [BankMessage]) -> Void = { _, _ in }
+	@ObservationIgnored public var noticed: @MainActor (Access, [BankMessage]) -> Void = { _, _ in }
 	/// Runs on the main actor when a run ended: the first refresh started it, the refreshes that started
 	/// while it went joined it, and the last one ended. The notification about new transactions comes once per run.
 	@ObservationIgnored public var runEnded: @MainActor () -> Void = {}
@@ -61,6 +61,14 @@ public final class SyncCoordinator {
 	/// Whether a refresh that may not ask the user can start now. A refresh that waits for its turn is
 	/// checked again when its turn comes, so the automatic refresh stops when the Mac goes offline or asleep.
 	@ObservationIgnored public var mayStartUnattended: @MainActor () -> Bool = { true }
+	/// Whether the automatic refresh of the access paused, because ING kept its FinTS login locked
+	/// (`Ledger.pausesAutomaticRefresh(of:)`). An automatic refresh of such an access that waits is dropped when
+	/// its turn comes. Its accounts stay due, and a refresh by hand still runs.
+	@ObservationIgnored public var pausesUnattended: @MainActor (UUID) -> Bool = { _ in false }
+	/// For each access, one entry per run that ended and that the app has not recorded yet, in order: whether an account
+	/// of the run ended with the lock of ING. The app may record a run later, after the table is drawn, so until then
+	/// `pausesUnattended` reads a ledger without it, and an automatic refresh of the access waits for the record.
+	private var unrecorded: [UUID: [Bool]] = [:]
 	private var inRun = false
 	/// Whether the running refresh of each access may ask the user. A command that names one of its
 	/// accounts turns it on while it runs.
@@ -199,6 +207,33 @@ public final class SyncCoordinator {
 		return true
 	}
 
+	/// The user closed the account: it leaves every refresh that waits, and a waiting refresh without another account is
+	/// dropped, so no bank is asked for it. A running refresh still ends. The app then drops what it delivers for the
+	/// closed account, because a closed account takes no refresh.
+	public func leaveOut(account id: UUID) {
+		func without(_ job: Job) -> Job? {
+			var job = job
+			let accounts = job.request.accounts.filter { $0.accountID != id }
+			guard !accounts.isEmpty else { return nil }
+			job.request = RefreshRequest(access: job.request.access, state: job.request.state, accounts: accounts)
+			return job
+		}
+		var emptied: [UUID] = []
+		queue = queue.compactMap { job in
+			let kept = without(job)
+			if kept == nil { emptied.append(job.request.access.id) }
+			return kept
+		}
+		for (access, job) in afterRun {
+			afterRun[access] = without(job)
+			if afterRun[access] == nil, running[access] == nil, !held.contains(access) { emptied.append(access) }
+		}
+		for access in emptied { endProgress(of: access) }
+		for access in requested.keys { requested[access]?.removeAll { $0.accountID == id } }
+		refreshingAccounts.remove(id)
+		endRunIfIdle()
+	}
+
 	/// "Cancel Refresh": stops every running access and drops the waiting ones. Their accounts keep their last state.
 	public func cancelAll() {
 		for job in queue { endProgress(of: job.request.access.id) }
@@ -261,15 +296,40 @@ public final class SyncCoordinator {
 		refreshingAccounts.subtract((requested.removeValue(forKey: access) ?? []).map(\.accountID))
 	}
 
-	/// An automatic refresh whose turn comes while it may not start is dropped. Its accounts stay due.
+	/// An automatic refresh whose turn comes while it may not start, or while the automatic refresh of its access paused,
+	/// is dropped. Its accounts stay due.
 	private func startNext() {
 		while running.count < limit, !queue.isEmpty {
 			let job = queue.removeFirst()
-			if job.attended || mayStartUnattended() {
+			if job.attended || mayStartUnattended() && !holdsBackUnattended(job.request.access.id) {
 				start(job)
 			} else {
 				endProgress(of: job.request.access.id)
 			}
+		}
+	}
+
+	/// Whether an automatic refresh of the access may not start: its automatic refresh paused, or a run of it ended with
+	/// the lock of ING and the app has not recorded it yet.
+	private func holdsBackUnattended(_ access: UUID) -> Bool {
+		unrecorded[access]?.contains(true) == true || pausesUnattended(access)
+	}
+
+	/// The app recorded the oldest run of the access that ended and that it had not recorded yet. It calls this once
+	/// for each call of `ended`.
+	public func recordedRefresh(of access: UUID) {
+		guard var runs = unrecorded[access], !runs.isEmpty else { return }
+		runs.removeFirst()
+		unrecorded[access] = runs.isEmpty ? nil : runs
+	}
+
+	/// Whether an account of the run ended because ING waits for a login on its website, for the whole access or
+	/// inside a report that also fetched other accounts.
+	private static func endsWithLock(_ event: SyncEvent) -> Bool {
+		switch event {
+		case let .fail(failure): failure.isWebsiteLoginNeeded
+		case let .finish(summary): summary.failures.values.contains { $0.isWebsiteLoginNeeded }
+		default: false
 		}
 	}
 
@@ -315,18 +375,28 @@ public final class SyncCoordinator {
 			// The state of this run: the user may have canceled it before its connector returned.
 			let end = states[access.id] ?? .idle
 			let accountIDs = job.request.accounts.map(\.accountID)
+			// The accounts of this run that are still requested: an account that the user closed meanwhile left them (`leaveOut(account:)`).
+			let stillRequested = Set((requested[access.id] ?? []).map(\.accountID))
+			let retried = job.request.accounts.filter { stillRequested.contains($0.accountID) }
 			endProgress(of: access.id)
 			running[access.id] = nil
 			runningSources[access.id] = nil
 			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
-			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves {
-				let again = Job(request: job.request, connector: job.connector, attended: true)
+			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves, !retried.isEmpty {
+				let again = Job(request: RefreshRequest(access: job.request.access, state: job.request.state, accounts: retried), connector: job.connector,
+					attended: true)
 				// An automatic request that waits after this run stays out of the attended run. Its accounts stay due.
 				afterRun[access.id] = afterRun[access.id].map { $0.attended ? again.adding($0) : again } ?? again
 			}
+			// ING kept the login locked: an automatic refresh that waits for this run would log in again before the app
+			// counted this lock, so it is dropped. Its accounts stay due, and the next turn of the automatic refresh
+			// decides with the new count. A refresh by hand still runs.
+			let locked = Self.endsWithLock(event)
+			if locked, afterRun[access.id]?.attended == false { afterRun[access.id] = nil }
+			unrecorded[access.id, default: []].append(locked)
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
-			if !Task.isCancelled, !notices.isEmpty { noticed(access.id, notices) }
+			if !Task.isCancelled, !notices.isEmpty { noticed(access, notices) }
 			if let state { storeState(access.id, state, attendance.isOn) }
 			ended(access.id, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
 			if var next = afterRun.removeValue(forKey: access.id) {

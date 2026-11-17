@@ -9,7 +9,7 @@ struct RootView: View {
 		Group {
 			switch model.phase {
 			case .starting:
-				ProgressView(model.opening ?? "Opening database...")
+				ProgressView(model.opening ?? String(localized: "Opening database..."))
 			case .firstLaunch:
 				FirstLaunchView()
 			case .locked:
@@ -18,6 +18,10 @@ struct RootView: View {
 				MainView()
 			case let .failed(message):
 				FailureView(message: message)
+			case .changedOnDisk:
+				ChangedOnDiskView(afterPasswordChange: false)
+			case .passwordChangeUnfinished:
+				ChangedOnDiskView(afterPasswordChange: true)
 			}
 		}
 		.onAppear {
@@ -29,6 +33,11 @@ struct RootView: View {
 			if active { model.showNotices() }
 		}
 		.onDisappear { model.mainWindowClosed() }
+		.alert("Database file", isPresented: Binding(get: { model.openedDatabaseFile }, set: { model.openedDatabaseFile = $0 })) {
+			Button("OK") {}
+		} message: {
+			Text("Please don’t open the database file directly. Launch Moneten instead.")
+		}
 		.sheet(isPresented: Binding(get: { model.crashes.pending != nil }, set: { _ in })) {
 			CrashReportSheet(reports: model.crashes)
 		}
@@ -38,6 +47,35 @@ struct RootView: View {
 			SyncDialog(broker: model.sync.broker, sheet: sheet)
 				.interactiveDismissDisabled()
 		}
+	}
+}
+
+/// The database file changed outside the app, or a password change left the connection unable to write. Moneten
+/// wrote nothing since then and loads the file again on request.
+struct ChangedOnDiskView: View {
+	@Environment(AppModel.self) private var model
+	let afterPasswordChange: Bool
+
+	var body: some View {
+		VStack(spacing: 16) {
+			Image(systemName: "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.orange)
+			if afterPasswordChange {
+				Text("The password change could not be completed.").font(.title2)
+				Text("Moneten has written nothing to the database since then. Load the database again. When it asks for the database password, enter the new password, and when that does not open it, the earlier one.")
+					.multilineTextAlignment(.center).frame(maxWidth: 520)
+			} else {
+				Text("The database has been changed on disk, outside of Moneten.").font(.title2)
+				Text("Another application changed or replaced the database file while Moneten was running, for example when a backup was put in its place. Moneten has written nothing to it since then. Load the database again to continue with the file as it is now.")
+					.multilineTextAlignment(.center).frame(maxWidth: 520)
+			}
+			Text("Database file: \(model.vault.folder.databaseFile.path)").font(.callout).foregroundStyle(.secondary)
+				.multilineTextAlignment(.center).textSelection(.enabled).frame(maxWidth: 520)
+			HStack {
+				Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
+				Button("Load Database Again") { model.loadDatabaseAgain() }.keyboardShortcut(.defaultAction)
+			}
+		}
+		.padding(40)
 	}
 }
 
@@ -69,10 +107,6 @@ struct LockView: View {
 	/// The unlock methods that are on and that macOS can use now, and why the others cannot.
 	@State private var available: [UnlockMethod] = []
 	@State private var unavailable: [String] = []
-	/// The methods that are on, and the switches they were read for. Reading them reads the password
-	/// from the Keychain, so that happens only when a switch changes.
-	@State private var enabled: [UnlockMethod] = []
-	@State private var switches: [UnlockMethod]?
 	@FocusState private var focused: Bool
 
 	var body: some View {
@@ -151,12 +185,7 @@ struct LockView: View {
 	}
 
 	private func refreshAvailability() {
-		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
-		if on != switches {
-			switches = on
-			enabled = model.unlockMethods()
-		}
-		let reasons = enabled.map { ($0, $0.unavailableReason(for: .lockScreen)) }
+		let reasons = model.unlockMethods().map { ($0, $0.unavailableReason(for: .lockScreen)) }
 		available = reasons.filter { $0.1 == nil }.map(\.0)
 		unavailable = reasons.compactMap(\.1)
 	}
@@ -225,7 +254,7 @@ struct AppLogo: View {
 
 /// Two fields for a new password, a strength grade, and the warning about lost passwords.
 struct PasswordForm: View {
-	var confirmTitle: String
+	var confirmTitle: LocalizedStringKey
 	var requireWarning: Bool
 	var onCancel: (() -> Void)? = nil
 	var onConfirm: (String) -> Void
@@ -283,10 +312,10 @@ enum PasswordStrength {
 
 	static func grade(_ s: String) -> String {
 		switch bits(s) {
-		case ..<40: "weak"
-		case ..<60: "good"
-		case ..<80: "strong"
-		default: "excellent"
+		case ..<40: String(localized: "weak")
+		case ..<60: String(localized: "good")
+		case ..<80: String(localized: "strong")
+		default: String(localized: "excellent")
 		}
 	}
 

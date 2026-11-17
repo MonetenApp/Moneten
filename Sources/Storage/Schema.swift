@@ -373,7 +373,85 @@ enum Schema {
 				t.column("filterBar", .blob).notNull()
 			}
 		}
+		// The lock settings (add-app-lock): one row in the encrypted database, so a program that writes the settings
+		// file of the app cannot weaken the lock. Without the row the defaults apply. It is registered after v25.
+		m.registerMigration("v22") { db in
+			try db.create(table: "lockSetting") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("lockOnClose", .boolean).notNull()
+				t.column("lockAfterMinutes", .integer).notNull()
+			}
+		}
+		// The balances in other currencies and the bonus points that a source reports with the balance of an account
+		// (add-account-management, task 1.10). An existing account has neither until its next refresh.
+		// It is registered after v22.
+		m.registerMigration("v26") { db in
+			try db.alter(table: "account") { t in
+				t.add(column: "otherBankBalances", .text).notNull().defaults(to: "[]")
+				t.add(column: "bonusPoints", .integer)
+			}
+		}
+		// The mark of a row that the user added with "Add Transaction..." (add-offline-accounts). It comes after v24, v21,
+		// v25, v22, and v26 in the list, because GRDB applies the migrations in the order of registration and they shipped first.
+		m.registerMigration("v23") { db in
+			try db.alter(table: "bankTransaction") { t in t.add(column: "isManual", .boolean).notNull().defaults(to: false) }
+			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
+			try db.alter(table: "account") { t in t.add(column: "initialBalanceIsDerived", .boolean).notNull().defaults(to: false) }
+		}
+		// The fingerprint of a transaction compares the currency (#225), and the parsers deliver upper-case codes. An
+		// earlier version stored the code of a CAMT or MT940 file or of the FinTS helper as it came, such as "eur", which
+		// would no longer find its copy from a new import, and a deleted row would come back. ISO 4217 codes are ASCII,
+		// so upper() of SQLite is enough. Registered after v23.
+		m.registerMigration("v27") { db in
+			for table in ["account", "bankTransaction", "deletedTransaction"] {
+				try db.execute(sql: "UPDATE \(table) SET currency = upper(currency) WHERE currency <> upper(currency)")
+			}
+			// The file identity of a row from a file holds the currency too, and two pending rows with different file
+			// identities never pair, so the same pending CAMT row would come in a second time.
+			for table in ["bankTransaction", "deletedTransaction"] {
+				for row in try Row.fetchAll(db, sql: "SELECT rowid, fileIdentity FROM \(table) WHERE fileIdentity IS NOT NULL") {
+					let identity: String = row["fileIdentity"]
+					guard let upper = upperCasingCurrency(inFileIdentity: identity), upper != identity else { continue }
+					try db.execute(sql: "UPDATE \(table) SET fileIdentity = ? WHERE rowid = ?", arguments: [upper, row["rowid"] as Int64])
+				}
+			}
+		}
+		// The clearing entry of a closed account, as JSON, so that reopening removes the entry while the user has not
+		// changed it (add-account-management, tasks 1.13 and 1.14). No stored account has one. It comes after v27.
+		m.registerMigration("v28") { db in
+			try db.alter(table: "account") { t in t.add(column: "clearingEntry", .text) }
+		}
 		return m
+	}
+
+	/// The file identity with its currency in upper case, or nil when it does not read, which leaves it as it is. A file
+	/// identity is "file:1:" and then exactly seven fields, booking day, amount, currency, purpose, counterparty, source
+	/// ID, and end-to-end reference, each as its length in UTF-8 bytes, a colon, and the value, with nothing after them
+	/// (`Transaction.originalFileIdentity`). A currency code is ASCII, so changing only a to z keeps every length.
+	private static func upperCasingCurrency(inFileIdentity identity: String) -> String? {
+		let prefix = Array("file:1:".utf8)
+		var bytes = Array(identity.utf8)
+		guard bytes.starts(with: prefix) else { return nil }
+		var i = prefix.count
+		var currency: Range<Int>?
+		for field in 0..<7 {
+			// A length beyond the rest of the identity cannot be right, so the parse ends there, before the number can
+			// overflow. An identity from a complete export can hold anything, and a migration must never trap.
+			let start = i
+			var length = 0
+			while i < bytes.count, (0x30...0x39).contains(bytes[i]) {
+				length = length * 10 + Int(bytes[i] - 0x30)
+				guard length <= bytes.count else { return nil }
+				i += 1
+			}
+			guard i > start, i < bytes.count, bytes[i] == 0x3A, length <= bytes.count - i - 1 else { return nil }
+			i += 1
+			if field == 2 { currency = i..<(i + length) }
+			i += length
+		}
+		guard i == bytes.count, let currency else { return nil }
+		for j in currency where (0x61...0x7A).contains(bytes[j]) { bytes[j] -= 0x20 }
+		return String(decoding: bytes, as: UTF8.self)
 	}
 
 	/// The state of a FinTS access with marks, as a debug build before v21 wrote it: JSON with the passport of the

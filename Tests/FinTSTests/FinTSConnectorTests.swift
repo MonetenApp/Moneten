@@ -120,7 +120,7 @@ struct FinTSConnectorTests {
 			read a; printf '%s\\n' "$a" >> "$R"
 			echo '{"type":"ask","id":3,"kind":"tan","purpose":"download","prompt":"Bitte TAN erzeugen","flicker":"0f04871100030333"}'
 			read a; printf '%s\\n' "$a" >> "$R"
-			echo '{"type":"ask","id":4,"kind":"tan","purpose":"download","prompt":"Bitte scannen","image":"iVBORw=="}'
+			echo '{"type":"ask","id":4,"kind":"tan","purpose":"download","prompt":"Bitte scannen","image":"iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAAA="}'
 			read a; printf '%s\\n' "$a" >> "$R"
 			echo '{"type":"accounts","accounts":[]}'
 			""").listAccounts(of: Self.access, state: nil, session: session)
@@ -132,10 +132,15 @@ struct FinTSConnectorTests {
 			.asked(.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
 				challenge: .flickerCode(prompt: "Bitte TAN erzeugen", code: FlickerCode(hex: "0F04871100030333")!)))),
 			.asked(.secondFactor(SecondFactorRequest(purpose: .download, system: .fintsServer,
-				challenge: .enterTAN(prompt: "Bitte scannen", image: ChallengeImage(Data([0x89, 0x50, 0x4E, 0x47])))))),
+				challenge: .enterTAN(prompt: "Bitte scannen", image: ChallengeImage(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAAA=")!))))),
 		])
 		#expect(recorded.map { $0["value"] } == ["921", "Handy", "123456", "123456"])
 		#expect(!recorded.map { $0["id"] }.contains(nil))
+		if case let .asked(.secondFactor(request))? = session.events.last, case let .enterTAN(_, image?) = request.challenge {
+			#expect(image.picture?.width == 200)
+		} else {
+			Issue.record("no TAN request with an image")
+		}
 	}
 
 	@Test("Sends the PIN rules of the bank with the PIN request")
@@ -148,6 +153,56 @@ struct FinTSConnectorTests {
 			echo '{"type":"accounts","accounts":[]}'
 			""").listAccounts(of: Self.access, state: nil, session: session)
 		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 5, maxLength: 10))))])
+	}
+
+	@Test("A cooperative bank on a server of Atruvia refuses a six character PIN, and gets a VR-Kennung in capitals")
+	func cooperativeBank() async throws {
+		let session = Session()
+		let access = Access(source: .fints(bankCode: "51090000", url: URL(string: "https://fints2.atruvia.de/cgi-bin/hbciservlet")!), bankName: "Wiesbadener Volksbank",
+			loginName: "vrk12345678")
+		_ = try await connector("""
+			read cmd; printf '%s\\n' "$cmd" >> "$R"
+			echo '{"type":"ask","id":1,"kind":"pin","rules":{"minLength":8,"maxLength":20}}'
+			read answer
+			echo '{"type":"ask","id":2,"kind":"tanMedium","purpose":"login","media":[]}'
+			read answer; printf '%s\\n' "$answer" >> "$R"
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: access, state: nil, session: session)
+		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 8, maxLength: 20, refusedLength: 6)))),
+			.asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer, challenge: .chooseTANMedium([]))))])
+		#expect(recorded.first?["user"] == "VRK12345678")
+	}
+
+	@Test("An access of a savings bank that stored a login name of 17 digits sends its first 16 digits")
+	func savingsBankLoginOf17Digits() async throws {
+		let access = Access(source: .fints(bankCode: "50850049", url: URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30")!), bankName: "Sparkasse Musterstadt",
+			loginName: "12345678901234567")
+		_ = try await connector("""
+			read cmd; printf '%s\\n' "$cmd" >> "$R"
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""").refresh(RefreshRequest(access: access, accounts: [Self.giro], enforced: false), Session())
+		#expect(recorded.first?["user"] == "1234567890123456")
+	}
+
+	@Test("apoBank asks for the name of the apoTAN device when it lists no TAN media, and the empty name goes to the helper")
+	func apoTANDevice() async throws {
+		let session = Session { request in
+			guard case .secondFactor = request else { return .pin(Secret("12345678")) }
+			return .tanMedium("")
+		}
+		let access = Access(source: .fints(bankCode: "30060601", url: URL(string: "https://fints.apobank.de/FinTs30PinTanHttpGate")!), bankName: "apoBank",
+			loginName: "erika77")
+		_ = try await connector("""
+			read cmd
+			echo '{"type":"ask","id":1,"kind":"pin","rules":{"minLength":8}}'
+			read answer
+			echo '{"type":"ask","id":2,"kind":"tanMedium","purpose":"login","media":[]}'
+			read answer; printf '%s\\n' "$answer" >> "$R"
+			echo '{"type":"accounts","accounts":[]}'
+			""").listAccounts(of: access, state: nil, session: session)
+		#expect(session.events == [.asked(.pin(PINRequest(rules: PINRules(minLength: 8)))),
+			.asked(.secondFactor(SecondFactorRequest(purpose: .login, system: .fintsServer, challenge: .nameTANMedium(.apoTANDevice))))])
+		#expect(recorded == [["type": "answer", "id": "2", "value": ""]])
 	}
 
 	@Test("Offers the other TAN methods in the dialog of a challenge, and sends the method that the user changes to", arguments: ["tan", "approve"])
@@ -255,6 +310,8 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9942","text":"PIN falsch"}]}"#,
 			.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
 		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9930","text":"PIN gesperrt"}}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
+		(#"{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
 	])
 	func rejectionBeforeCancel(line: String, expected: SyncFailure) async throws {
 		let session = Session()
@@ -318,7 +375,7 @@ struct FinTSConnectorTests {
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
 		// Only a helper that ends by itself lets the run end before the grace is over.
-		#expect(ContinuousClock.now - canceled < .seconds(grace))
+		#expect(ContinuousClock.now - canceled < .seconds(grace)) // time-ok: the grace holds 120 s for a loaded runner
 		#expect(recorded.map { $0["type"] } == ["cancel"])
 	}
 
@@ -343,30 +400,32 @@ struct FinTSConnectorTests {
 		#expect(recorded.map { $0["type"] } == ["cancel", "waiting", "terminated"], "\(recorded)")
 	}
 
-	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds")
+	@Test("Cancel returns at once while the helper does not read its input, and the helper ends after 5 seconds", .timeLimit(.minutes(2)))
 	func cancelBlockedWrite() async throws {
 		// A state far larger than the buffer of a pipe, to a helper that never reads it.
 		let state = AccessState(Data(repeating: 7, count: 1_000_000))
 		let task = Task {
-			try await connector("\(Self.terminatedTrap); sleep 60 & wait", inactivity: 300).listAccounts(of: Self.access, state: state, session: Session())
+			try await connector(#"\#(Self.terminatedTrap); echo '{"type":"ready"}' >> "$R"; sleep 60 & wait"#, inactivity: 300)
+				.listAccounts(of: Self.access, state: state, session: Session())
 		}
-		try await Task.sleep(for: .milliseconds(300))
+		try await helperReady()
 		let canceled = ContinuousClock.now
 		task.cancel()
 		// A cancel that waited for the write would return only when the helper ends, 5 seconds later.
-		#expect(ContinuousClock.now - canceled < .seconds(5))
+		#expect(ContinuousClock.now - canceled < .seconds(5)) // time-ok: the helper ends at 5 s, so the limit cannot grow
 		await #expect(throws: CancellationError.self) { try await task.value }
 		#expect(ContinuousClock.now - canceled >= .seconds(5))
-		#expect(recorded.map { $0["type"] } == ["terminated"])
+		#expect(recorded.map { $0["type"] } == ["ready", "terminated"])
 	}
 
 	@Test("A helper that ignores SIGTERM is killed, and the canceled refresh ends", .timeLimit(.minutes(3)))
 	func cancelIgnoresTerm() async throws {
 		let grace: TimeInterval = 1
 		let task = Task {
-			try await connector("trap '' TERM; read cmd; exec sleep 600", inactivity: 300, grace: grace, killAfter: 2).listAccounts(of: Self.access, state: nil, session: Session())
+			try await connector(#"trap '' TERM; echo '{"type":"ready"}' >> "$R"; read cmd; exec sleep 600"#, inactivity: 300, grace: grace, killAfter: 2)
+				.listAccounts(of: Self.access, state: nil, session: Session())
 		}
-		try await Task.sleep(for: .milliseconds(300))
+		try await helperReady()
 		let canceled = ContinuousClock.now
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
@@ -407,7 +466,7 @@ struct FinTSConnectorTests {
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends")
@@ -424,7 +483,7 @@ struct FinTSConnectorTests {
 		// Without the cancel, the run would wait for the helper until its sleep ends and could not be
 		// awaited soon. The deadline lies far above the 40 seconds that the run can wait on CI for a thread.
 		let start = ContinuousClock.now
-		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) {
+		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) { // time-ok: a deadline far above the wait on CI
 			try await Task.sleep(for: .milliseconds(100))
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
@@ -444,7 +503,7 @@ struct FinTSConnectorTests {
 				""", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
@@ -621,7 +680,7 @@ struct FinTSConnectorTests {
 		func request(_ history: String) throws -> UserRequest {
 			let line = #"{"type":"ask","id":1,"kind":"tan","purpose":"download","prompt":"Bitte TAN eingeben"\#(history)}"#
 			guard case let .ask(_, ask) = try JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)) else { throw HelperFailure.unreadable }
-			return try ask.request()
+			return try ask.request(server: nil)
 		}
 		guard case let .secondFactor(older) = try request(#","history":true"#), case let .secondFactor(plain) = try request("") else {
 			Issue.record("no second factor")
@@ -637,7 +696,8 @@ struct FinTSConnectorTests {
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
 		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
-		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card] + depots)
+		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
+		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
 
 		guard case let .fetched(depot) = report.outcomes[depots[0].accountID] else { Issue.record("depot not fetched"); return }
 		#expect(depot.balance == Money(minorUnits: 2_451_837, currency: "EUR"))
@@ -706,6 +766,18 @@ struct FinTSConnectorTests {
 
 		guard case let .failed(failure) = report.outcomes[card.accountID] else { Issue.record("card not failed"); return }
 		#expect(failure == HelperFailure.noBookingDate)
+
+		// The card statement of a credit card brings its balance and its transactions in one answer.
+		guard case let .fetched(statement) = report.outcomes[creditCard.accountID] else { Issue.record("credit card not fetched"); return }
+		#expect(statement.balance == Money(minorUnits: -123_456, currency: "EUR"))
+		#expect(statement.balanceDate.map { Day($0) } == Day(year: 2026, month: 11, day: 12))
+		#expect(statement.transactions?.from == Day(year: 2026, month: 10, day: 1))
+		#expect(statement.transactions?.rows.map { [$0.amountMinor.description, $0.name, $0.purpose, $0.bookingText ?? "", "\($0.isPending)"] }
+			== [["-1990", "Streaming Beispiel", "Streaming Beispiel / Musterstadt", "Kreditkartenzahlung", "false"],
+				["-15000", "Hotel Beispiel", "Hotel Beispiel / Musterstadt", "Kreditkartenzahlung", "true"]])
+		#expect(statement.transactions?.rows.map { [$0.bookingDate, $0.valueDate] }
+			== [[Day(year: 2026, month: 11, day: 9), Day(year: 2026, month: 11, day: 8)], [Day(year: 2026, month: 11, day: 10), Day(year: 2026, month: 11, day: 10)]])
+		#expect(statement.transactionFailure == nil)
 	}
 
 	@Test("A row without a currency gets the currency of the account")
@@ -798,13 +870,24 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"currency":"EUR"},"errors":[]}"#, HelperFailure.unreadable),
 		// An amount whose minor units do not fit would otherwise turn into another amount.
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-92233720368547758.08","pending":false}]},"errors":[]}"#,
-			HelperFailure.unreadable),
+			HelperFailure.tooLarge),
 		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"amount":"-1","pending":true}]},"errors":[]}"#,
 			SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"12abc"}]}"#,
 			HelperFailure.unreadable),
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold"}]}"#,
 			HelperFailure.unreadable),
+		// A quantity times a price beyond the limit fails its account, also without a market value from the bank.
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"10000000000","price":{"amount":"10000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
+		// An amount above 10.000.000.000.000,00 € fails its account, so no sum of stored amounts can overflow (issue #324).
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"50000000000000000.00","currency":"EUR"},"errors":[]}"#, HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","transactions":{"rows":[{"booked":"2026-11-02","amount":"-10000000000000.01","pending":false}]},"errors":[]}"#,
+			HelperFailure.tooLarge),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"1e20","currency":"EUR"}}]}"#,
+			HelperFailure.unreadable),
+		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"1","value":{"amount":"20000000000000","currency":"EUR"}}]}"#,
+			HelperFailure.tooLarge),
 	] + ["12.3.4", "1-2", "-", ".", "--5", "1.", ".5", "-0.5.1"].flatMap { number in [
 		// A number that reads only in part fails its account, in a quantity, a price, and a balance alike.
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"Gold","quantity":"\#(number)"}]}"#,
@@ -854,6 +937,20 @@ struct FinTSConnectorTests {
 		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"3938","text":"Zugang vorläufig gesperrt"}}"#,
 			.accessBlocked(BankMessage(code: "3938", text: "Zugang vorläufig gesperrt"))),
 		(#"{"type":"failed","code":"3931","text":"TAN-Generator gesperrt"}"#, .bank(BankMessage(code: "3931", text: "TAN-Generator gesperrt"))),
+		(#"{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"kind":"appBlocked","code":"9931","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}}"#,
+			.appBlocked(BankMessage(code: "9931", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"failed","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.bank(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}"#,
+			.loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}}"#,
+			.loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
+		(#"{"type":"failed","kind":"websiteLogin","code":"9942","text":"Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."}"#,
+			.websiteLoginNeeded(BankMessage(code: "9942", text: "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"kind":"websiteLogin","code":"9942","text":"Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."}}"#,
+			.websiteLoginNeeded(BankMessage(code: "9942", text: "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."))),
 		(#"{"type":"failed","code":"9941","text":"TAN ungültig"}"#, .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		(#"{"type":"failed","code":"9943","text":"TAN bereits verbraucht"}"#, .tanRejected(BankMessage(code: "9943", text: "TAN bereits verbraucht"))),
 		(#"{"type":"failed","code":"9948","text":"TAN-Prüfung fehlgeschlagen"}"#, .tanRejected(BankMessage(code: "9948", text: "TAN-Prüfung fehlgeschlagen"))),
@@ -921,12 +1018,15 @@ struct FinTSConnectorTests {
 		arguments: ["MONETEN_FAKE_APPROVAL_SECONDS=0", "/bin/sh", fakeHelper.path]), productID: "TESTPRODUCT", version: "0.0.1")
 
 	static let blocked = SyncFailure.accessBlocked(BankMessage(code: "3938", text: "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."))
+	static let deactivated = SyncFailure.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))
 
 	@Test("The fake helper of a debug build fails the refresh of each login of an error with that error", arguments: [
 		("gesperrt", blocked),
+		("deaktiviert", deactivated),
 		("ohnetan", .noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
+		("ersetzt", .loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
 	])
 	func fakeHelper(login: String, expected: SyncFailure) async throws {
 		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: login)
@@ -935,10 +1035,11 @@ struct FinTSConnectorTests {
 		}
 	}
 
-	@Test("The fake helper of a debug build fails the setup login of a blocked access and lists no accounts")
-	func fakeHelperBlockedSetup() async throws {
-		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: "gesperrt")
-		await #expect(throws: Self.blocked) {
+	@Test("The fake helper of a debug build fails the setup login of a blocked access, or of an app that the user blocked, and lists no accounts",
+		arguments: [("gesperrt", blocked), ("deaktiviert", deactivated)])
+	func fakeHelperBlockedSetup(login: String, expected: SyncFailure) async throws {
+		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: login)
+		await #expect(throws: expected) {
 			_ = try await Self.fakeConnector.listAccounts(of: access, state: nil, session: Session())
 		}
 	}
@@ -1038,11 +1139,37 @@ struct FinTSConnectorTests {
 		}
 	}
 
+	/// Waits until the helper wrote `{"type":"ready"}` into `record`, which a script does once its signal
+	/// handler is in place, so a cancel tests the handler also when the helper starts late.
+	func helperReady() async throws {
+		for _ in 0..<6000 where !recorded.contains(["type": "ready"]) {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		try #require(recorded.contains(["type": "ready"]))
+	}
+
 	/// Waits until the condition holds, for at most five seconds.
 	func until(_ condition: () -> Bool) async {
 		for _ in 0..<500 where !condition() {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
+	}
+
+	@Test("A helper that writes its currencies in lower case gives upper-case codes to the rows, the balance, the account, and the exchange rate")
+	func lowerCaseCurrency() throws {
+		let line = #"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"eur"},"transactions":{"rows":[{"type":"row","booked":"2026-11-03","amount":"-89","currency":"eur","purpose":"Abschlag November","pending":false},{"type":"row","booked":"2026-11-04","amount":"-5","purpose":"Kiosk","pending":false}]},"errors":[]}"#
+		let result = try JSONDecoder().decode(AccountResult.self, from: Data(line.utf8))
+		let rows = try #require(result.transactions?.rows).map { try $0.transaction(of: Self.giro) }
+		#expect(rows.map(\.currency) == ["EUR", "EUR"])
+		#expect(try AccountResult.money("10.00", "eur").currency == "EUR")
+		// The account of an accounts line.
+		let accounts = #"{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","kind":"1","currency":"usd"}]}"#
+		guard case let .accounts(found) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
+		#expect(found.map(\.currency) == ["USD"])
+		// 100,00 € plus 10,00 $ accrued interest at 1.25 USD for 1 EUR are 108,00 €.
+		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"eur","value":{"amount":"100.00","currency":"eur"},"accrued":{"amount":"10.00","currency":"usd"},"rate":{"base":"eur","quoted":"usd","rate":"1.25"}}"#
+		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro)
+		#expect(holding.value(in: "EUR") == Money(minorUnits: 10_800, currency: "EUR"))
 	}
 }
 

@@ -23,23 +23,23 @@ public enum CSVField: String, CaseIterable, Sendable, Codable, CodingKeyRepresen
 
 	public var title: String {
 		switch self {
-		case .bookingDate: "Booking date"
-		case .valueDate: "Value date"
-		case .amount: "Amount"
-		case .debit: "Debit"
-		case .credit: "Credit"
-		case .debitCreditMark: "Debit or credit mark"
-		case .currency: "Currency"
-		case .name: "Name"
-		case .iban: "Account or IBAN"
-		case .bic: "Bank code or BIC"
-		case .purpose: "Purpose"
-		case .bookingText: "Booking text"
-		case .category: "Category"
-		case .comment: "Comment"
-		case .endToEndReference: "End-to-end reference"
-		case .mandateReference: "Mandate reference"
-		case .creditorID: "Creditor ID"
+		case .bookingDate: String(localized: "Booking date")
+		case .valueDate: String(localized: "Value date")
+		case .amount: String(localized: "Amount")
+		case .debit: String(localized: "Debit")
+		case .credit: String(localized: "Credit")
+		case .debitCreditMark: String(localized: "Debit or credit mark")
+		case .currency: String(localized: "Currency")
+		case .name: String(localized: "Name")
+		case .iban: String(localized: "Account or IBAN")
+		case .bic: String(localized: "Bank code or BIC")
+		case .purpose: String(localized: "Purpose")
+		case .bookingText: String(localized: "Booking text")
+		case .category: String(localized: "Category")
+		case .comment: String(localized: "Comment")
+		case .endToEndReference: String(localized: "End-to-end reference")
+		case .mandateReference: String(localized: "Mandate reference")
+		case .creditorID: String(localized: "Creditor ID")
 		}
 	}
 
@@ -429,7 +429,7 @@ public struct CSVFile: Sendable {
 				result.warnings.append(.mixedDateForms(line: line))
 			}
 			guard let day = layout.dateOrder.day(dateText) else {
-				throw TransactionFileImporter.Failure.line(line, "The date \(dateText) cannot be read.")
+				throw TransactionFileImporter.Failure.line(line, String(localized: "The date \(dateText) cannot be read."))
 			}
 			var amount: Decimal? = 0
 			amountCurrency = nil
@@ -448,7 +448,7 @@ public struct CSVFile: Sendable {
 				let c = try Self.cell(row, creditColumn).map { try readAmount($0).map { abs($0) } } ?? 0
 				amount = if let d, let c { d + c } else { nil }
 			}
-			guard let amount else { throw TransactionFileImporter.Failure.line(line, "The amount cannot be read.") }
+			guard let amount else { throw TransactionFileImporter.Failure.line(line, String(localized: "The amount cannot be read.")) }
 			var cur = amountCurrency ?? zeroCurrency ?? currency
 			if let cell = Self.cell(row, currencyColumn) {
 				if let code = Self.currencyCode(cell, account: currency) {
@@ -566,7 +566,8 @@ public struct CSVFile: Sendable {
 	}
 
 	/// Splits CSV text into rows and fields, each row with the line of the file where it starts.
-	/// Quoted fields can contain the delimiter and line breaks.
+	/// Quoted fields can contain the delimiter and line breaks. A quote that is still open at the end
+	/// fails the file with the line where it opened, because it would otherwise hold every later row.
 	static func split(_ text: String, delimiter: Character) throws -> [(line: Int, cells: [String])] {
 		var rows: [(line: Int, cells: [String])] = []
 		var line = 1
@@ -574,6 +575,7 @@ public struct CSVFile: Sendable {
 		var row: [String] = []
 		var field = ""
 		var quoted = false
+		var quoteLine = 0
 		var iterator = text.makeIterator()
 		var pending: Character?
 		while let c = pending ?? iterator.next() {
@@ -592,6 +594,7 @@ public struct CSVFile: Sendable {
 				}
 			} else if c == "\"" {
 				quoted = true
+				quoteLine = line
 			} else if c == delimiter {
 				row.append(field)
 				field = ""
@@ -606,6 +609,7 @@ public struct CSVFile: Sendable {
 				field.append(c)
 			}
 		}
+		if quoted { throw TransactionFileImporter.Failure.line(quoteLine, String(localized: "A closing quotation mark is missing.")) }
 		if !field.isEmpty || !row.isEmpty {
 			row.append(field)
 			rows.append((start, row))
@@ -635,8 +639,8 @@ public enum DateOrder: String, CaseIterable, Sendable, Codable {
 
 	public var title: String {
 		switch self {
-		case .dayMonthYear: "Day, month, year"
-		case .monthDayYear: "Month, day, year"
+		case .dayMonthYear: String(localized: "Day, month, year")
+		case .monthDayYear: String(localized: "Month, day, year")
 		}
 	}
 

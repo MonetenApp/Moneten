@@ -3,7 +3,7 @@ import Foundation
 
 /// Why the host process did not send a request. The message names the host, so the user sees where
 /// the extension wanted to go.
-enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
+enum HostRefusal: Error, Equatable, Sendable, Codable, CustomStringConvertible {
 	case notHTTPS(String)
 	/// Not an exact host name, a percent sign, a user name, or a port other than 443: what the user would
 	/// see is not what the request reaches.
@@ -11,7 +11,9 @@ enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 	case notListed(extensionName: String, host: String)
 	case denied(extensionName: String, host: String)
 
-	var description: String {
+	/// The text of the Lua error that the script sees. It is data of the host protocol and stays English,
+	/// so that the host finds the refusal at the end of the error whatever the language of the interface.
+	var scriptText: String {
 		switch self {
 		case let .notHTTPS(url): "Moneten sends requests only over HTTPS, not to \(url)."
 		case let .unusualAddress(url): "Moneten sends requests only to a plain host name on the HTTPS port, not to \(url)."
@@ -19,6 +21,18 @@ enum HostRefusal: Error, Equatable, Sendable, CustomStringConvertible {
 		case let .denied(name, host): "\(name) may not contact \(host), because the user did not allow it."
 		}
 	}
+
+	/// The text that the app shows, in the language of its interface.
+	var message: String {
+		switch self {
+		case let .notHTTPS(url): String(localized: "Moneten sends requests only over HTTPS, not to \(url).")
+		case let .unusualAddress(url): String(localized: "Moneten sends requests only to a plain host name on the HTTPS port, not to \(url).")
+		case let .notListed(name, host): String(localized: "\(name) may not contact \(host), because its manifest does not list that host.")
+		case let .denied(name, host): String(localized: "\(name) may not contact \(host), because the user did not allow it.")
+		}
+	}
+
+	var description: String { scriptText }
 }
 
 /// Decides for each request of one session whether the extension may send it (ADR 0015).
@@ -37,6 +51,8 @@ final class HostPolicy {
 	private var decisions: [String: HostDecision]
 	private let testHosts: Set<String>
 	private let ask: (String) throws -> HostDecision
+	/// The last request that the policy refused, so that the host process can send the reason instead of its English text.
+	private(set) var lastRefusal: HostRefusal?
 
 	/// `decisions` holds the stored answers of the user by host. `ask` waits for the answer to a new host.
 	/// `testHosts` are special-use names that pass as if they were public, on any port, for the made-up
@@ -50,6 +66,15 @@ final class HostPolicy {
 	}
 
 	func check(_ url: URL) throws {
+		do {
+			try verify(url)
+		} catch let refusal as HostRefusal {
+			lastRefusal = refusal
+			throw refusal
+		}
+	}
+
+	private func verify(_ url: URL) throws {
 		guard url.scheme?.lowercased() == "https", let host = url.host(percentEncoded: false)?.lowercased(), !host.isEmpty else {
 			throw HostRefusal.notHTTPS(url.absoluteString)
 		}

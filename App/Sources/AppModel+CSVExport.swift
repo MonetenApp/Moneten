@@ -51,7 +51,7 @@ extension AppModel {
 				try await withTaskCancellationHandler { try await work.value } onCancel: { work.cancel() }
 			} catch is CancellationError {
 			} catch {
-				alert = AlertMessage(title: "Could not export to file.", message: error.localizedDescription)
+				alert = AlertMessage(title: String(localized: "Could not export to file."), message: error.localizedDescription)
 			}
 			exportTask = nil
 		}
@@ -73,14 +73,14 @@ extension AppModel {
 
 	private func exportPanel(for rows: [Transaction]) -> NSSavePanel {
 		let panel = NSSavePanel()
-		panel.title = "Export Transactions"
+		panel.title = String(localized: "Export Transactions")
 		panel.allowedContentTypes = [.commaSeparatedText]
 		let days = rows.map(\.bookingDate)
-		let period = days.min().map { first in " \(first) to \(days.max() ?? first)" } ?? ""
+		let period = days.min().map { first in " " + String(localized: "\(String(describing: first)) to \(String(describing: days.max() ?? first))") } ?? ""
 		panel.nameFieldStringValue = "\(exportName)\(period).csv"
 		let format = NSPopUpButton(frame: .zero, pullsDown: false)
 		format.addItem(withTitle: "CSV")
-		let label = NSTextField(labelWithString: "Format:")
+		let label = NSTextField(labelWithString: String(localized: "Format:"))
 		let row = NSStackView(views: [label, format])
 		row.edgeInsets = NSEdgeInsets(top: 8, left: 20, bottom: 8, right: 20)
 		panel.accessoryView = row
@@ -89,11 +89,11 @@ extension AppModel {
 
 	private var exportName: String {
 		switch selection {
-		case let .account(id): ledger.account(id)?.name ?? "Transactions"
-		case let .group(id): ledger.groups.first { $0.id == id }?.name ?? "Transactions"
-		case let .category(id): ledger.category(id)?.name ?? "Transactions"
-		case let .search(id): savedSearches.first { $0.id == id }?.name ?? "Transactions"
-		case nil: "Transactions"
+		case let .account(id): ledger.account(id)?.name ?? String(localized: "Transactions")
+		case let .group(id): ledger.groups.first { $0.id == id }?.name ?? String(localized: "Transactions")
+		case let .category(id): ledger.category(id)?.name ?? String(localized: "Transactions")
+		case let .search(id): savedSearches.first { $0.id == id }?.name ?? String(localized: "Transactions")
+		case nil: String(localized: "Transactions")
 		}
 	}
 }

@@ -34,6 +34,24 @@ protocol CrashReportKeychain: Sendable {
 
 extension Keychain: CrashReportKeychain {}
 
+/// The key in a file next to the encrypted state, for runs of the debug harness and for tests. A build
+/// without a team gets a new signature each time, and macOS asks for the login password when such a
+/// build reads a Keychain entry of an earlier build. A file in the throwaway data folder never asks.
+/// The data folder holds one key, so the account is not part of the file name.
+struct CrashReportKeyFile: CrashReportKeychain {
+	let file: URL
+
+	func read(account: String) throws -> String? {
+		do { return String(decoding: try Data(contentsOf: file), as: UTF8.self) }
+		catch let error as CocoaError where error.code == .fileReadNoSuchFile { return nil }
+	}
+
+	func write(_ value: String, account: String) throws {
+		try Data(value.utf8).write(to: file, options: .atomic)
+		try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+	}
+}
+
 public struct CrashReportStore {
 	private let folder: DataFolder
 	private let keychain: any CrashReportKeychain
@@ -94,8 +112,13 @@ public struct CrashReportStore {
 		}
 	}
 
-	public init(folder: DataFolder) {
-		self.init(folder: folder, keychain: Keychain(service: "Moneten crash report key"))
+	/// Keeps the key in the login Keychain. With `keyInFolder`, the key is a file in the data folder
+	/// instead, so that a rebuilt app in a harness run never shows a Keychain prompt.
+	public init(folder: DataFolder, keyInFolder: Bool = false) {
+		let keychain: any CrashReportKeychain = keyInFolder
+			? CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
+			: Keychain(service: "Moneten crash report key")
+		self.init(folder: folder, keychain: keychain)
 	}
 
 	init(folder: DataFolder, keychain: any CrashReportKeychain) {
@@ -175,8 +198,7 @@ public struct CrashReportStore {
 	private func write(_ state: State) throws {
 		try folder.createFolders()
 		let data = try AES.GCM.seal(JSONEncoder().encode(state), using: key()).combined!
-		try data.write(to: file, options: .atomic)
-		try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+		try PrivateFile.write(data, to: file)
 	}
 
 	private func key() throws -> SymmetricKey {

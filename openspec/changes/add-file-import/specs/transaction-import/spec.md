@@ -198,7 +198,7 @@ The app SHALL read amounts with a decimal comma or a decimal point, with or with
 
 ### Requirement: Amounts beyond the range of the app
 
-The app SHALL import nothing from a CSV, CAMT, or MT940 file with an amount below -92.233.720.368.547.758,07 € or above 92.233.720.368.547.758,07 €, and SHALL name the line of that amount. The limits in another currency have the same digits with the decimal places of that currency.
+The app SHALL import nothing from a CSV, CAMT, or MT940 file with an amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro, and SHALL name the line of that amount.
 
 #### Scenario: Too large amount in a CSV file
 
@@ -211,6 +211,21 @@ The app SHALL import nothing from a CSV, CAMT, or MT940 file with an amount belo
 - **GIVEN** a CAMT file with an entry of 92233720368547758.08 EUR
 - **WHEN** the user imports the file
 - **THEN** the app imports nothing and says that the amount of the entry in its line is too large
+
+#### Scenario: Absurd amounts in a CSV file
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the rows "01.11.2026;50.000.000.000.000.000,00" and "02.11.2026;50.000.000.000.000.000,00"
+- **THEN** the app imports nothing and says that the amount in line 2 is too large
+
+#### Scenario: Amount at the limit
+
+- **WHEN** a CSV file has the header "Datum;Betrag" and the row "01.11.2026;-10.000.000.000.000,00"
+- **THEN** the app reads a withdrawal of 10.000.000.000.000,00 €
+
+#### Scenario: Amount one cent above the limit
+
+- **WHEN** line 5 of an MT940 file has a transaction of 10.000.000.000.000,01 €
+- **THEN** the app imports nothing and says that the amount in line 5 is too large
 
 ### Requirement: CSV columns by header keywords
 
@@ -423,6 +438,14 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 - **AND** the unreadable profile stays stored unchanged
 - **AND** a profile with a negative known column position, such as -1, stays stored but is not applied
 - **AND** saving or renaming a readable profile preserves unknown fields, including "futureField" with the value 7 and unknown column mappings
+
+#### Scenario: A name held by an unreadable profile
+
+- **GIVEN** the profile "Future CSV" is stored with a payload version that this version of the app cannot read
+- **WHEN** the user types "Future CSV" as the profile name in the preview
+- **THEN** the preview says that a profile of this name cannot be read by this version and asks for another name
+- **AND** "Import" stays disabled until the user changes or clears the name
+- **AND** saving or renaming a readable profile to "Future CSV" fails and leaves the stored profile unchanged
 
 #### Scenario: Result describes the confirmed settings
 
@@ -931,6 +954,13 @@ The app SHALL report a file that it cannot read with the file name, the line or 
 - **WHEN** line 17 of `umsaetze.csv` has the text "abc" in the amount column
 - **THEN** the app reports an error in the file `umsaetze.csv`, line 17, with the reason that the amount cannot be read
 - **AND** the account has no new transaction from this file
+
+#### Scenario: A quotation mark that is never closed
+
+- **GIVEN** a CSV file with the lines "Datum;Name;Betrag", "01.11.2026;Kiosk;-1,50", "02.11.2026;\"Shop;-2,00" and "03.11.2026;Bakery;-3,00"
+- **WHEN** the user imports the file
+- **THEN** the app imports nothing and reports "Line 3: A closing quotation mark is missing."
+- **AND** a quoted field "Miete\nNovember" that opens in line 2 and closes in line 3 reads as one field with a line break
 
 #### Scenario: Broken XML
 

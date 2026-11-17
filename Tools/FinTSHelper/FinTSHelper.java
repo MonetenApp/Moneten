@@ -72,6 +72,7 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509ExtendedTrustManager;
 
+import org.kapott.hbci.GV.GVKreditkartenUmsatz;
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV.HBCIJobImpl;
 import org.kapott.hbci.GV_Result.GVRKUms;
@@ -89,6 +90,7 @@ import org.kapott.hbci.exceptions.ProcessException;
 import org.kapott.hbci.manager.BankInfo;
 import org.kapott.hbci.manager.HBCIHandler;
 import org.kapott.hbci.manager.HBCIUtils;
+import org.kapott.hbci.manager.HBCIUtilsInternal;
 import org.kapott.hbci.manager.HBCIVersion;
 import org.kapott.hbci.manager.HHDVersion;
 import org.kapott.hbci.manager.MatrixCode;
@@ -105,6 +107,7 @@ import org.kapott.hbci.status.HBCIStatus;
 import org.kapott.hbci.structures.BigDecimalValue;
 import org.kapott.hbci.structures.Konto;
 import org.kapott.hbci.structures.Value;
+import org.kapott.hbci.tools.StringUtil;
 
 public class FinTSHelper {
 	/// The lines to the app. The self-test reads them here in place of the pipe.
@@ -404,6 +407,12 @@ public class FinTSHelper {
 	/// state, which hbci4java reads in its constructor, before the fields of a subclass exist.
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
+		/// The login name of the command, which replaces the user ID of the state, so that a login name that
+		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, the first 16 digits of a
+		/// login name of 17 digits that an older access of a savings bank stored, or a login name without the
+		/// spaces that an older access of the Deutsche Bank group stored. A customer ID that was the user ID
+		/// follows it.
+		static String user;
 
 		record State(PassportData data, String tanMedium) { }
 
@@ -423,15 +432,49 @@ public class FinTSHelper {
 			setBLZ(d.blz);
 			setHost(d.host);
 			setPort(d.port);
-			setUserId(d.userId);
+			// A passport that a self-test builds without a command keeps the user ID of its state.
+			boolean replaced = present(user);
+			setUserId(replaced ? user : d.userId);
 			setSysId(d.sysId);
 			setBPD(d.bpd);
 			setUPD(d.upd);
 			setHBCIVersion(d.hbciVersion);
-			setCustomerId(d.customerId);
+			setCustomerId(replaced && sameLogin(d.customerId, d.userId, d.host) ? user : d.customerId);
 			setFilterType(d.filter);
 			setAllowedTwostepMechanisms(d.twostepMechs);
 			setCurrentTANMethod(d.tanMethod);
+		}
+
+		/// Whether the customer ID of a state names the login of its user ID: the same text, on a server of the
+		/// cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals, or on a
+		/// server of the Deutsche Bank group the same text without white space, which the app sends without spaces.
+		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart. A
+		/// savings bank needs no rule here: the state stores the 17 digits as both IDs, which are the same text,
+		/// and the customer ID follows the 16 digits of the command.
+		/// Commerzbank needs none either: the state stores the 8 digits of a participant number as both IDs, and the
+		/// customer ID follows the 10 digits of the command.
+		static boolean sameLogin(String customerId, String userId, String host) {
+			if (customerId == null || userId == null) return false;
+			if (customerId.equals(userId)) return true;
+			if (DeutscheBankGroup.group(host) && DeutscheBankGroup.withoutSpaces(customerId).equals(DeutscheBankGroup.withoutSpaces(userId))) return true;
+			String vrk = vrKennung(customerId);
+			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
+		}
+
+		/// A VR-Kennung, "VRK" and digits, in capitals and without spaces, or null for any other login name. It removes
+		/// every Unicode white space, as Character.isWhitespace in FinTSServer.loginName of the app does.
+		static String vrKennung(String name) {
+			String joined = name.replaceAll("(?U)\\s", "").toUpperCase(java.util.Locale.ROOT);
+			return joined.matches("VRK[0-9]+") ? joined : null;
+		}
+
+		/// The FinTS servers of Atruvia and of apoBank, by the host of the address that hbci4java keeps with its path.
+		static boolean cooperative(String address) {
+			if (address == null) return false;
+			String host = address.trim().toLowerCase(java.util.Locale.ROOT);
+			int end = host.indexOf('/');
+			if (end >= 0) host = host.substring(0, end);
+			return host.endsWith(".atruvia.de") || host.endsWith(".bankenit.de") || host.equals("fints.apobank.de");
 		}
 
 		/// The challenge data of the last challenge, which hbci4java removes before the callback. A
@@ -459,7 +502,8 @@ public class FinTSHelper {
 		/// challenge may still wait.
 		DialogContext open;
 
-		/// The warning 3938 of a dialog initialization. hbci4java counts such an answer as a successful login and
+		/// The answer of a dialog initialization after which no order succeeds (`blocking`): the warning 3938, or the
+		/// answer of the Deutsche Bank group to a replaced login. hbci4java counts a warning as a successful login and
 		/// would send the orders and further dialogs, so every later message and order fails with it.
 		Failure block;
 
@@ -470,7 +514,7 @@ public class FinTSHelper {
 			if (event == DialogEvent.JOBS_CREATED) jobsSent = true;
 			if (event == DialogEvent.MSG_SENT && block == null) {
 				HBCIRetVal w = blocking(ctx.getMsgStatus());
-				if (w != null) block = new Failure(null, w.code, Out.withoutSecrets(w.text));
+				if (w != null) block = new Failure(kind(w.code, w.text), w.code, Out.withoutSecrets(w.text));
 			}
 			if (block != null) throw block;
 			super.onDialogEvent(event, ctx);
@@ -561,7 +605,9 @@ public class FinTSHelper {
 
 	/// Answers the callbacks of hbci4java through the app.
 	static class Callback extends AbstractHBCICallback {
-		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*)");
+		/// One message of the bank in a log line of hbci4java. A line can hold several, so the text of each ends where
+		/// the next message starts, and a rule that reads the text sees only its own message.
+		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*?)(?=[;,]?\\s*Meldung der Bank: \\d{4}:|$)", Pattern.MULTILINE);
 		final Map<?, ?> command;
 		String host;
 		int port;
@@ -580,6 +626,9 @@ public class FinTSHelper {
 		Integer lastApproval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
+		/// The messages of the bank since the start of the dialog or the last rejected PIN, the newest first. `pinError` is the one that
+		/// `relevant` picks, so a later wrong PIN does not hide a block or the request of ING before it.
+		final List<HBCIRetVal> pinErrors = new ArrayList<>();
 		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
 		/// bank rejected it.
 		String pin;
@@ -588,6 +637,8 @@ public class FinTSHelper {
 		/// The last challenge of the run was an approval in the app, so a refused TAN means that the approval
 		/// did not happen. One helper runs one command, so the field can be static for `failure`.
 		static volatile boolean approvalAsked;
+		/// The host of the bank with its path, as `connect` sets it, for the rules of a bank group in `failure`.
+		static volatile String server;
 		/// The TAN medium of the state, or the one the user chose in this run. hbci4java asks for it
 		/// before every order that needs a TAN.
 		String tanMedium;
@@ -609,6 +660,7 @@ public class FinTSHelper {
 			String path = url.getRawPath() == null || url.getRawPath().isEmpty() ? "/" : url.getRawPath();
 			host = url.getHost() + path + (url.getRawQuery() == null ? "" : "?" + url.getRawQuery());
 			port = url.getPort() > 0 ? url.getPort() : 443;
+			server = host;
 		}
 
 		String ask(Map<String, Object> request) {
@@ -686,7 +738,15 @@ public class FinTSHelper {
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
-			if (m.find()) pinError = message("rejected", "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
+			boolean found = false;
+			while (m.find()) {
+				pinErrors.add(0, new HBCIRetVal(null, null, null, m.group(1), m.group(2).trim(), null));
+				found = true;
+			}
+			if (found) {
+				HBCIRetVal r = relevant(pinErrors);
+				pinError = message("rejected", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
+			}
 			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
@@ -705,6 +765,7 @@ public class FinTSHelper {
 				case NEED_FILTER -> set(retData, "Base64");
 				case WRONG_PIN -> {
 					rejectedPIN = pinError != null ? pinError : message("rejected", "text", "The bank did not accept the PIN.");
+					pinErrors.clear();
 					pin = null;
 				}
 				case NEED_PT_PIN -> {
@@ -727,7 +788,10 @@ public class FinTSHelper {
 				case NEED_PT_TANMEDIA -> {
 					List<Object> media = new ArrayList<>();
 					for (String name : retData.toString().split("\\|")) if (present(name)) media.add(name);
-					if (tanMedium == null || !media.contains(tanMedium)) tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(passport), "media", media));
+					// A bank that lists no media, as apoBank for apoTAN, keeps the name that the user typed, also an empty one.
+					if (tanMedium == null || (!media.isEmpty() && !media.contains(tanMedium))) {
+						tanMedium = ask(message("ask", "kind", "tanMedium", "purpose", purpose(passport), "media", media));
+					}
 					set(retData, tanMedium);
 				}
 				case NEED_PT_TAN, NEED_PT_PHOTOTAN, NEED_PT_QRTAN -> {
@@ -747,6 +811,7 @@ public class FinTSHelper {
 					}
 					Map<String, Object> request = message("ask", "kind", "tan", "purpose", purpose(passport), "prompt", challenge(msg), "image", image, "flicker", flicker,
 						"history", history(passport));
+					tanMethod(passport, request);
 					String tan = ask(choices(passport, request));
 					Out.secret(tan);
 					set(retData, tan);
@@ -780,6 +845,11 @@ public class FinTSHelper {
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
 			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
 			if (statusTag == STATUS_DIALOG_END_DONE && passport instanceof Passport p) p.open = null;
+			// A new dialog: the messages of the dialogs before it say nothing about its PIN.
+			if (statusTag == STATUS_DIALOG_INIT) {
+				pinErrors.clear();
+				pinError = null;
+			}
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;
@@ -812,6 +882,18 @@ public class FinTSHelper {
 				: type == HHDVersion.Type.QRCODE || type == HHDVersion.Type.PHOTOTAN ? "qr"
 				: names.contains("sms") || names.contains("mobile") ? "sms" : null;
 			return message("method", "id", id, "name", name, "medium", "2".equals(info.getProperty("needtanmedia")) ? true : null, "delivery", delivery);
+		}
+
+		/// Adds the method of a typed TAN and the longest TAN that the bank parameters announce for it (HITANS), from which
+		/// the app takes the length of the TAN field of some banks (Sources/FinTS/CommerzbankGroup.swift).
+		static void tanMethod(HBCIPassport passport, Map<String, Object> request) {
+			if (!(passport instanceof AbstractPinTanPassport p)) return;
+			String current = p.getCurrentTANMethod(false);
+			if (!present(current)) return;
+			request.put("current", current);
+			Properties info = p.getTwostepMechanisms() == null ? null : p.getTwostepMechanisms().get(current);
+			String length = info == null ? null : StringUtil.normalize(info.getProperty("maxlentan2step"));
+			if (length != null && length.matches("\\d{1,3}")) request.put("maxLength", Integer.parseInt(length));
 		}
 
 		/// Adds the method of a challenge and the methods that the user can change to, when there are two or more.
@@ -972,7 +1054,8 @@ public class FinTSHelper {
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
-			"name", other == null ? null : text(other.name), "iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
+			"name", DeutscheBankGroup.name(Callback.server, pending, other == null ? null : text(other.name), text(l.text), purpose),
+			"iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
 			"creditor", text(other != null && present(other.creditorid) ? other.creditorid : tags.get("CRED")),
 			"bookingText", text(l.text), "pending", pending);
@@ -991,9 +1074,14 @@ public class FinTSHelper {
 	/// did not happen.
 	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
-	/// The error of the bank that the app shows: the first urgent one, or else the first one.
+	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, a login of the Deutsche
+	/// Bank group that a new login replaced, the first urgent one, or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
+		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
+		for (HBCIRetVal r : errors) if (DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text)) return r;
 		for (String code : URGENT) {
+			// The request of ING for a login on its website comes before a wrong PIN of the same code.
+			if (code.equals("9942")) for (HBCIRetVal r : errors) if (Ing.websiteLoginNeeded(Callback.server, r.code, r.text)) return r;
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
 		return errors.isEmpty() ? null : errors.get(0);
@@ -1004,7 +1092,7 @@ public class FinTSHelper {
 		List<HBCIRetVal> all = new ArrayList<>();
 		for (HBCIStatus status : statuses) {
 			all.addAll(List.of(status.getErrors()));
-			for (HBCIRetVal w : status.getWarnings()) if (BLOCKING_WARNINGS.contains(w.code)) all.add(w);
+			for (HBCIRetVal w : status.getWarnings()) if (blocking(w)) all.add(w);
 		}
 		return all;
 	}
@@ -1012,9 +1100,18 @@ public class FinTSHelper {
 	/// The error of a job, or of the message when the job has none.
 	static Map<String, Object> problem(HBCIJobResult result) {
 		HBCIRetVal r = relevant(errors(result.getJobStatus(), result.getGlobStatus()));
-		if (r != null) return message("error", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-			"code", r.code, "text", Out.withoutSecrets(r.text));
+		if (r != null) return message("error", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		return message("error", "text", "The bank did not answer the request.");
+	}
+
+	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
+	/// savings bank, a login of the Deutsche Bank group that a new login replaced, a login that ING refuses until the user
+	/// logged in to its website, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	static String kind(String code, String text) {
+		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		if (DeutscheBankGroup.loginReplaced(Callback.server, code, text)) return "loginReplaced";
+		if (Ing.websiteLoginNeeded(Callback.server, code, text)) return "websiteLogin";
+		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 
 	/// hbci4java reports a failed dialog start, for example a wrong PIN, in the status of execute and
@@ -1030,11 +1127,17 @@ public class FinTSHelper {
 		}
 	}
 
-	/// The warning 3938 "Zugang vorläufig gesperrt" of an answer, after which no order succeeds, or null.
+	/// The return value of an answer after which no order succeeds (`blocking(HBCIRetVal)`), or null.
 	static HBCIRetVal blocking(HBCIMsgStatus status) {
 		if (status == null) return null;
-		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (BLOCKING_WARNINGS.contains(r.code)) return r;
+		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (blocking(r)) return r;
 		return null;
+	}
+
+	/// A return value after which no order succeeds: the warning 3938 "Zugang vorläufig gesperrt", or the answer of the
+	/// Deutsche Bank group that a new login replaced the login of the access, the error 9940 or the warning 3960.
+	static boolean blocking(HBCIRetVal r) {
+		return BLOCKING_WARNINGS.contains(r.code) || DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text);
 	}
 
 	/// The user has no TAN method for the FinTS server: the bank allowed only the one-step method 999
@@ -1045,13 +1148,29 @@ public class FinTSHelper {
 		return allowed != null && !allowed.isEmpty() && allowed.stream().allMatch("999"::equals);
 	}
 
-	/// Whether an order goes with HKTAN ("J") or without ("N"), by bank code, for banks whose bank
-	/// parameters say otherwise. Consorsbank answers HKSAL and HKKAZ without HKTAN with 9075, although
-	/// its parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
-	static final Map<String, Map<String, String>> TAN_RULES = Map.of("76030080", Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N"));
+	/// Whether an order goes with HKTAN ("J") or without ("N") on the FinTS server of Consorsbank, whose bank
+	/// parameters say otherwise. The server answers HKSAL and HKKAZ without HKTAN with 9075, although its
+	/// parameters say that they need no TAN, and HKWPD with HKTAN with 9160 (hbci4j/hbci4java#155).
+	static final Map<String, String> CONSORSBANK_TAN_RULES = Map.of("HKSAL", "J", "HKKAZ", "J", "HKCAZ", "J", "HKWPD", "N");
 
-	static void applyTanRules(String bankCode, Properties bpd) {
-		Map<String, String> rules = TAN_RULES.get(bankCode);
+	/// The FinTS server of Consorsbank. DAB BNP Paribas uses it too.
+	static final String CONSORSBANK_SERVER = "brokerage-hbci.consorsbank.de";
+
+	/// The rules of the server at `host`, as hbci4java keeps it with its path, or null. Consorsbank and DAB BNP
+	/// Paribas share one server, so the server decides and not the Bankleitzahl. Only that server gets the rules,
+	/// so the name must match in full: another server of the same domain keeps the parameters of its bank.
+	static Map<String, String> tanRules(String host) {
+		if (host == null) return null;
+		String name = host.trim().toLowerCase(java.util.Locale.ROOT);
+		for (char end : new char[] { '/', '?', ':' }) {
+			int at = name.indexOf(end);
+			if (at >= 0) name = name.substring(0, at);
+		}
+		return name.equals(CONSORSBANK_SERVER) ? CONSORSBANK_TAN_RULES : null;
+	}
+
+	static void applyTanRules(String host, Properties bpd) {
+		Map<String, String> rules = tanRules(host);
 		if (rules == null) return;
 		for (String key : bpd.stringPropertyNames()) {
 			if (!key.contains(".ParPinTan.PinTanGV") || !key.endsWith(".segcode")) continue;
@@ -1085,7 +1204,8 @@ public class FinTSHelper {
 		}
 
 		public HBCIJob newJob(String name) {
-			return handle.newJob(name);
+			// The card statement reads its rows itself (cardRows), so hbci4java must not.
+			return name.equals("KreditkartenUmsatz") ? new CardJob(handle) : handle.newJob(name);
 		}
 
 		public HBCIExecStatus execute() {
@@ -1127,14 +1247,38 @@ public class FinTSHelper {
 	}
 
 	/// The jobs that a refresh sends for an account: the custody account balance of a securities account
-	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it.
+	/// that allows it, or else the balance and the transactions, in CAMT when the account allows it. A credit
+	/// card that allows no transaction list but the card statement DKKKU, which DKB and other banks offer for
+	/// their cards, gets only the card statement, which brings the balance and the transactions in one answer.
 	static List<String> jobs(HBCIHandler handle, Konto k) {
 		if (securities(k) && allows(handle, k, "HKWPD", "WPDepotList")) return List.of("WPDepotList");
+		String statements = allows(handle, k, "HKCAZ", "KUmsAllCamt") ? "KUmsAllCamt" : allows(handle, k, "HKKAZ", "KUmsAll") ? "KUmsAll" : null;
+		if (statements == null && allows(handle, k, "DKKKU", "KreditkartenUmsatz")) return List.of("KreditkartenUmsatz");
 		List<String> jobs = new ArrayList<>();
 		if (allows(handle, k, "HKSAL", "SaldoReq")) jobs.add("SaldoReq");
-		if (allows(handle, k, "HKCAZ", "KUmsAllCamt")) jobs.add("KUmsAllCamt");
-		else if (allows(handle, k, "HKKAZ", "KUmsAll")) jobs.add("KUmsAll");
+		if (statements != null) jobs.add(statements);
 		return jobs;
+	}
+
+	/// Sets the parameters of the job `name` for the account `k`: the account, the start day `from` of the
+	/// transactions, and the card number of a card statement, which is the account number of the card.
+	static void prepare(HBCIJob job, String name, Konto k, String from) {
+		job.setParam("my", k);
+		if (name.equals("KreditkartenUmsatz")) job.setParam("cardnumber", k.number);
+		if (from != null && List.of("KUmsAll", "KUmsAllCamt", "KreditkartenUmsatz").contains(name)) job.setParam("startdate", date(from));
+	}
+
+	/// The card statement DKKKU without the rows that hbci4java reads from its answer. hbci4java 4.1.17 drops the
+	/// field "finalized" of each row, and fails the whole dialog on a row that it cannot read, as on an original
+	/// amount with three decimals, so `cardRows` reads the rows from the raw data of the job.
+	static final class CardJob extends GVKreditkartenUmsatz {
+		CardJob(HBCIHandler handle) {
+			super(handle);
+		}
+
+		@Override
+		protected void extractResults(HBCIMsgStatus status, String header, int index) {
+		}
 	}
 
 	/// The diagnostic of an account that allows none of the jobs: its account type and the jobs that the
@@ -1151,9 +1295,9 @@ public class FinTSHelper {
 			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 	}
 
-	/// The jobs of one account: the balance and the transactions, or the holdings of a securities account
-	/// in the currency of the account.
-	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob holdings) { }
+	/// The jobs of one account: the balance and the transactions, the card statement, or the holdings of a
+	/// securities account in the currency of the account.
+	record Jobs(String id, String from, String currency, HBCIJob balance, HBCIJob statements, HBCIJob card, HBCIJob holdings) { }
 
 	/// The first day of the transactions of an account, or null for the full history. After the user canceled the
 	/// challenge for older transactions, the full history becomes the last 90 days, as a normal refresh asks.
@@ -1162,8 +1306,26 @@ public class FinTSHelper {
 		return from == null && narrowed ? today.minusDays(90).toString() : from;
 	}
 
+	/// Queues the jobs of the account `k` for the next dialog, as the account at `index` of the refresh.
+	static Jobs queue(Orders handle, Konto k, String id, String from, Callback callback, int index) {
+		HBCIJob balance = null, statements = null, card = null, holdings = null;
+		for (String name : handle.jobs(k)) {
+			HBCIJob job = handle.newJob(name);
+			prepare(job, name, k, from);
+			switch (name) {
+				case "SaldoReq" -> balance = job;
+				case "WPDepotList" -> holdings = job;
+				case "KreditkartenUmsatz" -> card = job;
+				default -> statements = job;
+			}
+			job.addToQueue();
+			callback.jobs.put(job, index);
+		}
+		return new Jobs(id, from, text(k.curr), balance, statements, card, holdings);
+	}
+
 	static void refresh(Orders handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
-		applyTanRules(passport.getBLZ(), passport.getBPD());
+		applyTanRules(passport.getHost(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
 		for (Object o : requested) {
 			Map<?, ?> request = (Map<?, ?>) o;
@@ -1173,28 +1335,12 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			List<String> names = handle.jobs(k);
-			if (names.isEmpty()) {
+			if (handle.jobs(k).isEmpty()) {
 				diagnostic(withoutJobs(k));
 				send(nothingAllowed(id, k));
 				continue;
 			}
-			HBCIJob balance = null, statements = null, holdings = null;
-			for (String name : names) {
-				HBCIJob job = handle.newJob(name);
-				job.setParam("my", k);
-				switch (name) {
-					case "SaldoReq" -> balance = job;
-					case "WPDepotList" -> holdings = job;
-					default -> {
-						if (from != null) job.setParam("startdate", date(from));
-						statements = job;
-					}
-				}
-				job.addToQueue();
-				callback.jobs.put(job, all.size());
-			}
-			all.add(new Jobs(id, from, text(k.curr), balance, statements, holdings));
+			all.add(queue(handle, k, id, from, callback, all.size()));
 		}
 		callback.jobCount = all.size();
 		callback.fullHistory = all.stream().anyMatch(j -> j.statements() != null && j.from() == null);
@@ -1206,8 +1352,13 @@ public class FinTSHelper {
 		callback.withdrawApproval();
 		callback.checkSwitch();
 		requireLogin(status);
+		all = CommerzbankGroup.again(handle, passport, accounts, all, callback);
 		for (Jobs jobs : all) {
-			HBCIJob statements = jobs.statements(), holdings = jobs.holdings();
+			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
+			if (card != null) {
+				send(alone(jobs.id(), () -> card(jobs.id(), jobs.from(), card.getJobResult(), ((HBCIJobImpl) card).redo() != null, jobs.currency())));
+				continue;
+			}
 			if (holdings != null) {
 				send(alone(jobs.id(), () -> value(jobs.id(), (GVRWPDepotList) holdings.getJobResult(), ((HBCIJobImpl) holdings).redo() != null, jobs.currency())));
 				continue;
@@ -1327,6 +1478,133 @@ public class FinTSHelper {
 		return message("result", "account", id, "balance", balance, "transactions", transactions, "errors", errors);
 	}
 
+	/// The result of the card statement DKKKU from its answer DIKKU, which hbci4java keeps as raw data: the
+	/// transactions of the card and its balance. A row that does not read fails this card and leaves the other
+	/// accounts of the login.
+	static Map<String, Object> card(String id, String from, HBCIJobResult statement, boolean incomplete, String currency) {
+		if (incomplete) throw new Failure(null, "3040", "The bank sent only part of the transactions, so nothing of this account was stored.");
+		if (!statement.isOK()) return message("result", "account", id, "errors", List.of(problem(statement)));
+		Properties data = statement.getResultData();
+		Map<String, Object> result = message("result", "account", id, "balance", cardBalance(data, currency),
+			"transactions", message("transactions", "from", from, "rows", cardRows(data)), "errors", List.of());
+		diagnostic(cardSummary(data));
+		return result;
+	}
+
+	/// What the bank test of the card statement records, as counts without any data of a row: the values of
+	/// "finalized", and whether the references of the rows are unique, which decides whether a reference can
+	/// identify a row.
+	static String cardSummary(Properties data) {
+		Map<String, Integer> finalized = new java.util.TreeMap<>();
+		List<String> references = new ArrayList<>();
+		for (String row : cardRowKeys(data)) {
+			String value = StringUtil.normalize(data.getProperty(row + ".finalized"));
+			finalized.merge(value == null ? "none" : value.length() == 1 ? value.toUpperCase(java.util.Locale.ROOT) : "other", 1, Integer::sum);
+			String reference = StringUtil.normalize(data.getProperty(row + ".reference"));
+			if (reference != null) references.add(reference);
+		}
+		return "FinTSHelper: card statement finalized " + finalized + " references=" + references.size() + " distinct=" + new java.util.HashSet<>(references).size();
+	}
+
+	static final String CARD_ROW_UNREADABLE = "The bank sent a card transaction that does not read, so nothing of this card was stored.";
+
+	/// The parts of the answer in their order. hbci4java keeps the first part as "content" and part n as "content_n".
+	static List<String> cardParts(Properties data) {
+		java.util.SortedSet<Integer> parts = new java.util.TreeSet<>();
+		for (String key : data.stringPropertyNames()) {
+			Matcher m = CARD_PART.matcher(key);
+			if (m.matches()) parts.add(m.group(1) == null ? 1 : Integer.parseInt(m.group(1)));
+		}
+		return parts.stream().map(n -> n == 1 ? "content" : "content_" + n).toList();
+	}
+
+	static final Pattern CARD_PART = Pattern.compile("content(?:_([0-9]+))?\\..*");
+
+	/// The rows of all parts, in the order of the answer. The merchant text of a row is also its name, because the
+	/// card statement has no other field for the other party, and a pending row pairs with its booked version only
+	/// by a name or an IBAN. A row that the bank marks with "finalized" N is not final,
+	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
+	/// the app stores it (task 1.18), so its precision cannot fail the row.
+	static List<Object> cardRows(Properties data) {
+		return cardRowKeys(data).stream().map(row -> (Object) cardRow(data, row)).toList();
+	}
+
+	/// The key of each row, such as "content_2.transactions_3", in the order of the answer.
+	static List<String> cardRowKeys(Properties data) {
+		List<String> rows = new ArrayList<>();
+		for (String part : cardParts(data)) {
+			for (int i = 0; data.getProperty(HBCIUtilsInternal.withCounter(part + ".transactions", i) + ".cardnumber") != null; i++) {
+				rows.add(HBCIUtilsInternal.withCounter(part + ".transactions", i));
+			}
+		}
+		return rows;
+	}
+
+	static Map<String, Object> cardRow(Properties data, String row) {
+		String booked = cardDay(data.getProperty(row + ".bookingdate")), value = cardDay(data.getProperty(row + ".valuedate"));
+		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
+		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
+			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
+			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
+			"bookingText", "Kreditkartenzahlung", "pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
+	}
+
+	/// A day of a row, null when the bank sent none. A day that does not read fails the row.
+	static String cardDay(String text) {
+		String day = day(text);
+		if (day == null && StringUtil.normalize(text) != null) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		return day;
+	}
+
+	/// A day of the raw data of hbci4java, which keeps dates as yyyy-mm-dd, or as the bank sent it, yyyymmdd. Null
+	/// when it does not read.
+	static String day(String text) {
+		String day = StringUtil.normalize(text);
+		if (day == null) return null;
+		if (day.matches("[0-9]{8}")) day = day.substring(0, 4) + "-" + day.substring(4, 6) + "-" + day.substring(6);
+		try {
+			return java.time.LocalDate.parse(day).toString();
+		} catch (java.time.format.DateTimeParseException e) {
+			return null;
+		}
+	}
+
+	/// An amount of the card statement, which may come with a sign and with a decimal comma, with the sign of its
+	/// mark C or D. Null when it is missing or does not read. It keeps every decimal place.
+	static BigDecimal signed(String value, String creditDebit) {
+		String text = StringUtil.normalize(value);
+		if (text == null) return null;
+		BigDecimal amount;
+		try {
+			amount = new BigDecimal(StringUtil.normalizeDecimal(text));
+		} catch (NumberFormatException e) {
+			return null;
+		}
+		String mark = StringUtil.normalize(creditDebit);
+		if ("D".equalsIgnoreCase(mark)) return amount.abs().negate();
+		if ("C".equalsIgnoreCase(mark)) return amount.abs();
+		return amount;
+	}
+
+	/// The balance of the first part of the answer that has one, which is the amount that the user owes on the card
+	/// when it is negative.
+	static Map<String, Object> cardBalance(Properties data, String currency) {
+		for (String part : cardParts(data)) {
+			String prefix = part + ".balance.";
+			if (data.getProperty(prefix + "value") == null) continue;
+			BigDecimal amount = signed(data.getProperty(prefix + "value"), data.getProperty(prefix + "CreditDebit"));
+			if (amount == null) {
+				diagnostic("FinTSHelper: the balance of a card statement does not read, keeping its transactions");
+				return null;
+			}
+			String curr = text(data.getProperty(prefix + "curr"));
+			return message("balance", "amount", amount.toPlainString(), "currency", curr != null ? curr : present(currency) ? currency.trim() : "EUR",
+				"date", day(data.getProperty(prefix + "date")));
+		}
+		return null;
+	}
+
 	static void run(Map<?, ?> command) throws IOException {
 		String type = string(command, "type");
 		Properties props = new Properties();
@@ -1359,6 +1637,7 @@ public class FinTSHelper {
 			String state = string(command, "state");
 			Passport.State loaded = state == null ? null : Passport.deserialize(Base64.getDecoder().decode(state));
 			Passport.loaded = loaded == null ? null : loaded.data();
+			Passport.user = string(command, "user");
 			callback.tanMedium = loaded == null ? null : loaded.tanMedium();
 			while (!dialog(type, command, callback, Bank::new)) {
 				diagnostic("FinTSHelper: starting a new dialog after a change of the TAN method or a canceled challenge for older transactions");
@@ -1461,8 +1740,7 @@ public class FinTSHelper {
 		for (Throwable t : all) {
 			if (!(t instanceof ProcessException p) || p.getMsgStatus() == null) continue;
 			HBCIRetVal r = relevant(errors(p.getMsgStatus().globStatus, p.getMsgStatus().segStatus));
-			if (r != null) return message("failed", "kind", Callback.approvalAsked && TAN_REFUSED.contains(r.code) ? "approvalDeclined" : null,
-				"code", r.code, "text", Out.withoutSecrets(r.text));
+			if (r != null) return message("failed", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
 		}
 		for (Throwable t : all) {
 			if (t instanceof CertificateException c) return message("failed", "kind", "certificate", "text", Out.withoutSecrets(String.valueOf(c.getMessage())));

@@ -168,17 +168,31 @@ struct AllDataTests {
 		#expect(try target.exportAllData(at: exportedAt) == before)
 	}
 
-	@Test("Split amounts use the original currency and keep Int64 bounds", arguments: ["EUR", "JPY", "KWD"])
+	@Test("Split amounts use the original currency and keep the bounds of Int64 that have a magnitude", arguments: ["EUR", "JPY", "KWD"])
 	func splitCurrency(_ currency: String) throws {
 		let original = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, currency: currency, name: "Example")
-		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: Int64.min), SplitPart(transactionID: original.id, position: 1, amountMinor: Int64.max)]
+		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: -Int64.max), SplitPart(transactionID: original.id, position: 1, amountMinor: Int64.max - 1)]
 		let data = AllData(transactions: [original], splitParts: parts)
 		let file = try data.json()
 		let json = try #require(JSONSerialization.jsonObject(with: file) as? [String: Any])
 		let entries = try #require(json["splitParts"] as? [[String: Any]])
-		let expected = currency == "JPY" ? ["-9223372036854775808", "9223372036854775807"] : currency == "KWD" ? ["-9223372036854775.808", "9223372036854775.807"] : ["-92233720368547758.08", "92233720368547758.07"]
+		let expected = currency == "JPY" ? ["-9223372036854775807", "9223372036854775806"] : currency == "KWD" ? ["-9223372036854775.807", "9223372036854775.806"] : ["-92233720368547758.07", "92233720368547758.06"]
 		#expect(entries.compactMap { $0["amount"] as? String } == expected)
-		#expect(try AllData(json: file).splitParts.map(\.amountMinor) == [Int64.min, Int64.max])
+		#expect(try AllData(json: file).splitParts.map(\.amountMinor) == [-Int64.max, Int64.max - 1])
+	}
+
+	/// Int64.min has no magnitude, so an absolute value or a negation of it would stop the app (issue #324).
+	@Test("A restored split part, deleted row, or balance of Int64.min is refused")
+	func smallestAmount() throws {
+		let original = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Example")
+		let parts = [SplitPart(transactionID: original.id, position: 0, amountMinor: .min), SplitPart(transactionID: original.id, position: 1, amountMinor: .max)]
+		#expect(throws: AllData.ReadError.damaged("at splitParts[0], the amount \"-92233720368547758.08\" is not a decimal number with the decimal places of EUR")) {
+			try AllData(json: try AllData(transactions: [original], splitParts: parts).json())
+		}
+		let deleted = DeletedTransaction(Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: .min, name: "Example"), deletedAt: exportedAt)
+		#expect(throws: AllData.ReadError.self) { try AllData(json: try AllData(deletedTransactions: [deleted]).json()) }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: .min)
+		#expect(throws: AllData.ReadError.self) { try AllData(json: try AllData(accounts: [account]).json()) }
 	}
 
 	let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)")
@@ -206,7 +220,7 @@ struct AllDataTests {
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
 			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
-			refreshInterval: .onceADay, missesOlderTransactions: true)
+			refreshInterval: .onceADay, missesOlderTransactions: true, otherBankBalances: [Money(minorUnits: 3_500, currency: "USD")], bonusPoints: 12_400)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
 		let bank = try #require(linked.accounts.first)
@@ -239,10 +253,11 @@ struct AllDataTests {
 		power.status = .checked
 		power.amount = .range(min: -2_000, max: Decimal(string: "-0.5"))
 		power.categoryID = pets.id
-		power.accountID = migrated.id
+		power.account = .account(migrated.id)
 		_ = try store.appendSavedSearch(name: "Strom", period: .custom(Day(year: 2026, month: 10, day: 1), Day(year: 2026, month: 11, day: 30)), filter: power)
 		var recent = TransactionFilter()
 		recent.amount = .withdrawals
+		recent.account = .group(household.id)
 		_ = try store.appendSavedSearch(name: "Last 30 days", period: .days30, filter: recent)
 		return store
 	}
@@ -286,6 +301,21 @@ struct AllDataTests {
 		#expect(text.contains(#""searchText" : "name:Stadtwerke""#))
 		#expect(text.contains(#""start" : "2026-10-01""#) && text.contains(#""end" : "2026-11-30""#) && text.contains(#""kind" : "days30""#))
 		#expect(text.contains(#""min" : "-2000""#) && text.contains(#""max" : "-0.5""#) && text.contains(#""status" : "checked""#))
+		let json = try JSONSerialization.jsonObject(with: Data(text.utf8)) as! [String: Any]
+		let searches = json["savedSearches"] as! [[String: Any]]
+		#expect(searches[0]["accountID"] is String && searches[0]["accountGroupID"] == nil)
+		#expect(searches[1]["accountGroupID"] is String && searches[1]["accountID"] == nil)
+	}
+
+	@Test("A saved search with both an account and an account group is refused with its place")
+	func savedSearchWithAccountAndGroup() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var searches = json["savedSearches"] as! [[String: Any]]
+		searches[1]["accountID"] = UUID().uuidString
+		json["savedSearches"] = searches
+		#expect(throws: AllData.ReadError.damaged("at savedSearches[1], the saved search has both an account and an account group")) {
+			try AllData(json: try JSONSerialization.data(withJSONObject: json))
+		}
 	}
 
 	@Test("The complete import numbers the saved searches from 0 in their order, so the next saved search goes last")
@@ -462,7 +492,7 @@ struct AllDataTests {
 		#expect(try AllData(json: try JSONSerialization.data(withJSONObject: json)).transactions[1].amountMinor == -Int64.max)
 		rows[1]["amount"] = "-92233720368547758.08"
 		json["transactions"] = rows
-		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is too large for a transaction")) {
+		#expect(throws: AllData.ReadError.damaged("at transactions[1], the amount \"-92233720368547758.08\" is not a decimal number with the decimal places of EUR")) {
 			try AllData(json: try JSONSerialization.data(withJSONObject: json))
 		}
 		rows[1]["amount"] = "92233720368547758.08"
@@ -678,6 +708,33 @@ struct AllDataTests {
 		let data = AllData(accounts: [account], holdings: [Holding(accountID: account.id, security: Security(name: "Test"), quantity: quantity)])
 		let imported = try AllData(json: data.json())
 		#expect(imported.holdings[0].quantity.description == text)
+	}
+
+	/// A balance in the account currency would count twice in the sum of a group, and a repeated currency would show twice
+	/// in the sidebar row. A code that is not three letters is no currency.
+	@Test("An import refuses other balances in the account currency, a repeated currency, or a code that is no currency", arguments: [
+		[["amount": "120.00", "currency": "EUR"]],
+		[["amount": "35.00", "currency": "USD"], ["amount": "1.00", "currency": "USD"]],
+		[["amount": "35.00", "currency": "US$"]],
+		[["amount": "35.00", "currency": "usd"]],
+	])
+	func refusedOtherBalances(_ balances: [[String: String]]) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var accounts = json["accounts"] as! [[String: Any]]
+		let index = try #require(accounts.firstIndex { $0["otherBankBalances"] != nil })
+		#expect(accounts[index]["currency"] as? String == "EUR")
+		accounts[index]["otherBankBalances"] = balances
+		json["accounts"] = accounts
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
+	}
+
+	@Test("An import refuses a holding value in a code that is no currency")
+	func refusedHoldingCurrency() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		rows[0]["marketValue"] = ["amount": "1.00", "currency": "US$"]
+		json["holdings"] = rows
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
 	}
 
 	@Test("Insignificant zeros and negative zero do not change decimal values", arguments: [

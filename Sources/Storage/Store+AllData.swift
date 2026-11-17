@@ -8,7 +8,7 @@ extension Store {
 		case notEmpty
 
 		public var description: String {
-			"The import of all data works only in an empty database. This database already holds accounts, categories, transactions, CSV profiles, or saved searches."
+			String(localized: "The import of all data works only in an empty database. This database already holds accounts, categories, transactions, CSV profiles, or saved searches.")
 		}
 	}
 
@@ -76,7 +76,7 @@ extension Store {
 	}
 
 	private func write(_ data: AllData, replacing starters: [UUID]) throws {
-		try queue.write { db in
+		try write { db in
 			let others = try Domain.Category.filter(!starters.contains(Column("id"))).fetchCount(db)
 			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0,
 				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM csvProfile") == 0,

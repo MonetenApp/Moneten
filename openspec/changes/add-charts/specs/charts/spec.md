@@ -151,13 +151,14 @@ The app SHALL set the initial balance of an account that a bank refreshes to the
 
 ### Requirement: The initial balance stays
 
-The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance and the full history. A refresh whose transactions failed does not set it. Later refreshes, imports, and deletions do not change it, and neither does a later bank balance. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
+The app SHALL set the initial balance of a refreshed account only once, at the first refresh that brings a bank balance and the full history. A refresh whose transactions failed does not set it. A later refresh changes a derived value only when it passes a manual transaction, and imports and deletions only through a manual transaction. A value that the user enters stays. A difference between the computed balance and the bank balance that appears later is for the calibration to resolve.
 
 #### Scenario: Later refresh with an older transaction
 
 - **GIVEN** an account whose first refresh set an initial balance of 2.550,00 € with a bank balance of 1.200,00 €
 - **WHEN** a refresh brings a bank balance of 800,00 € and booked transactions of -400,00 € today and of -70,00 € from before the first refresh
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 730,00 €
+- **AND** the app proposes a calibration that fills in 800,00 €
 
 #### Scenario: Refresh whose transactions failed
 
@@ -171,12 +172,71 @@ The app SHALL set the initial balance of a refreshed account only once, at the f
 - **GIVEN** an account with a bank balance of 1.200,00 € and an initial balance of 2.550,00 €
 - **WHEN** the user deletes a transaction of -950,00 €
 - **THEN** the initial balance stays 2.550,00 € and the last bar shows 2.150,00 €
+- **AND** the app proposes a calibration that fills in 1.200,00 €
 
 #### Scenario: Entered initial balance
 
 - **GIVEN** an account whose first refresh set an initial balance of 2.550,00 €
 - **WHEN** the user enters 3.000,00 under "Initial balance" and the next refresh ends
 - **THEN** the initial balance is 3.000,00 €
+
+### Requirement: Manual transactions and the initial balance
+
+The app SHALL count manual transactions when it derives the initial balance of a refreshed account. While the initial balance is derived, a manual transaction booked up to the day of the bank balance that the user adds, changes, or deletes, or that a file matches, moves it by the booked amount of that transaction up to that day, before and after the change. A difference that a bank transaction left stays for the calibration. A value that the user enters stays.
+
+#### Scenario: Deposit before the day of the bank balance
+
+- **GIVEN** a fixed term deposit whose first refresh on 01.11.2026 derived the initial balance from the bank balance of 10.000,00 € and no transactions
+- **WHEN** the user adds a manual transaction of 4.000,00 € on 01.03.2026
+- **THEN** the initial balance is 6.000,00 € and the computed balance on 01.11.2026 is 10.000,00 €
+
+#### Scenario: Manual transaction that a file matched, then deleted
+
+- **GIVEN** a giro account whose first refresh derived the initial balance from the bank balance of 1.000,00 € on 10.10.2026 and no transactions, and a manual transaction of -12,00 € "Kiosk" on 03.10.2026 that a CSV file with -12,00 € "KIOSK" on 03.10.2026 matched
+- **WHEN** the user deletes the manual transaction
+- **THEN** the initial balance is 1.000,00 € and the computed balance on 10.10.2026 is 1.000,00 €
+
+#### Scenario: A manual change keeps the calibration proposal
+
+- **GIVEN** a giro account whose first refresh derived an initial balance of 1.000,00 € with the bank balance of 1.000,00 € on 10.10.2026, and a later refresh that brought a bank transaction of -7,00 € on 01.09.2026, so the app proposes a calibration of 7,00 €
+- **WHEN** the user adds a manual transaction of -12,00 € on 03.10.2026, changes it to -20,00 €, and deletes it
+- **THEN** the initial balance is 1.012,00 €, then 1.020,00 €, then 1.000,00 €
+- **AND** the app proposes a calibration of 7,00 € after each step
+
+### Requirement: A refresh past a manual transaction sets the initial balance
+
+The app SHALL set an initial balance that a refresh derived to the new bank balance less the booked transactions in the account currency up to the end of its day when a refresh reports a balance whose day passes a manual transaction, whether the bank delivered a booking for it or not. This also takes in a difference that an older bank transaction left. A refresh whose transactions failed keeps the earlier bank balance until one brings them. A value that the user enters stays.
+
+#### Scenario: Bank that reports only a balance
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the initial balance stays 100,00 € and the computed balance on 10.11.2026 is 50,00 €
+
+#### Scenario: Derived value and a planned manual transaction
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 €
+- **THEN** the initial balance is 150,00 € and the computed balance on 10.11.2026 is 50,00 €
+
+#### Scenario: A refresh past a manual transaction takes in an older difference
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, a bank transaction of -7,00 € on 20.10.2026 that a later refresh brought, so the app proposes a calibration of 7,00 €, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the initial balance is 107,00 €, the computed balance on 10.11.2026 is 50,00 €, and the app proposes no calibration
+
+#### Scenario: Refresh whose transactions failed, then a retry
+
+- **GIVEN** a credit card whose first refresh derived an initial balance of 100,00 € with the bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and the bank refuses its transactions
+- **THEN** the account keeps the bank balance of 100,00 € on 01.11.2026 and the initial balance of 100,00 €
+- **AND** a refresh on 11.11.2026 that brings the booking of -50,00 € on 05.11.2026 and the balance 50,00 € sets the initial balance to 150,00 €, and the computed balance on 11.11.2026 is 50,00 €
+
+#### Scenario: Entered value and a planned manual transaction
+
+- **GIVEN** a credit card with an initial balance of 3.000,00 € that the user entered, a bank balance of 100,00 € on 01.11.2026, and a manual transaction of -50,00 € on 05.11.2026
+- **WHEN** a refresh on 10.11.2026 reports the balance 50,00 € and no transactions
+- **THEN** the initial balance stays 3.000,00 €
 
 ### Requirement: The initial balance follows the bank balance while older transactions may be missing
 
@@ -301,6 +361,18 @@ The app SHALL open a calibration window from "Calibrate" in the account settings
 - **GIVEN** the computed balance of today is 1.250,00 € and the initial balance is 300,00 €
 - **WHEN** the user opens "Calibrate", enters 1.200,00, and confirms
 - **THEN** the initial balance is 250,00 € and every bar is 50,00 € lower
+
+#### Scenario: Balance above the limit
+
+- **WHEN** the user opens "Calibrate" and enters 10.000.000.000.000,01
+- **THEN** the button to confirm stays disabled and the initial balance stays as it was
+
+#### Scenario: Initial balance beyond the limit
+
+- **GIVEN** the account "Giro" holds two transactions of 10.000.000.000.000,00 €
+- **WHEN** the user opens "Calibrate" and enters 0,00
+- **THEN** the window says that the initial balance of the account "Giro" is too large
+- **AND** the button to confirm stays disabled and the initial balance stays as it was
 
 #### Scenario: Set the initial balance directly
 

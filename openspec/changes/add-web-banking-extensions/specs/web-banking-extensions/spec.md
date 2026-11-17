@@ -645,12 +645,17 @@ The app SHALL show an instruction text and an entry field for a challenge with a
 
 ### Requirement: Image challenge
 
-The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field.
+The app SHALL show the image when `challenge` holds the binary data of a PNG or JPEG image, for example a photoTAN graphic or an image captcha. With a `label` the dialog also has an entry field. For data in any other format, the dialog shows a note that the image cannot be shown, and no decoder reads the data.
 
 #### Scenario: photoTAN image
 
 - **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is PNG data
 - **THEN** the dialog shows the image and an entry field labeled "photoTAN"
+
+#### Scenario: Image in another format
+
+- **WHEN** the function returns `{label="photoTAN", challenge=image}` and `image` is GIF data
+- **THEN** the dialog shows an entry field labeled "photoTAN" and the note "The bank sent an image that cannot be shown."
 
 ### Requirement: QR code challenge
 
@@ -893,7 +898,7 @@ The app SHALL read `securities` from the results of an account only when its `po
 
 ### Requirement: Account type when the script gives none
 
-The app SHALL derive the account type from the account number and the name when `type` is missing. An account number with 16 characters or with masked digits counts as a credit card. A given type is taken as it is. The app sets the type only when it creates the account and does not change it at a refresh.
+The app SHALL derive the account type from the account number and the name when `type` is missing, by the rules of the requirement "Derive a missing account type" of the capability `account-management`. An account number with exactly 16 characters, or with an "x", an "X", or an "*" in it, counts as a credit card. A given type is taken as it is. The app sets the type only when it creates the account and does not change it at a refresh.
 
 #### Scenario: Masked number
 
@@ -922,12 +927,40 @@ The app SHALL call `RefreshAccount(account, since, isKnownTransactionId, step, c
 
 ### Requirement: Result table of RefreshAccount
 
-The app SHALL read the fields `balance`, `balances`, `pendingBalance`, `transactions`, `securities`, and `bonusPoints`. `balances` is an array of pairs of an amount and a currency for an account with balances in several currencies.
+The app SHALL read the fields `balance`, `balances`, `pendingBalance`, `transactions`, `securities`, and `bonusPoints`. `balances` is an array of pairs of an amount and a currency for an account with balances in several currencies. A `balances` array with at least one pair takes the place of `balance`.
 
 #### Scenario: Several currencies
 
 - **WHEN** the function returns `balances={{100.00, "EUR"}, {25.50, "USD"}}`
 - **THEN** the account shows both balances with their currency
+
+#### Scenario: Two pairs in the account currency
+
+- **WHEN** the function returns `balance=99.00` and `balances={{10.00, "EUR"}, {2.50, "EUR"}}` for an account in EUR
+- **THEN** the account shows the balance 12,50 €
+
+#### Scenario: Account currency missing from the pairs
+
+- **WHEN** the function returns `balances={{25.50, "USD"}}` for an account in EUR
+- **THEN** the account shows the balances 0,00 € and 25,50 US dollars
+
+#### Scenario: Currency codes of the pairs
+
+- **WHEN** the function returns `balances={{120.00, "EUR"}, {35.00, " usd"}}` for an account in EUR
+- **THEN** the account shows the balances 120,00 € and 35,00 US dollars
+- **AND** a pair with the currency "US$" fails the account with the message that an entry of balances is not a pair of amount and currency
+
+#### Scenario: Balances that are no list
+
+- **WHEN** the function returns `balance=80.00` and `balances="broken"`
+- **THEN** the account fails with the message that the balances are not a list of pairs of amount and currency
+- **AND** the stored balances stay as they were
+
+#### Scenario: Whole bonus points
+
+- **WHEN** the function returns `bonusPoints=1200.75`
+- **THEN** the account shows 1.200 bonus points
+- **AND** `bonusPoints=0` or no `bonusPoints` shows no bonus points
 
 #### Scenario: Pending sum and bonus points
 
@@ -958,6 +991,26 @@ The app SHALL read these transaction fields. `amount` and `bookingDate` are requ
 
 - **WHEN** one transaction in the array has no `amount`
 - **THEN** the account shows an error that says that a transaction has no amount
+
+### Requirement: Amount limit of a result
+
+The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also fails the account when the values of its securities add up to more, in any order, and when the value of a security less its purchase value is more. The message names the field.
+
+#### Scenario: Absurd transaction
+
+- **WHEN** the first transaction of the result of a giro account has `amount=1e14`
+- **THEN** the account shows that the amount of transaction 1 is out of range
+- **AND** no transaction of this result is stored
+
+#### Scenario: Securities that cancel out
+
+- **WHEN** the result of a portfolio has securities with the amounts `9e12`, `9e12`, and `-9e12`
+- **THEN** the portfolio shows a value of 9.000.000.000.000,00 €
+
+#### Scenario: Profit beyond the limit
+
+- **WHEN** a security of a portfolio has `quantity=1`, `amount=9e12`, and `purchasePrice=-9e12`
+- **THEN** the portfolio shows that the value of security 1 at its purchase price is out of range
 
 ### Requirement: Booking codes of a transaction
 
@@ -1030,6 +1083,34 @@ The app SHALL read these fields of a security. `name`, `isin`, `securityNumber`,
 
 - **WHEN** a security has `quantity=5000` and `currencyOfQuantity="EUR"`
 - **THEN** the app shows the quantity as a nominal amount of 5.000,00 € and not as a number of shares
+
+### Requirement: Value of a security in another currency
+
+The app SHALL convert the price of a security in another currency into the account currency with `exchangeRateOfPrice`, and its purchase price with `exchangeRateOfPurchasePrice`. A rate gives the units of the other currency for one unit of the account currency. The other currency is `currencyOfPrice` and `currencyOfPurchasePrice`, or `currencyOfQuantity` for a nominal amount, whose prices are percentages. Without `amount` the value is the quantity times the converted price.
+
+#### Scenario: Price in US dollars
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a security has `quantity=10`, `price=110`, `currencyOfPrice="USD"`, `exchangeRateOfPrice=1.10`, and no `amount`
+- **THEN** the security has the value 1.000,00 € and the balance of the portfolio is 1.000,00 €
+
+#### Scenario: Bond in US dollars bought at another rate
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a security has `quantity=5000`, `currencyOfQuantity="USD"`, `price=100`, `exchangeRateOfPrice=1.25`, `purchasePrice=100`, `exchangeRateOfPurchasePrice=1`, and no `amount`
+- **THEN** the security has the value 4.000,00 €, the purchase value 5.000,00 €, and the profit −1.000,00 €
+
+### Requirement: Security priced without a rate
+
+The app SHALL keep the value of a security with a price in another currency and without a rate in that currency, leave it out of the balance of the portfolio, and name it in a notice. The portfolio still counts as refreshed.
+
+#### Scenario: Price without a rate
+
+- **GIVEN** a portfolio in EUR
+- **WHEN** a result has `securities={{name="Token A", quantity=10, price=2}, {name="Token B", quantity=10, price=110, currencyOfPrice="USDC"}}`
+- **THEN** "Token B" has the value 1.100,00 USDC and the balance of the portfolio is 20,00 €
+- **AND** a notice says "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."
+- **AND** the portfolio shows the time of this refresh as its last refresh
 
 ### Requirement: FetchStatements
 

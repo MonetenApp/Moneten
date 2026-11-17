@@ -39,7 +39,7 @@ public struct FinTSAccount: Sendable, Equatable {
 	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
 		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
 		return Account(groupID: group, position: 0, name: productName ?? kind.title, kind: kind, source: .bank, currency: currency, iban: iban,
-			bic: bic ?? bank.bic, accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
+			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
 	}
 
 	/// The FinTS account types are ranges: 1 to 9 giro accounts, 10 to 19 savings, 20 to 29 fixed
@@ -66,6 +66,8 @@ public struct FinTSConnector: BankConnector {
 	struct Helper: Sendable {
 		let executable: URL
 		let arguments: [String]
+		/// The seal that `run` checks before each start, or nil for a helper outside the app bundle.
+		var seal: HelperSeal? = nil
 
 		/// The helper that scripts/build-app.sh puts into the app. A crash of the JVM writes no file,
 		/// because the file would hold the memory of the helper with the PIN. No other process may
@@ -77,7 +79,8 @@ public struct FinTSConnector: BankConnector {
 			return Helper(executable: folder.appending(path: "java"),
 				arguments: ["-Djava.awt.headless=true", "-Djava.net.useSystemProxies=true", "-XX:ErrorFile=/dev/null",
 					"-XX:+DisableAttachMechanism", "-Xrs",
-					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"])
+					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"],
+				seal: HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil))
 		}
 	}
 
@@ -210,11 +213,11 @@ public struct FinTSConnector: BankConnector {
 	}
 
 	private func command(_ type: String, _ access: Access, _ state: AccessState?) throws -> Command {
-		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported("The access does not use FinTS.") }
+		guard case let .fints(bankCode, url) = access.source else { throw SyncFailure.unsupported(String(localized: "The access does not use FinTS.")) }
 		guard url.scheme?.lowercased() == "https", url.host() != nil else { throw HelperFailure.insecure }
 		guard let productID, !productID.isEmpty else { throw HelperFailure.noProductID }
-		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: access.loginName, product: productID, version: version,
-			state: state?.data.base64EncodedString())
+		return Command(type: type, bankCode: bankCode, url: url.absoluteString, user: FinTSServer.loginName(access.loginName, server: url),
+			product: productID, version: version, state: state?.data.base64EncodedString())
 	}
 
 	/// Runs one command. Requests of the helper go to the session, and every other message to `handle`.
@@ -227,6 +230,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let rejections = Rejections(session: session)
+		try helper.seal?.check()
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, killAfter: killAfter, onLine: { line in
 			watchdog.received()
 			rejections.read(line)
@@ -251,7 +255,7 @@ public struct FinTSConnector: BankConnector {
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
-						let request = try ask.request()
+						let request = try ask.request(server: command.url.flatMap { URL(string: $0) })
 						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
 							approvals[id] = task
@@ -314,6 +318,9 @@ public struct FinTSConnector: BankConnector {
 		do { try await process.ended() } catch { stopped = error }
 		await rejections.reported()
 		try Task.checkCancellation()
+		// A helper that ends in the middle of a line, killed or crashed, leaves a cut-off line that does
+		// not read. How it stopped says more, unless the app ended it.
+		if let stopped, process.firstFailure as? SyncFailure == HelperFailure.unreadable, !process.wasSignaled { throw stopped }
 		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
 	}
 }
@@ -331,8 +338,8 @@ extension FinTSConnector {
 			let trust, SecTrustEvaluateWithError(trust, &error) {
 			return "trusted"
 		}
-		let reason = error.map { CFErrorCopyDescription($0) as String } ?? "The server sent a certificate that does not read."
-		return "The certificate of the bank's server \(host) is not valid: \(reason)"
+		let reason = error.map { CFErrorCopyDescription($0) as String } ?? String(localized: "The server sent a certificate that does not read.")
+		return String(localized: "The certificate of the bank's server \(host) is not valid: \(reason)")
 	}
 }
 

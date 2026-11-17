@@ -26,6 +26,11 @@ struct OpeningBalanceTests {
 			transactions: FetchedTransactions(rows: rows, from: today.adding(days: -90))))
 	}
 
+	/// The calibration that the header of `giro` proposes today.
+	func proposal(_ ledger: Ledger) throws -> CalibrationProposal? {
+		ledger.proposedCalibration(of: try #require(ledger.account(giro.id)), today: today, refresh: .idle)
+	}
+
 	/// The daily bars of the last 120 days.
 	func bars(_ ledger: Ledger, of account: Account? = nil) -> [Int64] {
 		ledger.balanceBars(accountIDs: [(account ?? giro).id], range: DayRange(start: today.adding(days: -120), end: today)).map(\.minorUnits)
@@ -242,7 +247,7 @@ struct OpeningBalanceTests {
 		#expect(bars(stored, of: depot).last == 2_000_000)
 	}
 
-	@Test("A later refresh with an older row keeps the opening balance, so the last bar differs from the bank balance by that row")
+	@Test("A later refresh with an older row keeps a derived opening balance, so the last bar differs from the bank balance by that row and the app proposes a calibration")
 	func laterRefresh() throws {
 		let store = try makeStore([giro])
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
@@ -250,27 +255,35 @@ struct OpeningBalanceTests {
 		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
 		#expect(bars(stored).last == 73_000)
+		let proposed = try #require(try proposal(stored))
+		#expect(proposed.difference == Money(minorUnits: 7_000, currency: "EUR") && proposed.balanceToday == Money(minorUnits: 80_000, currency: "EUR"))
 	}
 
-	@Test("Deleting a fetched row keeps the opening balance")
+	@Test("Deleting a fetched row keeps a derived opening balance, and the app proposes a calibration")
 	func deletion() throws {
 		let store = try makeStore([giro])
 		let rows = quarter
 		_ = try store.merge(refresh(rows, balance: 120_000), into: giro.id)
-		try store.deleteTransactions([rows[3].id])
+		let ledger = try store.loadLedger()
+		let accounts = try ledger.followingBankBalance(saving: [], deleting: [rows[3].id])
+		#expect(accounts.isEmpty)
+		try store.deleteTransactions([rows[3].id], accounts: accounts)
 		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
 		#expect(bars(stored).last == 215_000)
+		#expect(try proposal(stored)?.balanceToday == Money(minorUnits: 120_000, currency: "EUR"))
 	}
 
-	@Test("Older rows from a file keep the opening balance")
+	@Test("Older rows from a file keep a derived opening balance, and the calibration proposal shows the difference")
 	func fileIntoFetchedAccount() throws {
 		let store = try makeStore([giro])
 		_ = try store.merge(refresh(quarter, balance: 120_000), into: giro.id)
 		_ = try store.merge(.file([row(100, -5_000, "Old fee")]), into: giro.id)
 		let stored = try store.loadLedger()
 		#expect(stored.account(giro.id)?.initialBalanceMinor == 255_000)
+		#expect(stored.account(giro.id)?.initialBalanceIsDerived == true)
 		#expect(bars(stored).last == 115_000)
+		#expect(try proposal(stored)?.balanceToday == Money(minorUnits: 120_000, currency: "EUR"))
 	}
 
 	/// What "OK" in the account settings stores after the user typed `minor` under "Initial balance".
@@ -280,6 +293,26 @@ struct OpeningBalanceTests {
 		edited.initialBalanceMinor = minor
 		account.takeSettings(from: edited, opened: account)
 		try store.save(account)
+	}
+
+	@Test("A refresh that passes a planned manual row moves a derived initial balance and leaves a typed one")
+	func plannedManualRow() throws {
+		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .bank)
+		let store = try makeStore([giro, savings])
+		for account in [giro, savings] { _ = try store.merge(refresh([], balance: 120_000, daysAgo: 10), into: account.id) }
+		try type(300_000, into: savings.id, of: store)
+		func hotel(_ account: Account, manual: Bool) -> Transaction {
+			Transaction(accountID: account.id, bookingDate: today.adding(days: -5), amountMinor: -5_000, name: manual ? "Hotel Beispiel" : "HOTEL BEISPIEL",
+				sourceID: manual ? nil : "TX-9-\(account.name)", isManual: manual)
+		}
+		try store.save([hotel(giro, manual: true), hotel(savings, manual: true)])
+		for account in [giro, savings] { _ = try store.merge(refresh([hotel(account, manual: false)], balance: 115_000), into: account.id) }
+		let stored = try store.loadLedger()
+		let derived = try #require(stored.account(giro.id))
+		#expect(derived.initialBalanceMinor == 125_000 && derived.initialBalanceIsDerived)
+		#expect(stored.computedBalance(of: derived, through: today) == Money(minorUnits: 115_000, currency: "EUR"))
+		let typed = try #require(stored.account(savings.id))
+		#expect(typed.initialBalanceMinor == 300_000 && !typed.initialBalanceIsDerived)
 	}
 
 	@Test("A typed initial balance survives later refreshes, also one typed before the first refresh")

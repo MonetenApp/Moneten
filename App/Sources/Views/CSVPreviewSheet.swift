@@ -31,6 +31,8 @@ final class CSVPreviewModel {
 	var profileName: String
 	/// The saved profile that the settings come from.
 	private(set) var profile: String?
+	/// The names of saved profiles that this version cannot read. "Import" never saves over them.
+	@ObservationIgnored private let unreadable: Set<String>
 	/// The profile that the file matched, which "Import" renames when the user changed the name. A profile
 	/// that the user picks is only a starting point, so a new name leaves it.
 	@ObservationIgnored private let matched: String?
@@ -44,12 +46,13 @@ final class CSVPreviewModel {
 
 	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
 	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
-	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], profile: String?, matched: String?, store: Store) {
+	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?, store: Store) {
 		self.name = name
 		self.file = file
 		self.layout = layout
 		self.currency = currency
 		self.profiles = profiles
+		self.unreadable = unreadable
 		self.profile = profile
 		self.matched = matched
 		self.store = store
@@ -60,6 +63,11 @@ final class CSVPreviewModel {
 	var savedProfile: String? {
 		let name = profileName.trimmingCharacters(in: .whitespaces)
 		return name.isEmpty || !file.hasHeaderRow ? nil : name
+	}
+
+	/// Why the typed name cannot be saved: a profile that this version cannot read holds it, and saving would replace it.
+	var nameProblem: String? {
+		savedProfile.flatMap { unreadable.contains($0) ? Store.CSVProfileNameTaken(name: $0).description : nil }
 	}
 
 	/// Takes the settings of a saved profile, with each field in the column of the title that the profile had for it.
@@ -88,7 +96,7 @@ final class CSVPreviewModel {
 			profiles.removeAll { $0.name == profile }
 			self.profile = nil
 			profileName = ""
-		} catch { problem = "Could not delete the CSV profile. \(error)" }
+		} catch { problem = String(localized: "Could not delete the CSV profile. \(String(describing: error))") }
 	}
 
 	func saveProfile() -> Bool {
@@ -99,29 +107,30 @@ final class CSVPreviewModel {
 			profiles.save(saved, matched: matched, applied: profile)
 			return true
 		} catch {
-			problem = "Could not save the CSV profile. \(error)"
+			problem = String(localized: "Could not save the CSV profile. \(String(describing: error))")
 			return false
 		}
 	}
 
 	/// The transactions to import, once every row of the file reads in `layout`.
 	var chosen: TransactionFileImporter.Parsed? {
-		guard let preview, problem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty else { return nil }
+		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty else { return nil }
 		return preview.parsed
 	}
 
 	/// Why "Import" is disabled, which the result names for a file that the user skipped.
 	var reason: String {
 		if let problem { return problem }
+		if let nameProblem { return nameProblem }
 		if let failure = preview?.problem { return failure.description }
-		if !layout.missing.isEmpty { return "No column is assigned to \(missingFields)." }
+		if !layout.missing.isEmpty { return String(localized: "No column is assigned to \(missingFields).") }
 		if preview?.transactions.isEmpty == true { return TransactionFileImporter.Failure.empty.description }
-		return "The file was skipped."
+		return String(localized: "The file was skipped.")
 	}
 
-	/// "the booking date and the amount"
+	/// "“Booking date” and “Amount”", with the names that the column menus show.
 	var missingFields: String {
-		layout.missing.map { "the \($0.title.lowercased())" }.joined(separator: " and ")
+		layout.missing.map { String(localized: "“\($0.title)”") }.formatted(.list(type: .and))
 	}
 
 	/// Whether the dates fit day first and month first, so that the user must check the date format.
@@ -197,6 +206,9 @@ struct CSVPreviewView: View {
 								.disabled(model.profile == nil)
 						}
 					}
+					if let nameProblem = model.nameProblem {
+						Label(nameProblem, systemImage: "exclamationmark.triangle").foregroundStyle(Palette.red)
+					}
 				}
 			}
 			Section {
@@ -257,11 +269,11 @@ struct CSVPreviewView: View {
 	}
 
 	private var status: String {
-		if model.layout.missing.count > 1 { return "Assign columns to \(model.missingFields)." }
-		if !model.layout.missing.isEmpty { return "Assign a column to \(model.missingFields)." }
-		guard let preview = model.preview else { return model.problem == nil ? "Reading the file..." : "" }
+		if model.layout.missing.count > 1 { return String(localized: "Assign columns to \(model.missingFields).") }
+		if !model.layout.missing.isEmpty { return String(localized: "Assign a column to \(model.missingFields).") }
+		guard let preview = model.preview else { return model.problem == nil ? String(localized: "Reading the file...") : "" }
 		let count = preview.transactions.count
-		return count == 0 ? "" : count == 1 ? "One transaction" : "\(count) transactions"
+		return count == 0 ? "" : count == 1 ? String(localized: "One transaction") : String(localized: "\(count) transactions")
 	}
 
 	@ViewBuilder private var rows: some View {

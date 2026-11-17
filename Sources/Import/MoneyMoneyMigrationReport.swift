@@ -36,13 +36,15 @@ extension MoneyMoneyMigration {
 		public var rows: [Row]
 		public var notes: [String]
 
-		/// "1 transaction" or "1,234 transactions" in the format of `locale`.
+		/// "1 transaction" or "1,234 transactions" in the language of the interface and the format of `locale`.
 		public static func count(_ n: Int, locale: Locale = .current) -> String {
-			n == 1 ? "1 transaction" : "\(n.formatted(.number.locale(locale))) transactions"
+			n == 1 ? String(localized: "1 transaction", locale: locale) : String(localized: "\(n) transactions", locale: locale)
 		}
 
 		/// The footer of the list of accounts.
-		public static let balanceRule = "Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them. An account that Moneten had before keeps its own balance, and only its transactions are compared."
+		public static var balanceRule: String {
+			String(localized: "Balances count only the transactions from MoneyMoney and leave out pending ones, as MoneyMoney shows them. An account that Moneten had before keeps its own balance, and only its transactions are compared.")
+		}
 
 		/// The report as plain text for a file, with amounts in the format of `locale`.
 		public func text(locale: Locale = .current) -> String {
@@ -50,13 +52,15 @@ extension MoneyMoneyMigration {
 			func amount(_ money: Money) -> String {
 				money.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(money.decimalPlaces))) + " " + money.currency
 			}
-			var lines = ["Report of the migration from MoneyMoney", "", "Accounts", Self.balanceRule]
+			var lines = [String(localized: "Report of the migration from MoneyMoney"), "", String(localized: "Accounts"), Self.balanceRule]
 			for row in rows {
-				let source = "MoneyMoney: \(count(row.sourceTransactions))" + (row.sourceBalance.map { ", balance \(amount($0))" } ?? "")
-				lines.append("\(row.name): \(count(row.transactions)), balance \(amount(row.balance)). \(source). \(row.matches ? "Matches." : "Differs.")")
+				let own = String(localized: "\(row.name): \(count(row.transactions)), balance \(amount(row.balance)).")
+				let source = row.sourceBalance.map { String(localized: "MoneyMoney: \(count(row.sourceTransactions)), balance \(amount($0)).") }
+					?? String(localized: "MoneyMoney: \(count(row.sourceTransactions)).")
+				lines.append([own, source, row.matches ? String(localized: "Matches.") : String(localized: "Differs.")].joined(separator: " "))
 			}
 			if !notes.isEmpty {
-				lines += ["", "Notes"] + notes
+				lines += ["", String(localized: "Notes")] + notes
 			}
 			return lines.joined(separator: "\n") + "\n"
 		}
@@ -96,8 +100,11 @@ extension MoneyMoneyMigration.Plan {
 			goneByTarget[account.id] = gone
 			if merged.count > 1 {
 				let names = merged.map { "\"\($0.name)\"" }.joined(separator: ", ")
-				var note = "\(merged.count) source accounts, \(names), were merged into \"\(account.name)\". Each line shows the source balance; only transactions are compared."
-				if gone > 0 { note += " The target also holds \(gone) migrated transaction\(gone == 1 ? "" : "s") no longer in the source export." }
+				var note = String(localized: "\(merged.count) source accounts, \(names), were merged into \"\(account.name)\". Each line shows the source balance; only transactions are compared.")
+				if gone > 0 {
+					note += " " + (gone == 1 ? String(localized: "The target also holds 1 migrated transaction no longer in the source export.")
+						: String(localized: "The target also holds \(gone) migrated transactions no longer in the source export."))
+				}
 				mergeNotes.append(note)
 			}
 		}
@@ -107,11 +114,11 @@ extension MoneyMoneyMigration.Plan {
 			let missing = source.rows.filter { missingRows.contains($0.id) }.count
 			let shared = (byTarget[account.id]?.count ?? 0) > 1
 			let gone = shared ? 0 : goneByTarget[account.id, default: 0]
-			func sum(_ rows: [Transaction]) -> Int64 {
-				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + $1.amountMinor : $0 }
+			func sum(_ rows: [Transaction]) -> Int128 {
+				rows.reduce(0) { !$1.isPending && $1.currency == account.currency ? $0 + Int128($1.amountMinor) : $0 }
 			}
 			let migrated = account.source == .migrated && !shared
-			var balance = account.reportedBalance ?? Money(minorUnits: account.initialBalanceMinor + sum(stored), currency: account.currency)
+			var balance = account.reportedBalance ?? Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(stored)), currency: account.currency)
 			if migrated && account.kind != .portfolio {
 				// A row without the ID of the source that matches a booked row of the export by its fingerprint is a row
 				// of the source whose ID a bank took over. Rows that a stored row of the source holds are no match, and
@@ -122,7 +129,7 @@ extension MoneyMoneyMigration.Plan {
 				let claimed = Set(ofSource.compactMap(\.sourceID))
 				let open = source.rows.filter { !$0.isPending && !claimed.contains($0.sourceID ?? "") }
 				let added = reconcile(.file(others), into: account, stored: open, deleted: [], rules: rules, now: Date()).added
-				balance = Money(minorUnits: account.initialBalanceMinor + sum(ofSource) + sum(others) - sum(added), currency: account.currency)
+				balance = Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(ofSource) + sum(others) - sum(added)), currency: account.currency)
 			}
 			if shared, let sourceBalance = source.balance { balance = sourceBalance }
 			return .init(name: source.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,

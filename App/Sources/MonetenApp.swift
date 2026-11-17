@@ -5,14 +5,23 @@ import SwiftUI
 @main
 struct MonetenApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-	@State private var model = AppModel()
+	@State private var model: AppModel
 	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
+
+	init() {
+		// Before the model exists, so that every text of the app is in the language of this run.
+		AppLanguage.applyAtLaunch()
+		_model = State(initialValue: AppModel())
+	}
 
 	var body: some Scene {
 		Window("Moneten", id: "main") {
 			RootView()
 				.environment(model)
-				.onAppear { DebugHarness.installIfRequested(model: model) }
+				.onAppear {
+					DebugHarness.installIfRequested(model: model)
+					delegate.model = model
+				}
 				.frame(minWidth: 900, minHeight: 560)
 		}
 		.defaultSize(width: 1280, height: 820)
@@ -47,6 +56,8 @@ struct MonetenApp: App {
 			SettingsView()
 				.environment(model)
 		}
+		// The settings open only while the app is unlocked, so they never come back with the launch.
+		.restorationBehavior(.disabled)
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
 			MenuBarPopover()
@@ -59,6 +70,22 @@ struct MonetenApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+	/// Set when the main window first appears. Files that the Finder hands over before that wait for it.
+	@MainActor weak var model: AppModel? {
+		didSet {
+			guard let model, !pendingFiles.isEmpty else { return }
+			model.opened(pendingFiles)
+			pendingFiles = []
+		}
+	}
+	@MainActor private var pendingFiles: [URL] = []
+
+	/// The Finder hands over a file that the user opened with the app or dropped on it. The app loads none of
+	/// them as its database.
+	@MainActor func application(_ application: NSApplication, open urls: [URL]) {
+		if let model { model.opened(urls) } else { pendingFiles += urls }
+	}
+
 	func applicationWillFinishLaunching(_ notification: Notification) {
 		// A run of the debug harness opens behind the app the developer works in, so that it does not take the focus.
 		DebugHarness.keepBehindIfRequested()
@@ -81,6 +108,17 @@ struct AppCommands: Commands {
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule }
 
 	var body: some Commands {
+		CommandGroup(replacing: .appInfo) {
+			Button("About Moneten") { AboutPanel.show() }
+			Button("Check for Updates...") { model.updater.checkForUpdates() }
+				.disabled(!model.updater.canCheck)
+		}
+		// The settings need the open database, so the item waits for the unlock.
+		CommandGroup(replacing: .appSettings) {
+			SettingsLink { Text("Settings...") }
+				.keyboardShortcut(",")
+				.disabled(model.phase != .unlocked)
+		}
 		CommandGroup(after: .appSettings) {
 			Divider()
 			Button(model.hasPassword ? "Change Database Password..." : "Set Database Password...") {
@@ -126,6 +164,11 @@ struct AppCommands: Commands {
 			.pickerStyle(.inline)
 			.disabled(!unlocked)
 			Divider()
+			Toggle("Daily Balance", isOn: Binding(get: { model.showsDailyBalance }, set: { model.showsDailyBalance = $0 }))
+				.disabled(!unlocked || model.selectedAccount == nil)
+			Toggle("Checkmarks", isOn: Binding(get: { model.showsCheckmarks }, set: { model.showsCheckmarks = $0 }))
+				.disabled(!unlocked)
+			Divider()
 		}
 		CommandMenu("Account") {
 			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)
@@ -136,7 +179,7 @@ struct AppCommands: Commands {
 			Divider()
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
-				.disabled(!unlocked || model.selectedOfflineAccount == nil)
+				.disabled(!unlocked || model.selectedManualAccount == nil)
 			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
 			Button("Assign Category...") { model.openCategoryPicker() }
 				.keyboardShortcut("k")
@@ -173,11 +216,18 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .help) {
 			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Help and FAQ...") { NSWorkspace.shared.open(Self.helpPage) }
+				.keyboardShortcut("?")
 			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
 			Button("Moneten on GitHub...") { NSWorkspace.shared.open(URL(string: "https://github.com/MonetenApp/Moneten")!) }
 			Button("Report an Issue...") { NSWorkspace.shared.open(bugReportURL(version: CrashReportController.appVersion, macOS: CrashReports.macOSVersion())) }
 		}
 	}
+}
+
+extension AppCommands {
+	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
+	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
 }
 
 extension Notification.Name {

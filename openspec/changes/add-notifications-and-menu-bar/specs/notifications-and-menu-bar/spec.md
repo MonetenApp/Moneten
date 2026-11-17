@@ -189,7 +189,7 @@ The app SHALL show an icon in the menu bar while it runs when the setting "Show 
 
 ### Requirement: Menu bar popover
 
-The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and balance, marks each account that has new transactions with their number, and marks each account whose last refresh failed or waits for the user.
+The app SHALL open a popover when the user clicks the menu bar icon. The popover lists the open accounts in the order of the sidebar with name and the balances of the sidebar row, shows the number of new transactions beside each account that has them, and shows a marker beside each account whose last refresh failed or waits for the user.
 
 #### Scenario: Open the popover
 
@@ -197,11 +197,51 @@ The app SHALL open a popover when the user clicks the menu bar icon. The popover
 - **WHEN** the user clicks the menu bar icon
 - **THEN** the popover lists "Girokonto" with 2.450,10 € and the count 2, and "Tagesgeld" with 10.000,00 €
 
+#### Scenario: Account with balances in two currencies
+
+- **GIVEN** the account "Reisekasse" with the balances 0,00 € and 35,00 US dollars
+- **WHEN** the user opens the popover
+- **THEN** the row "Reisekasse" shows 0,00 € and then 35,00 US dollars, as the sidebar row does
+
 #### Scenario: Account needs attention
 
 - **GIVEN** the automatic refresh skipped "Kreditkarte" because it needs a TAN
 - **WHEN** the user opens the popover
 - **THEN** the row "Kreditkarte" carries the marker that the refresh waits for the user
+
+### Requirement: Popover keeps the balances of a failed refresh
+
+The app SHALL show the balances of an account whose last refresh failed beside the marker in its popover row.
+
+#### Scenario: Failed refresh keeps the balances
+
+- **GIVEN** the last refresh of "Reisekasse" failed, and the account has the balances 4.567.890,00 € and 1.234.567,00 US dollars
+- **WHEN** the user opens the popover
+- **THEN** the row "Reisekasse" carries the marker of the failed refresh and then shows 4.567.890,00 € and 1.234.567,00 US dollars
+
+### Requirement: Whole amounts in the popover
+
+The app SHALL show each balance in a popover row on one line and in full, and shorten a long account name first. When the balances do not all fit, the row shows the first balance and the number of the others. An amount that does not fit ends with an ellipsis and is never cut off at the edge of the row.
+
+#### Scenario: Long name with large balances
+
+- **GIVEN** the account "Gemeinsame Reisekasse Familie Mustermann" with the balances 12.345.678,00 € and 9.876.543,00 US dollars, whose last refresh failed
+- **WHEN** the user opens the popover
+- **THEN** the row shows 12.345.678,00 € and 9.876.543,00 US dollars each on one line and in full
+- **AND** the account name ends with an ellipsis
+
+#### Scenario: Balances wider than the row
+
+- **GIVEN** the account "Gemeinsame Reisekasse Familie Mustermann" with the balances 12.345.678,00 € and 98.765.432,00 US dollars, whose last refresh failed
+- **WHEN** the user opens the popover
+- **THEN** the row shows the name shortened with an ellipsis, the marker, and 12.345.678,00 € in full
+- **AND** then "+ 1 more" in place of the balance in US dollars
+
+#### Scenario: Balances in eight currencies
+
+- **GIVEN** the account "Devisen" with 1.250,00 € and balances in seven other currencies
+- **WHEN** the user opens the popover
+- **THEN** the row "Devisen" shows 1.250,00 € in full and then "+ 7 more"
 
 ### Requirement: Actions in the popover
 

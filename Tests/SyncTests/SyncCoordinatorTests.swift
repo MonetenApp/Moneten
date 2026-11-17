@@ -512,6 +512,47 @@ struct SyncCoordinatorTests {
 		#expect(connector.requests == [["Card 2026-11-01"], ["Giro full", "Savings 2026-11-01"]])
 	}
 
+	@Test("An account that the user closes leaves the waiting request, and a request with only that account never reaches the bank")
+	func closedLeavesQueue() async {
+		let coordinator = SyncCoordinator(limit: 1)
+		let first = Self.access("Musterbank"), second = Self.access("Beispielbank"), third = Self.access("Sparkasse")
+		coordinator.refresh(RefreshRequest(access: first, accounts: [Self.dated(Self.card)]), with: RecordingConnector(delay: .milliseconds(100)), attended: true)
+		let both = RecordingConnector(), alone = RecordingConnector()
+		coordinator.refresh(RefreshRequest(access: second, accounts: [Self.dated(Self.giro), Self.dated(Self.savings)]), with: both, attended: false)
+		let lone = AccountRequest(accountID: UUID(), name: "Depot", remoteID: "3456", currency: "EUR")
+		coordinator.refresh(RefreshRequest(access: third, accounts: [Self.dated(lone)]), with: alone, attended: false)
+		coordinator.leaveOut(account: Self.giro.accountID)
+		coordinator.leaveOut(account: lone.accountID)
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID, Self.savings.accountID])
+		await until { !coordinator.isRefreshing }
+		#expect(both.requests == [["Savings 2026-11-01"]])
+		#expect(alone.requests.isEmpty)
+	}
+
+	@Test("An account that the user closes during a running refresh stops showing its progress at once, and the run ends without a run again")
+	func closedDuringRun() async {
+		let bank = Self.access("Musterbank")
+		let connector = RecordingConnector(delay: .milliseconds(100))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.card), Self.dated(Self.giro)]), with: connector, attended: true)
+		coordinator.leaveOut(account: Self.giro.accountID)
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
+		await until { !coordinator.isRefreshing }
+		// The bank already had the request, and the app drops what it delivers for the closed account.
+		#expect(connector.requests == [["Card 2026-11-01", "Giro 2026-11-01"]])
+	}
+
+	@Test("An account that the user closes leaves the request that waits for the end of a running refresh of its access")
+	func closedLeavesAfterRun() async {
+		let bank = Self.access("Musterbank")
+		let connector = RecordingConnector(delay: .milliseconds(100))
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.card)]), with: connector, attended: true)
+		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.dated(Self.giro)]), with: connector, attended: true)
+		coordinator.leaveOut(account: Self.giro.accountID)
+		#expect(coordinator.refreshingAccounts == [Self.card.accountID])
+		await until { !coordinator.isRefreshing }
+		#expect(connector.requests == [["Card 2026-11-01"]])
+	}
+
 	@Test("A command for an access that waits for its turn joins the waiting request")
 	func waitingAccess() async throws {
 		let coordinator = SyncCoordinator(limit: 1)
@@ -797,7 +838,7 @@ struct SyncCoordinatorTests {
 	@Test("The notices of the bank reach the app when a refresh ends, and a canceled refresh brings none")
 	func notices() async throws {
 		var noticed: [String] = []
-		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.uuidString) \($0.text)" } }
+		coordinator.noticed = { access, messages in noticed += messages.map { "\(access.id.uuidString) \($0.text)" } }
 		let bank = Self.access("Musterbank")
 		coordinator.refresh(RefreshRequest(access: bank, accounts: [Self.giro]), with: Notifying(delay: .zero), attended: true)
 		await until { !coordinator.isRefreshing }

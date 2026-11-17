@@ -57,6 +57,8 @@ The sync state machine described below is in `Domain`. The payment state machine
 
 `Domain` has no dependencies so that every rule about money, categories, and transaction identity can be tested in milliseconds without a database, a network, or a bank.
 
+The libraries, `Domain` included, may call `String(localized:)`, but only to build a text that the user reads, such as an error message or a note. A localized text is never data, never a key, and never compared to decide what the code does, because its value changes with the language of the interface. `StarterCategories` writes the German and English names itself, so a database keeps the names it was created with. The app holds the one String Catalog, `App/Resources/Localizable.xcstrings`. The tests run without it, so they read English. The extension host process has no catalog either, so it sends the reason of a stop or a refusal as `HostStop`, and the app writes the text.
+
 ## Every bank speaks through one protocol
 
 The protocol and the dialogs exist. The connectors are the plan.
@@ -123,7 +125,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored: [Tran
 
 `reconcile` keeps the existing booked-only matching function for booked deliveries against booked rows without a file identity. Pairs with a pending side or a stored file identity use the five numbered levels in the [file-import spec](../openspec/changes/add-file-import/specs/transaction-import/spec.md). Candidates sort by the documented tuple and pair greedily one to one. A refresh prefers a fitting fetched pending row within seven days over an unfetched file row. File imports keep nearest-day matching within seven days.
 
-The current-bank-field fingerprint covers booking day, amount, folded purpose without whitespace, counterparty IBAN, and end-to-end reference. A missing IBAN or reference can be compatible. Scoped pending and file-identity candidates also check currency before matching. The legacy booked-only path keeps main's fingerprint behavior. A separate nullable `fileIdentity` stores the original file fingerprint, created only by file import and copied through takeover, booking, tombstones, and complete export/import. Different real source IDs or references never pair in the scoped rule. A verified pending-to-booked transition can cross different file fingerprints because date and purpose can change. There is no occurrence index, so two identical coffees stay two rows.
+The current-bank-field fingerprint covers booking day, amount and currency, folded purpose without whitespace, counterparty IBAN, and end-to-end reference. A missing IBAN or reference can be compatible. The booked-only path and the scoped path both find candidates by this fingerprint, so a row in another currency is never the same transaction. A separate nullable `fileIdentity` stores the original file fingerprint, created only by file import and copied through takeover, booking, tombstones, and complete export/import. Different real source IDs or references never pair in the scoped rule. A verified pending-to-booked transition can cross different file fingerprints because date and purpose can change. There is no occurrence index, so two identical coffees stay two rows.
 
 A merge keeps the parts of a split while its amount and currency stay. A booked delivery under the same source ID with another amount or currency undoes the split and marks the original with `review` `.splitUndone`. A pending delivery keeps the booked original and its parts.
 

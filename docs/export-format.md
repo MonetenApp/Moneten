@@ -56,9 +56,10 @@ A version-1 payload contains `name`, `header`, `delimiter`, and `layout`. The he
 | `status` | `all`, `checked`, or `unchecked` |
 | `amount` | The amount filter, see below |
 | `categoryID` | The category of the "Category" menu. Left out for "Show All". |
-| `accountID` | The account of the "Account" menu. Left out for "Show All". |
+| `accountID` | The account of the "Account" menu. Left out for "Show All" and for an account group. |
+| `accountGroupID` | The account group of the "Account" menu, which shows the accounts of the group and of its subgroups. Left out for "Show All" and for an account. |
 
-The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, and `months12` have no days, and the last three count back from the day the user selects the search. `month`, `quarter`, and `year` have the first day of that month, quarter, or year in `start`. `custom` has `start` and `end`, both included. The amount filter has a `kind` of `all`, `deposits`, `withdrawals`, or `range`. A range has at least one of `min` and `max` as decimal text without a currency, such as `"-500"` and `"-99.99"`, because each row compares them in its own currency. A missing end leaves the range open. The reader refuses an unknown kind, a missing day, and a range without an end or with its minimum above its maximum. A category or an account that the file does not contain comes back as "Show All" when the user selects the search.
+The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, and `months12` have no days, and the last three count back from the day the user selects the search. `month`, `quarter`, and `year` have the first day of that month, quarter, or year in `start`. `custom` has `start` and `end`, both included. The amount filter has a `kind` of `all`, `deposits`, `withdrawals`, or `range`. A range has at least one of `min` and `max` as decimal text without a currency, such as `"-500"` and `"-99.99"`, because each row compares them in its own currency. A missing end leaves the range open. The reader refuses an unknown kind, a missing day, a range without an end or with its minimum above its maximum, and a saved search with both `accountID` and `accountGroupID`. A category, an account, or an account group that the file does not contain comes back as "Show All" when the user selects the search.
 
 ## Account group
 
@@ -89,8 +90,11 @@ The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, an
 | `owner` | Owner of the account |
 | `bankBalance` | The last balance that the bank or the source app reported, an amount in the currency of the account |
 | `bankBalanceDate` | The time of that balance |
+| `otherBankBalances` | Optional list of the balances in other currencies that the bank reported with `bankBalance`, each with `amount` and `currency` |
+| `bonusPoints` | Optional whole number of bonus points that the bank reported with `bankBalance` |
 | `initialBalance` | The balance before the first transaction, an amount in the currency of the account |
 | `initialBalanceIsSet` | Whether the initial balance is set, by the user or by the first refresh |
+| `initialBalanceIsDerived` | Optional `true` while the initial balance is the value that a refresh derived, so a manual row in the bank balance moves it. Missing means a value that the user entered or that came from the source. |
 | `isClosed` | Whether the account is closed |
 | `comment` | Comment |
 | `sourceID` | Identifier of the account in the source it came from, such as `moneymoney:<uuid>` |
@@ -157,13 +161,14 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `review` | Optional `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. |
 | `isFetched` | Whether a refresh delivered the transaction |
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
+| `isManual` | Optional `true` for a transaction that the user added with "Add Transaction...". Missing means a transaction that a source delivered. |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
 | `original` | Present only for a transaction that the user edited: the values that its source delivered, with the keys `bookingDate`, `valueDate`, `amount`, `name`, and `purpose`, in the currency of the transaction. A refresh finds the transaction by these values and keeps the edited ones. |
 
 ## Deleted transaction
 
-What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again.
+What the app keeps of a transaction that the user deleted, so that no refresh, file, or migration adds it again. A manual transaction that no file and no migration matched leaves no record, because no source delivers it.
 
 | Key | Content |
 |---|---|
@@ -206,7 +211,7 @@ A position of a portfolio, as its bank reported it last.
 
 ## Split part
 
-Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity and v19 adds CSV profiles. The file format version is separate from these migration numbers.
+Database migrations are v17 for the split table and v20 for review reasons. v18 adds file identity, v19 adds CSV profiles, and v23 adds the manual mark. The file format version is separate from these migration numbers.
 
 Each split part has these keys.
 

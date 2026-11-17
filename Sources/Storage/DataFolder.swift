@@ -68,6 +68,12 @@ public struct DataFolder: Sendable {
 		}
 	}
 
+	/// True for a file that the Finder hands to the app and that is a database file, such as a copy of
+	/// "Moneten.sqlite". The app never loads such a file, because it would take the place of its own database.
+	public static func isDatabaseFile(_ url: URL) -> Bool {
+		url.pathExtension.lowercased() == "sqlite"
+	}
+
 	/// An identifier for this data folder, so that Keychain entries of two folders do not mix.
 	var keychainAccount: String { databaseFile.standardizedFileURL.path }
 

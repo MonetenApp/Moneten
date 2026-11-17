@@ -3,7 +3,8 @@
 # and docs/releasing.md explains the secrets and the steps.
 #   scripts/release.sh dry-run [version]  every step without secrets and without GitHub: an app signed
 #                                         to run locally, an unsigned disk image, and a feed signed
-#                                         with a throwaway update key. Version 0.0.0-beta.1 by default.
+#                                         with the test update key of Fixtures/update, which a Debug
+#                                         build reads. Version 0.0.0-beta.1 by default.
 #                                         With MONETEN_SIGN=1 it also signs and notarizes.
 #   scripts/release.sh preflight <version>  step 1: the changelog section, the tag on main, and the feed
 #   scripts/release.sh package <version>    steps 2 to 4: the signed and notarized app on a notarized
@@ -11,16 +12,18 @@
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
 #   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with both files
-#   scripts/release.sh publish <version>    step 7, run by the owner with the update key in the login
-#                                           Keychain: checks the feeds with it, publishes the draft, moves the feed
+#   scripts/release.sh publish <version>    step 7, run by the owner: checks the feeds with the committed
+#                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
 #                                           the text of earlier releases from CHANGELOG.md
 #   scripts/release.sh withdraw <version>   run by the owner with the update key in the login Keychain:
-#                                           checks the current feed, takes the version out of it, signs
-#                                           and checks the result, and replaces the feed with it
+#                                           checks the current feed with the committed update key, takes
+#                                           the version out of it, signs and checks the result, and
+#                                           replaces the feed with it
 # Signing needs the Developer ID certificate in the Keychain and MONETEN_TEAM_ID. Notarization needs
 # MONETEN_NOTARY_KEY (the path of the .p8 file), MONETEN_NOTARY_KEY_ID, and MONETEN_NOTARY_ISSUER.
-# The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key.
+# The feed needs MONETEN_UPDATE_KEY_FILE, the file with the private EdDSA key. A release needs the
+# production public key in App/project.yml in place of the placeholder "none" (docs/releasing.md).
 set -e
 cd "$(dirname "$0")/.."
 REPO=MonetenApp/Moneten
@@ -34,13 +37,25 @@ notes() { python3 scripts/release-notes.py --changelog "$CHANGELOG" "$@"; }
 fail() { echo "$*" >&2; exit 1; }
 plist() { /usr/libexec/PlistBuddy -c "Print $2" "$1/Contents/Info.plist"; }
 dmg_url() { echo "https://github.com/$REPO/releases/download/v$1/Moneten-$1.dmg"; }
+TEST_KEY_FILE=Fixtures/update/test-update.key
 
-# The public key of the private EdDSA key in the file $1: Sparkle keeps the 32 byte seed, which
-# becomes an Ed25519 key in PKCS#8 for openssl. The key never appears in an argument or a log.
-public_key() {
-	OPENSSL=$(notes openssl) || exit 1
-	{ printf '\060\056\002\001\000\060\005\006\003\053\145\160\004\042\004\040'; base64 -d < "$1" | head -c 32; } \
-		| "$OPENSSL" pkey -inform DER -pubout -outform DER | tail -c 32 | base64
+# The public key of the private key in the file $1. Only for the test key and the throwaway keys of
+# the dry run: the production key is checked by the signatures it makes, so it never reaches openssl.
+public_key() { notes public-key "$1"; }
+
+# MONETEN_UPDATE_PUBLIC_KEY of the target Moneten in App/project.yml: in its base settings, indented by
+# 8 spaces, and in its Debug settings, by 10. check_production_key fails when this finds no line or two.
+project_key() { sed -n "s/^ \{$1\}MONETEN_UPDATE_PUBLIC_KEY: *//p" App/project.yml; }
+committed_key() { project_key 8; }
+debug_key() { project_key 10; }
+
+# A release must carry one production update key: not the placeholder, and not the public test key.
+check_production_key() {
+	case "$1" in
+		none|"") fail "App/project.yml has no production update key yet. docs/releasing.md explains how the owner adds it." ;;
+		"$(debug_key)") fail "The update key is the test key of Fixtures/update, which only Debug builds may trust." ;;
+		*[!A-Za-z0-9+/=]*) fail "The update key of App/project.yml is not one key in Base64." ;;
+	esac
 }
 
 # Fails unless the public update key $2 signed the feed $1 and every disk image in it lies in a
@@ -56,8 +71,6 @@ checked_current_feed() {
 
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
 # no stable release exists makes this the first release, so a network error never starts an empty feed.
-# preflight reads it without a key, because the job package has none: the job draft checks the
-# versions again on the checked feed before it signs anything.
 current_feed() {
 	set -- -sS -o /dev/null -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -71,11 +84,12 @@ current_feed() {
 }
 
 preflight() {
+	check_production_key "$(committed_key)"
 	notes check
 	notes section "$1" >/dev/null
 	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the build number would be wrong."
 	git merge-base --is-ancestor HEAD origin/main || fail "The tagged commit is not on main."
-	current_feed
+	checked_current_feed "$(committed_key)"
 	notes check-release "$1" --build "$(git rev-list --count HEAD)" $FEED_ARGS
 	echo "Version $1 with build $(git rev-list --count HEAD) can be released."
 }
@@ -127,7 +141,8 @@ check_dmg() {
 	detach "$WORK/volume"
 }
 
-# Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID.
+# Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID. $3 is "dry-run" for a
+# signed dry run, which may still have the placeholder of the update key.
 package() {
 	MODE=${2:-signed}
 	rm -rf "$OUT"
@@ -142,6 +157,10 @@ package() {
 		codesign -dvv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application' || fail "The app is not signed with the Developer ID."
 		codesign -dv "$APP" 2>&1 | grep -q 'flags=.*runtime' || fail "The app has no hardened runtime."
 		plist "$APP" MonetenFinTSProductID >/dev/null 2>&1 || fail "The app has no FinTS product ID. See docs/releasing.md."
+		if [ "$3" != dry-run ]; then
+			check_production_key "$(plist "$APP" SUPublicEDKey)"
+			[ "$(plist "$APP" SUPublicEDKey)" = "$(committed_key)" ] || fail "The app carries another update key than App/project.yml."
+		fi
 		ditto -c -k --keepParent "$APP" "$WORK/Moneten.zip"
 		notarize "$WORK/Moneten.zip"
 		xcrun stapler staple -q "$APP"
@@ -166,6 +185,7 @@ package() {
 	VERSION=$1
 	BUILD=$(plist "$APP" CFBundleVersion)
 	MIN_MACOS=$(plist "$APP" LSMinimumSystemVersion)
+	UPDATE_KEY=$(plist "$APP" SUPublicEDKey)
 	EOF
 	echo "Packaged $DMG ($MODE, build $(plist "$APP" CFBundleVersion))."
 }
@@ -179,11 +199,16 @@ feed() {
 	DMG="$OUT/Moneten-$1.dmg"
 	SIGNATURE=$("$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" -p "$DMG")
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$DMG" "$SIGNATURE"
-	if [ "$2" = first ]; then FEED_ARGS=--first-release; else checked_current_feed "$(public_key "$MONETEN_UPDATE_KEY_FILE")"; fi
+	if [ "$2" = first ]; then FEED_ARGS=--first-release; else checked_current_feed "$UPDATE_KEY"; fi
 	notes appcast "$1" --build "$BUILD" --min-macos "$MIN_MACOS" --url "$(dmg_url "$1")" \
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml"
+	# A feed that the installed apps cannot check would stop every update. A dry run builds without
+	# the production key, signs with the test key, and checks its feed in check_feeds.
+	if [ "$2" != first ]; then
+		check_feed "$OUT/appcast.xml" "$UPDATE_KEY" || fail "MONETEN_UPDATE_KEY_FILE is not the private half of the update key in the app."
+	fi
 	echo "Wrote the signed feed $OUT/appcast.xml."
 }
 
@@ -201,8 +226,11 @@ withdrawn_feed() {
 	check_feed "$WORK/withdrawn/appcast.xml" "$2" || fail "The feed without $1 failed its check, so nothing was uploaded."
 }
 
+# The check of the signed result with the committed key stops a wrong key in the login Keychain: a
+# feed that no installed app can check would stop every update.
 withdraw() {
-	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	KEY=$(committed_key)
+	check_production_key "$KEY"
 	withdrawn_feed "$1" "$KEY"
 	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
 	gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/withdrawn/appcast.xml"
@@ -231,19 +259,16 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" || fail "The draft of v$1 lacks its disk image or appcast.xml."
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
-	# The owner's Mac holds the update key in the login Keychain (docs/releasing.md). Every copy of the
-	# app refuses a feed that this key did not sign, so no other feed may go out.
-	KEY=$("$(scripts/sparkle-tools.sh)/generate_keys" -p) || fail "No update key in the login Keychain. docs/releasing.md explains it."
+	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
+	KEY=$(committed_key)
+	check_production_key "$KEY"
 	check_feed "$WORK/draft-feed/appcast.xml" "$KEY" || fail "The feed of the draft of v$1 failed its check. Delete the draft and run the release again."
 	checked_current_feed "$KEY"
-	# A release that was published after this draft was made must be in the draft's feed too.
+	# A release or a withdrawal after this draft was made changed the current feed. An app that read
+	# it refuses the draft's feed, and the draft's feed would bring a withdrawn version back.
 	if [ "$FEED_ARGS" != --first-release ]; then
-		python3 - "$WORK/current.xml" "$WORK/draft-feed/appcast.xml" <<-'EOF' || fail "The feed of the draft misses a published version. Delete the draft and run the release again."
-		import sys, xml.etree.ElementTree as ET
-		key = "{http://www.andymatuschak.org/xml-namespaces/sparkle}shortVersionString"
-		versions = lambda path: {i.findtext(key) for i in ET.parse(path).getroot().iter("item")}
-		sys.exit(0 if versions(sys.argv[1]) <= versions(sys.argv[2]) else 1)
-		EOF
+		notes check-newer --feed "$WORK/draft-feed/appcast.xml" --current "$WORK/current.xml" \
+			|| fail "The feed of the draft is older than the current feed. Delete the draft and run the release again."
 	fi
 	case "$1" in
 	*-*)
@@ -297,14 +322,38 @@ check_feeds() {
 	current_feed() { cp "$CURRENT" "$WORK/current.xml"; FEED_ARGS="--feed $WORK/current.xml"; }
 	checked_current_feed "$KEY"
 	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "A release accepted a current feed of another key."
-	withdrawn_feed "$2" "$KEY" "$1"
-	! grep -q "<sparkle:shortVersionString>$2<" "$WORK/withdrawn/appcast.xml" || fail "The withdrawn feed still lists $2."
-	for CURRENT in "$WORK/unsigned.xml" "$WORK/http.xml"; do
-		rm -rf "$WORK/withdrawn"
-		(withdrawn_feed "$2" "$KEY" "$1") 2>/dev/null && fail "A withdrawal accepted the current feed $(basename "$CURRENT")."
-		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed $(basename "$CURRENT")."
+	# remove keeps the last version, so the withdrawal takes 0.0.2 out of a feed with two versions.
+	mkdir "$WORK/two"
+	printf '# Changelog\n\n## Unreleased\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
+	for BUILD in 1 2; do
+		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/appcast.xml"
+		python3 scripts/release-notes.py --changelog "$WORK/two/CHANGELOG.md" appcast "0.0.$BUILD" --build "$BUILD" --min-macos 15.0 \
+			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/appcast.xml"
 	done
-	echo "A release refuses a current feed of another key, and a withdrawal refuses an unsigned feed and a forged disk image."
+	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/appcast.xml" >/dev/null
+	CURRENT="$WORK/two/appcast.xml"
+	(CHANGELOG="$WORK/two/CHANGELOG.md"; withdrawn_feed 0.0.2 "$KEY" "$1")
+	grep -q '<moneten:revision>3</moneten:revision>' "$WORK/withdrawn/appcast.xml" && ! grep -q '>0\.0\.2<' "$WORK/withdrawn/appcast.xml" \
+		|| fail "The withdrawal did not take 0.0.2 out of the feed with a revision one above the current one."
+	for CASE in "unsigned.xml:has no signature" "http.xml:has a disk image outside"; do
+		CURRENT="$WORK/${CASE%%:*}"
+		rm -rf "$WORK/withdrawn"
+		(withdrawn_feed "$2" "$KEY" "$1") 2>"$WORK/error" && fail "A withdrawal accepted the current feed ${CASE%%:*}."
+		grep -qF "${CASE#*:}" "$WORK/error" || fail "A withdrawal refused the current feed ${CASE%%:*} for another reason: $(cat "$WORK/error")"
+		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed ${CASE%%:*}."
+	done
+	echo "A release refuses a current feed of another key, and a withdrawal raises the revision and refuses an unsigned feed and a forged disk image."
+}
+
+# The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the
+# check of a release refuses that key and the placeholder.
+check_keys() {
+	TEST_KEY=$(public_key "$TEST_KEY_FILE")
+	[ "$(debug_key)" = "$TEST_KEY" ] || fail "The Debug key of App/project.yml is not the public half of $TEST_KEY_FILE."
+	(check_production_key "$TEST_KEY") 2>/dev/null && fail "The check of a release accepts the test key."
+	(check_production_key none) 2>/dev/null && fail "The check of a release accepts the placeholder."
+	[ "$(committed_key)" = none ] || check_production_key "$(committed_key)"
+	echo "The test key is the Debug key, and the check of a release refuses it and the placeholder."
 }
 
 dry_run() {
@@ -325,12 +374,11 @@ dry_run() {
 		notes cut "$VERSION"
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
-	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed; else package "$VERSION" unsigned; fi
-	# A throwaway update key: an Ed25519 seed, the private key format of Sparkle.
-	"$(notes openssl)" genpkey -algorithm ed25519 -outform DER -out "$WORK/key.der"
-	tail -c 32 "$WORK/key.der" | base64 > "$WORK/update.key"
-	MONETEN_UPDATE_KEY_FILE="$WORK/update.key" feed "$VERSION" first
-	check_feeds "$WORK/update.key" "$VERSION"
+	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
+	check_keys
+	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
+	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
+	check_feeds "$TEST_KEY_FILE" "$VERSION"
 	echo "Dry run of $VERSION passed: $(ls "$OUT" | tr '\n' ' ')"
 }
 

@@ -160,6 +160,57 @@ The app SHALL offer a field for the TAN when the method needs a typed TAN. The b
 - **WHEN** the TAN field is empty
 - **THEN** the user cannot continue
 
+### Requirement: TAN length of Commerzbank and comdirect
+
+The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank and comdirect: at least 7 digits for the method 900 on `fints.commerzbank.de` or `hbci.commerzbank.de`, up to the announced length between 7 and 15, and 6 or 7 digits for the method 902 on `fints.comdirect.de`. The field drops blanks and other characters and stops at the upper length. Other methods keep a field without a length.
+
+#### Scenario: Commerzbank photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" stays disabled
+- **WHEN** the user types "1234567"
+- **THEN** "Continue" is enabled
+- **WHEN** the user types "12345678901"
+- **THEN** the field holds "1234567890"
+
+#### Scenario: comdirect photoTAN
+
+- **GIVEN** a TAN request of comdirect for the method 902
+- **WHEN** the user types "12345678"
+- **THEN** the field holds "1234567" and "Continue" is enabled
+
+#### Scenario: Blanks in a photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types seven blanks
+- **THEN** the field stays empty and "Continue" stays disabled
+- **WHEN** the user types "123 456 7"
+- **THEN** the field holds "1234567"
+
+#### Scenario: Another bank with the same method code
+
+- **GIVEN** a TAN request of "Musterbank" for the method 900, whose bank parameters announce 6 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" is enabled
+
+### Requirement: Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals
+
+The app SHALL turn the letters of a typed TAN into capitals as the user types, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. A TAN typed in lower case then does not count as a wrong TAN at the bank. The TAN of any other bank stays as the user types it.
+
+#### Scenario: TAN in lower case
+
+- **GIVEN** a Postbank access on `hbci.postbank.de` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the field shows "AB12CD"
+- **AND** the app sends "AB12CD"
+
+#### Scenario: Other bank
+
+- **GIVEN** a "Musterbank" access on `fints.musterbank.example` and a request that needs a typed TAN
+- **WHEN** the user types "ab12cd"
+- **THEN** the app sends "ab12cd"
+
 ### Requirement: Approval in an app without typing
 
 The app SHALL, for a method that the user approves in an app of the bank, ask the user to confirm the data in that app, show no TAN field, and check the result with the bank by itself. The dialog closes by itself when the bank reports the approval.
@@ -223,6 +274,23 @@ The app SHALL show a photoTAN image or a QR code that the bank sends in the dial
 - **GIVEN** the dialog shows a QR code for "chipTAN QR"
 - **WHEN** the user clicks the control that enlarges the code
 - **THEN** the code is shown larger and the dialog grows with it
+
+### Requirement: Checked challenge images
+
+The app SHALL decode a challenge image only when its bytes start with the signature of PNG or JPEG, it has at most 1 MB, and its header states at most 2048 by 2048 pixels. For any other image, the dialog shows the text of the bank, the TAN field, and a note that the image cannot be shown.
+
+#### Scenario: Image in another format
+
+- **GIVEN** the method is "photoTAN"
+- **WHEN** the bank sends a TIFF image with the text "Bitte scannen Sie die Grafik."
+- **THEN** the dialog shows "Bitte scannen Sie die Grafik.", the TAN field, and "The bank sent an image that cannot be shown."
+- **AND** the app decodes no part of the image
+
+#### Scenario: Image with huge dimensions
+
+- **WHEN** the bank sends a PNG image of 900 bytes whose header states 50000 by 50000 pixels
+- **THEN** the dialog shows the text of the bank, the TAN field, and "The bank sent an image that cannot be shown."
+- **AND** the app decodes no part of the image
 
 ### Requirement: QR code that is confirmed in an app
 

@@ -49,7 +49,7 @@ struct SyncDialog: View {
 
 /// The layout of `SheetFrame`, with buttons that do not dismiss the sheet.
 struct DialogFrame<Content: View, Buttons: View>: View {
-	var title: String
+	var title: LocalizedStringKey
 	var width: CGFloat = 460
 	@ViewBuilder var content: Content
 	@ViewBuilder var buttons: Buttons
@@ -94,7 +94,7 @@ struct PINSheet: View {
 			Section {
 				LabeledContent(prompt.accountNames.count == 1 ? "Account" : "Accounts", value: prompt.accountNames.joined(separator: ", "))
 				LabeledContent("Bank", value: prompt.access.bankName)
-				LabeledContent("User ID", value: prompt.access.loginName)
+				LabeledContent("User ID", value: prompt.access.shownLoginName)
 			}
 			Section {
 				SecureField(request.secretName, text: $pin, prompt: Text("Required"))
@@ -181,7 +181,7 @@ struct TwoFactorSheet: View {
 			Section {
 				Text(TwoFactorText.reason(request, bank: prompt.access.bankName))
 				if !prompt.access.loginName.isEmpty {
-					LabeledContent("User ID", value: prompt.access.loginName)
+					LabeledContent("User ID", value: prompt.access.shownLoginName)
 				}
 				if request.loginOnly {
 					Text("This TAN is used only for the login and not for the order.").foregroundStyle(.secondary)
@@ -271,6 +271,12 @@ struct TwoFactorSheet: View {
 					Text("The list of TAN media could not be fetched. Type the name of the medium as you registered it at the bank.").foregroundStyle(.secondary)
 				}
 			}
+		case let .nameTANMedium(name):
+			Section {
+				TextField(name.label, text: $medium, prompt: Text("Optional"))
+			} footer: {
+				Text(name.help).foregroundStyle(.secondary)
+			}
 		case let .enterTAN(text, image):
 			Section {
 				ChallengeText(text: text)
@@ -289,7 +295,7 @@ struct TwoFactorSheet: View {
 				ChallengeText(text: text)
 				if let image { ChallengeImageView(image: image, enlarged: $imageEnlarged) }
 				if let step { Text("Code \(step.number) of \(step.of)").foregroundStyle(.secondary) }
-				Waiting(text: app.map { "Waiting for the approval in “\($0)”..." } ?? "Waiting for the approval in the app of the bank...")
+				Waiting(text: app.map { String(localized: "Waiting for the approval in “\($0)”...") } ?? String(localized: "Waiting for the approval in the app of the bank..."))
 			}
 		case .openBrowser, .captcha:
 			EmptyView()
@@ -306,6 +312,7 @@ struct TwoFactorSheet: View {
 		switch request.challenge {
 		case .chooseTANMethod: method.map(UserAnswer.tanMethod)
 		case .chooseTANMedium: medium.isEmpty ? nil : .tanMedium(medium)
+		case .nameTANMedium: .tanMedium(medium.trimmingCharacters(in: .whitespaces))
 		case .enterTAN, .flickerCode: request.field.isComplete(input) ? .tan(Secret(input)) : nil
 		case .approveInApp, .openBrowser, .captcha: nil
 		}
@@ -320,16 +327,16 @@ enum TwoFactorText {
 	/// For example "The FinTS server of “Musterbank” needs a confirmation to allow the download of transactions."
 	static func reason(_ request: SecondFactorRequest, bank: String) -> String {
 		let system = switch request.system {
-		case .fintsServer: "The FinTS server"
-		case .website: "The website"
-		case .apiServer: "The API server"
+		case .fintsServer: String(localized: "The FinTS server")
+		case .website: String(localized: "The website")
+		case .apiServer: String(localized: "The API server")
 		}
 		let purpose = switch request.purpose {
-		case .login: "to allow the login"
-		case .download: "to allow the download of transactions"
-		case let .order(description): "to send the order “\(description)”"
+		case .login: String(localized: "to allow the login")
+		case .download: String(localized: "to allow the download of transactions")
+		case let .order(description): String(localized: "to send the order “\(description)”")
 		}
-		return "\(system) of “\(bank)” needs a confirmation \(purpose)."
+		return String(localized: "\(system) of “\(bank)” needs a confirmation \(purpose).")
 	}
 }
 
@@ -349,10 +356,10 @@ private struct ChallengeImageView: View {
 	@Binding var enlarged: Bool
 
 	var body: some View {
-		if let picture = NSImage(data: image.data) {
+		if let picture = ChallengePicture.decode(image) {
 			let side: CGFloat = enlarged ? 400 : 220
 			VStack(spacing: 8) {
-				Image(nsImage: picture)
+				Image(decorative: picture, scale: 1)
 					.resizable()
 					.interpolation(.none)
 					.scaledToFit()
@@ -403,7 +410,7 @@ struct ChallengeProgressSheet: View {
 		DialogFrame(title: "Two-Factor Authentication") {
 			Section {
 				LabeledContent("Bank", value: requesting.access.bankName)
-				LabeledContent("User ID", value: requesting.access.loginName)
+				LabeledContent("User ID", value: requesting.access.shownLoginName)
 				Waiting(text: Self.text(requesting.progress))
 			}
 		} buttons: {
@@ -413,11 +420,11 @@ struct ChallengeProgressSheet: View {
 
 	static func text(_ progress: ChallengeProgress) -> String {
 		switch progress {
-		case .tanMedia: "Getting list of TAN media..."
-		case .challenge(.smsCode): "Requesting the SMS code..."
-		case .challenge(.pushNotification): "Requesting the push notification..."
-		case .challenge(.qrCode): "Requesting the QR code..."
-		case .challenge(.tan): "Requesting the challenge of the bank..."
+		case .tanMedia: String(localized: "Getting list of TAN media...")
+		case .challenge(.smsCode): String(localized: "Requesting the SMS code...")
+		case .challenge(.pushNotification): String(localized: "Requesting the push notification...")
+		case .challenge(.qrCode): String(localized: "Requesting the QR code...")
+		case .challenge(.tan): String(localized: "Requesting the challenge of the bank...")
 		}
 	}
 }

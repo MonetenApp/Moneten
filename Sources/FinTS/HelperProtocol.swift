@@ -63,7 +63,7 @@ enum HelperMessage: Decodable {
 		case let .result(_, .success(result)): failure = result.shownError?.failure
 		case let .ask(_, ask):
 			do {
-				_ = try ask.request()
+				_ = try ask.request(server: nil)
 				failure = nil
 			} catch {
 				failure = error as? SyncFailure
@@ -124,6 +124,8 @@ struct Ask: Decodable {
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
+	/// The longest TAN that the bank parameters announce for the method of a typed TAN.
+	let maxLength: Int?
 	/// The challenge comes while the refresh asks for the full history of an account, so the bank may ask
 	/// for it because of transactions older than 90 days.
 	let history: Bool?
@@ -153,21 +155,28 @@ struct Ask: Decodable {
 	}
 
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
-	/// the broker never answers it from memory and shows the sheet again. A code of a blocked access
-	/// stops the run, and the app never asks for its PIN again (task 1.24). A flicker code that does not
-	/// read fails the access, because the user cannot produce a TAN without it.
-	func request() throws -> UserRequest {
+	/// the broker never answers it from memory and shows the sheet again. A blocked access, or an app that
+	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
+	/// A login that ING accepts only after a login on its website stops the run too, because a new PIN does not help.
+	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
+	/// `server` is the FinTS address of the bank, whose rules some requests follow.
+	func request(server: URL?) throws -> UserRequest {
 		if kind == "pin" {
-			let rules = PINRules(minLength: rules?.minLength, maxLength: rules?.maxLength)
+			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
-			if case let .accessBlocked(message) = rejected.failure { throw SyncFailure.accessBlocked(message) }
+			switch rejected.failure {
+			case .accessBlocked, .appBlocked, .loginReplaced, .websiteLoginNeeded: throw rejected.failure
+			default: break
+			}
 			return .pin(PINRequest(rejected: rejected.message, rules: rules))
 		}
 		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
 		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
-		case "tanMedium": challenge = .chooseTANMedium(media ?? [])
+		case "tanMedium":
+			let media = media ?? []
+			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
 		case "tan":
 			if let flicker {
 				guard let code = FlickerCode(hex: flicker) else { throw SyncFailure.invalidChallenge }
@@ -175,20 +184,27 @@ struct Ask: Decodable {
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
 			}
+			// The Deutsche Bank group takes a typed TAN in capitals (#231).
+			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
+				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
+			return secondFactor(challenge, methods: offered, field: field)
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
 		return secondFactor(challenge, methods: offered)
 	}
 
-	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current, olderTransactions: history == true))
+			method: current, field: field, olderTransactions: history == true))
 	}
 }
 
 /// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
-/// "noTANMethod", or "approvalDeclined".
+/// "noTANMethod", "approvalDeclined", "appBlocked", "loginReplaced", or "websiteLogin". The helper sends "appBlocked" for the answer of a savings bank
+/// that the user blocked the app in its online banking, which it knows by the host of the bank and the text,
+/// "loginReplaced" for the answer of the Deutsche Bank group that a new login replaced the login of the access, and
+/// "websiteLogin" for the answer of ING that it accepts the login only after a login on its website.
 ///
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
 /// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
@@ -247,6 +263,9 @@ struct HelperError: Decodable, Equatable {
 		case ("invalidChallenge", _): .invalidChallenge
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
+		case ("appBlocked", _): .appBlocked(message)
+		case ("loginReplaced", _): .loginReplaced(message)
+		case ("websiteLogin", _): .websiteLoginNeeded(message)
 		case (_, "9078"): .notRegistered
 		case (_, "9931"): Self.reportsBlock(text) ? .accessBlocked(message) : .pinRejected(message)
 		case (_, "9942"), (_, "9340"): .pinRejected(message)
@@ -308,7 +327,7 @@ struct AccountResult: Decodable {
 
 	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(shownError?.failure ?? .bank(BankMessage(text: "The bank sent nothing for this account."))), [])
+			return (.failed(shownError?.failure ?? .bank(BankMessage(text: String(localized: "The bank sent nothing for this account.")))), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in
@@ -327,8 +346,10 @@ struct AccountResult: Decodable {
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
 
+	/// An amount above `Money.maxMinorUnits` fails the account, so that no sum of stored amounts can overflow.
+	/// The code of the currency is upper case, as the rest of the app and the fingerprint of a transaction expect it.
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.unreadable }
+		guard let money = Money(fitting: try decimal(amount), currency: currency.uppercased()) else { throw HelperFailure.tooLarge }
 		return money
 	}
 
@@ -381,15 +402,18 @@ extension AccountResult {
 		func holding(of account: AccountRequest) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
-			let exchangeRate = try rate.map { ExchangeRate(base: $0.base, quoted: $0.quoted, rate: try AccountResult.decimal($0.rate)) }
-			return Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
-				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency : nil,
+			let exchangeRate = try rate.map { ExchangeRate(base: $0.base.uppercased(), quoted: $0.quoted.uppercased(), rate: try AccountResult.decimal($0.rate)) }
+			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
+				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency?.uppercased() : nil,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
 				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
+			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
+			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }
+			return holding
 		}
 
 		private static func quote(_ a: Amount) throws -> Quote {
-			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency, day: try a.day.map(AccountResult.day))
+			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency?.uppercased(), day: try a.day.map(AccountResult.day))
 		}
 	}
 }
@@ -418,25 +442,29 @@ private struct AccountLine: Decodable {
 
 	var account: FinTSAccount {
 		FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
-			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency ?? "EUR")
+			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency?.uppercased() ?? "EUR")
 	}
 }
 
 /// Failures of the helper itself, as the app shows them.
 enum HelperFailure {
-	static let unreadable = SyncFailure.network("The FinTS helper sent a line that Moneten cannot read.")
-	static let noAnswer = SyncFailure.network("The FinTS helper ended without an answer.")
-	static let noProductID = SyncFailure.unsupported("This build of Moneten has no FinTS product ID, and banks accept only registered apps.")
-	static let insecure = SyncFailure.unsupported("The bank offers no encrypted FinTS address.")
-	static let noBookingDate = SyncFailure.unsupported("The bank sent a transaction without a booking date, so nothing of this account was stored.")
-	static let clash = SyncFailure.unsupported("Two accounts of this access are the same account at the bank.")
-	static let timeout = SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")
+	static let unreadable = SyncFailure.network(String(localized: "The FinTS helper sent a line that Moneten cannot read."))
+	static let noAnswer = SyncFailure.network(String(localized: "The FinTS helper ended without an answer."))
+	static let noProductID = SyncFailure.unsupported(String(localized: "This build of Moneten has no FinTS product ID, and banks accept only registered apps."))
+	static let insecure = SyncFailure.unsupported(String(localized: "The bank offers no encrypted FinTS address."))
+	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
+	static let tooLarge = SyncFailure.unsupported(String(localized: "The bank sent an amount that is too large, so nothing of this account was stored."))
+	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
+	static let damaged = SyncFailure.unsupported(String(localized: "The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy."))
+	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
+	static let lineTooLong = SyncFailure.network(String(localized: "The FinTS helper sent a message larger than \(HelperProcess.lineLimit >> 20) MiB, which Moneten does not read."))
 
 	static func stopped(_ status: Int32, signal: Bool) -> SyncFailure {
-		.network("The FinTS helper stopped unexpectedly (\(signal ? "signal" : "status") \(status)).")
+		.network(signal ? String(localized: "The FinTS helper stopped unexpectedly (signal \(status)).")
+			: String(localized: "The FinTS helper stopped unexpectedly (status \(status))."))
 	}
 
 	static func notStarted(_ error: Error) -> SyncFailure {
-		.network("The FinTS helper could not start: \(error.localizedDescription)")
+		.network(String(localized: "The FinTS helper could not start: \(error.localizedDescription)"))
 	}
 }
