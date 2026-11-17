@@ -410,7 +410,7 @@ The app SHALL keep all rows and mark them for review when more than one pending 
 
 ### Requirement: Pending transactions marked for review do not count
 
-The app SHALL leave each pending transaction that is marked for review out of every balance, chart, and sum, while the list still shows it with its mark. Every booked transaction counts, also one that is marked for review. The review of a pending transaction ends when the user deletes that row, when a refresh books it, or when a refresh no longer delivers it after the user checked it.
+The app SHALL leave each pending transaction that is marked for review out of every balance, chart, and sum, while the list still shows it with its mark. Every booked transaction counts, also one that is marked for review. The review of a pending transaction ends when the user deletes that row, when a refresh or an imported file books it, or when a refresh no longer delivers it after the user checked it.
 
 #### Scenario: Balance with two pending coffees and one booked
 

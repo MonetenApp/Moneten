@@ -710,24 +710,28 @@ struct ReconcileTests {
 		#expect(merge(refresh([fresh(booked)]), stored: [pending, booked]).dropped == [pending.id])
 	}
 
-	@Test("A booking clears the review of a pending row, whether the counterparty and the day or a source ID pair them")
+	@Test("A booking clears the review of a pending row, whether a refresh pairs it by its source ID or a file books it with or without one")
 	func bookingEndsReview() {
-		var coffee = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true))
-		coffee.review = .unclearBooking
-		let byFields = merge(refresh([row(14, -320, "Café Beispiel", "Kartenzahlung")]), stored: [coffee])
-		#expect(byFields.booked.map(\.id) == [coffee.id])
-		#expect(byFields.booked.map(\.bookingDate) == [day(14)])
-		#expect(byFields.booked.map(\.isPending) == [false])
-		#expect(byFields.booked.map(\.review) == [nil])
-		#expect(byFields.added == [])
+		func underReview(sourceID: String?) -> Transaction {
+			var t = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true, sourceID: sourceID))
+			t.review = .unclearBooking
+			return t
+		}
+		let byID = underReview(sourceID: "p-7")
+		let refreshed = merge(refresh([row(14, -320, "Café Beispiel", "Kartenzahlung", sourceID: "p-7")]), stored: [byID])
+		#expect(refreshed.booked.map(\.id) == [byID.id])
+		#expect(refreshed.booked.map(\.isPending) == [false])
+		#expect(refreshed.booked.map(\.review) == [nil])
+		#expect(refreshed.added == [])
 
-		var shop = stored(row(12, -320, "Café Beispiel", "Kartenzahlung", pending: true, sourceID: "p-7"))
-		shop.review = .unclearBooking
-		let byID = merge(refresh([row(14, -320, "Café Beispiel", "Kartenzahlung", sourceID: "p-7")]), stored: [shop])
-		#expect(byID.booked.map(\.id) == [shop.id])
-		#expect(byID.booked.map(\.isPending) == [false])
-		#expect(byID.booked.map(\.review) == [nil])
-		#expect(byID.added == [])
+		for sourceID in [nil, "p-8"] {
+			let pending = underReview(sourceID: sourceID)
+			let imported = merge(.file([row(14, -320, "Café Beispiel", "Kartenzahlung", sourceID: sourceID)]), stored: [pending])
+			#expect(imported.booked.map(\.id) == [pending.id])
+			#expect(imported.booked.map(\.isPending) == [false])
+			#expect(imported.booked.map(\.review) == [nil])
+			#expect(imported.added == [])
+		}
 	}
 
 	@Test("A refresh books the pending coffee under review after the user deleted the other one, and the booked coffee keeps its review")
