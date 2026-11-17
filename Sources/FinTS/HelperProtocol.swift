@@ -184,12 +184,13 @@ struct Ask: Decodable {
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return secondFactor(challenge, methods: offered)
+		return secondFactor(challenge, methods: offered, field: TANField(isUppercase: FinTSServer.isDeutscheBankGroup(server)))
 	}
 
-	private func secondFactor(_ challenge: Challenge, methods: [TANMethod]) -> UserRequest {
+	/// `field` is the TAN field of a typed TAN. The Deutsche Bank group takes a TAN in capitals (#231).
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current, olderTransactions: history == true))
+			method: current, field: field, olderTransactions: history == true))
 	}
 }
 

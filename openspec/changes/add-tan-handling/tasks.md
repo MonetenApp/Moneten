@@ -33,6 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.27 Cancel the dialog. Verified by SyncCoordinatorTests "Canceling the dialog stops only its access".
 - [ ] 1.28 No dialog when no TAN is needed. Built by hbci4java, which asks only when the bank sends a challenge. Check with a real bank.
 - [x] 1.29 Checked challenge images. Verified by ChallengeImageTests, which accept a PNG and a JPEG and reject a TIFF, a HEIC, a GIF, a file over 1 MB, and a PNG that states 50000 by 50000 pixels, ChallengePictureTests, which decode only the checked type, and the debug app check of the `SyncDemo` request "badphototan" (#325).
+- [x] 1.30 Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals (#231). The connector gives a request of these hosts a TAN field that turns letters into capitals, and every other bank keeps the TAN as typed. Verified by DeutscheBankGroupTests "A typed TAN of the three banks goes in capitals...". Bank test #11 records which methods of these banks send a TAN with letters.
 
 ## 2. Build
 

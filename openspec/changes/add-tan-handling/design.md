@@ -28,6 +28,10 @@ After the user chooses a method or a medium, `SessionBroker` keeps the dialog of
 
 hbci4java leaves out the flicker code when the challenge data of the bank does not read. The helper keeps the challenge data that hbci4java removes before its callback. When a TAN request has challenge data but no flicker code, the helper fails the access with "The bank responded with an invalid challenge.", and so does the connector for a flicker code that does not read. `SyncFailure.invalidChallenge` carries it.
 
+### TAN in capitals
+
+Deutsche Bank, Postbank, and norisbank take a TAN with letters only in capitals. The connector gives the request of these hosts, `FinTSServer.isDeutscheBankGroup`, a `TANField` with `isUppercase`, so the field turns letters into capitals as the user types, as it does for an extension that asks for it. A numeric TAN is unchanged by it. Which methods of these banks send a TAN with letters is not recorded yet, so the bank test of issue #11 checks it.
+
 ## Deviations from the spec
 
 - The progress texts after a choice come from the bank parameters and from the names of the method. A method whose names say nothing shows "Requesting the challenge of the bank...".

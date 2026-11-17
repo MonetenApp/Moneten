@@ -3916,6 +3916,28 @@
         }
       }
     },
+    "Deutsche Bank expects the Deutsche Bank ID. Unless you chose an ID of your own, it is your branch and account number without the subaccount number." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Deutsche Bank erwartet die Deutsche Bank ID. Wenn Sie keine eigene ID gewählt haben, ist das Ihre Filial- und Kontonummer ohne die Unterkontonummer."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Deutsche Bank ID" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deutsche Bank ID"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Development build" : {
       "localizations" : {
         "de" : {
@@ -4758,6 +4780,17 @@
         }
       }
     },
+    "Guide of Postbank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anleitung der Postbank"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Hairdresser" : {
       "localizations" : {
         "de" : {
@@ -4825,6 +4858,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfeseite der Consorsbank"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Help page of Deutsche Bank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Deutschen Bank"
           }
         }
       },
@@ -7330,6 +7374,28 @@
           }
         }
       }
+    },
+    "Postbank expects the Postbank ID. For a business profile, enter the Postbank ID followed by # and the profile name, in the form Postbank-⁠ID#Profil." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Postbank erwartet die Postbank ID. Für ein Geschäftskundenprofil geben Sie die Postbank ID, ein # und den Profilnamen ein, in der Form Postbank-⁠ID#Profil."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Postbank ID" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Postbank ID"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Preview" : {
       "localizations" : {

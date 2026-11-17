@@ -37,6 +37,8 @@
 # 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
 # The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
 # shows the hint of the cooperative banks and sends a VR-Kennung in capitals.
+# Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
+# shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
@@ -66,6 +68,9 @@ case "$cmd" in
 '{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
 '{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
 '{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
+'{"code":"37070060","name":"Deutsche Bank","city":"Köln","bic":"DEUTDEDKXXX","url":"https://fints.deutsche-bank.de/"},'\
+'{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
+'{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
 	;;
