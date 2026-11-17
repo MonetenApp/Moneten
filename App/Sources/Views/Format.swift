@@ -57,15 +57,21 @@ extension Format {
 		return date.formatted(date: .abbreviated, time: .shortened)
 	}
 
+	/// The month and year of a day, read from noon GMT as `day` reads it.
 	static func monthTitle(_ d: Day) -> String {
-		d.date().formatted(.dateTime.month(.wide).year())
+		var style = Date.FormatStyle.dateTime.month(.wide).year()
+		style.calendar = Day.calendar(like: .current)
+		style.timeZone = style.calendar.timeZone
+		return d.noon.formatted(style)
 	}
 
-	/// A month on a chart, as MoneyMoney writes it: "Oct 26".
-	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.date()) }
+	/// A month on a chart, as MoneyMoney writes it: "Oct 26". Read from noon GMT as `day` reads it.
+	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.noon) }
 
 	private static let shortMonthFormatter: DateFormatter = {
 		let f = DateFormatter()
+		f.calendar = Day.calendar(like: .current)
+		f.timeZone = f.calendar.timeZone
 		f.setLocalizedDateFormatFromTemplate("MMMyy")
 		return f
 	}()

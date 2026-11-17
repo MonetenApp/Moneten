@@ -146,17 +146,27 @@ public struct MoneyMoneyMigration: Sendable {
 		let stored = Dictionary(grouping: ledger.transactions, by: \.accountID)
 		let tombstones = Dictionary(grouping: deleted, by: \.accountID)
 		let rules = Categorizer(ledger: ledger)
-		var added: [UUID: ReviewReason?] = [:]
-		var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
-		for account in ledger.accounts + plan.accounts {
-			guard let rows = delivered[account.id] else { continue }
-			let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
-				rules: rules, now: Date())
-			for t in r.added { added.updateValue(t.review, forKey: t.id) }
-			plan.updatedTransactions += r.booked + r.updated + r.marked
-			plan.skippedTransactions += r.skipped
-			relinked[account.id] = r.relinked
+		// One pass of the rules over all accounts, so a rule that stops in a later account matches none in an earlier one.
+		let merged = rules.allOrNothing {
+			var added: [UUID: ReviewReason?] = [:]
+			var relinked: [UUID: [DeletedTransaction.Relink]] = [:]
+			var updated: [Transaction] = []
+			var skipped = 0
+			for account in ledger.accounts + plan.accounts {
+				guard let rows = delivered[account.id] else { continue }
+				let r = reconcile(.migration(rows), into: account, stored: stored[account.id] ?? [], deleted: tombstones[account.id] ?? [],
+					rules: rules, now: Date())
+				for t in r.added { added.updateValue(t.review, forKey: t.id) }
+				updated += r.booked + r.updated + r.marked
+				skipped += r.skipped
+				relinked[account.id] = r.relinked
+			}
+			return (added: added, relinked: relinked, updated: updated, skipped: skipped)
 		}
+		let added = merged.added
+		let relinked = merged.relinked
+		plan.updatedTransactions += merged.updated
+		plan.skippedTransactions += merged.skipped
 		for var t in rows {
 			guard let review = added[t.id] else { continue }
 			t.review = review
@@ -536,7 +546,7 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	static func isIBAN(_ value: String) -> Bool {
-		let s = value.replacingOccurrences(of: " ", with: "").uppercased()
+		let s = TextFolding.accountKey(value)
 		guard s.count >= 15, s.count <= 34, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
 			s.prefix(2).allSatisfy(\.isLetter), s.dropFirst(2).prefix(2).allSatisfy(\.isNumber) else { return false }
 		var remainder = 0

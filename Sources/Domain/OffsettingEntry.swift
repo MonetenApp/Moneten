@@ -37,7 +37,7 @@ extension Ledger {
 	public func offsettingEntries(of rows: [Transaction], into target: Account, now: Date = Date()) throws -> [Transaction] {
 		guard rows.allSatisfy({ $0.amountMinor != .min }) else { throw OffsettingEntryFailure.noOppositeAmount }
 		let rules = Categorizer(ledger: self)
-		return rows.map { source in
+		return rules.allOrNothing { rows.map { source in
 			let from = account(source.accountID)
 			let kept = source.categoryID.flatMap { id -> UUID? in
 				guard let c = category(id), allowedAccounts(of: c)?.contains(target.id) ?? true else { return nil }
@@ -49,6 +49,6 @@ extension Ledger {
 				categorizedBy: kept == nil ? .none : .manual, createdAt: now, isManual: true)
 			rules.categorize(&entry)
 			return entry
-		}
+		} }
 	}
 }
