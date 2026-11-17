@@ -419,15 +419,11 @@ struct TransactionSheet: View {
 					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
 				}
 			}
-			if let t = existing {
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
-					Section("Details") {
-						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
-						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
-						if let text = t.bookingText { LabeledContent("Transaction type", value: text) }
-						if let e = t.endToEndReference { LabeledContent("End-to-end reference") { Text(e).textSelection(.enabled) } }
-						if let m = t.mandateReference { LabeledContent("Mandate reference") { Text(m).textSelection(.enabled) } }
-						if let c = t.creditorID { LabeledContent("Creditor ID") { Text(c).textSelection(.enabled) } }
+			// The details from the bank, in the order of the help tag of the row. The value date is a field above.
+			if let details = existing?.details.filter({ if case .valueDate = $0 { false } else { true } }), !details.isEmpty {
+				Section("Details") {
+					ForEach(details, id: \.self) { d in
+						LabeledContent(d.label) { Text(d.shownValue).textSelection(.enabled) }
 					}
 				}
 			}

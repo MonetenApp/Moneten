@@ -32,6 +32,10 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// Deutsche Bank, Postbank, or norisbank answered that a new login replaced the login of the access (#231). Only
 	/// "Edit Login Data..." with the new login resolves it. The PIN may still be right, so the app keeps it.
 	case loginReplaced(BankMessage)
+	/// ING refuses the FinTS login until the user logged in to its website, which it asks for at least every 90 days.
+	/// The PIN is right, so it stays, and no PIN sheet opens. The automatic refresh goes on, so the access works again
+	/// by itself once ING lets it log in.
+	case websiteLoginNeeded(BankMessage)
 	/// The bank did not accept the TAN that the user typed.
 	case tanRejected(BankMessage)
 	/// The user declined the approval in the app of the bank, or did not answer there in time.
@@ -93,6 +97,11 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		}
 	}
 
+	/// ING refused the login until a login on its website, which the automatic refresh counts (`Ledger.recorded`).
+	public var isWebsiteLoginNeeded: Bool {
+		if case .websiteLoginNeeded = self { true } else { false }
+	}
+
 	/// No answer in a dialog resolves the failure: the bank blocked the access, or the user has no TAN
 	/// method. So a command after an automatic refresh that failed with it does not run again with dialogs.
 	public var dialogResolves: Bool {
@@ -106,7 +115,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {
-		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .loginReplaced(m), let .tanRejected(m), let .bank(m): m
+		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .loginReplaced(m), let .websiteLoginNeeded(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m), let .noTANMethod(m): m
 		case let .noTANMethodOfBank(m, _): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
@@ -143,6 +152,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			String(localized: "Moneten is blocked in the online banking of the Sparkasse: \(m.text)\nUnblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account.")
 		case let .loginReplaced(m):
 			String(localized: "The bank no longer accepts this login: \(m.text)\nChoose “Edit Login Data...” and enter the new login that the bank gave you.")
+		case let .websiteLoginNeeded(m):
+			String(localized: "ING asks for a login on its website first: \(m.text)\nLog in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again.")
 		case let .tanRejected(m):
 			String(localized: "The bank did not accept the entered TAN: \(m.text)")
 		case let .approvalDeclined(m):
