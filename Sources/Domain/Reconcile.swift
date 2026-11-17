@@ -128,14 +128,16 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let fetched = delivery.isFetched
 	let honored = deleted.filter(delivery.honors)
 	let today = Day(now)
-	let partners = partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+	// A source that moves bookings pairs on a fixed order of the rows, so that no order decides a move (`MovedBookings`).
+	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
 	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
-	let moved = MovedBookings(delivery, rows: rows, fresh: fresh.filter { bookings.ofBooked[$0] == nil }, stored: stored, taken: taken)
+	let moved = MovedBookings(delivery, rows: rows, stored: stored, partners: partners, fresh: Set(fresh.filter { bookings.ofBooked[$0] == nil }))
 	// An edited row counts by the day of its source, as the pairing and the drop below read it.
 	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceBookingDate >= today && stored[$0].review == nil })
 

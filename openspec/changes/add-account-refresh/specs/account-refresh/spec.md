@@ -304,7 +304,7 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 
 ### Requirement: Keep a moved card booking as one transaction
 
-The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction that has the same amount and counterparty, lies at most seven days before or after it, and fits no other transaction, when the delivered booked transactions span the day of the stored one but no longer include it. The stored transaction keeps its user fields and its split, and takes the date and the texts of the delivered one.
+The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction of the same amount and counterparty at most seven days before or after it, when no other transaction fits either of the two, directly or through a third one, and the delivered booked transactions span the day of the stored one but no longer include it. The stored transaction keeps its user fields and its split, and takes the date and the texts of the delivered one.
 
 #### Scenario: Booking moved to a later day
 
@@ -359,6 +359,24 @@ The app SHALL update a stored booked transaction of a DKB credit card with a del
 - **GIVEN** "Visa" has two booked transactions of -3,20 € to "Café Beispiel" on 8 March 2024, one with the comment "with Max" and one with the comment "with Erika"
 - **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -3,20 € to "Café Beispiel" on 8 March 2024 and on 10 March 2024
 - **THEN** "Visa" shows both transactions of 8 March 2024 with their comments, and a new transaction on 10 March 2024
+
+#### Scenario: Bookings with other names on one day
+
+- **GIVEN** "Visa" has two booked transactions of -3,20 € with the purpose "Kartenzahlung" on 8 March 2024, one to "Café Beispiel" and one to "Kino Beispiel", and one of -3,20 € to "Café Beispiel" on 9 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -3,20 € to "Café Beispiel" with the purpose "Kartenzahlung" on 8 March 2024 and on 10 March 2024
+- **THEN** "Visa" shows the three stored transactions on their days and a new transaction on 10 March 2024
+
+#### Scenario: Two delivered bookings with references
+
+- **GIVEN** "Visa" has a booked transaction of -3,20 € to "Café Beispiel" on 8 March 2024 without a reference, and one on 9 March 2024 with the end-to-end reference "A"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them two of -3,20 € to "Café Beispiel" on 8 March 2024, with the end-to-end references "A" and "B"
+- **THEN** "Visa" shows the two stored transactions on their days and a new transaction on 8 March 2024 with the reference "B"
+
+#### Scenario: Any order of the transactions
+
+- **GIVEN** the stored transactions and the refresh of any scenario of this requirement
+- **WHEN** the app holds the stored transactions in another order, or the bank delivers the transactions in another order
+- **THEN** "Visa" shows the same transactions with the same fields
 
 #### Scenario: Different references
 

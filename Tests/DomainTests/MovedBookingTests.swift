@@ -156,6 +156,113 @@ struct MovedBookingTests {
 		#expect(r.added.map(\.bookingDate) == [day(10)])
 	}
 
+	/// Every order of `items`.
+	func permutations<T>(_ items: [T]) -> [[T]] {
+		guard !items.isEmpty else { return [[]] }
+		var result: [[T]] = []
+		for i in items.indices {
+			var rest = items
+			let first = rest.remove(at: i)
+			for tail in permutations(rest) { result.append([first] + tail) }
+		}
+		return result
+	}
+
+	/// What a merge leaves in the history: each row with its fields, a stored row by its ID and a new row as "new", in a
+	/// fixed order, and the counts of the merge.
+	func outcome(_ delivered: [Transaction], stored: [Transaction], split: Set<UUID> = []) -> [String] {
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: delivered, from: day(5), maxBookingShift: 7)))
+		let r = reconcile(delivery, into: card, stored: stored, deleted: [], split: split, rules: Categorizer(ledger: Ledger(accounts: [card])), now: now)
+		let ids = Set(stored.map(\.id))
+		let rows = history(stored, after: r).map { t in
+			[ids.contains(t.id) ? t.id.uuidString : "new", t.bookingDate.description, String(t.amountMinor), t.name, t.purpose, t.endToEndReference ?? "-",
+				t.comment ?? "-", String(t.isPending)].joined(separator: "|")
+		}
+		return rows.sorted() + ["added \(r.added.count)", "updated \(r.updated.count)", "booked \(r.booked.count)", "skipped \(r.skipped)"]
+	}
+
+	@Test("Every order of the stored and of the delivered rows gives the same history", arguments: 0..<6)
+	func everyOrder(fixture: Int) {
+		func cafe(_ d: Int, _ name: String = "Café Beispiel", purpose: String = "Café Beispiel / Musterstadt", reference: String? = nil) -> Transaction {
+			var t = row(d, -320, name, purpose: purpose)
+			t.endToEndReference = reference
+			return t
+		}
+		let anchors = anchors(from: 5)
+		var old: [Transaction]
+		var delivered: [Transaction]
+		switch fixture {
+		case 0:
+			// Two stored rows on one day with the same purpose but other names, and a third that fits.
+			old = [stored(cafe(8)), stored(cafe(8, "Kino Beispiel")), stored(cafe(9, purpose: "Café Beispiel / Hauptbahnhof"))]
+			delivered = [cafe(8), cafe(10)]
+		case 1:
+			// Two delivered rows on one day with the references A and B, and a stored row with A a day later.
+			old = [stored(cafe(8)), stored(cafe(9, reference: "A"))]
+			delivered = [cafe(8, reference: "A"), cafe(8, reference: "B")]
+		case 2:
+			// Two equal stored rows with comments, one delivered again and one moved.
+			var max = stored(cafe(8))
+			max.comment = "with Max"
+			var erika = stored(cafe(8))
+			erika.comment = "with Erika"
+			old = [max, erika]
+			delivered = [cafe(8), cafe(10)]
+		case 3:
+			// Two equal stored rows and a third that fits the one delivered row.
+			old = [stored(cafe(8)), stored(cafe(8)), stored(cafe(9, purpose: "Café Beispiel / Hauptbahnhof"))]
+			delivered = [cafe(10)]
+		case 4:
+			// One moved row, one still delivered, and one new on the same day as a moved one.
+			var streaming = stored(row(8))
+			streaming.comment = "Family plan"
+			old = [streaming, stored(cafe(12))]
+			delivered = [row(10), cafe(12), cafe(14, "Kino Beispiel")]
+		default:
+			// A stored row outside the delivered days, and a moved one inside them.
+			old = [stored(cafe(6)), stored(row(9))]
+			delivered = [cafe(9), row(11)]
+		}
+		old += anchors.map(stored)
+		delivered += anchors
+		let expected = outcome(delivered, stored: old)
+		for storedOrder in permutations(old) {
+			for deliveredOrder in permutations(delivered) {
+				let actual = outcome(deliveredOrder, stored: storedOrder)
+				#expect(actual == expected)
+				if actual != expected { return }
+			}
+		}
+	}
+
+	@Test("Stored bookings with other names on one day, and a third that fits, move none of them")
+	func otherNamesOnOneDay() {
+		let cafe = stored(row(8, -320, "Café Beispiel", purpose: "Kartenzahlung"))
+		let cinema = stored(row(8, -320, "Kino Beispiel", purpose: "Kartenzahlung"))
+		let ninth = stored(row(9, -320, "Café Beispiel", purpose: "Kartenzahlung"))
+		let r = merge([row(8, -320, "Café Beispiel", purpose: "Kartenzahlung"), row(10, -320, "Café Beispiel", purpose: "Kartenzahlung")],
+			stored: [cafe, cinema, ninth])
+		#expect(r.updated == [])
+		#expect(r.added.map(\.bookingDate) == [day(10)])
+	}
+
+	@Test("Two delivered bookings with references A and B pair the stored booking with A, and add B")
+	func deliveredReferences() {
+		let plain = stored(row(8, -320, "Café Beispiel"))
+		var referenced = stored(row(9, -320, "Café Beispiel"))
+		referenced.endToEndReference = "A"
+		var a = row(8, -320, "Café Beispiel")
+		a.endToEndReference = "A"
+		var b = row(8, -320, "Café Beispiel")
+		b.endToEndReference = "B"
+		for delivered in [[a, b], [b, a]] {
+			let r = merge(delivered, stored: [plain, referenced])
+			#expect(r.updated == [])
+			#expect(r.added.map(\.endToEndReference) == ["B"])
+			#expect(r.added.map(\.bookingDate) == [day(8)])
+		}
+	}
+
 	@Test("A moved split original keeps its category and its split, whatever the rules say about the new texts")
 	func splitOriginal() {
 		let groceries = Domain.Category(position: 0, name: "Groceries")

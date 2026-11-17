@@ -233,9 +233,11 @@ struct PerformanceTests {
 		var result = Reconciliation()
 		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
 		#expect(result.skipped == 310 && result.updated.count == 300 && result.added.isEmpty)
-		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(40))), updated=\(result.updated.count)")
+		// About twice the time on a Mac (23 to 31 ms in release while other builds ran), because a runner of GitHub took 63 ms
+		// where a Mac took 20 ms. Most of it is the pairing that every refresh of 50,000 rows runs (13 ms without a window).
+		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(60))), updated=\(result.updated.count)")
 		#if !DEBUG
-		#expect(elapsed < budget(.milliseconds(40)))
+		#expect(elapsed < budget(.milliseconds(60)))
 		#endif
 	}
 
