@@ -196,6 +196,7 @@ struct Ask: Decodable {
 /// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
 /// "noTANMethod", "approvalDeclined", or "appBlocked". The helper sends "appBlocked" for the answer of a savings bank
 /// that the user blocked the app in its online banking, which it knows by the host of the bank and the text.
+/// "noJobs" marks an account that allows no job that the helper knows, so that `DKB` can name a card in its error.
 ///
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
 /// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
@@ -251,6 +252,7 @@ struct HelperError: Decodable, Equatable {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
+		case ("noJobs", _): .unsupported(text)
 		case ("invalidChallenge", _): .invalidChallenge
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)

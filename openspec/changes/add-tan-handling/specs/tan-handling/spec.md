@@ -96,6 +96,13 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 - **THEN** the app says that there are no available TAN methods and names both steps
 - **AND** the account shows this text as its error
 
+#### Scenario: DKB
+
+- **GIVEN** a new access to DKB, with the Bankleitzahl 12030000 or a FinTS address on a host that ends in ".dkb.de"
+- **WHEN** the bank reports no TAN method for the login
+- **THEN** the setup says that there are no available TAN methods
+- **AND** it says to set up the DKB app as the approval method on the website of DKB first, and then to choose "Edit Login Data..."
+
 #### Scenario: Only the one-step method allowed
 
 - **GIVEN** the bank allows the user only the one-step method 999

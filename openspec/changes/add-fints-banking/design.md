@@ -102,6 +102,16 @@ apoBank asks for the TAN medium of apoTAN and lists none. For that server the co
 
 The accounts of the partners, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, are not in the user parameters that hbci4java reads. The servers of Atruvia deliver them through jobs of their own, which hbci4java does not define, so the helper cannot send or read them yet. The bank test of issue #11 records, for one login with a partner account, which jobs the bank parameters list, which jobs each account allows, and the answer of the bank. Requirement "Accounts of the partners of a cooperative bank" is built from that record.
 
+### DKB
+
+`Sources/FinTS/DKB.swift` holds the rules of DKB. A DKB access has the Bankleitzahl 12030000 or a FinTS address on a host that ends in ".dkb.de", in lower case and without one trailing dot. A DKB card has its 16 digit card number as its account number, which is the ID that the connector asks the helper for, because a card has no IBAN.
+
+The helper sends an account that allows no job that it knows, and that is no securities account, with the kind `noJobs` in place of `unsupported`, and the text of today. The connector maps the kind to `SyncFailure.unsupported` with that text, except for a DKB card: its error names the card number, DKB, and the DKB support, so that the user can quote it there. A card of DKB may list another card job of DKB that hbci4java does not define. The bank test of issue #11 records which jobs the account data of a DKB card list.
+
+DKB asks for an approval in the DKB app at every login and every download (`docs/research/bank-access.md`). When DKB reports no TAN method for the login, the connector turns `SyncFailure.noTANMethod` into `SyncFailure.noTANMethodOfBank`, whose next step names the DKB app and "Edit Login Data...". The mapping is the last step of every run of the helper, so the setup and a refresh show the same text.
+
+"Refresh after a payment" in add-account-refresh is not built yet (#28, #29, v0.2). DKB carries out a transfer later, so a refresh right after it would ask for one more approval in the DKB app without showing the transfer. Whether the app skips that refresh at DKB is decided with the payments, in issue #232.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).

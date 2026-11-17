@@ -42,6 +42,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The bank allows the user no TAN method for its FinTS server, so no login can succeed until the user
 	/// sets one up on the website of the bank. The message is the answer of the bank that showed it.
 	case noTANMethod(BankMessage?)
+	/// Like `noTANMethod`, at a bank whose method to set up the app knows, such as DKB. `nextStep` names that method
+	/// and "Edit Login Data...", in place of the general next step.
+	case noTANMethodOfBank(BankMessage?, nextStep: String)
 	/// The account was not fetched, because an earlier request of the same session failed.
 	case notFetched
 	/// Any other answer of the bank.
@@ -69,6 +72,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	public var waitsForUser: Bool {
 		switch self {
 		case .needsUser, .pinRejected, .loginRejected, .accessBlocked, .appBlocked, .noTANMethod: true
+		case .noTANMethodOfBank: true
 		default: false
 		}
 	}
@@ -91,6 +95,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	public var dialogResolves: Bool {
 		switch self {
 		case .accessBlocked, .appBlocked, .noTANMethod: false
+		case .noTANMethodOfBank: false
 		default: waitsForUser
 		}
 	}
@@ -100,6 +105,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		switch self {
 		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m), let .noTANMethod(m): m
+		case let .noTANMethodOfBank(m, _): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
 	}
@@ -145,6 +151,9 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		case let .noTANMethod(m):
 			(m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods."))
 				+ "\n" + String(localized: "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
+		case let .noTANMethodOfBank(m, nextStep):
+			(m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods."))
+				+ "\n" + nextStep
 		case .notFetched:
 			String(localized: "Canceled because of the previous error.")
 		case let .bank(m):
