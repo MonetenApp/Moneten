@@ -342,28 +342,48 @@ public enum AccountRefresh: Sendable, Equatable {
 }
 
 extension Ledger {
-	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them. A failure
-	/// because ING waits for a login on its website counts the automatic refreshes in a row that ended with it, over all
-	/// accounts of the access, because each of them logs in with the same PIN. A refresh by hand starts the count again,
-	/// and a success or another failure ends it. At `RefreshError.lockedLoginLimit` the error waits for the user, so the
-	/// automatic refresh pauses for the access until a refresh by hand.
+	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them, and the
+	/// other accounts of the access whose lock of ING the refresh changed. A failure because ING waits for a login on
+	/// its website counts the automatic refreshes in a row that ended with it. The count belongs to the access, because
+	/// each of its accounts logs in with the same PIN, so every account of the access with that error takes it. A
+	/// refresh by hand starts the count again, and a success or another failure of the same refresh ends it. At
+	/// `RefreshError.lockedLoginLimit` the errors wait for the user, so the automatic refresh pauses for the access until
+	/// a refresh by hand.
 	public func recorded(_ results: [UUID: AccountRefresh], of access: UUID, attended: Bool) -> [Account] {
-		let before = accounts.filter { $0.accessID == access }.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
-		return results.compactMap { id, result in
-			guard var account = account(id) else { return nil }
-			guard case var .failed(error) = result, error.lockedLogins != nil else {
+		let members = accounts.filter { $0.accessID == access }
+		let locked = results.values.contains { if case let .failed(error) = $0 { error.lockedLogins != nil } else { false } }
+		let before = members.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
+		let count = locked && !attended ? before + 1 : 0
+		var changed: [Account] = []
+		for var account in members {
+			if let result = results[account.id] {
 				account.record(result)
-				return account
+			} else if account.refreshError?.lockedLogins == nil || results.isEmpty {
+				continue
 			}
-			let count = attended ? 0 : before + 1
-			error.lockedLogins = count
-			if count >= RefreshError.lockedLoginLimit {
-				error.waitsForUser = true
-				error.message += "\n" + String(localized: "The automatic refresh paused after \(RefreshError.lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
+			if var error = account.refreshError, error.lockedLogins != nil {
+				error.counting(count)
+				account.refreshError = error
 			}
-			account.record(.failed(error))
-			return account
+			changed.append(account)
 		}
+		return changed
+	}
+}
+
+extension RefreshError {
+	/// The sentence that the account adds while the automatic refresh pauses for the lock of ING.
+	static var lockedLoginPause: String {
+		String(localized: "The automatic refresh paused after \(lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
+	}
+
+	/// Takes the count of locked logins of the access, and pauses the automatic refresh at the limit.
+	mutating func counting(_ count: Int) {
+		let pause = "\n" + Self.lockedLoginPause
+		if message.hasSuffix(pause) { message.removeLast(pause.count) }
+		lockedLogins = count
+		waitsForUser = count >= Self.lockedLoginLimit
+		if waitsForUser { message += pause }
 	}
 }
 

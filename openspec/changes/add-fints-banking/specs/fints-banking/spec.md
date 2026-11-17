@@ -785,7 +785,7 @@ The app SHALL pause the automatic refresh of an ING access after 3 automatic ref
 - **GIVEN** an ING access with the saved PIN and the automatic refresh every two hours, and the last 2 automatic refreshes ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
 - **WHEN** the next automatic refresh ends with the same answer
 - **THEN** "Giro" shows the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 3 attempts. After the login on the website, refresh the account by hand."
-- **AND** the automatic refresh skips the access until the user starts a refresh
+- **AND** the automatic refresh skips every account of the access, also the card "Visa" that is due once a day, until the user starts a refresh
 - **AND** the PIN stays saved
 
 #### Scenario: Refresh by hand during the pause

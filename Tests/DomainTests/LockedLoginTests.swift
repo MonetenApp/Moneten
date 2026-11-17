@@ -85,19 +85,36 @@ struct LockedLoginTests {
 		#expect(Self.due(ledger, at: 12) == ["Giro"])
 	}
 
-	@Test("The count belongs to the access: an account that joins a later refresh pauses with the others")
+	@Test("The count and the pause belong to the access: an account that was not refreshed pauses with the others")
 	func countPerAccess() {
 		var card = Self.account("Card")
 		card.refreshInterval = .onceADay
 		var ledger = Ledger(accounts: [Self.account("Giro"), card])
 		ledger = Self.refresh(ledger, .failed(Self.locked), at: 2)
 		ledger = Self.refresh(ledger, .failed(Self.locked), at: 4, only: ["Giro"])
+		#expect(ledger.accounts.map { $0.refreshError?.lockedLogins } == [2, 2])
 		ledger = Self.refresh(ledger, .failed(Self.locked), at: 6, only: ["Giro"])
-		#expect(ledger.accounts.map { $0.refreshError?.waitsForUser } == [true, false])
-		#expect(Self.due(ledger, at: 26) == ["Card"])
-		ledger = Self.refresh(ledger, .failed(Self.locked), at: 26, only: ["Card"])
 		#expect(ledger.accounts.map { $0.refreshError?.waitsForUser } == [true, true])
+		#expect(ledger.accounts.map { $0.refreshError?.message } == [Self.locked.message + "\n" + Self.pause, Self.locked.message + "\n" + Self.pause])
 		#expect(Self.due(ledger, at: 100).isEmpty)
+	}
+
+	@Test("A refresh by hand or a success of one account frees every account of the access")
+	func resetPerAccess() {
+		var ledger = Ledger(accounts: [Self.account("Giro"), Self.account("Card")])
+		for hour in [2.0, 4, 6] { ledger = Self.refresh(ledger, .failed(Self.locked), at: hour) }
+		ledger = Self.refresh(ledger, .failed(Self.locked), at: 7, attended: true, only: ["Giro"])
+		#expect(ledger.accounts.map { $0.refreshError?.waitsForUser } == [false, false])
+		#expect(ledger.accounts.map { $0.refreshError?.message } == [Self.locked.message, Self.locked.message])
+		#expect(Self.due(ledger, at: 9) == ["Giro", "Card"])
+
+		for hour in [9.0, 11, 13] { ledger = Self.refresh(ledger, .failed(Self.locked), at: hour) }
+		let card = ledger.accounts[1].id
+		ledger = Self.refresh(ledger, .finished(SyncSummary(finishedAt: Self.hours(14), fetched: [card], failures: [:])), at: 14, attended: true, only: ["Card"])
+		#expect(ledger.accounts[1].refreshError == nil)
+		#expect(ledger.accounts[0].refreshError?.waitsForUser == false)
+		#expect(ledger.accounts[0].refreshError?.lockedLogins == 0)
+		#expect(Self.due(ledger, at: 100) == ["Giro", "Card"])
 	}
 
 	@Test("A refresh error stored before the count existed reads without it")
