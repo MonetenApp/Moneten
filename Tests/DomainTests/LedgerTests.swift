@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TestSupport
 @testable import Domain
 
 @Suite("Search and filters")
@@ -286,12 +287,12 @@ struct LedgerTests {
 		filter.searchText = "purpose:/^(a+)+$/"
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let result = ledger.rows(in: .account(account.id), filter: filter)
-		let milliseconds = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
-		print("100 slow rows: \(milliseconds) ms searching-thread processor time, \(result.rows.count) rows, gaveUp=\(result.gaveUp)")
+		let elapsed = Duration.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start)
+		print("100 slow rows: \(elapsed) searching-thread processor time, \(result.rows.count) rows, gaveUp=\(result.gaveUp)")
 		#expect(result.rows.map(\.name) == [])
 		#expect(result.gaveUp == true)
-		#expect(milliseconds >= 300)
-		#expect(milliseconds < 400)
+		#expect(elapsed >= .milliseconds(300))
+		#expect(elapsed < budget(.milliseconds(400)))
 	}
 
 	@Test("Two word boundaries at the end of a value match the rows that the rule matches")

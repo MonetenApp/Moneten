@@ -58,7 +58,7 @@ struct HelperProcessTests {
 		// their start. A loaded runner of CI ran it only after 32 seconds, so the bound holds a margin.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
-		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + loadMargin)
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + loadMargin) // time-ok: loadMargin holds 60 s
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}
@@ -69,7 +69,7 @@ struct HelperProcessTests {
 			(try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? Double
 		}
 		#expect(times.count == runs.count)
-		#expect(times.allSatisfy { $0 - started.timeIntervalSince1970 < 30 })
+		#expect(times.allSatisfy { $0 - started.timeIntervalSince1970 < 30 }) // time-ok: about 11 s by the clock of the helpers, against their 600 s
 	}
 
 	@Test("A timeout terminates a helper on time also while more blocks than the Mac has cores keep the global queue busy")
@@ -96,7 +96,7 @@ struct HelperProcessTests {
 		let line = try #require(try? String(contentsOf: record, encoding: .utf8))
 		let at = try #require((try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])?["at"] as? Double)
 		// About 2 seconds: 1 of silence and 1 of grace.
-		#expect(at - started.timeIntervalSince1970 < 10)
+		#expect(at - started.timeIntervalSince1970 < 10) // time-ok: about 2 s by the clock of the helper, against its 60 s
 	}
 
 	/// Runs `script` as a helper and returns the length of each line that reached `onLine`, and the

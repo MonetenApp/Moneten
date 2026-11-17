@@ -131,6 +131,7 @@ final class SelfTest {
 		SavingsBanksSelfTest.run();
 		IngSelfTest.run();
 		CommerzbankGroupSelfTest.run();
+		DeutscheBankGroupSelfTest.run();
 
 		Out.secret("geheim42");
 		expect("PIN masked", Out.bank("PIN geheim42 sent"), "PIN ••• sent");

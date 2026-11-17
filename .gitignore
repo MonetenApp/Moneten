@@ -9,3 +9,5 @@ App/Local.xcconfig
 # OpenSpec writes its commands and skills for Claude Code here: openspec init --tools claude
 .claude/commands/
 .claude/skills/
+# The bytecode that Python writes next to the scripts it imports.
+__pycache__/

@@ -105,6 +105,16 @@ final class IngSelfTest {
 			SelfTest.expect("a new dialog forgets the messages of the dialogs before it", FinTSHelper.Json.write(earlier.pinError),
 				"{\"type\":\"rejected\",\"code\":\"9942\",\"text\":\"PIN falsch\"}");
 
+			String replaced = DeutscheBankGroupSelfTest.REPLACED;
+			SelfTest.expect("at ING the answer of a replaced login of the Deutsche Bank group does not hide the request of ING",
+				SelfTest.failed(SelfTest.status("9940", replaced, "9942", RENEW)) + " " + rejected("9940: " + replaced, "9942: " + RENEW),
+				"{\"type\":\"failed\",\"kind\":\"websiteLogin\",\"code\":\"9942\",\"text\":\"" + RENEW + "\"} " + WEBSITE);
+			FinTSHelper.Callback.server = DeutscheBankGroupSelfTest.DEUTSCHE_BANK;
+			SelfTest.expect("at Deutsche Bank the replaced login comes first and the sentence of ING stays a wrong PIN",
+				SelfTest.failed(SelfTest.status("9942", RENEW, "9940", replaced)) + " " + SelfTest.failed(SelfTest.status("9942", RENEW, "9930", "PIN gesperrt")),
+				"{\"type\":\"failed\",\"kind\":\"loginReplaced\",\"code\":\"9940\",\"text\":\"" + replaced + "\"} "
+					+ "{\"type\":\"failed\",\"code\":\"9930\",\"text\":\"PIN gesperrt\"}");
+
 			FinTSHelper.Callback.server = MUSTERBANK;
 			SelfTest.expect("another bank with the same text keeps its codes", SelfTest.failed(SelfTest.status("9942", RENEW)),
 				"{\"type\":\"failed\",\"code\":\"9942\",\"text\":\"" + RENEW + "\"}");

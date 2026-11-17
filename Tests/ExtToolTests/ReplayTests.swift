@@ -79,7 +79,7 @@ extension ExtTool {
 			let arguments = ["test", folder.appending(path: "Bank.lua").path, folder.appending(path: "fixture.json").path, folder.appending(path: "expected.json").path]
 			let started = ContinuousClock.now
 			#expect(try extOffline(arguments + ["--update"]).status == 0)
-			#expect(ContinuousClock.now - started < .seconds(30))
+			#expect(ContinuousClock.now - started < .seconds(30)) // time-ok: a hang, not speed, fails it
 			let expected = try String(contentsOf: folder.appending(path: "expected.json"), encoding: .utf8)
 			#expect(expected.contains("\"name\" : \"3f6c2a9e-8d41-4b7a-9c35-1e2f4a6b8c0d 00010203 "))
 			#expect(expected.contains(" {{answer1}}\""))
