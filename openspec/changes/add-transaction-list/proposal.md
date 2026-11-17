@@ -7,7 +7,7 @@ The transaction list is where a user spends most of the time in a banking app. I
 ## What Changes
 
 - Account, account group, and category views show one row for each transaction, newest first.
-- A row shows the date, the counterparty, the purpose, the category, the amount, and the details that the bank delivered.
+- A row shows the date, the counterparty, the purpose, the category, and the amount. Its help tag and the transaction sheet show the details that the bank delivered.
 - Pending transactions look different, and the list shows their sum.
 - The user can select text, select several rows, check transactions off, and write comments.
 - A single account can show the daily balance inside the list.
@@ -55,6 +55,8 @@ None.
 ### Decided for Moneten
 
 - A selected row in a group or category view names its account at the end of the payee line. MoneyMoney adds a third line, which makes the row taller.
+- The labeled details from the bank stand in the help tag of the purpose and in the transaction sheet, and every row keeps its height. MoneyMoney draws them in the selected row, which grows taller. The rule of the same row height was already decided for the account name, and a row that grows in a list of 50,000 rows risks the speed of the list. The help tag always shows the value date when the bank delivered one.
+- Copied rows name the details with the labels of the transaction sheet, such as "Mandate reference", so that one detail has one name in the app. A row without a counterparty name copies the booking text that the row shows in its place.
 - Transactions of one day keep the order in which the bank delivered them. MoneyMoney's order inside a day was not observed.
 - A transaction counts as new until the user leaves the view in which it was shown. How MoneyMoney clears the mark was not observed.
 - The status line shows the count and the sum of the selected rows. Only the sum of the whole list was observed.

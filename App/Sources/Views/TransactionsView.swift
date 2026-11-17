@@ -482,6 +482,9 @@ struct TransactionTable: View {
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
+			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
+			// only that text, so this runs only without selected text.
+			.onCopyCommand { copiedRows() }
 			.contextMenu(forSelectionType: UUID.self) { ids in
 				TransactionMenu(ids: ids)
 			} primaryAction: { ids in
@@ -576,6 +579,14 @@ struct TransactionTable: View {
 		}
 	}
 
+	/// The selected rows as text, in the order of the list, also under the headings of "Group transactions by account".
+	private func copiedRows() -> [NSItemProvider] {
+		let selection = model.visibleSelection
+		guard !selection.isEmpty else { return [] }
+		let ordered = (accountSections?.flatMap(\.rows) ?? rows).filter { selection.contains($0.id) }
+		return [NSItemProvider(object: TransactionCopy.text(ordered, locale: .current) as NSString)]
+	}
+
 	private func draggedIDs(for t: Transaction) -> DraggedTransactions {
 		let selection = model.visibleSelection
 		return model.startDrag(of: selection.contains(t.id) ? selection : [t.id])
@@ -591,7 +602,7 @@ struct TransactionCell: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
 			HStack(spacing: 4) {
-				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
+				Text(transaction.shownName).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
 				}
@@ -622,14 +633,31 @@ struct TransactionCell: View {
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
-			// is in the help tag and in the transaction sheet.
+			// and the details from the bank are in the help tag and in the transaction sheet, so the row keeps its height.
 			Text(transaction.purpose.isEmpty ? " " : transaction.purpose.split(whereSeparator: \.isNewline).joined(separator: " "))
 				.foregroundStyle(Palette.detail)
 				.lineLimit(1)
-				.help(transaction.purpose)
+				.help(Self.helpText(transaction))
 		}
 		.font(.system(size: 13))
 		.textSelection(.enabled)
+	}
+
+	/// The whole purpose, then one line "Label: value" for each detail from the bank.
+	static func helpText(_ t: Transaction) -> String {
+		let details = t.details.map { "\($0.label): \($0.shownValue)" }
+		return ([t.purpose].filter { !$0.isEmpty } + (details.isEmpty ? [] : [details.joined(separator: "\n")])).joined(separator: "\n\n")
+	}
+}
+
+extension TransactionDetail {
+	/// The value as the help tag and the transaction sheet show it.
+	var shownValue: String {
+		switch self {
+		case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .bic(v): v
+		case let .valueDate(day): Format.day(day)
+		case let .iban(v): Format.iban(v)
+		}
 	}
 }
 
