@@ -134,7 +134,7 @@ The app SHALL let the user select text inside a row and copy it. A double click 
 
 ### Requirement: Copy selected rows as text
 
-The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose, the IBAN, the BIC, and the amount. The purpose stays on one line and ends with each detail that has a value: the comment, the transaction type, the return reason, the end-to-end reference, the mandate reference, and the creditor ID.
+The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose on one line with the details of the row, the IBAN, the BIC, and the amount. A text field that starts with `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` gets an apostrophe in front, so that a spreadsheet does not read it as a formula.
 
 #### Scenario: Copy a row
 
@@ -150,12 +150,26 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **WHEN** the user presses ⌘C
 - **THEN** the pasteboard holds two lines, the row of 03.11.2026 first, with the amounts "-10,00" and "5,00"
 
+#### Scenario: Details in the purpose
+
+- **GIVEN** the language of the app is English
+- **AND** a row with no purpose, the comment "Paid twice?", the transaction type "Lastschrift", the return reason "AC04", the end-to-end reference "E2E-9", the mandate reference "M-2026-0042", and the creditor ID "DE98ZZZ09999999999"
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Return reason: AC04, End-to-end reference: E2E-9, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
+- **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, and creditor ID
+
 #### Scenario: Text that a spreadsheet would read as a formula
 
 - **GIVEN** a row with the counterparty name "+Rabatt-"
 - **WHEN** the user copies the row
 - **THEN** the name field is "'+Rabatt-", so that a spreadsheet shows the text and computes nothing
 - **AND** the amount field keeps its minus sign without an apostrophe
+
+#### Scenario: Full-width formula sign
+
+- **GIVEN** a row with the purpose "＝1+1"
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "'＝1+1"
 
 #### Scenario: Account number and BIC
 

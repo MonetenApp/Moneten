@@ -109,7 +109,9 @@ struct AppCommands: Commands {
 
 	var body: some Commands {
 		CommandGroup(replacing: .appInfo) {
-			Button("About Moneten") { Self.showAbout() }
+			Button("About Moneten") { AboutPanel.show() }
+			Button("Check for Updates...") { model.updater.checkForUpdates() }
+				.disabled(!model.updater.canCheck)
 		}
 		// The settings need the open database, so the item waits for the unlock.
 		CommandGroup(replacing: .appSettings) {
@@ -226,18 +228,6 @@ struct AppCommands: Commands {
 extension AppCommands {
 	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
 	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
-
-	/// The standard About panel: the version, the license from `NSHumanReadableCopyright` in Info.plist, and a
-	/// link to the source code.
-	static func showAbout() {
-		let credits = NSMutableAttributedString(string: String(localized: "Source code:") + " ",
-			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.labelColor])
-		credits.append(NSAttributedString(string: "github.com/MonetenApp/Moneten",
-			attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize), .link: URL(string: "https://github.com/MonetenApp/Moneten")!]))
-		credits.setAlignment(.center, range: NSRange(location: 0, length: credits.length))
-		NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
-		NSApp.activate()
-	}
 }
 
 extension Notification.Name {

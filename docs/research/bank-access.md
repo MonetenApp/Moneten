@@ -110,7 +110,8 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 
 1. Add the login as in run 1, with the approval in the bank's app. At DKB, record whether 9078 "FinTS-Produkt ist nicht registriert" still comes.
 2. At DKB, add a credit card if the bank lists one. Expected: the card shows a balance and transactions from the card statement, and a payment that is not final yet, such as a reservation, shows as pending. Record the line `FinTSHelper: card statement finalized ...` of `$RUN/helper.log`: it counts the values of `finalized` that the bank sent (N, J, or none) and the distinct references of the rows, without any data of a row. Refresh again after a pending row became final and record the line again. If the card fails, record its error.
-3. At Consorsbank, refresh the giro account and the depot. Expected: balance, transactions, and the value of the depot, without 9075.
+3. At DKB, after a few days with new card payments, refresh the card again. Expected: each payment shows once, also when DKB moved its day or its texts since the last refresh. Record by how many days a booked card payment moved, if one did. If the card fails because the account data allow no job that the app knows, record the message, which names the card number, and the jobs of the line `FinTSHelper: account without jobs`. If the login reports no TAN method, record the code and the text of the bank.
+4. At Consorsbank, refresh the giro account and the depot. Expected: balance, transactions, and the value of the depot, without 9075.
 
 ### Run 3: another TAN method (chipTAN, photoTAN, or smsTAN)
 

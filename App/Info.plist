@@ -30,6 +30,29 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>MonetenPreRelease</key>
 	<string>$(MONETEN_PRE_RELEASE)</string>
+	<key>MonetenTestedMacOS</key>
+	<string>26</string>
+	<key>SUFeedURL</key>
+	<string>https://github.com/MonetenApp/Moneten/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>$(MONETEN_UPDATE_PUBLIC_KEY)</string>
+	<key>SURequireSignedFeed</key>
+	<true/>
+	<!-- Never fall back to a feed without a valid signature. Without this key Sparkle does after 20 days of failures. -->
+	<key>SUSignedFeedFailureExpirationInterval</key>
+	<integer>0</integer>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
+	<key>SUAutomaticallyUpdate</key>
+	<false/>
+	<key>SUEnableSystemProfiling</key>
+	<false/>
 	<key>NSAppleEventsUsageDescription</key>
 	<string>Moneten reads your accounts, categories, and transactions from MoneyMoney when you import them. It changes nothing in MoneyMoney.</string>
 	<key>NSHighResolutionCapable</key>

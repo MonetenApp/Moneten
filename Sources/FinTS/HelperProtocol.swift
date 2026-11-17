@@ -205,6 +205,7 @@ struct Ask: Decodable {
 /// that the user blocked the app in its online banking, which it knows by the host of the bank and the text,
 /// "loginReplaced" for the answer of the Deutsche Bank group that a new login replaced the login of the access, and
 /// "websiteLogin" for the answer of ING that it accepts the login only after a login on its website.
+/// "noJobs" marks an account that allows no job that the helper knows, so that `DKB` can name a card in its error.
 ///
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
 /// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
@@ -260,6 +261,7 @@ struct HelperError: Decodable, Equatable {
 		switch (kind, code) {
 		case ("network", _), ("certificate", _): .network(text)
 		case ("unsupported", _): .unsupported(text)
+		case ("noJobs", _): .unsupported(text)
 		case ("invalidChallenge", _): .invalidChallenge
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
@@ -455,6 +457,7 @@ enum HelperFailure {
 	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
 	static let tooLarge = SyncFailure.unsupported(String(localized: "The bank sent an amount that is too large, so nothing of this account was stored."))
 	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
+	static let damaged = SyncFailure.unsupported(String(localized: "The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy."))
 	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))
 	static let lineTooLong = SyncFailure.network(String(localized: "The FinTS helper sent a message larger than \(HelperProcess.lineLimit >> 20) MiB, which Moneten does not read."))
 
