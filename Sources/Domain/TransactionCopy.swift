@@ -8,6 +8,10 @@ public enum TransactionDetail: Hashable, Sendable {
 	case endToEndReference(String)
 	case mandateReference(String)
 	case creditorID(String)
+	/// The amount before the bank converted it.
+	case originalAmount(Money)
+	/// The deviating recipient of a debit or the deviating originator of a credit.
+	case deviatingParty(String, recipient: Bool)
 	case valueDate(Day)
 	case iban(String)
 	case bic(String)
@@ -20,6 +24,8 @@ public enum TransactionDetail: Hashable, Sendable {
 		case .endToEndReference: String(localized: "End-to-end reference")
 		case .mandateReference: String(localized: "Mandate reference")
 		case .creditorID: String(localized: "Creditor ID")
+		case .originalAmount: String(localized: "Original amount")
+		case let .deviatingParty(_, recipient): recipient ? String(localized: "Deviating recipient") : String(localized: "Deviating originator")
 		case .valueDate: String(localized: "Value date")
 		case .iban: String(localized: "IBAN")
 		case .bic: String(localized: "BIC")
@@ -28,8 +34,8 @@ public enum TransactionDetail: Hashable, Sendable {
 }
 
 extension Transaction {
-	/// The details with a value, in the order of the help tag: the references first, then the value date, then the
-	/// account of the counterparty. A text of only spaces counts as no value.
+	/// The details with a value, in the order of the help tag: the references first, then the original amount and the
+	/// deviating party, then the value date, then the account of the counterparty. A text of only spaces counts as no value.
 	public var details: [TransactionDetail] {
 		func text(_ value: String?, _ detail: (String) -> TransactionDetail) -> TransactionDetail? {
 			guard let value, value.contains(where: { !$0.isWhitespace }) else { return nil }
@@ -37,7 +43,8 @@ extension Transaction {
 		}
 		return [text(bookingText, TransactionDetail.bookingText), text(returnReason, TransactionDetail.returnReason),
 			text(endToEndReference, TransactionDetail.endToEndReference), text(mandateReference, TransactionDetail.mandateReference),
-			text(creditorID, TransactionDetail.creditorID), valueDate.map(TransactionDetail.valueDate),
+			text(creditorID, TransactionDetail.creditorID), originalAmount.map(TransactionDetail.originalAmount),
+			text(deviatingParty) { TransactionDetail.deviatingParty($0, recipient: amountMinor < 0) }, valueDate.map(TransactionDetail.valueDate),
 			text(counterpartyIBAN, TransactionDetail.iban), text(counterpartyBIC, TransactionDetail.bic)].compactMap { $0 }
 	}
 
@@ -52,19 +59,22 @@ public enum TransactionCopy {
 		let date = dateFormatter(locale)
 		let marks = Marks(locale)
 		return rows.map { t in
-			[date.string(from: t.bookingDate.noon), noFormula(oneLine(t.shownName)), noFormula(purpose(t)), noFormula(accountNumber(t.counterpartyIBAN)),
+			[date.string(from: t.bookingDate.noon), noFormula(oneLine(t.shownName)), noFormula(purpose(t, marks: marks)), noFormula(accountNumber(t.counterpartyIBAN)),
 				noFormula(bankCode(t.counterpartyBIC)), marks.amount(t.amountMinor, t.currency)].joined(separator: "\t")
 		}.joined(separator: "\n")
 	}
 
-	/// The purpose on one line, followed by each detail that the row does not show in a column of its own.
-	static func purpose(_ t: Transaction) -> String {
+	/// The purpose on one line, followed by each detail that the row does not show in a column of its own. The original
+	/// amount has the marks of the region and its currency, because it is not in the currency of the amount column.
+	static func purpose(_ t: Transaction, marks: Marks) -> String {
 		var pieces = [oneLine(t.purpose)]
 		if let comment = t.comment, comment.contains(where: { !$0.isWhitespace }) { pieces.append("\(String(localized: "Comment")): \(oneLine(comment))") }
 		for detail in t.details {
 			switch detail {
-			case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v):
+			case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .deviatingParty(v, _):
 				pieces.append("\(detail.label): \(oneLine(v))")
+			case let .originalAmount(money):
+				pieces.append("\(detail.label): \(marks.amount(money.minorUnits, money.currency)) \(money.currency)")
 			case .valueDate, .iban, .bic: break
 			}
 		}

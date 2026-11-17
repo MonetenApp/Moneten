@@ -1343,7 +1343,8 @@ final class DebugHarness {
 		guard let model, let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return log("details no account") }
 		let t = Transaction(accountID: giro.id, bookingDate: Day.today(), valueDate: Day.today().adding(days: 1), amountMinor: -123_450, name: "Stadtwerke Musterstadt",
 			purpose: "Abschlag November\nKundennummer 4711", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "DEUTDEFFXXX", bookingText: "Lastschrift",
-			endToEndReference: "E2E-2026-11", mandateReference: "M-2026-0042", creditorID: "DE98ZZZ09999999999", returnReason: "AC04", isManual: true)
+			endToEndReference: "E2E-2026-11", mandateReference: "M-2026-0042", creditorID: "DE98ZZZ09999999999", returnReason: "AC04", isManual: true,
+			originalAmount: Money(minorUnits: -133_000, currency: "USD"), deviatingParty: "Buchhandlung Beispiel")
 		model.save(transaction: t, adding: true)
 		model.navigate(to: .account(giro.id))
 		Task { @MainActor in
@@ -1352,7 +1353,8 @@ final class DebugHarness {
 			model.sheet = .transaction(t.id)
 			try? await Task.sleep(for: .milliseconds(500))
 			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
-			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""), .valueDate(Day.today()),
+			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""),
+				.originalAmount(Money(minorUnits: 0, currency: "USD")), .deviatingParty("", recipient: true), .valueDate(Day.today()),
 				.iban(""), .bic("")].map(\.label)
 			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
 			let table = self.transactionTables().first

@@ -48,7 +48,7 @@ The app SHALL show each detail that the bank delivered for a transaction with it
 
 - **GIVEN** a transaction with a booking text, a return reason, an end-to-end reference, a mandate reference, a creditor ID, a value date, an IBAN, and a BIC
 - **WHEN** the user rests the pointer on its purpose
-- **THEN** the help tag shows the whole purpose and below it one line for each detail, in the order booking text with the label "Transaction type", return reason, end-to-end reference, mandate reference, creditor ID, value date, IBAN, and BIC
+- **THEN** the help tag shows the whole purpose and below it one line for each detail, in the order booking text with the label "Transaction type", return reason, end-to-end reference, mandate reference, creditor ID, original amount, deviating originator or recipient, value date, IBAN, and BIC
 
 #### Scenario: Returned direct debit
 
@@ -134,7 +134,7 @@ The app SHALL let the user select text inside a row and copy it. A double click 
 
 ### Requirement: Copy selected rows as text
 
-The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose, the IBAN, the BIC, and the amount. The purpose stays on one line and ends with each detail that has a value: the comment, the transaction type, the return reason, the end-to-end reference, the mandate reference, and the creditor ID.
+The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose, the IBAN, the BIC, and the amount. The purpose stays on one line and ends with the comment and each detail from the bank that has a value, except the value date, the IBAN, and the BIC.
 
 #### Scenario: Copy a row
 
@@ -156,6 +156,13 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **WHEN** the user copies the row
 - **THEN** the name field is "'+Rabatt-", so that a spreadsheet shows the text and computes nothing
 - **AND** the amount field keeps its minus sign without an apostrophe
+
+#### Scenario: Copy a card payment abroad
+
+- **GIVEN** the language of the app is German and the region of the Mac is Germany
+- **AND** a card payment of -11.400,00 € with the purpose "Kartenzahlung" and the original amount -12.345,00 US dollars
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "Kartenzahlung, Originalbetrag: -12.345,00 USD"
 
 #### Scenario: Account number and BIC
 
