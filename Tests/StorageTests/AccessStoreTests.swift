@@ -87,6 +87,18 @@ struct AccessStoreTests {
 		#expect(try store.accesses().map(\.loginName) == ["VRK12345678"])
 	}
 
+	@Test("A second setup with 16 digits at a savings bank whose access stored 17 joins that access and stores the 16 digits")
+	func savingsBankLoginOf17DigitsTwice() throws {
+		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let source = AccessSource.fints(bankCode: "50850049", url: URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30")!)
+		let first = Access(source: source, bankName: "Sparkasse Musterstadt", loginName: "12345678901234567")
+		try store.add(first, state: AccessState(Data([1])), accounts: [])
+		let again = Access(source: source, bankName: "Sparkasse Musterstadt", loginName: "1234567890123456")
+		let stored = try store.add(again, state: AccessState(Data([2])), accounts: [])
+		#expect(stored.access.id == first.id)
+		#expect(try store.accesses().map(\.loginName) == ["1234567890123456"])
+	}
+
 	@Test("A second setup of the same login adds its accounts to the access that exists and keeps the state of that access")
 	func sameLoginTwice() throws {
 		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])

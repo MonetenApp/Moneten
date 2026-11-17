@@ -173,6 +173,17 @@ struct FinTSConnectorTests {
 		#expect(recorded.first?["user"] == "VRK12345678")
 	}
 
+	@Test("An access of a savings bank that stored a login name of 17 digits sends its first 16 digits")
+	func savingsBankLoginOf17Digits() async throws {
+		let access = Access(source: .fints(bankCode: "50850049", url: URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30")!), bankName: "Sparkasse Musterstadt",
+			loginName: "12345678901234567")
+		_ = try await connector("""
+			read cmd; printf '%s\\n' "$cmd" >> "$R"
+			echo '{"type":"result","account":"DE02120300000000202051","balance":{"amount":"1","currency":"EUR"},"errors":[]}'
+			""").refresh(RefreshRequest(access: access, accounts: [Self.giro], enforced: false), Session())
+		#expect(recorded.first?["user"] == "1234567890123456")
+	}
+
 	@Test("apoBank asks for the name of the apoTAN device when it lists no TAN media, and the empty name goes to the helper")
 	func apoTANDevice() async throws {
 		let session = Session { request in
