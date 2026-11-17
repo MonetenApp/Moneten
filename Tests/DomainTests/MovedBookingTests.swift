@@ -98,6 +98,29 @@ struct MovedBookingTests {
 		#expect(history([streaming], after: r).count == 2)
 	}
 
+	@Test("Two bookings with different references or different source IDs are two payments")
+	func conflictingIdentity() {
+		var referenced = stored(row(8))
+		referenced.endToEndReference = "ABO-2024-03"
+		var other = row(10)
+		other.endToEndReference = "ABO-2024-04"
+		let byReference = merge(refresh([other]), stored: [referenced])
+		#expect(byReference.added.count == 1)
+		#expect(byReference.updated == [])
+		var withID = stored(row(8))
+		withID.sourceID = "card-1001"
+		var otherID = row(10)
+		otherID.sourceID = "card-1002"
+		let byID = merge(refresh([otherID]), stored: [withID])
+		#expect(byID.added.count == 1)
+		#expect(byID.updated == [])
+		// The same reference on both sides, or one on one side only, still moves the booking.
+		var same = row(10)
+		same.endToEndReference = "ABO-2024-03"
+		#expect(merge(refresh([same]), stored: [referenced]).updated.map(\.id) == [referenced.id])
+		#expect(merge(refresh([row(10)]), stored: [referenced]).updated.map(\.id) == [referenced.id])
+	}
+
 	@Test("A source that does not move bookings adds the later booking")
 	func otherSource() {
 		let streaming = stored(row(8))

@@ -5,10 +5,11 @@
 ///
 /// Only a delivery whose `FetchedTransactions.maxBookingShift` is above zero moves rows. A stored row must be booked,
 /// fetched by an earlier refresh, on a day that the delivery covers, and paired with no delivered row. A delivered row
-/// must be booked and paired with nothing else. Both need the same amount and currency and a counterparty that agrees,
-/// as a pending row and its booked version do, and the two days lie at most `maxBookingShift` days apart, in either
-/// direction. A pair counts only when each of the two rows fits no other row, so the merge never
-/// guesses. No stored row is removed: a row that finds no partner stays, and the delivered row is added.
+/// must be booked and paired with nothing else. Both need the same amount and currency, no source ID or end-to-end
+/// reference that differs, and a counterparty that agrees, as a pending row and its booked version do, and the two
+/// days lie at most `maxBookingShift` days apart, in either direction. A pair counts only when each of the two rows
+/// fits no other row, so the merge never guesses. No stored row is removed: a row that finds no partner stays, and the
+/// delivered row is added.
 struct MovedBookings {
 	/// The index of the stored row that a delivered row takes the place of, by the index of the delivered row.
 	private(set) var ofDelivered: [Int: Int] = [:]
@@ -37,7 +38,8 @@ struct MovedBookings {
 		var fitsOfStored: [Int: [Int]] = [:]
 		for i in delivered {
 			let new = PendingMatch(rows[i])
-			for (j, old) in byAmount[new.amount] ?? [] where abs(new.day - old.day) <= shift && Self.sameCounterparty(old, new) {
+			for (j, old) in byAmount[new.amount] ?? [] where abs(new.day - old.day) <= shift && old.identity.agrees(with: new.identity)
+				&& Self.sameCounterparty(old, new) {
 				fitsOfDelivered[i, default: []].append(j)
 				fitsOfStored[j, default: []].append(i)
 			}
