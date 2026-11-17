@@ -272,6 +272,38 @@ struct RuleTests {
 		#expect(fast.stoppedRegexPosition == nil)
 	}
 
+	/// A virtual machine charges a pause of its host to the thread that runs, so a fast call can look slow once (#398).
+	/// A pattern that backtracks is slow on the second call too, which stops at 1 ms. Each case gives the first call, the
+	/// second call or nil when there is none, and what counts.
+	@Test("A slow call or a stop counts only when a second call on the same text is slow too", arguments: [
+		// A pause of 60 ms during a call of 5 µs.
+		(RegexTry(found: false, elapsed: 60_000_000, stopped: false), RegexTry(found: false, elapsed: 5_000, stopped: false),
+			RegexTry(found: false, elapsed: 5_000, stopped: false)),
+		// A pause of 120 ms during a call on a long text reaches the limit of one call.
+		(RegexTry(found: false, elapsed: 120_000_000, stopped: true), RegexTry(found: true, elapsed: 40_000, stopped: false),
+			RegexTry(found: true, elapsed: 40_000, stopped: false)),
+		// A pattern that backtracks takes 3 ms, and its second call stops after 1.1 ms. Both count.
+		(RegexTry(found: false, elapsed: 3_000_000, stopped: false), RegexTry(found: false, elapsed: 1_100_000, stopped: true),
+			RegexTry(found: false, elapsed: 4_100_000, stopped: false)),
+		// A call on a short text cannot stop early, and ends after 1.2 ms.
+		(RegexTry(found: true, elapsed: 1_300_000, stopped: false), RegexTry(found: true, elapsed: 1_200_000, stopped: false),
+			RegexTry(found: true, elapsed: 2_500_000, stopped: false)),
+		// A pattern that does not end stops again.
+		(RegexTry(found: false, elapsed: 100_000_000, stopped: true), RegexTry(found: false, elapsed: 1_000_000, stopped: true),
+			RegexTry(found: false, elapsed: 101_000_000, stopped: true)),
+		// A call of less than 1 ms is not checked.
+		(RegexTry(found: true, elapsed: 900_000, stopped: false), nil, RegexTry(found: true, elapsed: 900_000, stopped: false)),
+	])
+	func slowCallIsChecked(first: RegexTry, second: RegexTry?, counted: RegexTry) {
+		var checked = false
+		let result = Rule.counted(first) {
+			checked = true
+			return second ?? first
+		}
+		#expect(checked == (second != nil))
+		#expect(result == counted)
+	}
+
 	@Test("Missing parenthesis is reported at the end")
 	func missingParenthesis() {
 		let rule = #"("Lohn" OR "Gehalt""#

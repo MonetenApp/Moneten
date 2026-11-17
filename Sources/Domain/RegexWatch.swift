@@ -17,14 +17,24 @@ final class RegexBudget {
 	}
 }
 
-/// Stops a regex call after about 100 ms of processor time, because ICU never finishes some patterns, such as `^+?49`.
-/// Counts only the calling thread's processor time inside regex calls. Scheduling delays on a busy Mac must not
-/// discard a normal search or rule. The search and the rules share it.
+/// Stops a regex call after `callLimit`, about 100 ms of processor time, because ICU never finishes some patterns, such
+/// as `^+?49`. Counts only the calling thread's processor time inside regex calls. Scheduling delays on a busy Mac must
+/// not discard a normal search or rule. The search and the rules share it. A virtual machine still charges a pause of
+/// its host to the call, so a rule checks a slow call once more with `Rule.counted`.
 final class RegexWatch {
 	let budget: RegexBudget
+	/// The processor time after which one call stops.
+	let callLimit: UInt64
+	/// The number of progress reports of ICU between two looks at the clock, because a look costs about as much as a
+	/// short call.
+	let interval: Int
 	private(set) var gaveUp = false
 
-	init(budget: RegexBudget = RegexBudget()) { self.budget = budget }
+	init(budget: RegexBudget = RegexBudget(), callLimit: UInt64 = 100_000_000, interval: Int = 256) {
+		self.budget = budget
+		self.callLimit = callLimit
+		self.interval = interval
+	}
 
 	func firstMatch(_ regex: NSRegularExpression, _ text: String) -> NSRange? {
 		if gaveUp || budget.gaveUp { return nil }
@@ -38,10 +48,10 @@ final class RegexWatch {
 				return
 			}
 			reports += 1
-			guard reports % 256 == 0 else { return }
+			guard reports % interval == 0 else { return }
 			let elapsed = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
 			budget.check(elapsed)
-			if elapsed >= 100_000_000 { gaveUp = true }
+			if elapsed >= callLimit { gaveUp = true }
 			if gaveUp || budget.gaveUp { stop.pointee = true }
 		}
 		budget.spent += clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start
