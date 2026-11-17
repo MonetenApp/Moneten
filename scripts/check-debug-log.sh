@@ -28,7 +28,7 @@ set -e
 cd "$(dirname "$0")/.."
 BUILT=dist/Moneten.app
 [ -d "$BUILT" ] || { echo "No $BUILT. Run scripts/build-app.sh debug first." >&2; exit 1; }
-BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log.$$
+BUNDLE_ID=io.github.alexander-schneider.Moneten.check-debug-log
 LOGIN=emuster42
 PIN=97314
 MIGRATION_UNKNOWN=MigrationSyntheticArgument9271
