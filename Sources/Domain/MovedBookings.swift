@@ -44,9 +44,6 @@ struct MovedBookings {
 			guard !taken.contains(j), !t.isPending, t.isFetched, delivery.covers(t.sourceBookingDate), first <= t.sourceBookingDate,
 				t.sourceBookingDate <= last else { continue }
 			let match = PendingMatch(t)
-			// Of two equal stored rows the earlier steps paired one by the order of the rows, or none. Which of them the
-			// bank moved cannot be told, so neither moves.
-			guard equal[match.identity.key] == 1 else { continue }
 			byAmount[match.amount, default: []].append((j, match))
 		}
 		guard !byAmount.isEmpty else { return }
@@ -60,7 +57,10 @@ struct MovedBookings {
 				fitsOfStored[j, default: []].append(i)
 			}
 		}
-		for (i, fits) in fitsOfDelivered where fits.count == 1 && fitsOfStored[fits[0]]?.count == 1 {
+		// Of two equal stored rows the earlier steps paired one by the order of the rows, or none. Which of them the bank
+		// moved cannot be told, so neither moves. Such a row still counts above as a row that fits, so that a third row that
+		// fits too is no unique pair either.
+		for (i, fits) in fitsOfDelivered where fits.count == 1 && fitsOfStored[fits[0]]?.count == 1 && equal[Identity(stored[fits[0]]).key] == 1 {
 			ofDelivered[i] = fits[0]
 		}
 	}

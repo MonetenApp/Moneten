@@ -146,6 +146,16 @@ struct MovedBookingTests {
 		}
 	}
 
+	@Test("Two equal stored bookings still count as rows that fit, so a third stored booking that fits too does not move")
+	func equalTwinsStayInTheCount() {
+		let first = stored(row(8, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		let second = stored(row(8, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt"))
+		let ninth = stored(row(9, -320, "Café Beispiel", purpose: "Café Beispiel / Hauptbahnhof"))
+		let r = merge([row(10, -320, "Café Beispiel", purpose: "Café Beispiel / Musterstadt")], stored: [first, second, ninth])
+		#expect(r.updated == [])
+		#expect(r.added.map(\.bookingDate) == [day(10)])
+	}
+
 	@Test("A moved split original keeps its category and its split, whatever the rules say about the new texts")
 	func splitOriginal() {
 		let groceries = Domain.Category(position: 0, name: "Groceries")
