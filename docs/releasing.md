@@ -6,7 +6,7 @@ A release starts with a tag. `.github/workflows/release.yml` then builds the app
 
 ## Dry run
 
-The dry run needs no secrets and contacts no service. It builds the app signed to run locally, puts it on an unsigned disk image, checks the image as a user would get it, and writes a feed signed with the test update key of `Fixtures/update`. Run it before a change to the packaging:
+The dry run needs no secrets and contacts no service. It builds the app signed to run locally, puts it on an unsigned disk image, checks the image as a user would get it, zips the dSYMs and checks them against the app on the image as a release does, and writes a feed signed with the test update key of `Fixtures/update`. Run it before a change to the packaging:
 
 ```sh
 scripts/release.sh dry-run           # version 0.0.0-beta.1, on a copy of CHANGELOG.md
@@ -89,10 +89,10 @@ Add a ruleset under Settings, Rules, for the tags `v*` and `ext-v*` that allows 
 1. In a pull request, run `python3 scripts/release-notes.py cut 0.1.3`, or `cut 0.2.0-beta.1` for a pre-release, and check the entries in `CHANGELOG.md`. Merge it.
 2. Go through the checklist below.
 3. Tag the merge commit on `main` and push the tag: `git tag v0.1.3 && git push origin v0.1.3`.
-4. The workflow checks that the tag has a section in `CHANGELOG.md`, that the commit is on `main`, and that the build number and the version are above every version in the current feed. Then it builds, signs, and notarizes.
-5. Approve the job `draft` in the run within a day, because the disk image of the job `package` is kept for one day. Otherwise run the workflow again. The job checks that the update key signed the current feed and that every disk image in it lies in a release of the repository. Then it signs the disk image with the update key, writes the feed, and creates the release as a draft, with the disk image and `appcast.xml`.
+4. The workflow checks that the tag has a section in `CHANGELOG.md`, that the commit is on `main`, and that the build number and the version are above every version in the current feed. Then it builds, signs, and notarizes, and zips the dSYMs of the build. It checks with `dwarfdump --uuid` that the dSYMs match the binaries of the app on the disk image, and that `scripts/symbolicate-crash.sh` resolves a frame of each binary with them.
+5. Approve the job `draft` in the run within a day, because the disk image of the job `package` is kept for one day. Otherwise run the workflow again. The job checks that the update key signed the current feed and that every disk image in it lies in a release of the repository. Then it signs the disk image with the update key, writes the feed, and creates the release as a draft, with the disk image, the dSYMs as `Moneten-0.1.3-dSYMs.zip`, and `appcast.xml`.
 6. Open the draft. Download the disk image on a Mac with the default security settings, open it, and start the app.
-7. Run `scripts/release.sh publish 0.1.3` with the GitHub CLI logged in as the owner and OpenSSL 3 or later installed (`brew install openssl@3`, because the LibreSSL of macOS cannot check the signature of a feed). It checks the feed of the draft, the current feed, and afterwards the published feed with the update key committed in `App/project.yml`, and stops at a feed that the key did not sign. A stable version becomes the newest release and carries the feed. A pre-release is published as a pre-release, and its feed replaces `appcast.xml` on the newest stable release. The command also updates the text of each earlier release whose section in `CHANGELOG.md` changed, and leaves the others alone, and checks that the feed URL lists the new version.
+7. Run `scripts/release.sh publish 0.1.3` with the GitHub CLI logged in as the owner and OpenSSL 3 or later installed (`brew install openssl@3`, because the LibreSSL of macOS cannot check the signature of a feed). It stops when the draft lacks one of its three files. It checks the feed of the draft, the current feed, and afterwards the published feed with the update key committed in `App/project.yml`, and stops at a feed that the key did not sign. A stable version becomes the newest release and carries the feed. A pre-release is published as a pre-release, and its feed replaces `appcast.xml` on the newest stable release. The command also updates the text of each earlier release whose section in `CHANGELOG.md` changed, and leaves the others alone, and checks that the feed URL lists the new version.
 
 The feed URL is `https://github.com/MonetenApp/Moneten/releases/latest/download/appcast.xml`. Every other release, such as `bank-data`, must be created with "Set as the latest release" turned off, or the feed URL breaks.
 
@@ -104,6 +104,25 @@ To start over after a failed run, delete the draft and run the workflow again on
 - [ ] CI is green on the commit.
 - [ ] The release candidate was tested on the newest major version of macOS, and the key `MonetenTestedMacOS` in `App/Info.plist` names that version. The app warns at launch on a newer major version of macOS.
 - [ ] The production update key in `App/project.yml` is the public key of `SPARKLE_ED_PRIVATE_KEY`. `scripts/release.sh` checks this too.
+
+## Symbolicate a crash report
+
+A user who sends a crash report, from the crash sheet of the app or the bug report form, sends only binary names, binary UUIDs, and offsets. The dSYMs of the release turn them into function names and source lines. Every release keeps them as the asset `Moneten-<version>-dSYMs.zip`, next to its disk image. The zip holds the dSYMs of every binary in the app: the app, the extension host, SQLCipher, and Sparkle with its helpers. Only the Java runtime of the FinTS helper has none.
+
+1. Read the version from the line "App version" of the report, for example `0.1.3 (412)`.
+2. Save the report as a text file, for example `report.txt`. Keep the lines that start with "Frame:".
+3. Download and unpack the dSYMs of that version:
+
+   ```sh
+   gh release download v0.1.3 --repo MonetenApp/Moneten -p 'Moneten-0.1.3-dSYMs.zip' -D /tmp/moneten-0.1.3
+   ditto -x -k /tmp/moneten-0.1.3/Moneten-0.1.3-dSYMs.zip /tmp/moneten-0.1.3
+   ```
+
+4. Run `scripts/symbolicate-crash.sh report.txt /tmp/moneten-0.1.3`. It finds the dSYM of each frame by its UUID and prints the function and the source line after the frame, for example `-> AppModel.refresh() (in Moneten) (AppModel.swift:812)`.
+
+A frame of macOS, such as SwiftUI or libsystem_kernel.dylib, prints "No matching dSYM", because only Apple has its symbols. When no frame of Moneten matches, the user ran another build than the release, for example a build from source, or the report names another version. Ask for the version in the About window. A crash of the extension host comes as a system report, `MonetenExtensionHost-*.ips` in `~/Library/Logs/DiagnosticReports`, and not from the crash sheet. Resolve its frames with `MonetenExtensionHost.dSYM` from the same zip: `atos -o MonetenExtensionHost.dSYM -arch arm64 -l <load address> <address>`, with the load address of the extension host from the list of images in the report.
+
+The dry run makes the zip too, and checks it with the same script. `scripts/build-app.sh` writes the dSYMs of a Release build to `dist/Moneten.dSYMs`.
 
 ## Update a pinned build tool
 

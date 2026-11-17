@@ -2,16 +2,18 @@
 # Builds, signs, notarizes, and drafts a release of Moneten. .github/workflows/release.yml runs it,
 # and docs/releasing.md explains the secrets and the steps.
 #   scripts/release.sh dry-run [version]  every step without secrets and without GitHub: an app signed
-#                                         to run locally, an unsigned disk image, and a feed signed
+#                                         to run locally, an unsigned disk image, the zip of the
+#                                         dSYMs checked against the app, and a feed signed
 #                                         with the test update key of Fixtures/update, which a Debug
 #                                         build reads. Version 0.0.0-beta.1 by default.
 #                                         With MONETEN_SIGN=1 it also signs and notarizes.
 #   scripts/release.sh preflight <version>  step 1: the changelog section, the tag on main, and the feed
 #   scripts/release.sh package <version>    steps 2 to 4: the signed and notarized app on a notarized
-#                                           disk image in dist/release
+#                                           disk image in dist/release, and the zip of its dSYMs
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
-#   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with both files
+#   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with the disk image,
+#                                           the dSYMs, and the feed
 #   scripts/release.sh publish <version>    step 7, run by the owner: checks the feeds with the committed
 #                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
@@ -141,6 +143,50 @@ check_dmg() {
 	detach "$WORK/volume"
 }
 
+# "UUID architecture name" of each slice of the Mach-O files named in the file $1, sorted.
+slices() {
+	while read -r f; do dwarfdump --uuid "$f"; done < "$1" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)) .*\/\([^/]*\)$/\1 \2 \3/p' | sort
+}
+
+# Zips dist/Moneten.dSYMs to $OUT/Moneten-$2-dSYMs.zip and checks the zip against the app on the disk
+# image $1. Each slice of each Mach-O file in the app, except the Java runtime of the FinTS helper,
+# needs a dSYM with its UUID, and no dSYM may be left over. Then scripts/symbolicate-crash.sh must
+# resolve a report with one frame in each slice, at its main function or else its first function, to
+# a function and its source file, as it does for the report of a user (docs/releasing.md).
+symbols() {
+	ZIP="$OUT/Moneten-$2-dSYMs.zip"
+	[ -d dist/Moneten.dSYMs ] || fail "The build wrote no dist/Moneten.dSYMs."
+	ditto -c -k --keepParent dist/Moneten.dSYMs "$ZIP"
+	mkdir "$WORK/symbols"
+	ditto -x -k "$ZIP" "$WORK/symbols"
+	find "$WORK/symbols" -path '*.dSYM/Contents/Resources/DWARF/*' -type f > "$WORK/dwarf"
+	hdiutil attach -quiet -nobrowse -readonly -mountpoint "$WORK/volume" "$1"
+	find "$WORK/volume/Moneten.app/Contents" -type f ! -path '*/Contents/Resources/FinTSHelper/*' > "$WORK/files"
+	while read -r f; do file -b "$f" | grep -q '^Mach-O' && echo "$f"; done < "$WORK/files" > "$WORK/binaries"
+	slices "$WORK/binaries" > "$WORK/app-slices"
+	detach "$WORK/volume"
+	slices "$WORK/dwarf" > "$WORK/dsym-slices"
+	[ -s "$WORK/app-slices" ] || fail "No binary of the project was found in the app on the disk image."
+	diff -u "$WORK/app-slices" "$WORK/dsym-slices" >&2 \
+		|| fail "The dSYMs do not match the binaries in the app on the disk image (left: app, right: dSYMs)."
+	while read -r f; do
+		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
+		while read -r ID ARCH; do
+			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }')
+			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '$2 ~ /^[Tt]$/ { print $1; exit }')
+			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }')
+			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
+			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
+		done < "$WORK/ids"
+	done < "$WORK/dwarf" > "$WORK/report.txt"
+	scripts/symbolicate-crash.sh "$WORK/report.txt" "$WORK/symbols" > "$WORK/symbolicated.txt" \
+		|| fail "scripts/symbolicate-crash.sh failed on the dSYMs of the release."
+	[ "$(grep -cE '^Frame: .* -> [^0 ].* \(in [^)]+\) \([^)]+:[0-9]+\)$' "$WORK/symbolicated.txt")" = "$(wc -l < "$WORK/report.txt" | tr -d ' ')" ] \
+		|| fail "scripts/symbolicate-crash.sh did not resolve every frame to a function and its source file: $(cat "$WORK/symbolicated.txt")"
+	echo "The dSYMs of $(wc -l < "$WORK/dsym-slices" | tr -d ' ') slices match the app on the disk image, and scripts/symbolicate-crash.sh resolves them:"
+	sed 's/^/  /' "$WORK/symbolicated.txt"
+}
+
 # Steps 2 to 4. $2 is "unsigned" for a dry run without the Developer ID. $3 is "dry-run" for a
 # signed dry run, which may still have the placeholder of the update key.
 package() {
@@ -181,6 +227,7 @@ package() {
 			|| fail "Gatekeeper does not accept the disk image as notarized."
 	fi
 	check_dmg "$DMG" "$1" "$MODE"
+	symbols "$DMG" "$1"
 	cat > "$OUT/build.env" <<-EOF
 	VERSION=$1
 	BUILD=$(plist "$APP" CFBundleVersion)
@@ -247,7 +294,7 @@ draft() {
 	notes section "$1" > "$WORK/notes.md"
 	case "$1" in *-*) KIND="--prerelease --latest=false" ;; *) KIND="" ;; esac
 	gh release create "v$1" --repo "$REPO" --draft --verify-tag --title "$(heading "$1")" --notes-file "$WORK/notes.md" $KIND \
-		"$OUT/Moneten-$1.dmg" "$OUT/appcast.xml"
+		"$OUT/Moneten-$1.dmg" "$OUT/Moneten-$1-dSYMs.zip" "$OUT/appcast.xml"
 	echo "Created the draft of v$1. Check it, then run scripts/release.sh publish $1."
 }
 
@@ -257,7 +304,8 @@ publish() {
 	git diff --quiet origin/main -- "$CHANGELOG" || fail "$CHANGELOG differs from origin/main. Run publish on an up-to-date main."
 	gh release view "v$1" --repo "$REPO" --json isDraft,assets -q '.isDraft, (.assets[].name)' > "$WORK/draft"
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
-	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" || fail "The draft of v$1 lacks its disk image or appcast.xml."
+	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" && grep -qx "Moneten-$1-dSYMs.zip" "$WORK/draft" \
+		|| fail "The draft of v$1 lacks its disk image, its dSYMs, or appcast.xml."
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
 	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
 	KEY=$(committed_key)
