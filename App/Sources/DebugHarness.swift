@@ -206,9 +206,10 @@ final class DebugHarness {
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
 		// "open" shows the custom period and a field that expects a future date in a sheet, and "popover" shows the
-		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there, "calendar
-		// <from|to|scheduled>" opens the calendar of a field, "pick <yyyymmdd>" clicks that day in the open calendar,
-		// and "state" logs the date that each field reads, whether it has the focus, and the open popovers.
+		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there or in the transaction
+		// sheet, "calendar <from|to|scheduled|date|valuedate>" opens the calendar of a field, "press <identifier>"
+		// presses a control, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the date that
+		// each field reads, whether it has the focus, and the open popovers.
 		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
 		// "calendarsnapshot <name>" draws the calendar alone.
 		case "datefield": dateField(argument)
@@ -562,6 +563,13 @@ final class DebugHarness {
 					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
+			}
+		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
+		case "manualrows":
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				let rows = model.ledger.transactions(ofAccount: account.id).filter(\.isManual)
+				for t in rows { log("manualrow", ("day", .day(t.bookingDate)), ("valueDay", .day(t.valueDate))) }
+				log("manualrows", ("", .count(rows.count)))
 			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
@@ -1154,6 +1162,10 @@ final class DebugHarness {
 		case "calendar" where parts.count == 2:
 			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
 			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		// "<identifier>" presses that control, such as "valuedate-switch" of the transaction sheet.
+		case "press" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == parts[1] }
+			log("datefield press", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
 		case "pick" where parts.count == 2:
 			guard let picker = calendars().first, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
 			// What a click on a day does: the picker takes the date and sends its action.
