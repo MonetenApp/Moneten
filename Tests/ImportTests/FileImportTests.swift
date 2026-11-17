@@ -864,3 +864,59 @@ struct FileImportTests {
 	}
 
 }
+
+extension FileImportTests {
+	@Test("A booking deleted after an MT940 import stays deleted when the same file, a CSV of it, or a later CAMT file brings it again")
+	func deletedBookingStaysDeleted() throws {
+		let mt940 = """
+		:20:STARTUMS
+		:25:12030000/202051
+		:28C:00001/001
+		:60F:C261031EUR1000,00
+		:61:2611031103DR89,00NDDTNONREF
+		:86:105?00SEPA-BASISLASTSCHRIFT?20EREF+E2E-1?21MREF+M-1?22CRED+DE98ZZZ09999999999?23SVWZ+Abschlag November?30BYLADEM1001?31DE02120300000000202051?32Stadtwerke Musterstadt
+		:61:2611021102CR1250,00NTRFNONREF
+		:86:166?00GUTSCHRIFT?20SVWZ+Miete November?32Erika Mustermann
+		:62F:C261103EUR2161,00
+		-
+		"""
+		let csv = """
+		"Buchungstag";"Wertstellung";"Auftraggeber / Begünstigter";"Verwendungszweck";"Betrag (EUR)";
+		"03.11.2026";"03.11.2026";"Stadtwerke Musterstadt";"Abschlag November";"-89,00";
+		"02.11.2026";"02.11.2026";"Erika Mustermann";"Miete November";"1.250,00";
+		"""
+		let camt = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls><TxDtls><Refs><EndToEndId>E2E-1</EndToEndId></Refs><RltdPties><Cdtr><Pty><Nm>Stadtwerke Musterstadt</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties><RmtInf><Ustrd>Abschlag November</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		<Ntry><Amt Ccy="EUR">42.10</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-12</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>REWE</Nm></Pty></Cdtr></RltdPties><RmtInf><Ustrd>Kartenzahlung</Ustrd></RmtInf></TxDtls></NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 12))!
+		var ledger = Ledger(accounts: [account])
+		var deleted: [DeletedTransaction] = []
+		func importFile(_ text: String) throws -> Reconciliation {
+			let rows = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
+			let r = reconcile(.file(rows), into: account, stored: ledger.transactions, deleted: deleted, rules: rules, now: now)
+			ledger.apply(r)
+			return r
+		}
+		#expect(try importFile(mt940).added.count == 2)
+		let power = try #require(ledger.transactions.first { $0.name == "Stadtwerke Musterstadt" })
+		deleted = [DeletedTransaction(power, deletedAt: now)]
+		ledger.remove(transactionIDs: [power.id])
+
+		let same = try importFile(mt940)
+		#expect(same.added == [] && same.skipped == 2)
+		let export = try importFile(csv)
+		#expect(export.added == [] && export.skipped == 2)
+		let later = try importFile(camt)
+		#expect(later.added.map(\.name) == ["REWE"])
+		#expect(later.skipped == 1)
+		#expect(ledger.transactions.map(\.amountMinor).sorted() == [-4_210, 125_000])
+	}
+}

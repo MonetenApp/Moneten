@@ -729,17 +729,81 @@ struct ReconcileTests {
 		#expect(r.added.map(\.bookingDate) == [day(9)])
 	}
 
-	@Test("A file brings back a deleted imported row but not a deleted fetched row, and a refresh brings back neither")
+	@Test("Neither a file nor a refresh brings back a deleted row, whether a file or a refresh had delivered it")
 	func deletedAndFiles() {
 		let bakery = row(5, -1_200, "Bäckerei", "Brot")
 		let streaming = stored(row(6, -1_299, "Streaming Dienst", "Abo"))
 		let deleted = [DeletedTransaction(bakery, deletedAt: now), DeletedTransaction(streaming, deletedAt: now)]
 		let file = merge(.file([fresh(bakery), fresh(streaming)]), deleted: deleted)
-		#expect(file.added.map(\.name) == ["Bäckerei"])
-		#expect(file.skipped == 1)
+		#expect(file.added == [])
+		#expect(file.skipped == 2)
 		let fetch = merge(refresh([fresh(bakery), fresh(streaming)]), deleted: deleted)
 		#expect(fetch.added == [])
 		#expect(fetch.skipped == 2)
+	}
+
+	@Test("A row deleted after a file import stays deleted when the same file or a later file brings it again")
+	func deletedFileRowStaysDeleted() {
+		let rent = row(2, -95_000, "Wohnbau", "Miete November", iban: "DE02120300000000202051")
+		let power = row(3, -8_900, "Stadtwerke", "Abschlag November", iban: "DE02120300000000202051", e2e: "E2E-1")
+		let first = merge(.file([rent, power]))
+		#expect(first.added.count == 2)
+		let kept = first.added[0]
+		let deleted = [DeletedTransaction(first.added[1], deletedAt: now)]
+		#expect(deleted[0].fileIdentity != nil && !deleted[0].wasFetched)
+
+		let same = merge(.file([fresh(rent), fresh(power)]), stored: [kept], deleted: deleted)
+		#expect(same.added == [])
+		#expect(same.updated == [])
+		#expect(same.skipped == 2)
+
+		// A later statement overlaps the first, and a CSV export of the same booking may lack the IBAN and the reference.
+		let later = merge(.file([row(3, -8_900, "Stadtwerke", "Abschlag November"), row(12, -4_210, "REWE", "Kartenzahlung")]), stored: [kept], deleted: deleted)
+		#expect(later.added.map(\.name) == ["REWE"])
+		#expect(later.skipped == 1)
+		#expect(history([kept], after: later).map(\.name) == ["REWE", "Wohnbau"])
+	}
+
+	@Test("A deleted file row keeps out one booking only, so a different or a second equal booking in a later file is still imported")
+	func deletedFileRowKeepsOutOnlyItsBooking() {
+		let coffee = row(9, -320, "Café Beispiel", "Kartenzahlung", iban: "DE02120300000000202051")
+		let deleted = [DeletedTransaction(merge(.file([coffee])).added[0], deletedAt: now)]
+		let r = merge(.file([
+			fresh(coffee),
+			fresh(coffee),
+			row(9, -320, "Café Beispiel", "Kartenzahlung 2"),
+			row(9, -320, "Café Beispiel", "Kartenzahlung", iban: "DE89370400440532013000"),
+			row(10, -320, "Café Beispiel", "Kartenzahlung", iban: "DE02120300000000202051"),
+		]), deleted: deleted)
+		#expect(r.added.map(\.purpose) == ["Kartenzahlung", "Kartenzahlung 2", "Kartenzahlung", "Kartenzahlung"])
+		#expect(r.added.map(\.bookingDate) == [day(9), day(9), day(9), day(10)])
+		#expect(r.skipped == 1)
+	}
+
+	@Test("A deleted pending file row keeps out its own entry, but not another rent of the same amount nearby, and not its booked version")
+	func deletedPendingFileRowAndRelaxedMatching() {
+		let december = rent(1)
+		let deleted = [DeletedTransaction(merge(.file([december]), at: noon(19, month: 11)).added[0], deletedAt: now)]
+		let same = merge(.file([fresh(december)]), deleted: deleted, at: noon(20, month: 11))
+		#expect(same.added == [])
+		#expect(same.skipped == 1)
+
+		let other = merge(.file([rent(4, purpose: "Miete Garage Dezember")]), deleted: deleted, at: noon(20, month: 11))
+		#expect(other.added.map(\.purpose) == ["Miete Garage Dezember"])
+
+		let booked = merge(.file([rent(2, pending: false)]), deleted: deleted, at: noon(2, month: 12))
+		#expect(booked.added.map(\.bookingDate) == [day(2, month: 12)])
+		#expect(booked.added.map(\.isPending) == [false])
+	}
+
+	@Test("A refresh does not bring back a row that the user deleted after a file import")
+	func refreshAfterDeletedFileRow() {
+		let power = row(3, -8_900, "Stadtwerke", "Abschlag November", iban: "DE02120300000000202051")
+		let deleted = [DeletedTransaction(merge(.file([power])).added[0], deletedAt: now)]
+		let r = merge(refresh([row(3, -8_900, "STADTWERKE", "ABSCHLAG NOVEMBER", sourceID: "BANK-7", iban: "DE02120300000000202051"),
+			row(4, -1_250, "Kiosk", "Zeitung", sourceID: "BANK-8")]), deleted: deleted)
+		#expect(r.added.map(\.name) == ["Kiosk"])
+		#expect(r.skipped == 1)
 	}
 
 	@Test("Three added transactions count as new for their account until the user checks them")

@@ -5,14 +5,15 @@ public enum Delivery: Sendable {
 	case refresh(RefreshResult)
 	/// The rows of a file that the user imported. A file never removes a pending row and carries no balance.
 	case file([Transaction])
-	/// The rows of a MoneyMoney migration. Like a file, but every row the user deleted stays deleted, except
+	/// The rows of a MoneyMoney migration. Like a file: every row the user deleted stays deleted, except
 	/// the booked version of a deleted pending row.
 	case migration([Transaction])
 }
 
 /// What the app keeps of a transaction that the user deleted: the fields that its identity comes from.
-/// A later refresh that delivers the transaction again does not add it ("Deleted transactions stay
-/// deleted"). A file import adds it again unless a refresh had delivered it. A MoneyMoney migration never adds it again. A deleted pending row never keeps out its booked version.
+/// A later refresh, file import, or MoneyMoney migration that delivers the transaction again does not add it
+/// ("Deleted transactions stay deleted"), whichever source had delivered it. There is no undo for a delete, so a
+/// file cannot restore a row deleted by mistake. A deleted pending row never keeps out its booked version.
 ///
 /// One record per deleted row. Deleting one of two identical rows absorbs one delivered copy, and the
 /// stored row absorbs the other. The records go with their account.
@@ -27,7 +28,8 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var purpose: String
 	public var counterpartyIBAN: String?
 	public var endToEndReference: String?
-	/// A refresh had delivered the row. Only then does the record keep a file import from adding it.
+	/// A refresh had delivered the row. It tells records apart that are otherwise equal, so the choice between them does not
+	/// depend on the order of the database.
 	public var wasFetched: Bool
 	public var deletedAt: Date
 
@@ -126,11 +128,10 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let stored = delivery.isFetched && all.contains(where: \.isOnlyManual) ? all.filter { !$0.isOnlyManual } : all
 	let rows = delivery.rows
 	let fetched = delivery.isFetched
-	let honored = deleted.filter(delivery.honors)
 	let today = Day(now)
 	// A source that moves bookings pairs on a fixed order of the rows, so that no order decides a move (`MovedBookings`).
-	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
-		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: deleted, delivery: delivery, today: today)
+		: partners(of: rows, stored: stored, deleted: deleted, delivery: delivery, today: today)
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
@@ -146,8 +147,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		if let partner = partners[i] {
 			guard case let .live(j) = partner.slot else {
 				if case let .deleted(k) = partner.slot, delivery.isMigration, let id = delivered.sourceID,
-					partner.evidence == .sourceID || Identity.remote(honored[k].sourceID) == nil {
-					let row = honored[k]
+					partner.evidence == .sourceID || Identity.remote(deleted[k].sourceID) == nil {
+					let row = deleted[k]
 					let linked = Transaction.linkedID(id, pending: row.isPending, sourcePending: delivered.isPending)
 					if linked != row.sourceID { r.relinked.append(DeletedTransaction.Relink(row: row, sourceID: linked)) }
 				}
@@ -319,13 +320,6 @@ extension Delivery {
 	func covers(_ day: Day) -> Bool {
 		guard case let .refresh(result) = self, let answer = result.transactions else { return false }
 		return answer.from.map { day >= $0 } ?? true
-	}
-
-	func honors(_ deleted: DeletedTransaction) -> Bool {
-		switch self {
-		case .file: deleted.wasFetched
-		case .refresh, .migration: true
-		}
 	}
 }
 

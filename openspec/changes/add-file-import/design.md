@@ -25,6 +25,8 @@ The first build follows the spec where the task list marks a task as checked. Op
 
 The operator chose seven-day import matching. A stored pending bank rent on 30 November absorbs the 1 December file rent once. For a stored 1 December bank rent and file rents on 1 and 8 December, day 1 pairs and day 8 is imported. For equidistant file days 30 November and 2 December against bank day 1, stable delivered booking day chooses 30 November first, so 2 December is imported, independent of input order.
 
+- A file import honors every deleted row, as a refresh and a migration do (issue #384). Before, it honored only deleted rows with `wasFetched`, so a file brought back a row that only a file had imported. Each deleted row still absorbs one delivered row, and a deleted pending row still does not keep out its booked version. Pending pairing with a file needs agreeing file identities, so a deleted pending row cannot absorb another rent of the same amount nearby. `wasFetched` stays in the table and only tells otherwise equal deleted rows apart. The change is the removal of `Delivery.honors`, so going back is one filter in `reconcile`.
+
 ## Open gate decisions
 
 Migration v18 and seven-day pending import matching are accepted by the operator.
@@ -45,5 +47,7 @@ Tasks marked as built in part may differ from the spec in the way their note say
 - Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes and before commit. Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.
 
 - Existing rows retain NULL file identity. Without another explicit identity, their prior file history cannot be recovered. A relaxed file match still fills empty user fields, while imports from this build retain their original fingerprint and preserve cleared fields on repeats.
+
+- A new import cannot restore a transaction deleted by mistake, and there is no undo for a delete. A user who deletes rows of a CSV that was read with a wrong profile, and imports it again with the right one, gets back every row whose date, amount, purpose, and counterparty did not change, because those rows were never wrong. A row that the wrong profile changed in these fields is a new booking for the import. The user can add a missing transaction by hand.
 
 A reference-only historical match cannot absorb a pending occurrence dated after the booked partner. Agreeing original file or source identities still recognize true replays.

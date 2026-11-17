@@ -116,7 +116,7 @@ A refresh, a file import, a MoneyMoney migration, and later an extension deliver
 public enum Delivery: Sendable {
 	case refresh(RefreshResult)   // balance, balance date, rows, and the first day the answer covers
 	case file([Transaction])      // never drops a pending row, carries no balance
-	case migration([Transaction]) // MoneyMoney: like a file, but honors every deleted row
+	case migration([Transaction]) // MoneyMoney: like a file
 }
 
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction],
@@ -131,7 +131,7 @@ A merge keeps the parts of a split while its amount and currency stay. A booked 
 
 A booked row without a partner can replace a stored pending row. Two rows can pair when they have the same amount, booking days at most 7 days apart, and the same counterparty: the IBAN when both rows have one, otherwise the folded name, where the words of one name must lead the other ("REWE" matches "REWE SAGT DANKE 1234", "SPAR" does not match "SPARKASSE"). Only pending rows on or before the booked day participate. Agreeing explicit identities narrow the candidates, then only the nearest day remains before a unique fitting fetched pending row wins over unfetched file rows. Rows that can still pair form connected groups. A group of one pending and one booked row books: the stored row takes the bank fields and keeps its comment, checkmark, and hand-set category. In any larger group nothing moves, and every row gets `review` `.unclearBooking`. A pending row without a partner is dropped when the answer covers its day and it is not marked for review or the user checked it. Unpaired future file rows stay through their booking dates. A new review clears that checkmark. Once the user checks a marked booked row, the mark is gone. The user has seen the mark and chosen. A checked pending row keeps its mark, so it still counts in no sum.
 
-A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint and `wasFetched`. Deleted rows count like stored ones, so deleting one of two coffees leaves one. A refresh and a MoneyMoney migration honor every deleted row. A file honors only those that a refresh had delivered, so a file brings back a row that only a file added, and never a fetched row that the user deleted. A deleted pending row does not block its booked version.
+A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint and `wasFetched`. Deleted rows count like stored ones, so deleting one of two coffees leaves one. A refresh, a file, and a MoneyMoney migration honor every deleted row, whichever source had delivered it. A deleted pending row does not block its booked version.
 
 `Store.merge` reads the account's live rows, deleted rows, and rules inside its write transaction, calls `reconcile`, and writes the result. `Ledger.apply` then takes over exactly what was written. `SyncCoordinator.deliver` calls the merge once per fetched account. A thrown error fails only that account with `SyncFailure.notSaved`, and the next refresh delivers the same rows again.
 

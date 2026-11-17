@@ -127,7 +127,7 @@ struct MergeTests {
 		#expect(try store.loadLedger().transactions.isEmpty)
 	}
 
-	@Test("A file brings back a deleted imported row, but not a deleted fetched row")
+	@Test("A file brings back neither a deleted imported row nor a deleted fetched row, also after the database opens again")
 	func fileAfterDelete() throws {
 		let store = try makeStore()
 		let bakery = row(5, -1_200, "Bäckerei", "Brot")
@@ -135,9 +135,11 @@ struct MergeTests {
 		_ = try store.merge(.file([bakery]), into: giro.id)
 		_ = try store.merge(refresh([streaming]), into: giro.id)
 		try store.deleteTransactions([bakery.id, streaming.id])
-		let r = try store.merge(.file([fresh(bakery), fresh(streaming)]), into: giro.id)
-		#expect(r.added.map(\.name) == ["Bäckerei"])
-		#expect(try store.loadLedger().transactions.map(\.name) == ["Bäckerei"])
+		let reopened = try Vault(folder: folder).open(password: "korrekt-pferd-batterie-heftklammer")
+		let r = try reopened.merge(.file([fresh(bakery), fresh(streaming)]), into: giro.id)
+		#expect(r.added == [])
+		#expect(r.skipped == 2)
+		#expect(try reopened.loadLedger().transactions.isEmpty)
 	}
 
 	@Test("Removing an account removes what it remembers of deleted rows")

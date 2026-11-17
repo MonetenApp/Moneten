@@ -929,6 +929,44 @@ The app SHALL keep rows that are identical inside one file as separate transacti
 - **WHEN** a file holds two rows with the same date, amount, name, and purpose
 - **THEN** the account has two transactions after the first import and still two after a second import of the file
 
+### Requirement: Deleted transactions stay deleted at a file import
+
+The app SHALL not add a transaction again that the user deleted, when a later file import brings the same booking, whether a file or a refresh had delivered the deleted transaction. Each deleted transaction keeps out one booking. A deleted pending transaction does not keep out its booked version.
+
+#### Scenario: Same file again
+
+- **GIVEN** the user imported a file with a rent of -950,00 € on 2 November 2026 and a payment of -89,00 € to "Stadtwerke" on 3 November 2026
+- **AND** the user deleted the payment to "Stadtwerke"
+- **WHEN** the user imports the same file again
+- **THEN** the app reports "Imported no new transactions." and 2 skipped transactions
+- **AND** the account holds only the rent
+
+#### Scenario: A later file with the same booking
+
+- **GIVEN** the user deleted the imported payment of -89,00 € to "Stadtwerke" on 3 November 2026, which carried the IBAN DE02120300000000202051
+- **WHEN** the user imports a later CSV file with that payment without an IBAN and a new card payment of -42,10 € to "REWE" on 12 November 2026
+- **THEN** only the payment to "REWE" is added
+
+#### Scenario: Other bookings still arrive
+
+- **GIVEN** the user deleted one imported card payment of -3,20 € to "Café Beispiel" on 9 November 2026 with the IBAN DE02120300000000202051
+- **WHEN** a file brings that payment twice, the same payment with the purpose "Kartenzahlung 2", the same payment with another IBAN, and the same payment on 10 November 2026
+- **THEN** the app skips one payment and adds the other four
+
+#### Scenario: A deleted pending rent
+
+- **GIVEN** the user deleted a pending rent of -800,00 € to "Vermieter A" on 1 December 2026 that a file had imported
+- **WHEN** the same file arrives again
+- **THEN** the rent is not added
+- **AND** a pending rent of -800,00 € with the purpose "Miete Garage Dezember" on 4 December 2026 is added
+- **AND** the booked rent of 2 December 2026 is added
+
+#### Scenario: A refresh after the delete
+
+- **GIVEN** the user deleted an imported payment of -89,00 € to "Stadtwerke" on 3 November 2026
+- **WHEN** a refresh delivers the same payment with another source ID and a new payment of -12,50 € to "Kiosk"
+- **THEN** only the payment to "Kiosk" is added
+
 ### Requirement: Result message
 
 The app SHALL report after an import how many new transactions were imported, for example "Imported 128 new transactions." or "Imported one new transaction.", together with the numbers of skipped transactions and of created categories.
