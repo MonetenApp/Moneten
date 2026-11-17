@@ -9669,6 +9669,17 @@
       },
       "extractionState" : "manual"
     },
+    "The bank no longer accepts this login: %@\nChoose “Edit Login Data...” and enter the new login that the bank gave you." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank akzeptiert diese Zugangsdaten nicht mehr: %@\nWählen Sie „Zugangsdaten bearbeiten...“ und geben Sie die neuen Zugangsdaten ein, die Ihnen die Bank gegeben hat."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The bank offers no encrypted FinTS address." : {
       "localizations" : {
         "de" : {

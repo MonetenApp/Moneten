@@ -9,6 +9,7 @@ final class DeutscheBankGroupSelfTest {
 	static void run() {
 		hosts();
 		pendingCardPayment();
+		loginReplaced();
 	}
 
 	static void hosts() {
@@ -50,6 +51,40 @@ final class DeutscheBankGroupSelfTest {
 
 			FinTSHelper.Callback.server = DEUTSCHE_BANK;
 			SelfTest.expect("a pending card payment of another bank keeps no name", name(card("Kartenzahlung / Buchhandlung Beispiel"), true), "null");
+		} finally {
+			FinTSHelper.Callback.server = before;
+		}
+	}
+
+	static final String REPLACED = "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support.";
+
+	/// The answer of the group to a login that a new login replaced: 9940 or 3960 with the request to log in to the online
+	/// banking or to contact the support.
+	static void loginReplaced() {
+		String before = FinTSHelper.Callback.server;
+		try {
+			FinTSHelper.Callback.server = DEUTSCHE_BANK;
+			SelfTest.expect("a replaced login of Deutsche Bank", SelfTest.failed(SelfTest.status("9800", "Dialog abgebrochen", "9940", REPLACED)),
+				"{\"type\":\"failed\",\"kind\":\"loginReplaced\",\"code\":\"9940\",\"text\":\"" + REPLACED + "\"}");
+			SelfTest.expect("the warning 3960 of a replaced login ends the dialog as an error", SelfTest.failed(SelfTest.status("3960", REPLACED)) + " "
+				+ (FinTSHelper.blocking(SelfTest.status("3960", REPLACED)) != null) + " " + (FinTSHelper.blocking(SelfTest.status("3960", "Hinweis")) != null),
+				"{\"type\":\"failed\",\"kind\":\"loginReplaced\",\"code\":\"3960\",\"text\":\"" + REPLACED + "\"} true false");
+			SelfTest.expect("the codes and the text of a replaced login", DeutscheBankGroup.loginReplaced(DEUTSCHE_BANK, "3960", REPLACED) + " "
+				+ DeutscheBankGroup.loginReplaced(POSTBANK, "9940", "MELDEN SIE SICH IM ONLINE-BANKING AN ODER KONTAKTIEREN DEN SUPPORT") + " "
+				+ DeutscheBankGroup.loginReplaced("fints.norisbank.de/", "9940", REPLACED), "true true true");
+			SelfTest.expect("another code, another text, or another bank is no replaced login", DeutscheBankGroup.loginReplaced(DEUTSCHE_BANK, "9942", REPLACED) + " "
+				+ DeutscheBankGroup.loginReplaced(DEUTSCHE_BANK, "9940", "Bitte im Online-Banking anmelden") + " "
+				+ DeutscheBankGroup.loginReplaced(MUSTERBANK, "9940", REPLACED) + " " + DeutscheBankGroup.loginReplaced("deutsche-bank.de/", "9940", REPLACED) + " "
+				+ DeutscheBankGroup.loginReplaced(DEUTSCHE_BANK, "9940", null) + " " + DeutscheBankGroup.loginReplaced(DEUTSCHE_BANK, null, REPLACED),
+				"false false false false false false");
+			FinTSHelper.Callback callback = new FinTSHelper.Callback(java.util.Map.of());
+			callback.log("HBCI4Java: Meldung der Bank: 9940: " + REPLACED, 1, null, null);
+			SelfTest.expect("a rejected PIN with the answer of a replaced login", FinTSHelper.Json.write(callback.pinError),
+				"{\"type\":\"rejected\",\"kind\":\"loginReplaced\",\"code\":\"9940\",\"text\":\"" + REPLACED + "\"}");
+
+			FinTSHelper.Callback.server = MUSTERBANK;
+			SelfTest.expect("another bank with the same answer keeps its code", SelfTest.failed(SelfTest.status("9940", REPLACED)),
+				"{\"type\":\"failed\",\"code\":\"9940\",\"text\":\"" + REPLACED + "\"}");
 		} finally {
 			FinTSHelper.Callback.server = before;
 		}

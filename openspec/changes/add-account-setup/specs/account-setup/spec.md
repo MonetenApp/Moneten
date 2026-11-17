@@ -710,6 +710,14 @@ The app SHALL tell the user to use "Edit Login Data..." when a bank reports that
 - **WHEN** the refresh of an access fails because the user did not approve the login in the app of the bank in time
 - **THEN** the account error names "Edit Login Data..." as the next step
 
+#### Scenario: Login replaced by a new one at Deutsche Bank
+
+- **GIVEN** a Deutsche Bank access on `fints.deutsche-bank.de` with a saved PIN
+- **WHEN** a refresh fails with the code 9940 or 3960 and the text "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."
+- **THEN** the account error shows the text of the bank and says to enter the new login of the bank with "Edit Login Data..."
+- **AND** the app keeps the saved PIN and opens no PIN sheet, and the automatic refresh leaves the access out until the user refreshes it by hand
+- **AND** the same answer on `hbci.postbank.de` or `fints.norisbank.de` does the same, and on the host of another bank it gives the error of the bank alone
+
 #### Scenario: Error of one account
 
 - **WHEN** the login of an access works and the bank rejects the request of one of its accounts with "9010 Zugang vorübergehend gesperrt"

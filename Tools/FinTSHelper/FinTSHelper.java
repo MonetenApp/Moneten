@@ -497,7 +497,7 @@ public class FinTSHelper {
 		/// challenge may still wait.
 		DialogContext open;
 
-		/// The warning 3938 of a dialog initialization. hbci4java counts such an answer as a successful login and
+		/// The warning 3938 of a dialog initialization, or the warning of a replaced login (`blocking`). hbci4java counts such an answer as a successful login and
 		/// would send the orders and further dialogs, so every later message and order fails with it.
 		Failure block;
 
@@ -508,7 +508,7 @@ public class FinTSHelper {
 			if (event == DialogEvent.JOBS_CREATED) jobsSent = true;
 			if (event == DialogEvent.MSG_SENT && block == null) {
 				HBCIRetVal w = blocking(ctx.getMsgStatus());
-				if (w != null) block = new Failure(null, w.code, Out.withoutSecrets(w.text));
+				if (w != null) block = new Failure(kind(w.code, w.text), w.code, Out.withoutSecrets(w.text));
 			}
 			if (block != null) throw block;
 			super.onDialogEvent(event, ctx);
@@ -1035,10 +1035,11 @@ public class FinTSHelper {
 	/// did not happen.
 	static final Set<String> TAN_REFUSED = Set.of("9941", "9943", "9948", "9951");
 
-	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, the first urgent one,
-	/// or else the first one.
+	/// The error of the bank that the app shows: an app that the user blocked at a savings bank, a login of the Deutsche
+	/// Bank group that a new login replaced, the first urgent one, or else the first one.
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
 		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
+		for (HBCIRetVal r : errors) if (DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text)) return r;
 		for (String code : URGENT) {
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
@@ -1050,7 +1051,7 @@ public class FinTSHelper {
 		List<HBCIRetVal> all = new ArrayList<>();
 		for (HBCIStatus status : statuses) {
 			all.addAll(List.of(status.getErrors()));
-			for (HBCIRetVal w : status.getWarnings()) if (BLOCKING_WARNINGS.contains(w.code)) all.add(w);
+			for (HBCIRetVal w : status.getWarnings()) if (blocking(w)) all.add(w);
 		}
 		return all;
 	}
@@ -1063,9 +1064,10 @@ public class FinTSHelper {
 	}
 
 	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
-	/// savings bank, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	/// savings bank, a login of the Deutsche Bank group that a new login replaced, or a refused TAN after an approval in the app, which means that the approval did not happen.
 	static String kind(String code, String text) {
 		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		if (DeutscheBankGroup.loginReplaced(Callback.server, code, text)) return "loginReplaced";
 		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 
@@ -1085,8 +1087,14 @@ public class FinTSHelper {
 	/// The warning 3938 "Zugang vorläufig gesperrt" of an answer, after which no order succeeds, or null.
 	static HBCIRetVal blocking(HBCIMsgStatus status) {
 		if (status == null) return null;
-		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (BLOCKING_WARNINGS.contains(r.code)) return r;
+		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (blocking(r)) return r;
 		return null;
+	}
+
+	/// A warning after which no order succeeds: 3938, or the warning of the Deutsche Bank group that a new login replaced
+	/// the login of the access.
+	static boolean blocking(HBCIRetVal r) {
+		return BLOCKING_WARNINGS.contains(r.code) || DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text);
 	}
 
 	/// The user has no TAN method for the FinTS server: the bank allowed only the one-step method 999

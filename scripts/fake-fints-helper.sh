@@ -28,6 +28,7 @@
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
+# The refresh of "ersetzt" fails with the answer of the Deutsche Bank group to a login that a new login replaced.
 # The first refresh of the login "historie" asks for a TAN for the full history of "Girokonto". Canceling it brings
 # the last 90 days, and the account says that older transactions may be missing.
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
@@ -148,6 +149,10 @@ case "$cmd" in
 	;;
 	*'"user":"ohnetan"'*)
 		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
+		exit 0
+	;;
+	*'"user":"ersetzt"'*)
+		echo '{"type":"failed","kind":"loginReplaced","code":"9940","text":"Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."}'
 		exit 0
 	;;
 	*'"user":"falschetan"'*)

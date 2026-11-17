@@ -111,6 +111,14 @@ struct SyncModelTests {
 		#expect(appBlocked.waitsForUser && !appBlocked.dialogResolves && appBlocked.rejectsPIN)
 		#expect(appBlocked.bankMessage?.code == "9010")
 		#expect(!appBlocked.mayAskForNewSetup)
+		// The login of the Deutsche Bank group was replaced by a new one (#231): only "Edit Login Data..." helps, and the PIN stays.
+		let replaced = SyncFailure.loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))
+		#expect(replaced.waitsForUser && !replaced.dialogResolves && !replaced.rejectsPIN && replaced.mayAskForNewSetup)
+		#expect(replaced.bankMessage?.code == "9940")
+		#expect(replaced.message == """
+			The bank no longer accepts this login: Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support.
+			Choose “Edit Login Data...” and enter the new login that the bank gave you.
+			""")
 		#expect(SyncFailure.noTANMethod(nil).waitsForUser && !SyncFailure.noTANMethod(nil).dialogResolves)
 		#expect(SyncFailure.needsUser(.secondFactor).dialogResolves)
 		#expect(SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch")).dialogResolves)
