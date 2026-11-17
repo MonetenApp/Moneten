@@ -362,7 +362,7 @@ The app SHALL mark every transaction that the user adds with "Add Transaction...
 - **GIVEN** an account with bank access and a manual transaction of -12,00 € "Kiosk" on 03.11.2026, and a CSV file with a transaction of -12,00 € "KIOSK" on 03.11.2026 whose import added no transaction
 - **WHEN** the user deletes the manual transaction, and a refresh then delivers a transaction of -12,00 € "KIOSK" on 03.11.2026
 - **THEN** the account has no transaction on 03.11.2026
-- **AND** importing the CSV file again adds "KIOSK" once, as it adds any deleted transaction of a file that no refresh delivered
+- **AND** importing the CSV file again adds no transaction, because a file import keeps out every deleted transaction
 
 #### Scenario: Manual transaction that a file matched, then a refresh
 

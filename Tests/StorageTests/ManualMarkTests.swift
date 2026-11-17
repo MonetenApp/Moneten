@@ -102,8 +102,8 @@ struct ManualMarkTests {
 		#expect(rows.map(\.sourceID) == ["TX-7"] && rows.allSatisfy(\.isFetched))
 	}
 
-	@Test("A file brings back a deleted manual row that it matched, as it brings back any deleted file row that no refresh delivered")
-	func fileMatchedManualRowImportedAgain() throws {
+	@Test("A file keeps out a deleted manual row that it matched, as it keeps out any deleted file row")
+	func fileMatchedManualRowStaysDeleted() throws {
 		defer { try? FileManager.default.removeItem(at: folder.root) }
 		let store = try makeStore()
 		let plain = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Bäckerei Gutbrot", purpose: "Brot")
@@ -112,9 +112,9 @@ struct ManualMarkTests {
 		try store.deleteTransactions(try store.loadLedger().transactions(ofAccount: giro.id).map(\.id))
 		#expect(try store.deletedTransactions().count == 2)
 		let again = try store.merge(.file([csvRow, plain]), into: giro.id)
-		#expect(again.added.map(\.name) == ["KIOSK", "Bäckerei Gutbrot"])
-		#expect(try store.merge(.file([csvRow, plain]), into: giro.id).added.isEmpty)
-		#expect(try store.loadLedger().transactions(ofAccount: giro.id).count == 2)
+		#expect(again.added.isEmpty)
+		#expect(again.skipped == 2)
+		#expect(try store.loadLedger().transactions(ofAccount: giro.id).isEmpty)
 	}
 
 	@Test("A manual row that a migration matched takes the migration ID and keeps its record when the user deletes it")
