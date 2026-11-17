@@ -485,6 +485,24 @@ struct PerfScenario {
 				SupportedBanksPerf.window?.close()
 				SupportedBanksPerf.window = nil
 			}),
+		// The sidebar opens a group of 200 bank accounts with long names and balances in three currencies. Each row asks
+		// its balances for their ideal width before the name gets the rest (issue #359).
+		PerfScenario(name: "expand-group-of-200-wallets", budget: halfSecond,
+			setUp: { await manyWallets($0) },
+			run: { c in
+				guard var group = c.model.ledger.groups.first(where: { $0.name == "Wallets" }) else { return c.fail("no group Wallets") }
+				let wallets = c.model.ledger.accounts.filter { $0.groupID == group.id }.count
+				if wallets != 200 { c.fail("the group has the wrong number of accounts", ("accounts", .count(wallets)), ("expected", .count(200))) }
+				let rowsBefore = c.harness.sidebarList()?.numberOfRows ?? 0
+				group.isExpanded = true
+				c.model.save(group: group)
+				await c.settle()
+				let added = (c.harness.sidebarList()?.numberOfRows ?? 0) - rowsBefore
+				if added != 200 { c.fail("the sidebar did not show the accounts of the group", ("added", .count(added)), ("expected", .count(200))) }
+				// Collapsed again, so that the next scenario starts from the sidebar it had before.
+				group.isExpanded = false
+				c.model.save(group: group)
+			}),
 		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
 		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
 		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
@@ -519,6 +537,23 @@ struct PerfScenario {
 		await c.select("Name history")
 		c.model.sheet = .transaction(nil)
 		await c.settle()
+	}
+
+	/// The setup of "expand-group-of-200-wallets": a collapsed group with 200 bank accounts, each with a long name and
+	/// balances in euros, US dollars, and Swiss francs. A plain loop with typed locals, so the CI compiler checks it in time.
+	@MainActor private static func manyWallets(_ c: PerfContext) async {
+		await c.model.addGroup(name: "Wallets")
+		guard var group = c.model.ledger.groups.first(where: { $0.name == "Wallets" }) else { return c.fail("no group Wallets") }
+		for i in 0..<200 {
+			let euros: Int64 = 1_000_000_000 + Int64(i) * 12_345
+			let others: [Money] = [Money(minorUnits: 900_000_000 + Int64(i) * 101, currency: "USD"), Money(minorUnits: 50_000_000 + Int64(i), currency: "CHF")]
+			let account = Account(groupID: group.id, position: c.model.ledger.nextTreePosition(in: group.id), name: "Gemeinsame Reisekasse \(i)",
+				kind: .other, source: .bank, bankBalanceMinor: euros, otherBankBalances: others)
+			c.model.save(account: account)
+		}
+		group.isExpanded = false
+		c.model.save(group: group)
+		await c.select("Account 1")
 	}
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
