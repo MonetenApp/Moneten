@@ -72,10 +72,11 @@ public struct FinTSConnector: BankConnector {
 		/// The helper that scripts/build-app.sh puts into the app. A crash of the JVM writes no file,
 		/// because the file would hold the memory of the helper with the PIN. No other process may
 		/// attach to the JVM, which could load an agent or dump the memory, and the JVM leaves the
-		/// signals alone, so a SIGQUIT writes no thread dump into the lines of the protocol.
+		/// signals alone, so a SIGQUIT writes no thread dump into the lines of the protocol. The java
+		/// sits at the top of the folder, because its app sandbox lets it read only that folder (ADR 0018).
 		static var bundled: Helper {
 			let folder = (Bundle.main.resourceURL ?? Bundle.main.bundleURL).appending(path: "FinTSHelper")
-			return Helper(executable: folder.appending(path: "runtime/bin/java"),
+			return Helper(executable: folder.appending(path: "java"),
 				arguments: ["-Djava.awt.headless=true", "-Djava.net.useSystemProxies=true", "-XX:ErrorFile=/dev/null",
 					"-XX:+DisableAttachMechanism", "-Xrs",
 					"-cp", folder.appending(path: "lib").path + "/*", "FinTSHelper"],

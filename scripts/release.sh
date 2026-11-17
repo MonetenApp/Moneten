@@ -131,7 +131,7 @@ check_dmg() {
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
 	JDK_VERSION=$(sed -n 's/^jdk:temurin-aarch64-mac:\([^ ]*\) .*/\1/p' Tools/FinTSProbeJava/dependencies.lock)
-	env -i "$MOUNTED/Contents/Resources/FinTSHelper/runtime/bin/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
+	env -i "$MOUNTED/Contents/Resources/FinTSHelper/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
 		|| unmount_and_fail "The FinTS helper on the disk image does not start with the pinned Java runtime $JDK_VERSION."
 	if [ "$3" = signed ]; then
 		spctl --assess --type execute -vv "$MOUNTED" 2>&1 | grep -q 'source=Notarized Developer ID' \

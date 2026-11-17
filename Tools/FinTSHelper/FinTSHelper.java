@@ -1098,7 +1098,7 @@ public class FinTSHelper {
 		// hbci4java reads no date from a CAMT entry that has a date and time only.
 		if (l.bdate == null && l.valuta == null) throw new Failure("unsupported", null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
 		return message("row",
-			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
+			"booked", day(PendingDates.booked(l, pending, Callback.server)), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
 			"name", DeutscheBankGroup.name(Callback.server, pending, other == null ? null : text(other.name), text(l.text), purpose),
 			"iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
