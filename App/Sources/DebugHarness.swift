@@ -971,6 +971,13 @@ final class DebugHarness {
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
 		case "mainkey": mainKey(argument)
+		// Copy with ⌘C while the table has the focus: "copyrows <n>" selects the first n rows and sends the action of Edit > Copy.
+		case "copyrows": copyRows(Int(argument) ?? 1)
+		// A double click on the name of the first row, Copy, and the context menu of the selected word.
+		case "textmenu": textMenu()
+		// Adds a made-up direct debit with every detail from the bank to "Girokonto", selects it, and opens its sheet. It logs
+		// whether the help tag of its purpose lists the eight details in order, and the heights of the visible rows.
+		case "details": details()
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
@@ -1307,6 +1314,97 @@ final class DebugHarness {
 
 	private func sheetAccessibility() -> [NSObject] {
 		topSheet.map(accessibility) ?? []
+	}
+
+	/// Whether the text on the pasteboard is the copy of the first `count` visible rows, one line per row with six fields.
+	private func copyRows(_ count: Int) {
+		guard let model, let table = transactionTables().first, let window = table.window else { return log("copyrows no table") }
+		let rows = Array(model.visibleTransactions.prefix(count))
+		model.selectedTransactions = Set(rows.map(\.id))
+		// SwiftUI offers the copy of the table only after it has seen the focus, as after a click before ⌘C.
+		window.makeFirstResponder(table)
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(300))
+			NSPasteboard.general.clearContents()
+			let copy = self.copyMenuItem()
+			let handled = copy?.action.map { table.tryToPerform($0, with: copy) } ?? false
+			let text = NSPasteboard.general.string(forType: .string) ?? ""
+			let lines = text.isEmpty ? [] : text.components(separatedBy: "\n")
+			self.log("copyrows", ("handled", .flag(handled)), ("lines", .count(lines.count)),
+				("fields", .count(lines.map { $0.components(separatedBy: "\t").count }.max() ?? 0)),
+				("matches", .flag(text == TransactionCopy.text(rows, locale: .current))))
+		}
+	}
+
+	private func details() {
+		guard let model, let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return log("details no account") }
+		let t = Transaction(accountID: giro.id, bookingDate: Day.today(), valueDate: Day.today().adding(days: 1), amountMinor: -123_450, name: "Stadtwerke Musterstadt",
+			purpose: "Abschlag November\nKundennummer 4711", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "DEUTDEFFXXX", bookingText: "Lastschrift",
+			endToEndReference: "E2E-2026-11", mandateReference: "M-2026-0042", creditorID: "DE98ZZZ09999999999", returnReason: "AC04", isManual: true)
+		model.save(transaction: t, adding: true)
+		model.navigate(to: .account(giro.id))
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(500))
+			model.selectedTransactions = [t.id]
+			model.sheet = .transaction(t.id)
+			try? await Task.sleep(for: .milliseconds(500))
+			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
+			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""), .valueDate(Day.today()),
+				.iban(""), .bic("")].map(\.label)
+			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
+			let table = self.transactionTables().first
+			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()
+			let heights = Set((visible.location..<(visible.location + visible.length)).compactMap { table?.rect(ofRow: $0).height })
+			self.log("details", ("purposelines", .count(help.prefix { !$0.isEmpty }.count)), ("details", .count(shown.count)),
+				("order", .flag(shown == labels)), ("rowheights", .list(heights.sorted().map { .count(Int($0)) })),
+				("sheet", .presence(model.sheet != nil)))
+		}
+	}
+
+	/// The item of the Edit menu with ⌘C, whose action the key sends along the responder chain.
+	private func copyMenuItem() -> NSMenuItem? {
+		NSApp.mainMenu?.items.lazy.compactMap(\.submenu).flatMap(\.items).first { $0.keyEquivalent == "c" && $0.keyEquivalentModifierMask == .command }
+	}
+
+	/// What a double click on the name of the first row selects, what Copy then copies, and the menu that a right
+	/// click on the selected word opens. The menu is read when it starts tracking and closed at once.
+	private func textMenu() {
+		guard let model, let table = transactionTables().first, let window = table.window else { return log("textmenu no table") }
+		let cell = table.frameOfCell(atColumn: 1, row: 0)
+		let point = table.convert(NSPoint(x: cell.minX + 20, y: cell.minY + 17), to: nil)
+		func event(_ type: NSEvent.EventType, clicks: Int) -> NSEvent? {
+			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+				context: nil, eventNumber: 0, clickCount: clicks, pressure: type == .leftMouseUp ? 0 : 1)
+		}
+		for clicks in 1...2 {
+			guard let down = event(.leftMouseDown, clicks: clicks), let up = event(.leftMouseUp, clicks: clicks) else { return }
+			// The text field tracks the mouse until the button goes up, so the up event waits in the queue.
+			NSApp.postEvent(up, atStart: false)
+			window.sendEvent(down)
+		}
+		guard let editor = window.firstResponder as? NSTextView else { return log("textmenu", ("editor", .flag(false))) }
+		let selected = (editor.string as NSString).substring(with: editor.selectedRange())
+		NSPasteboard.general.clearContents()
+		editor.copy(nil)
+		let copied = NSPasteboard.general.string(forType: .string)
+		let services = NSApp.mainMenu?.items.first?.submenu?.items.first { $0.submenu != nil && $0.submenu === NSApp.servicesMenu }?.title
+		var token: NSObjectProtocol?
+		token = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil) { [weak self] note in
+			if let token { NotificationCenter.default.removeObserver(token) }
+			// AppKit posts the notification on the main thread while the menu starts tracking.
+			nonisolated(unsafe) let tracked = note.object as? NSMenu
+			MainActor.assumeIsolated {
+				guard let menu = tracked else { return }
+				let titles = menu.items.map(\.title)
+				self?.log("textmenu", ("editor", .flag(true)), ("word", .flag(!selected.isEmpty && !selected.contains(" "))), ("copied", .flag(copied == selected)),
+					("sheet", .presence(model.sheet != nil)), ("copy", .flag(titles.contains(String(localized: "Copy")) || titles.contains("Copy"))),
+					("rowmenu", .flag(titles.contains(String(localized: "Edit Transaction...")))),
+					("services", .flag(menu.items.contains { $0.submenu === NSApp.servicesMenu || ($0.title == services && $0.hasSubmenu) })),
+					("items", .count(menu.items.count)))
+				RunLoop.current.perform(inModes: [.eventTracking, .default]) { menu.cancelTracking() }
+			}
+		}
+		if let right = event(.rightMouseDown, clicks: 1) { window.sendEvent(right) }
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
