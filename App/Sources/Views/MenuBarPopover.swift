@@ -67,9 +67,9 @@ struct MenuBarPopover: View {
 	}
 }
 
-/// One account in the popover: name, number of new transactions, the mark of a failed refresh or of one
+/// One account in the popover: name, number of new transactions, the marker of a failed refresh or of one
 /// that waits for the user, and the balances of the sidebar row. Unlike the sidebar row, a failed refresh
-/// keeps the balances beside its mark, because the popover has no room for the error text.
+/// keeps the balances beside its marker, because the popover has no room for the error text.
 struct MenuBarAccountRow: View {
 	@Environment(AppModel.self) private var model
 	let account: Account
@@ -85,6 +85,7 @@ struct MenuBarAccountRow: View {
 					.padding(.horizontal, 6)
 					.background(Capsule().fill(.tint))
 					.foregroundStyle(.white)
+					.fixedSize()
 			}
 			Spacer(minLength: 8)
 			if model.sync.refreshingAccounts.contains(account.id) {

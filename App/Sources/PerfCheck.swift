@@ -491,7 +491,16 @@ struct PerfScenario {
 			setUp: { await manyWallets($0) },
 			run: { c in
 				guard var group = c.model.ledger.groups.first(where: { $0.name == "Wallets" }) else { return c.fail("no group Wallets") }
+				let wallets = c.model.ledger.accounts.filter { $0.groupID == group.id }.count
+				if wallets != 200 { c.fail("the group has the wrong number of accounts", ("accounts", .count(wallets)), ("expected", .count(200))) }
+				let rowsBefore = c.harness.sidebarList()?.numberOfRows ?? 0
 				group.isExpanded = true
+				c.model.save(group: group)
+				await c.settle()
+				let added = (c.harness.sidebarList()?.numberOfRows ?? 0) - rowsBefore
+				if added != 200 { c.fail("the sidebar did not show the accounts of the group", ("added", .count(added)), ("expected", .count(200))) }
+				// Collapsed again, so that the next scenario starts from the sidebar it had before.
+				group.isExpanded = false
 				c.model.save(group: group)
 			}),
 		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the

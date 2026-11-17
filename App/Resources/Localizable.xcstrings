@@ -930,6 +930,16 @@
         }
       }
     },
+    "+ %lld more" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "+ %lld weitere"
+          }
+        }
+      }
+    },
     "-0,00" : {
       "localizations" : {
         "de" : {

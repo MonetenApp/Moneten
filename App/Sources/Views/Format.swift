@@ -105,18 +105,55 @@ struct AmountText: View {
 }
 
 /// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
-/// The balances stay on one line and take the room they need before the account name beside them does, so a narrow
-/// row shortens the name first. Only when the shortest name leaves too little room does an amount end with an ellipsis:
-/// a shortened amount must look shortened, never cut off at the edge of the row.
+/// In a sidebar or popover row they take the room they need before the account name beside them does, so a narrow row
+/// shortens the name first. When the row is too narrow for all of them, the row shows the first balance whole and the
+/// number of the others, and when even that does not fit, the first balance shortened and a short count of the others.
+/// Every amount on screen is whole or ends with an ellipsis, never cut off at the edge of the row, and no balance leaves
+/// the row without a count. The header shortens its title and the balances together.
 struct BalancesText: View {
 	let amounts: [Money]
 
 	var body: some View {
+		Group {
+			if let first = amounts.first {
+				// `ViewThatFits` takes the first option whose full width fits. Each option is a view of its own, never an
+				// empty one, because an empty view fits every width.
+				if amounts.count > 1 {
+					ViewThatFits(in: .horizontal) {
+						all
+						HStack(spacing: 8) {
+							AmountText(money: first)
+							Text("+ \(amounts.count - 1) more")
+								.foregroundStyle(Palette.detail)
+								.help(amounts.dropFirst().map { Format.money($0) }.formatted(.list(type: .and)))
+						}
+						.fixedSize()
+						// The shortest form still says how many balances it leaves out.
+						HStack(spacing: 6) {
+							shortened(first)
+							Text(verbatim: "+\(amounts.count - 1)").foregroundStyle(Palette.detail).fixedSize()
+						}
+					}
+				} else {
+					ViewThatFits(in: .horizontal) {
+						all
+						shortened(first)
+					}
+				}
+			}
+		}
+		.layoutPriority(1)
+	}
+
+	private var all: some View {
 		HStack(spacing: 8) {
 			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
 		}
-		.lineLimit(1)
-		.layoutPriority(1)
+		.fixedSize()
+	}
+
+	private func shortened(_ money: Money) -> some View {
+		AmountText(money: money).lineLimit(1).atLeastEllipsisWide()
 	}
 }
 

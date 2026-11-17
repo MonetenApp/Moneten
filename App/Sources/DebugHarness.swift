@@ -602,6 +602,17 @@ final class DebugHarness {
 				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: parts.count == 4 ? String(parts[3]) : "Reisekasse",
 					kind: .other, source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
 			}
+		case "currencies":
+			// "<group> <count>" adds the wallet "Devisen" of a bank that reports 1.250,00 € and a balance in each of up to
+			// 19 other currencies, as an extension may.
+			let parts = argument.split(separator: " ")
+			let codes = ["USD", "CHF", "GBP", "JPY", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "CAD", "AUD", "NZD", "SGD", "HKD", "CNY", "INR", "ZAR", "MXN"]
+			if parts.count == 2, let count = Int(parts[1]), (1...20).contains(count), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				var others: [Money] = []
+				for (i, code) in codes.prefix(count - 1).enumerated() { others.append(Money(minorUnits: Int64(10_000 + i * 2_345), currency: code)) }
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Devisen", kind: .other,
+					source: .bank, bankBalanceMinor: 125_000, otherBankBalances: others))
+			}
 		case "refreshfailed":
 			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
 			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
@@ -1571,7 +1582,7 @@ final class DebugHarness {
 	}
 
 	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
-	private func sidebarList() -> NSOutlineView? {
+	func sidebarList() -> NSOutlineView? {
 		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
 		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
 		return outlines(in: content).min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }

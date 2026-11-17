@@ -97,6 +97,8 @@ struct HeaderView: View {
 					.foregroundStyle(Palette.detail)
 				}
 			}
+			// The title and the balances share the row before the space between them, so the space shrinks first.
+			.layoutPriority(1)
 			Spacer()
 			VStack(alignment: .trailing, spacing: 2) {
 				switch model.selection {
@@ -125,6 +127,7 @@ struct HeaderView: View {
 					CalibrationNotice(accountID: account.id, difference: proposal.difference)
 				}
 			}
+			.layoutPriority(1)
 		}
 		.padding(.horizontal, 16)
 		.padding(.top, 12)

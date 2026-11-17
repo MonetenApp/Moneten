@@ -221,7 +221,7 @@ The app SHALL show the balances of an account whose last refresh failed beside t
 
 ### Requirement: Whole amounts in the popover
 
-The app SHALL show each balance in a popover row on one line and in full, and shorten a long account name first. When the shortest name leaves too little room, an amount ends with an ellipsis and is never cut off at the edge of the row.
+The app SHALL show each balance in a popover row on one line and in full, and shorten a long account name first. When the balances do not all fit, the row shows the first balance and the number of the others. An amount that does not fit ends with an ellipsis and is never cut off at the edge of the row.
 
 #### Scenario: Long name with large balances
 
@@ -235,7 +235,13 @@ The app SHALL show each balance in a popover row on one line and in full, and sh
 - **GIVEN** the account "Gemeinsame Reisekasse Familie Mustermann" with the balances 12.345.678,00 € and 98.765.432,00 US dollars, whose last refresh failed
 - **WHEN** the user opens the popover
 - **THEN** the row shows the name shortened with an ellipsis, the marker, and 12.345.678,00 € in full
-- **AND** the balance in US dollars ends with an ellipsis
+- **AND** then "+ 1 more" in place of the balance in US dollars
+
+#### Scenario: Balances in eight currencies
+
+- **GIVEN** the account "Devisen" with 1.250,00 € and balances in seven other currencies
+- **WHEN** the user opens the popover
+- **THEN** the row "Devisen" shows 1.250,00 € in full and then "+ 7 more"
 
 ### Requirement: Actions in the popover
 

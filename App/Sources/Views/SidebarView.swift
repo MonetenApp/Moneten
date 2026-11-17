@@ -391,6 +391,8 @@ struct NewCountBadge: View {
 			.padding(.vertical, 1)
 			.background(Capsule().fill(.tint))
 			.foregroundStyle(.white)
+			// A count never shortens: the balances and the name beside it shorten instead.
+			.fixedSize()
 			.accessibilityLabel(count == 1 ? "1 new transaction" : "\(count) new transactions")
 	}
 }
