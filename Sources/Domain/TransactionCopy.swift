@@ -81,13 +81,8 @@ public enum TransactionCopy {
 		return pieces.filter { !$0.isEmpty }.joined(separator: ", ")
 	}
 
-	/// A spreadsheet reads a pasted text that starts with "=", "+", "-", or "@" as a formula, which can show an error
-	/// or open a link. An apostrophe in front keeps it text, as in the CSV export. The fields come from `oneLine`, which
-	/// removes leading whitespace, so whitespace cannot hide the sign. The amount never goes through here.
-	static func noFormula(_ field: String) -> String {
-		guard let first = field.first, "=+-@".contains(first) else { return field }
-		return "'" + field
-	}
+	/// Copy escapes a formula with the rule of the CSV export. The amount never goes through here.
+	static func noFormula(_ field: String) -> String { SpreadsheetFormula.escaped(field) }
 
 	/// Every run of whitespace, also a line break or a tab, becomes one space.
 	static func oneLine(_ text: String) -> String {

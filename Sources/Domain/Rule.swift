@@ -3,24 +3,29 @@ import Synchronization
 
 /// The fields of a transaction that a rule can look at.
 public struct RuleSubject: Sendable {
-	public var name: String
-	public var purpose: String
-	public var bookingText: String
-	public var endToEndReference: String
-	public var mandateReference: String
-	public var creditorID: String
-	public var comment: String
+	public let name: String
+	public let purpose: String
+	public let bookingText: String
+	public let endToEndReference: String
+	public let mandateReference: String
+	public let creditorID: String
+	public let comment: String
 	/// IBAN and account number of the own account.
-	public var localAccounts: [String]
+	public let localAccounts: [String]
 	/// IBAN and account number of the counterparty.
-	public var remoteAccounts: [String]
-	public var currency: String
-	public var amount: Decimal
-	/// The folded words of every field, computed once so that many rules can test one transaction fast.
-	let words: [RuleField: [[Substring]]]
+	public let remoteAccounts: [String]
+	public let currency: String
+	/// The amount, made from the minor units when the first amount comparison reads it. A `Decimal` division takes
+	/// about 4 µs, as long as all other work for a transaction without a phrase.
+	public var amount: Decimal { derived.amount() }
+	/// The folded words of each field, made when the first phrase reads the field. Many rules then fold each field of a
+	/// transaction once, and a rule with only regular expressions folds nothing: folding all fields took most of the time
+	/// of a count over 50,000 rows.
+	private let derived: Derived
 
 	public init(name: String = "", purpose: String = "", bookingText: String = "", endToEndReference: String = "", mandateReference: String = "", creditorID: String = "",
-		comment: String = "", localAccounts: [String] = [], remoteAccounts: [String] = [], currency: String = "EUR", amount: Decimal = 0) {
+		comment: String = "", localAccounts: [String] = [], remoteAccounts: [String] = [], currency: String = "EUR",
+		amount: @autoclosure @escaping @Sendable () -> Decimal = 0) {
 		self.name = name
 		self.purpose = purpose
 		self.bookingText = bookingText
@@ -31,26 +36,26 @@ public struct RuleSubject: Sendable {
 		self.localAccounts = localAccounts
 		self.remoteAccounts = remoteAccounts
 		self.currency = currency
-		self.amount = amount
-		var words: [RuleField: [[Substring]]] = [:]
-		let texts: [(RuleField, [String])] = [(.name, [name]), (.purpose, [purpose]), (.bookingText, [bookingText]), (.reference, [endToEndReference]),
-			(.mandate, [mandateReference]), (.creditorID, [creditorID]), (.comment, [comment]), (.localAccount, localAccounts), (.remoteAccount, remoteAccounts), (.currency, [currency])]
-		for (field, values) in texts {
-			if field == .localAccount || field == .remoteAccount {
-				words[field] = values.map { [Substring(TextFolding.fold(TextFolding.accountKey($0)))] }
-			} else {
-				words[field] = values.map { TextFolding.words($0) }
-			}
-		}
-		self.words = words
+		derived = Derived(amount: amount)
 	}
 
 	public init(_ t: Transaction, account: Account?) {
+		let money = t.amount
 		self.init(name: t.name, purpose: t.purpose, bookingText: t.bookingText ?? "", endToEndReference: t.endToEndReference ?? "",
 			mandateReference: t.mandateReference ?? "", creditorID: t.creditorID ?? "", comment: t.comment ?? "",
 			localAccounts: [account?.iban, account?.accountNumber].compactMap { $0 },
 			remoteAccounts: [t.counterpartyIBAN].compactMap { $0 },
-			currency: t.currency, amount: t.amount.decimal)
+			currency: t.currency, amount: money.decimal)
+	}
+
+	func words(of field: RuleField) -> [[Substring]] {
+		derived.words(of: field) {
+			if field == .localAccount || field == .remoteAccount {
+				text(of: field).map { [Substring(TextFolding.fold(TextFolding.accountKey($0)))] }
+			} else {
+				text(of: field).map { TextFolding.words($0) }
+			}
+		}
 	}
 
 	func text(of field: RuleField) -> [String] {
@@ -66,6 +71,34 @@ public struct RuleSubject: Sendable {
 		case .remoteAccount: remoteAccounts
 		case .currency: [currency]
 		}
+	}
+}
+
+/// The amount and the folded words of one `RuleSubject`, made on first use. A subject usually stays on one thread, so the
+/// lock is never contended.
+private final class Derived: Sendable {
+	private struct Values {
+		var amount: Decimal?
+		var words: [RuleField: [[Substring]]] = [:]
+	}
+
+	private let values = Mutex(Values())
+	private let makeAmount: @Sendable () -> Decimal
+
+	init(amount: @escaping @Sendable () -> Decimal) { makeAmount = amount }
+
+	func amount() -> Decimal {
+		if let amount = values.withLock({ $0.amount }) { return amount }
+		let amount = makeAmount()
+		values.withLock { $0.amount = amount }
+		return amount
+	}
+
+	func words(of field: RuleField, _ fold: () -> [[Substring]]) -> [[Substring]] {
+		if let words = values.withLock({ $0.words[field] }) { return words }
+		let words = fold()
+		values.withLock { $0.words[field] = words }
+		return words
 	}
 }
 
@@ -143,14 +176,18 @@ public struct RegexBox: @unchecked Sendable {
 private final class RegexStop: Sendable {
 	private let stopped = Atomic<Int>(-1)
 	private let nanoseconds = Atomic<UInt64>(0)
+	private let heavyNanoseconds = Atomic<UInt64>(0)
 	private let slowNanoseconds = Atomic<UInt64>(0)
 
 	var spent: UInt64 { nanoseconds.load(ordering: .relaxed) }
+	/// The time of the calls that took `Rule.heavyCall` or more each.
+	var heavy: UInt64 { heavyNanoseconds.load(ordering: .relaxed) }
 	/// The time of the calls that took `Rule.slowCall` or more each.
 	var slow: UInt64 { slowNanoseconds.load(ordering: .relaxed) }
 
 	func add(_ elapsed: UInt64) {
 		nanoseconds.wrappingAdd(elapsed, ordering: .relaxed)
+		if elapsed >= Rule.heavyCall { heavyNanoseconds.wrappingAdd(elapsed, ordering: .relaxed) }
 		if elapsed >= Rule.slowCall { slowNanoseconds.wrappingAdd(elapsed, ordering: .relaxed) }
 	}
 
@@ -203,6 +240,9 @@ public struct Rule: Sendable {
 	/// some texts then costs about 50 ms, not 1 second, also when it is fast on all other texts.
 	static let slowCall: UInt64 = 1_000_000
 	static let slowLimit: UInt64 = 50_000_000
+	/// A call of `heavyCall` or more counts toward the limit of a batch of `Categorizer`. A call on the text of a bank
+	/// takes a few microseconds, so many fast rules over a long history never reach that limit.
+	static let heavyCall: UInt64 = 100_000
 
 	/// The position of the regular expression that ran too long, counted from 0, or nil. It ran too long when one call
 	/// took about 100 ms, when its slow calls took `slowLimit` together, or when all calls of this parsed rule
@@ -215,7 +255,11 @@ public struct Rule: Sendable {
 	var hasRegex: Bool { stop != nil }
 
 	/// The processor time that the regular expressions of this parsed rule spent.
+	// periphery:ignore - the tests read it to show that a repeat of a batch does not run a rule again.
 	var regexSpent: UInt64 { stop?.spent ?? 0 }
+
+	/// The processor time of the calls of this parsed rule that took `heavyCall` or more each.
+	var heavySpent: UInt64 { stop?.heavy ?? 0 }
 
 	/// Stops the rule at its first regular expression, when the rules of one batch together ran too long.
 	func stopAtFirstRegex() {
@@ -275,7 +319,7 @@ public struct Rule: Sendable {
 			let fields = field.map { [$0] } ?? RuleField.unqualified
 			let p = patterns.map(\.pattern)
 			return fields.contains { f in
-				(s.words[f] ?? []).contains { containsPhrase(p, in: $0) }
+				s.words(of: f).contains { containsPhrase(p, in: $0) }
 			}
 		}
 	}

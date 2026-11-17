@@ -87,6 +87,22 @@ struct TransactionCopyTests {
 		#expect(fields[2] == "'+Rabatt-")
 	}
 
+	@Test("A full-width formula sign also gets the apostrophe, also after leading whitespace", arguments: ["＝", "＋", "－", "＠"])
+	func fullWidthFormula(sign: String) {
+		var t = debit
+		t.name = sign + "1+1"
+		t.purpose = " \u{3000}" + sign + "Rabatt"
+		t.mandateReference = nil
+		t.counterpartyIBAN = sign + "1"
+		t.counterpartyBIC = sign + "2"
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields[1] == "'" + sign + "1+1")
+		#expect(fields[2] == "'" + sign + "Rabatt")
+		#expect(fields[3] == "'" + sign + "1")
+		#expect(fields[4] == "'" + sign + "2")
+		#expect(fields[5] == "-1.234,50")
+	}
+
 	@Test("A purpose that is empty starts with the first detail, which never starts a formula")
 	func formulaInDetail() {
 		var t = debit
