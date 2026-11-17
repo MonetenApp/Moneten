@@ -88,6 +88,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// bank balance move it. A value that the user enters stays as the user entered it.
 	public var initialBalanceIsDerived: Bool
 	public var isClosed: Bool
+	/// The clearing entry that the last close inserted, until the user reopens the account.
+	public var clearingEntry: ClearingEntryMark?
 	public var comment: String?
 	/// The identifier of the account in the program it came from.
 	public var sourceID: String?
@@ -114,7 +116,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, initialBalanceIsDerived: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
-		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false, otherBankBalances: [Money] = [], bonusPoints: Int64? = nil) {
+		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false, otherBankBalances: [Money] = [], bonusPoints: Int64? = nil, clearingEntry: ClearingEntryMark? = nil) {
 		self.id = id
 		self.groupID = groupID
 		self.position = position
@@ -136,6 +138,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 		self.initialBalanceIsSet = initialBalanceIsSet
 		self.initialBalanceIsDerived = initialBalanceIsDerived
 		self.isClosed = isClosed
+		self.clearingEntry = clearingEntry
 		self.comment = comment
 		self.sourceID = sourceID
 		self.color = color
@@ -153,11 +156,12 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// In an account with bank access, a manual row covers what the bank does not deliver.
 	public var takesManualTransactions: Bool { kind != .portfolio }
 
-	/// The balance that a portfolio or an account of a bank access shows. A portfolio gets its value from the
+	/// The balance that a portfolio or an open account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
-	/// the balance of the source.
+	/// the balance of the source, and a closed one, whose clearing entry brings the computed balance to zero.
+	/// The bank balance stays stored, so a reopened account shows it again.
 	public var reportedBalance: Money? {
-		guard kind == .portfolio || source == .bank, let bankBalanceMinor else { return nil }
+		guard kind == .portfolio || (source == .bank && !isClosed), let bankBalanceMinor else { return nil }
 		return Money(minorUnits: bankBalanceMinor, currency: currency)
 	}
 
@@ -184,6 +188,8 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// A refresh derived the initial balance and the user entered none since, so a manual row in the bank balance
 	/// moves it by its own change, and a refresh whose new day passes a manual row sets it by the rule of the first refresh.
+	/// While the account is closed, its clearing entry stays out of this rule (`Ledger.followingBankBalance`), so the entry
+	/// brings the computed balance to zero. A kept entry moves the value at the reopen (`Ledger.reopening(_:)`).
 	public var followsBankBalance: Bool { source == .bank && kind != .portfolio && initialBalanceIsDerived }
 
 	/// The rows that a bank balance for the end of `day` holds: booked rows in the account currency up to that

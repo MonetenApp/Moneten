@@ -2891,6 +2891,17 @@
         }
       }
     },
+    "Clearing entry" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgleichsbuchung"
+          }
+        }
+      }
+    },
     "Clothing" : {
       "localizations" : {
         "de" : {
@@ -9159,6 +9170,17 @@
         }
       }
     },
+    "The account has been marked as closed in the account settings. The app inserted this transaction to bring the balance to zero. Change it with “Edit Transaction...” if needed." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto wurde in den Kontoeinstellungen als aufgelöst markiert. Die App hat diesen Umsatz eingefügt, um den Kontostand auf null zu bringen. Ändern Sie ihn bei Bedarf mit „Umsatz bearbeiten...“."
+          }
+        }
+      }
+    },
     "the account number %@" : {
       "localizations" : {
         "de" : {
@@ -9427,6 +9449,17 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The balance of the account \"%@\" is too large for a clearing entry." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Kontostand des Kontos „%@“ ist zu groß für eine Ausgleichsbuchung."
+          }
+        }
+      }
     },
     "The balance of the account \"%@\" is too large." : {
       "localizations" : {

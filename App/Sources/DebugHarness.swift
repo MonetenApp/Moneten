@@ -567,6 +567,18 @@ final class DebugHarness {
 			model.save(transaction: t, adding: false)
 			model.sheet = .transaction(t.id)
 			log("edit done", ("original", .flag(t.original != nil)))
+		// "<account>=on" or "<account>=off" turns "The account has been closed" on or off and saves, as OK in the
+		// account settings does. It logs whether the account is closed, the count of its rows, and whether it keeps a clearing entry.
+		case "closed":
+			let parts = argument.components(separatedBy: "=")
+			guard parts.count == 2, var a = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("closed refused", ("needs", .word("account=on|off"))) }
+			var edited = a
+			edited.isClosed = parts[1] == "on"
+			a.takeSettings(from: edited, opened: a)
+			model.save(account: a)
+			let saved = model.ledger.account(a.id)
+			log("closed", ("closed", .flag(saved?.isClosed == true)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
+				("entry", .flag(saved?.clearingEntry != nil)))
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))

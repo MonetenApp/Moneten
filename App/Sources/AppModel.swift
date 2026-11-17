@@ -370,7 +370,8 @@ final class AppModel {
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
-			guard let self else { return }
+			// A refresh that ran while the user closed the account delivers nothing into it. The merge checks it again in its write.
+			guard let self, self.ledger.account(accountID)?.isClosed != true else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 			if let kind = self.ledger.account(accountID)?.kind {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
@@ -1083,12 +1084,37 @@ final class AppModel {
 
 	// MARK: Accounts and groups
 
+	/// Saves the account. Marking it as closed also stores its clearing entry, and reopening it removes the entry that
+	/// the user did not change, each in one write with the account.
 	func save(account: Account) {
 		guard let store else { return }
+		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
-			try store.save(account)
-			ledger.upsert(account)
-			if let value = account.portfolioValue() { ledger.record(value) }
+			var saved = account
+			var entry: Transaction?
+			var removed: UUID?
+			if account.isClosed, wasClosed == false {
+				(saved, entry) = try ledger.closing(account, today: .today())
+			} else if !account.isClosed, wasClosed == true {
+				(saved, removed) = try ledger.reopening(account)
+			}
+			if let entry {
+				try store.save([entry], accounts: [saved])
+			} else if let removed {
+				try store.deleteTransactions([removed], accounts: [saved])
+			} else {
+				try store.save(saved)
+			}
+			ledgerChange = "account closed=\(saved.isClosed) entry=\(entry != nil) removed=\(removed != nil)"
+			// A closed account takes no refresh: it leaves the refreshes that wait, and the merge drops what a running one delivers.
+			if saved.isClosed, wasClosed == false { sync.leaveOut(account: saved.id) }
+			ledger.upsert(saved)
+			if let value = saved.portfolioValue() { ledger.record(value) }
+			if let entry { ledger.update([entry]) }
+			if let removed {
+				ledger.remove(transactionIDs: [removed])
+				selectedTransactions.remove(removed)
+			}
 			ledger.replace()
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the account."), message: String(describing: error))

@@ -106,7 +106,8 @@ struct HeaderView: View {
 					if let a = model.ledger.account(id) {
 						BalancesText(amounts: model.ledger.balances(of: a)).font(.title2)
 						// A portfolio never stores bonus points, so the line shows only for an account with a bonus program.
-						if let points = a.bonusPoints {
+						// A closed account shows its computed balance and none of the values that its bank reported.
+						if !a.isClosed, let points = a.bonusPoints {
 							Text("Bonus points: \(points.formatted())").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
 						}
 					}
