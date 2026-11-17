@@ -23,6 +23,6 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0017](0017-hardened-runtime-for-every-release-build.md) | Give every Release build the hardened runtime | Accepted |
 | [0018](0018-sandbox-the-fints-helper.md) | Run the FinTS helper in the app sandbox | Accepted |
 | [0019](0019-ext-releases-in-the-build-environment.md) | Sign releases of ext in the environment build | Accepted |
-| [0020](0020-license-gpl-3-with-hbci4java.md) | License the app under GPL-3.0-or-later, with hbci4java | Accepted |
+| [0020](0020-keep-gpl-3-after-hbci4java.md) | Keep GPL-3.0-or-later after the move to hbci4java | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

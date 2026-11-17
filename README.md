@@ -72,6 +72,6 @@ The project needs Swift developers, people who know FinTS or hbci4java, and exte
 
 ## License
 
-Moneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions in the catalog use a GPL-compatible license such as MIT. [ADR 0020](docs/decisions/0020-license-gpl-3-with-hbci4java.md) explains why.
+Moneten is licensed under the [GNU General Public License v3.0 or later](LICENSE). Extensions in the catalog use a GPL-compatible license such as MIT. [ADR 0020](docs/decisions/0020-keep-gpl-3-after-hbci4java.md) explains why.
 
 Moneten is not affiliated with MoneyMoney, MRH applications GmbH, Banking4, or Subsembly GmbH.
