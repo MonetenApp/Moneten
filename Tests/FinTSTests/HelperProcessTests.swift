@@ -58,7 +58,7 @@ struct HelperProcessTests {
 		// their start. A loaded runner of CI ran it only after 32 seconds, so the bound holds a margin.
 		try await Task.sleep(for: .milliseconds(500))
 		await Task.detached { }.value
-		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + loadMargin)
+		#expect(ContinuousClock.now - start < .seconds(inactivity + grace) + loadMargin) // time-ok: loadMargin holds 60 s
 		for run in runs {
 			#expect(await run.value as? SyncFailure == .network("The connection to the FinTS server of the bank timed out. Try again later."))
 		}

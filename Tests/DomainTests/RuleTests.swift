@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import TestSupport
 @testable import Domain
 
 /// The scenarios of openspec/changes/add-categorization-rules/specs/categorization-rules/spec.md.
@@ -258,8 +259,7 @@ struct RuleTests {
 		let subject = RuleSubject(purpose: "Tel. +49 170 1234567")
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		#expect((0..<1_000).allSatisfy { _ in !rule.matches(subject) })
-		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
-		#expect(milliseconds < 1_000)
+		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) < budget(.milliseconds(1_000)))
 		#expect(rule.stoppedRegexPosition == 0)
 		// The stop is no match of the rule, so NOT before it does not match every row.
 		let negated = try Rule(parsing: #"name:"Telekom" OR NOT /^+?49/"#)
@@ -456,7 +456,7 @@ struct CategorizerTests {
 		}
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		for i in rows.indices { c.categorize(&rows[i]) }
-		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000 < 1_000)
+		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) < budget(.milliseconds(1_000)))
 		#expect(rows.allSatisfy { $0.categoryID == other.id && $0.categorizedBy == .rule })
 	}
 
@@ -534,9 +534,9 @@ struct CategorizerTests {
 		let rule = try Rule(parsing: "purpose:/(a+)+$/")
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		#expect((0..<200).allSatisfy { _ in !rule.matches(subject) })
-		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		let elapsed = Duration.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start)
 		#expect(rule.stoppedRegexPosition == 8)
-		#expect(milliseconds < 1_600)
+		#expect(elapsed < budget(.milliseconds(1_600)))
 		// The count of matches stops by the same limit.
 		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/(a+)+$/")
 		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Kiosk", purpose: subject.purpose) }
@@ -544,7 +544,7 @@ struct CategorizerTests {
 		let countStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: ledger([phone], rows)) == 0)
 		#expect(counted.stoppedRegexPosition == 8)
-		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - countStart) / 1_000_000 < 1_600)
+		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - countStart) < budget(.milliseconds(1_600)))
 	}
 
 	/// Six rules that hang on every text, and six that are slow on texts of 18 "a", above a normal rule and a catch-all.
@@ -586,12 +586,10 @@ struct CategorizerTests {
 		let alone = run([traders, rest])
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let mixed = run(slow + [traders, rest])
-		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
-		print("twelve stopping rules over 2,004 rows: \(milliseconds) ms")
-		// A Mac takes about 2 s; before round 3 of #351 the batch took over 10 s. A GitHub-hosted runner is slower for
-		// every test at once, so it gets 1.5 times as long, as the budgets of PerformanceTests do.
-		let limit: UInt64 = ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? 3_750 : 2_500
-		#expect(milliseconds < limit)
+		let elapsed = Duration.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start)
+		print("twelve stopping rules over 2,004 rows: \(elapsed)")
+		// A Mac takes about 2 s; before round 3 of #351 the batch took over 10 s.
+		#expect(elapsed < budget(.milliseconds(2_500)))
 		let expected = alone.rows.map(\.categoryID)
 		#expect(expected.count(where: { $0 == traders.id }) == 319)
 		#expect(mixed.rows.map(\.categoryID) == expected)
@@ -630,8 +628,7 @@ struct CategorizerTests {
 		let row = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Haendler1", purpose: "Rechnung 1")
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let t = rules.allOrNothing { var t = row; rules.categorize(&t); return t }
-		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
-		#expect(milliseconds < 3_600)
+		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) < budget(.milliseconds(3_600)))
 		#expect(rules.entries.allSatisfy { $0.rule.stoppedRegexPosition != nil })
 		#expect(t.categoryID == nil)
 	}

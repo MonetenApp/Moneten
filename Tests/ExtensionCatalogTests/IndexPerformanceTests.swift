@@ -1,6 +1,7 @@
 @testable import ExtensionCatalog
 import Foundation
 import Testing
+import TestSupport
 
 /// The budget holds only in a release build: `scripts/test.sh -c release -Xswiftc -enable-testing --filter IndexPerformanceTests`.
 @Suite struct IndexPerformanceTests {
@@ -20,7 +21,7 @@ import Testing
 		let times = try (0..<7).map { _ in try clock.measure { _ = try check() } }.sorted()
 		print("index_verify_parse_ms=\(times[3] / .milliseconds(1)) samples_ms=\(times.map { $0 / .milliseconds(1) }) entries=200 bytes=\(data.count)")
 		#if !DEBUG
-		#expect(times[3] < .milliseconds(50))
+		#expect(times[3] < budget(.milliseconds(50)))
 		#endif
 	}
 }
