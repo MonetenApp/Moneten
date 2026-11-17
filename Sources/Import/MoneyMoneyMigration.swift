@@ -38,8 +38,7 @@ public struct MoneyMoneyMigration: Sendable {
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
 		/// The portfolio accounts of the export by name, and whether each one has a bank access, which fetches its positions.
-		fileprivate var portfolios: [(name: String, connected: Bool)] = []
-		public var portfolioAccounts: [String] { portfolios.map(\.name) }
+		var portfolios: [(name: String, connected: Bool)] = []
 		public var notes: [String] = []
 		/// Each account of the export, in its order, for the report.
 		public var sources: [SourceAccount] = []

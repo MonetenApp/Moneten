@@ -125,7 +125,7 @@ struct MoneyMoneyMigrationTests {
 		#expect(giro.iban == "DE02120300000000202051" && giro.bic == "BYLADEM1001")
 		#expect(giro.accountNumber == "DE02120300000000202051")
 		#expect(p.accounts.first { $0.name == "Savings" }?.iban == nil)
-		#expect(p.portfolioAccounts == ["Depot"])
+		#expect(p.portfolios.map(\.name) == ["Depot"])
 	}
 
 	@Test("An unverified portfolio export names missing positions on first and repeated runs")
@@ -139,7 +139,7 @@ struct MoneyMoneyMigrationTests {
 		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
 		let second = try plan(into: ledger)
 		#expect(second.notes.contains(note))
-		#expect(second.portfolioAccounts == ["Depot"])
+		#expect(second.portfolios.map(\.name) == ["Depot"])
 		#expect(second.accounts.isEmpty)
 	}
 
@@ -155,7 +155,7 @@ struct MoneyMoneyMigrationTests {
 		let prefix = "The positions of \"Depot\" were not migrated, because the portfolio export format is not verified."
 		#expect(second.notes.contains("\(prefix) Its bank access fetches them with each refresh."))
 		#expect(!second.notes.contains { $0.contains("Connect the portfolio") })
-		#expect(second.portfolioAccounts == ["Depot"])
+		#expect(second.portfolios.map(\.name) == ["Depot"])
 	}
 
 	@Test("The computed balance ends at the balance of the source plus its pending rows")
