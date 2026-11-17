@@ -196,16 +196,22 @@ struct SplitLedgerTests {
 		#expect(l.part(other.id) == nil)
 	}
 
-	@Test("CSV exports the parts with their categories and comments")
+	@Test("CSV exports the parts with their categories and comments, one line each with the columns of the spec")
 	func csv() throws {
 		let t = original()
-		var l = ledger([t]); l.replaceParts(of: t.id, with: parts(t))
-		let data = try TransactionCSV.data(l.rows(in: .account(account.id)).rows, ledger: l, locale: Locale(identifier: "en_US"))
+		let ps = parts(t)
+		var l = ledger([t]); l.replaceParts(of: t.id, with: ps)
+		let rows = l.rows(in: .account(account.id)).rows
+		let data = try TransactionCSV.data(rows, ledger: l, locale: Locale(identifier: "en_US"))
 		let lines = String(decoding: data, as: UTF8.self).components(separatedBy: "\r\n").filter { !$0.isEmpty }
 		#expect(lines.count == 3)
-		#expect(lines[1].contains("Household") && lines[1].contains(";-25.00;EUR;") && lines[1].contains("Detergent"))
-		#expect(lines[2].contains("Groceries") && lines[2].contains(";-55.00;EUR;"))
+		// The part without a comment does not take "Weekly shop" of the original.
+		#expect(lines[1] == "11/05/2026;;Household;REWE Markt GmbH;Receipt;;;-25.00;EUR;Girokonto;;;;;Detergent;;")
+		#expect(lines[2] == "11/05/2026;;Groceries;REWE Markt GmbH;Receipt;;;-55.00;EUR;Girokonto;;;;;;;")
 		#expect(!lines.contains { $0.contains(";-80.00;") })
+		let selected = TransactionCSV.rows(visible: rows, selection: [ps[1].id])
+		#expect(selected.count == 1)
+		#expect(try TransactionCSV.text(selected, ledger: l, locale: Locale(identifier: "en_US")).components(separatedBy: "\r\n")[1] == lines[2])
 	}
 	func editableSplit() -> (Ledger, Transaction, [SplitPart]) {
 		var t = original(); t.comment = nil
