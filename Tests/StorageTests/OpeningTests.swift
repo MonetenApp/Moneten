@@ -947,8 +947,24 @@ struct OpeningTests {
 		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
 	}
 
-	@Test("A new database keeps the random key that a renamed database still needs", .enabled(if: hasKeychain))
-	func newDatabaseKeepsRandomKey() throws {
+	@Test("A new database without a password never uses a key that it finds in the Keychain", .enabled(if: hasKeychain))
+	func newDatabaseIgnoresFoundKey() throws {
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		try vault.keyKeychain.write("bekannter-schluessel", account: folder.keychainAccount)
+		let store = try vault.create(password: nil, starterCategories: [])
+		_ = try sampleData(store)
+		try store.close()
+
+		#expect(try vault.keyKeychain.read(account: folder.keychainAccount) != "bekannter-schluessel")
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: "bekannter-schluessel") }
+		let reopened = try vault.openWithRandomKey()
+		defer { try? reopened.close() }
+		#expect(try reopened.loadLedger().accounts.map(\.name) == ["Giro"])
+	}
+
+	@Test("A new database without a password replaces the random key of a renamed database", .enabled(if: hasKeychain))
+	func newDatabaseReplacesRenamedKey() throws {
 		let fm = FileManager.default
 		let vault = Vault(folder: folder)
 		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
@@ -961,7 +977,7 @@ struct OpeningTests {
 
 		try fm.removeItem(at: folder.databaseFolder)
 		try fm.moveItem(at: renamed, to: folder.databaseFolder)
-		#expect(try vault.openWithRandomKey().loadLedger().accounts.map(\.name) == ["Giro"])
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.openWithRandomKey() }
 	}
 
 	@Test("A new database with a password keeps the random key of a renamed database through its unlock", .enabled(if: hasKeychain))

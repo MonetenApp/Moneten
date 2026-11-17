@@ -1,6 +1,7 @@
 import Domain
 import Foundation
 import GRDB
+import os
 
 /// Opens, creates, and protects the encrypted database (ADR 0009).
 ///
@@ -94,7 +95,7 @@ public struct Vault: Sendable {
 			case let .passwordSetWithLeftover(detail):
 				String(localized: "The database password has been set, but Moneten could not remove the random key of the database: \(detail)")
 			case let .keychainNotUpdated(detail, copies):
-				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain.")
+				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nAn unlock setting whose entry is gone is now off. Turn it on again in the \"Security\" settings. A setting that is still on stores the new password at the next unlock with the database password.")
 					+ (copies.isEmpty ? "" : "\n\n" + Failure.copiesNotUpdated(copies).description)
 			case let .passwordNotChanged(detail):
 				String(localized: "Could not change the database password, for example because the disk is full. The database is unchanged and opens as before.\n\n\(detail)")
@@ -109,6 +110,9 @@ public struct Vault: Sendable {
 			}
 		}
 	}
+
+	/// Names no path and no value, because the path of the data folder can hold the name of the user.
+	private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Moneten", category: "vault")
 
 	public let folder: DataFolder
 	/// The version of the running app. An upgrade records it in the database, so that an older version can name it.
@@ -191,25 +195,27 @@ public struct Vault: Sendable {
 	/// Lists the copies that a password change still has to re-key, one file name per line. It holds no key.
 	var rekeyMarker: URL { folder.databaseFolder.appendingPathComponent("RekeyCopies") }
 
-	/// Creates a new database. Without a password, a random key in the Keychain protects it.
-	/// A random key of a database that was in this folder before, such as one the user renamed, stays and
-	/// protects the new database too, so the renamed one still opens. The entries of the unlock settings go,
-	/// because the settings of a new database start off.
+	/// Creates a new database. Without a password, a new random key in the Keychain protects it, and it replaces
+	/// a key that the Keychain holds for this path. That key is never used: the path is easy to guess, so another
+	/// program may have created the entry with a key it knows. A new database with a password leaves the key
+	/// alone, so a database that the user renamed still opens with it when it comes back. The entries of the unlock
+	/// settings go, because the settings of a new database start off.
 	/// A database folder that holds files is never touched, so a stale call cannot replace a database.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
 		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
 		// An entry is what turns an unlock setting on, and a new database starts with the settings off, so the
-		// entries of a database that was here before go. Its random key stays: it still opens that database.
+		// entries of a database that was here before go.
 		for entry in PasswordEntry.allCases { try removeStoredPassword(for: entry) }
 		try removeSharedEntry()
 		let key: String
 		if let password {
 			key = password
-		} else if let existing = try keychain({ try read(keyKeychain, legacy: legacyKeyKeychain) }) {
-			key = existing
 		} else {
 			key = Self.randomKey()
+			if try keychain({ try keyKeychain.delete(account: folder.keychainAccount) }) {
+				Self.log.notice("A new database without a password replaced a database key that was in the Keychain for its path.")
+			}
 			try keychain { try keyKeychain.write(key, account: folder.keychainAccount) }
 		}
 		var store: Store?

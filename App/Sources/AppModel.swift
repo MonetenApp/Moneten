@@ -714,6 +714,8 @@ final class AppModel {
 		} catch Vault.Failure.incorrectPassword {
 			return String(localized: "Incorrect password!")
 		} catch let failure as Vault.Failure where failure.passwordChanged {
+			// A Keychain entry that could not take the new password may be gone, which turns its setting off.
+			if case .keychainNotUpdated = failure { try? loadUnlockSettings() }
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {

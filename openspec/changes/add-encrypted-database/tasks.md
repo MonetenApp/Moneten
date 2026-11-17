@@ -28,6 +28,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.22 A copy in use stops the first password. Verified by OpeningTests "A copy that another program has locked stops the first password, and the random key still opens everything" (#266).
 - [x] 1.23 Work files go before a password change. Verified by OpeningTests "A work file that cannot be removed stops the password change before the database changes", "A work file that cannot be removed stops the first password before the database changes", and "A password change removes the journal of a work file whose work file is already gone" (#266).
 - [x] 1.24 Deleted data leaves no trace in the database file. Verified by SavedPINTests "A removed PIN leaves no byte in the decrypted pages, also after the password changes" (#332) and "A PIN removed through a connection with only the key, as before secure_delete, leaves no byte in the database, its upgrade backup copy, or a backup" (#335).
+- [ ] 1.25 A new database never uses a key from the Keychain (#399).
 
 ## 2. Integration
 

@@ -25,6 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 A locked app does no work with the data. Verified by AutoRefreshTests "A locked app runs nothing, and the unlock runs the accounts that became due meanwhile". The lock cancels refreshes, a rule run, a file import, and an export, and closes the database. Statements and automation requests do not exist yet (#269).
 - [x] 1.20 Help for a forgotten password. Verified by "Forgot your password?" on the lock screen.
 - [x] 1.21 Lock needs a database password. Verified by lock command and button are disabled without a password.
+- [ ] 1.22 A secret goes only into a Keychain entry of the app (#399).
 
 ## 2. Integration
 

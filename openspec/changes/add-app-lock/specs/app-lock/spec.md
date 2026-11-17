@@ -207,6 +207,30 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 - **THEN** the main window shows the accounts without a prompt
 - **AND** "Unlock with Touch ID" is still on
 
+### Requirement: A secret goes only into a Keychain entry of the app
+
+The app SHALL write a password or a key into the Keychain only as a new entry that it creates, and it SHALL first remove an entry of the same name for the same database. The new entry has the access list that macOS gives a new entry, so another program cannot read it without a prompt of macOS. An entry that another program created never receives the secret, whatever its access list allows.
+
+#### Scenario: Another program created the entry before
+
+- **GIVEN** another program created the Keychain entry "Moneten database password for Touch ID" for this database with an access list that lets every app read it
+- **WHEN** the user turns on "Unlock with Touch ID" and enters the database password
+- **THEN** that entry is gone
+- **AND** the Keychain holds the database password in a new entry whose access list names only the app
+
+#### Scenario: Password change with an entry of another program
+
+- **GIVEN** "Unlock automatically at application start" is on and another program replaced its entry with one that lets every app read it
+- **WHEN** the user changes the database password to "neu-und-noch-laenger"
+- **THEN** the Keychain holds "neu-und-noch-laenger" in a new entry whose access list names only the app
+
+#### Scenario: The Keychain refuses the new entry after the old one is gone
+
+- **GIVEN** "Unlock with Touch ID" is on
+- **WHEN** the user changes the database password and the Keychain removes the entry but refuses the new one
+- **THEN** the app shows that the Keychain did not accept the new password
+- **AND** "Unlock with Touch ID" is off, and no entry holds the earlier password
+
 ### Requirement: Report a Keychain failure
 
 The app SHALL leave an unlock setting off when it cannot store the password or the configuration in the Keychain, and it tells the user that the Keychain did not accept the entry.
