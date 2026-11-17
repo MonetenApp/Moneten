@@ -49,8 +49,9 @@ FILES = [BANK_LIST]
 # The largest file the app accepts, BankDataUpdater.listLimit.
 LIMIT = 8 << 20
 ENTRY = re.compile(r"[0-9]{8}=[^|]*(\|[^|]*){7,}")
-SERIAL = re.compile(r"# ?serial=([0-9]{14})")
-VERSION = re.compile(r"# ?hbci4java=([0-9]+(?:\.[0-9]+)*)")
+# The header lines before the first entry, after "#" or "!" and spaces, as BankData.Header reads them.
+SERIAL = re.compile(r"serial=([0-9]{14})")
+VERSION = re.compile(r"hbci4java=([0-9]+(?:\.[0-9]+)*)")
 ED25519_PUBLIC_PREFIX = bytes.fromhex("302a300506032b6570032100")
 ED25519_PRIVATE_PREFIX = bytes.fromhex("302e020100300506032b657004220420")
 
@@ -86,10 +87,17 @@ def check_bank_list(data, name):
 	serial = version = None
 	for number, line in enumerate(text.splitlines(), 1):
 		line = line.strip(" \t")
-		if entries == 0 and SERIAL.fullmatch(line):
-			serial = SERIAL.fullmatch(line).group(1)
-		if entries == 0 and VERSION.fullmatch(line):
-			version = VERSION.fullmatch(line).group(1)
+		if entries == 0 and line.startswith(("#", "!")):
+			comment = line[1:].lstrip(" ")
+			for key, pattern in (("serial", SERIAL), ("hbci4java", VERSION)):
+				if comment.startswith(key):
+					found = pattern.fullmatch(comment)
+					if not found or (serial if key == "serial" else version) is not None:
+						raise Failure("%s, line %d, is a second or malformed %s line." % (name, number, key))
+					if key == "serial":
+						serial = found.group(1)
+					else:
+						version = found.group(1)
 		if not line or line.startswith(("#", "!")):
 			continue
 		if not ENTRY.fullmatch(line):

@@ -106,6 +106,11 @@ struct BankDataTests {
 		#expect(BankData.Header(Data("12030000=x|||||||\n# serial=20261117084700\n# hbci4java=4.1.17\n".utf8)) == nil)
 		#expect(BankData.Header(Data("# serial=2026\n# hbci4java=4.1.17\n".utf8)) == nil)
 		#expect(BankData.Header(Data("# serial=20261117084700\n# hbci4java=4..17\n".utf8)) == nil)
+		#expect(BankData.Header(Data("! serial=20261117084700\n!hbci4java=4.1.17\n".utf8)) == BankData.Header(Self.list))
+		#expect(BankData.Header(Data("# serial=20261117084700\n# serial=20261118084700\n# hbci4java=4.1.17\n".utf8)) == nil)
+		#expect(BankData.Header(Data("# serial=20261117084700\n! hbci4java=4.1.17\n# hbci4java=4.1.18\n".utf8)) == nil)
+		#expect(BankData.Header(Data("# serial=202611170847001\n# hbci4java=4.1.17\n".utf8)) == nil)
+		#expect(BankData.Header(Data("# serial = 20261117084700\n# hbci4java=4.1.17\n".utf8)) == nil)
 	}
 
 	// MARK: 6.2 The update
@@ -216,15 +221,18 @@ struct BankDataTests {
 		// A newer jar: the installed list from 4.1.17 is no longer used, and a download from it is refused.
 		let newerJar = setup.updater(publicKey, build: "123", bundled: "4.1.18")
 		#expect(newerJar.bankList() == nil)
+		try setup.serve(Self.list, signature: try signed(Self.list))
+		#expect(await newerJar.updateIfDue(now: Self.start.addingTimeInterval(150)) == .rejected(.older))
+		let later = setup.updater(publicKey, build: "124", bundled: "4.1.18")
 		let republished = Self.list(serial: 20261201000000)
 		try setup.serve(republished, signature: try signed(republished))
-		#expect(await newerJar.updateIfDue(now: Self.start.addingTimeInterval(180)) == .rejected(.older))
-		#expect(newerJar.bankList() == nil)
+		#expect(await later.updateIfDue(now: Self.start.addingTimeInterval(180)) == .rejected(.older))
+		#expect(later.bankList() == nil)
 
 		let fromNewJar = Self.list(serial: 20261202000000, hbci4java: "4.1.18")
 		try setup.serve(fromNewJar, signature: try signed(fromNewJar))
-		#expect(await newerJar.updateIfDue(now: Self.day(2)) == .installed)
-		#expect(newerJar.bankList() == fromNewJar)
+		#expect(await later.updateIfDue(now: Self.day(2)) == .installed)
+		#expect(later.bankList() == fromNewJar)
 	}
 
 	@Test("A signed file that is no bank list, or a list without its header, is rejected")
@@ -400,6 +408,20 @@ struct BankDataHTTPTests {
 		try serveSigned(at: plain)
 		#expect(await updater.updateIfDue(now: BankDataTests.start) == .unreachable)
 		#expect(BankDataStub.lock.withLock { BankDataStub.requests.contains { $0.url?.host() == plain.host() } } == false)
+	}
+
+	@Test("A source over http on this Mac is asked only when the build allows a test server")
+	func localTestServer() async throws {
+		let source = URL(string: "http://127.0.0.1:9/")!
+		let plain = BankDataUpdater(folder: folder, source: source, publicKey: key.publicKey.rawRepresentation, build: "120", bundled: "4.1.17",
+			protocolClasses: [BankDataStub.self])
+		#expect(await plain.updateIfDue(now: BankDataTests.start) == .unreachable)
+		#expect(BankDataStub.lock.withLock { BankDataStub.requests.contains { $0.url?.host() == "127.0.0.1" } } == false)
+
+		try serveSigned(at: source)
+		let debug = BankDataUpdater(folder: folder.appending(path: "debug"), source: source, publicKey: key.publicKey.rawRepresentation, build: "120",
+			bundled: "4.1.17", allowsLocalTestServer: true, protocolClasses: [BankDataStub.self])
+		#expect(await debug.updateIfDue(now: BankDataTests.start) == .installed)
 	}
 
 	@Test("A source over http that is not this Mac is never asked")

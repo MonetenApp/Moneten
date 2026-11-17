@@ -35,7 +35,9 @@ enum BankData {
 		let serial: Int
 		let hbci4java: [Int]
 
-		/// The header of a list, from the comment lines before its first entry, or nil without both lines.
+		/// The header of a list, from the comment lines before its first entry, which start with "#" or "!".
+		/// Nil without both lines, with one of them twice, or with a line that names "serial" or "hbci4java"
+		/// in another form, such as a serial that is not exactly 14 digits.
 		init?(_ data: Data) {
 			var serial: Int?, version: [Int]?
 			var start = data.startIndex
@@ -45,9 +47,15 @@ enum BankData {
 				let text = String(decoding: data[start..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
 				start = end == data.endIndex ? end : data.index(after: end)
 				if text.isEmpty { continue }
-				guard text.hasPrefix("#") else { break }
-				if let value = text.wholeMatch(of: /# ?serial=([0-9]{14})/)?.1 { serial = Int(value) }
-				if let value = text.wholeMatch(of: /# ?hbci4java=([0-9.]+)/)?.1 { version = Header.version(String(value)) }
+				guard text.hasPrefix("#") || text.hasPrefix("!") else { break }
+				let comment = text.dropFirst().drop { $0 == " " }
+				if comment.hasPrefix("serial") {
+					guard serial == nil, let value = comment.wholeMatch(of: /serial=([0-9]{14})/)?.1 else { return nil }
+					serial = Int(value)
+				} else if comment.hasPrefix("hbci4java") {
+					guard version == nil, let value = comment.wholeMatch(of: /hbci4java=([0-9.]+)/)?.1, let parsed = Header.version(String(value)) else { return nil }
+					version = parsed
+				}
 			}
 			guard let serial, let version else { return nil }
 			self.serial = serial
@@ -126,20 +134,26 @@ public struct BankDataUpdater: Sendable {
 	let build: String
 	/// The version of the jar of hbci4java of this build. No list from an older jar is installed or used.
 	let bundled: [Int]
+	/// Whether a source over http on 127.0.0.1 may be asked. Only Debug and Perf builds of the app allow
+	/// it, for a test server.
+	let allowsLocalTestServer: Bool
 	private let session: URLSession
 
 	/// `source` is the folder of the files, such as the downloads of the release `bank-data`, or a file URL
 	/// in a test. `publicKey` is the 32 bytes of the update key, and `build` the build number of the app.
-	public init(folder: URL, source: URL, publicKey: Data, build: String) {
-		self.init(folder: folder, source: source, publicKey: publicKey, build: build, bundled: BankData.bundledHBCI4Java)
+	public init(folder: URL, source: URL, publicKey: Data, build: String, allowsLocalTestServer: Bool = false) {
+		self.init(folder: folder, source: source, publicKey: publicKey, build: build, bundled: BankData.bundledHBCI4Java,
+			allowsLocalTestServer: allowsLocalTestServer)
 	}
 
-	init(folder: URL, source: URL, publicKey: Data, build: String, bundled: String, protocolClasses: [AnyClass]? = nil) {
+	init(folder: URL, source: URL, publicKey: Data, build: String, bundled: String, allowsLocalTestServer: Bool = false,
+		protocolClasses: [AnyClass]? = nil) {
 		self.folder = folder
 		self.source = source
 		self.publicKey = publicKey
 		self.build = build
 		self.bundled = BankData.Header.version(bundled) ?? []
+		self.allowsLocalTestServer = allowsLocalTestServer
 		let configuration = URLSessionConfiguration.ephemeral
 		configuration.httpCookieStorage = nil
 		configuration.httpShouldSetCookies = false
@@ -165,6 +179,8 @@ public struct BankDataUpdater: Sendable {
 	/// The installed list with a valid signature of the update key, and its header, whether or not it is
 	/// newer than the jar. Its serial is the floor of the next download.
 	private func installed() -> (list: Data, header: BankData.Header)? {
+		// An install that swaps the folder between these two reads gives a list with the signature of the
+		// other one. The check then fails, and the helper uses the list of its jar for this one start.
 		guard let list = try? Data(contentsOf: current.appending(path: BankData.bankList)),
 			let file = try? Data(contentsOf: current.appending(path: BankData.bankList + ".sig")),
 			let signature = BankData.signature(fromFile: file),
@@ -217,11 +233,12 @@ public struct BankDataUpdater: Sendable {
 			let header = BankData.Header(list.data) else {
 			return .rejected(.unreadable)
 		}
+		// A list from an older jar than the one of this build, also when it is the installed one, then a
+		// replay of an older list or the same serial with other bytes. The floor stays across builds,
+		// because "Current" does.
+		if !header.isAtLeast(bundled) { return .rejected(.older) }
 		let installed = installed()
 		if installed?.list == list.data { return .unchanged }
-		// A replay of an older list, the same serial with other bytes, or a list from an older jar than
-		// the one of this build. The floor stays across builds, because "Current" does.
-		if !header.isAtLeast(bundled) { return .rejected(.older) }
 		if let installed, header.serial <= installed.header.serial { return .rejected(.older) }
 		do {
 			try install(downloaded)
@@ -286,7 +303,7 @@ public struct BankDataUpdater: Sendable {
 
 	/// A test server of a Debug build on this Mac, such as `python3 -m http.server --bind 127.0.0.1`.
 	private func isLocalTestServer(_ url: URL) -> Bool {
-		url.scheme == "http" && ["127.0.0.1", "localhost"].contains(url.host())
+		allowsLocalTestServer && url.scheme == "http" && ["127.0.0.1", "localhost"].contains(url.host())
 	}
 }
 

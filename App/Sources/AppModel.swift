@@ -427,7 +427,6 @@ final class AppModel {
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
-		BankDataUpdates.start { [weak self] in self?.autoRefresh.isOnline ?? true }
 	}
 
 	// MARK: Opening and locking
@@ -1409,7 +1408,12 @@ final class AppModel {
 			}
 		}
 		pathMonitor.pathUpdateHandler = { [weak self] path in
-			MainActor.assumeIsolated { self?.autoRefresh.isOnline = path.status == .satisfied }
+			MainActor.assumeIsolated {
+				self?.autoRefresh.isOnline = path.status == .satisfied
+				// The first update that finds a connection starts the bank data, so the look at launch does
+				// not run before the app knows the state of the network.
+				if path.status == .satisfied { BankDataUpdates.start { [weak self] in self?.autoRefresh.isOnline ?? false } }
+			}
 		}
 		pathMonitor.start(queue: .main)
 	}

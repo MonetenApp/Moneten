@@ -89,11 +89,16 @@ class BankDataTests(unittest.TestCase):
 		for name, data in (("empty", b""), ("comment only", b"# x\n"), ("short code", ENTRY[1:].encode()),
 				("few fields", b"12030000=Musterbank|Berlin|BYLADEM1001\n"), ("backslash", ENTRY.replace("Muster", "Muster\\u0062").encode()),
 				("not UTF-8", b"\xff\xfe"), ("no header", (ENTRY + "\n").encode()),
-				("serial after the first entry", (ENTRY + "\n# serial=20261117084700\n# hbci4java=4.1.17\n").encode())):
+				("serial after the first entry", (ENTRY + "\n# serial=20261117084700\n# hbci4java=4.1.17\n").encode()),
+				("two serials", ("# serial=20261117084700\n# serial=20261118084700\n# hbci4java=4.1.17\n" + ENTRY + "\n").encode()),
+				("short serial", ("# serial=2026111708470\n# hbci4java=4.1.17\n" + ENTRY + "\n").encode()),
+				("two versions", ("# serial=20261117084700\n! hbci4java=4.1.17\n# hbci4java=4.1.18\n" + ENTRY + "\n").encode())):
 			path = self.dir / "list"
 			path.write_bytes(data)
 			self.assertNotEqual(run("check", str(path)).returncode, 0, name)
 		path.write_bytes((HEADER + ENTRY + "\n").encode())
+		self.assertEqual(run("check", str(path)).returncode, 0)
+		path.write_bytes(("! serial=20261117084700\n!hbci4java=4.1.17\n" + ENTRY + "\n").encode())
 		self.assertEqual(run("check", str(path)).returncode, 0)
 
 	def test_sign_and_verify_with_a_throwaway_key(self):

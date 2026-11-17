@@ -20,25 +20,32 @@ enum BankDataUpdates {
 		// The downloads of the release `bank-data`.
 		let source = URL(string: "https://github.com/MonetenApp/Moneten/releases/download/bank-data/")!
 		#endif
+		#if DEBUG || PERF_HARNESS
+		return BankDataUpdater(folder: DataFolder.current.bankDataFolder, source: source, publicKey: key, build: build, allowsLocalTestServer: true)
+		#else
 		return BankDataUpdater(folder: DataFolder.current.bankDataFolder, source: source, publicKey: key, build: build)
+		#endif
 	}()
 
 	private static var task: Task<Void, Never>?
 
 	private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Moneten", category: "bank-data")
 
-	/// Starts the hourly look. While `isOnline` says that the Mac is offline, as the harness command
-	/// `network off` also does, the app skips the look, and it does not count as one.
+	/// Starts the hourly look, at the first update of the network that finds a connection, so the look at
+	/// launch runs then. A later call does nothing. While `isOnline` says that the Mac is offline, as the
+	/// harness command `network off` also does, the app skips the look, which does not count as one, and
+	/// tries again after a minute.
 	static func start(isOnline: @escaping @MainActor () -> Bool) {
 		guard task == nil, let updater else { return }
 		task = Task {
 			while !Task.isCancelled {
 				if isOnline() {
 					log(await updater.updateIfDue())
+					try? await Task.sleep(for: .seconds(3600))
 				} else {
 					log(line: LogLine("bank data skipped", ("network", .word("off"))), system: false)
+					try? await Task.sleep(for: .seconds(60))
 				}
-				try? await Task.sleep(for: .seconds(3600))
 			}
 		}
 	}
