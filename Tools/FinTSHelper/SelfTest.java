@@ -129,6 +129,7 @@ final class SelfTest {
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
 		SavingsBanksSelfTest.run();
+		CommerzbankGroupSelfTest.run();
 
 		Out.secret("geheim42");
 		expect("PIN masked", Out.bank("PIN geheim42 sent"), "PIN ••• sent");

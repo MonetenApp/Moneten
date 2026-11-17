@@ -271,6 +271,18 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the list shows the payment as a pending transaction
 
+#### Scenario: Pending MT942 row of Commerzbank
+
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row with the entry date 14.11.2026, the value date 15.11.2026, the amount -42,00 €, and the name "Stadtwerke Musterstadt"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 15.11.2026 and the name "Stadtwerke Musterstadt"
+
+#### Scenario: Pending MT942 row of another bank
+
+- **GIVEN** the FinTS server of "Musterbank" sends a pending MT942 row with the entry date 14.11.2026 and the value date 15.11.2026
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 14.11.2026
+
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.
@@ -329,6 +341,12 @@ The app SHALL store the original amount and currency of a transaction that the b
 - **GIVEN** the bank reports a card payment of -46,12 € with the original amount 50,00 US dollars
 - **WHEN** the user opens the transaction details
 - **THEN** the details show 50,00 US dollars as the original amount
+
+#### Scenario: Sign of the original amount of an MT942 row
+
+- **GIVEN** the bank reports a pending MT942 row of -10,00 € with the original amount 11,00 US dollars
+- **WHEN** the refresh ends
+- **THEN** the original amount is -11,00 US dollars
 
 #### Scenario: Payment through a payment service
 
@@ -617,6 +635,30 @@ The app SHALL show the text and the return code that the bank sends when the ban
 - **WHEN** the bank delivers the transactions together with a warning text
 - **THEN** the transactions are stored
 - **AND** the log contains the warning
+
+### Requirement: Send a request to comdirect again when comdirect asks for it
+
+The app SHALL send the requests of an account to the FinTS server `fints.comdirect.de` a second time, once, when comdirect answers them with a text that contains "Bitte senden Sie die Anfrage erneut", instead of failing the account. The account fails with the text of the bank only when the second answer contains that text again.
+
+#### Scenario: Second answer succeeds
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends the request a second time
+- **AND** the transactions of the second answer are stored, and the account shows no error
+
+#### Scenario: Second answer is the same
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`
+- **WHEN** comdirect answers the transaction request twice with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no third request
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: Another bank
+
+- **GIVEN** a refresh at the FinTS server of "Musterbank"
+- **WHEN** the bank answers the transaction request with the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request, and the account fails with that text
 
 ### Requirement: Handle a PIN change that the bank requires
 

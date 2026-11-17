@@ -102,6 +102,14 @@ apoBank asks for the TAN medium of apoTAN and lists none. For that server the co
 
 The accounts of the partners, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, are not in the user parameters that hbci4java reads. The servers of Atruvia deliver them through jobs of their own, which hbci4java does not define, so the helper cannot send or read them yet. The bank test of issue #11 records, for one login with a partner account, which jobs the bank parameters list, which jobs each account allows, and the answer of the bank. Requirement "Accounts of the partners of a cooperative bank" is built from that record.
 
+### Commerzbank and comdirect
+
+The helper decides these rules by the FinTS host of the dialog in `Tools/FinTSHelper/CommerzbankGroup.java`, and the connector by the FinTS address in `Sources/FinTS/CommerzbankGroup.swift`. Commerzbank is `fints.commerzbank.de` or `hbci.commerzbank.de`, and comdirect is `fints.comdirect.de`.
+
+- **Date of a pending MT942 row.** The server of Commerzbank gives a pending MT942 row the day of the request as its entry date. The value date of the `:61:` line is the day on which the bank expects to book it, so a pending MT942 row of Commerzbank takes the value date as its booking date. hbci4java marks a CAMT row (`isCamt`), which keeps its booking date, and so does a booked row and every row of another bank. The pending row pairs with its booked version by the rules of add-account-refresh, which allow 7 days between the two dates.
+- **Request sent again.** comdirect may answer a request with "Bitte senden Sie die Anfrage erneut". The return code is not known, so the text decides. After the dialog, the helper queues the jobs of each account whose answer has that text in an error or a warning of the job or the message, once more, and runs a second dialog for them. The second answer counts as it is: when it has the text again, the account fails with that text and its code. Other banks never get a second request.
+- **Original amount.** An MT942 row of a debit carries the original amount without a sign. Once `Transaction` stores the original amount (task 1.18), it takes the sign of the booked amount when that is negative, for every bank.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).

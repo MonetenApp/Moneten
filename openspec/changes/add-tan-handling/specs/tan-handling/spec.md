@@ -160,6 +160,32 @@ The app SHALL offer a field for the TAN when the method needs a typed TAN. The b
 - **WHEN** the TAN field is empty
 - **THEN** the user cannot continue
 
+### Requirement: TAN length of Commerzbank and comdirect
+
+The app SHALL accept a typed TAN of at least 7 characters for a TAN method whose code contains "900" on the FinTS host `fints.commerzbank.de` or `hbci.commerzbank.de`, up to the length that the bank parameters announce for the method, between 7 and 15. The app SHALL accept a typed TAN of 6 or 7 characters for a TAN method whose code contains "902" on the FinTS host `fints.comdirect.de`. A longer entry stops at the upper length. Every other TAN method keeps a field without a length.
+
+#### Scenario: Commerzbank photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" stays disabled
+- **WHEN** the user types "1234567"
+- **THEN** "Continue" is enabled
+- **WHEN** the user types "12345678901"
+- **THEN** the field holds "1234567890"
+
+#### Scenario: comdirect photoTAN
+
+- **GIVEN** a TAN request of comdirect for the method 902
+- **WHEN** the user types "12345678"
+- **THEN** the field holds "1234567" and "Continue" is enabled
+
+#### Scenario: Another bank with the same method code
+
+- **GIVEN** a TAN request of "Musterbank" for the method 900, whose bank parameters announce 6 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" is enabled
+
 ### Requirement: Approval in an app without typing
 
 The app SHALL, for a method that the user approves in an app of the bank, ask the user to confirm the data in that app, show no TAN field, and check the result with the bank by itself. The dialog closes by itself when the bank reports the approval.

@@ -791,6 +791,7 @@ public class FinTSHelper {
 					}
 					Map<String, Object> request = message("ask", "kind", "tan", "purpose", purpose(passport), "prompt", challenge(msg), "image", image, "flicker", flicker,
 						"history", history(passport));
+					tanMethod(passport, request);
 					String tan = ask(choices(passport, request));
 					Out.secret(tan);
 					set(retData, tan);
@@ -856,6 +857,18 @@ public class FinTSHelper {
 				: type == HHDVersion.Type.QRCODE || type == HHDVersion.Type.PHOTOTAN ? "qr"
 				: names.contains("sms") || names.contains("mobile") ? "sms" : null;
 			return message("method", "id", id, "name", name, "medium", "2".equals(info.getProperty("needtanmedia")) ? true : null, "delivery", delivery);
+		}
+
+		/// Adds the method of a typed TAN and the longest TAN that the bank parameters announce for it (HITANS), from which
+		/// the app takes the length of the TAN field of some banks (Sources/FinTS/CommerzbankGroup.swift).
+		static void tanMethod(HBCIPassport passport, Map<String, Object> request) {
+			if (!(passport instanceof AbstractPinTanPassport p)) return;
+			String current = p.getCurrentTANMethod(false);
+			if (!present(current)) return;
+			request.put("current", current);
+			Properties info = p.getTwostepMechanisms() == null ? null : p.getTwostepMechanisms().get(current);
+			String length = info == null ? null : StringUtil.normalize(info.getProperty("maxlentan2step"));
+			if (length != null && length.matches("\\d{1,3}")) request.put("maxLength", Integer.parseInt(length));
 		}
 
 		/// Adds the method of a challenge and the methods that the user can change to, when there are two or more.
@@ -1014,7 +1027,7 @@ public class FinTSHelper {
 		// hbci4java reads no date from a CAMT entry that has a date and time only.
 		if (l.bdate == null && l.valuta == null) throw new Failure("unsupported", null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
 		return message("row",
-			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
+			"booked", day(CommerzbankGroup.bookingDate(Callback.server, l, pending)), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
 			"name", other == null ? null : text(other.name), "iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
@@ -1255,6 +1268,24 @@ public class FinTSHelper {
 		return from == null && narrowed ? today.minusDays(90).toString() : from;
 	}
 
+	/// Queues the jobs of the account `k` for the next dialog, as the account at `index` of the refresh.
+	static Jobs queue(Orders handle, Konto k, String id, String from, Callback callback, int index) {
+		HBCIJob balance = null, statements = null, card = null, holdings = null;
+		for (String name : handle.jobs(k)) {
+			HBCIJob job = handle.newJob(name);
+			prepare(job, name, k, from);
+			switch (name) {
+				case "SaldoReq" -> balance = job;
+				case "WPDepotList" -> holdings = job;
+				case "KreditkartenUmsatz" -> card = job;
+				default -> statements = job;
+			}
+			job.addToQueue();
+			callback.jobs.put(job, index);
+		}
+		return new Jobs(id, from, text(k.curr), balance, statements, card, holdings);
+	}
+
 	static void refresh(Orders handle, HBCIPassport passport, Konto[] accounts, List<?> requested, Callback callback) {
 		applyTanRules(passport.getHost(), passport.getBPD());
 		List<Jobs> all = new ArrayList<>();
@@ -1266,26 +1297,12 @@ public class FinTSHelper {
 				send(message("accountFailed", "account", id, "kind", "unsupported", "text", "The bank does not list this account for the login."));
 				continue;
 			}
-			List<String> names = handle.jobs(k);
-			if (names.isEmpty()) {
+			if (handle.jobs(k).isEmpty()) {
 				diagnostic(withoutJobs(k));
 				send(nothingAllowed(id, k));
 				continue;
 			}
-			HBCIJob balance = null, statements = null, card = null, holdings = null;
-			for (String name : names) {
-				HBCIJob job = handle.newJob(name);
-				prepare(job, name, k, from);
-				switch (name) {
-					case "SaldoReq" -> balance = job;
-					case "WPDepotList" -> holdings = job;
-					case "KreditkartenUmsatz" -> card = job;
-					default -> statements = job;
-				}
-				job.addToQueue();
-				callback.jobs.put(job, all.size());
-			}
-			all.add(new Jobs(id, from, text(k.curr), balance, statements, card, holdings));
+			all.add(queue(handle, k, id, from, callback, all.size()));
 		}
 		callback.jobCount = all.size();
 		callback.fullHistory = all.stream().anyMatch(j -> j.statements() != null && j.from() == null);
@@ -1297,6 +1314,7 @@ public class FinTSHelper {
 		callback.withdrawApproval();
 		callback.checkSwitch();
 		requireLogin(status);
+		all = CommerzbankGroup.again(handle, accounts, all, callback);
 		for (Jobs jobs : all) {
 			HBCIJob statements = jobs.statements(), card = jobs.card(), holdings = jobs.holdings();
 			if (card != null) {

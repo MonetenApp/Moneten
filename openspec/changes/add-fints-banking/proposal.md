@@ -60,3 +60,4 @@ None.
 - A canceled or interrupted fetch stores nothing for the account that was in progress. This was not observed.
 - The app shows the return code of the bank next to the bank's text. MoneyMoney shows the text.
 - A Sparkasse answer that the user deactivated the app in the online banking is recognized by its text on the servers of the savings banks, because its code was not observed. The app then names "Kontozugriffe" in the online banking as the place to unblock it.
+- comdirect gets a request a second time, once, when its answer asks to send it again. The answer is recognized by its text, because its return code was not observed.
