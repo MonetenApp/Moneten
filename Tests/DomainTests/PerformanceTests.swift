@@ -205,6 +205,43 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Refreshing 300 moved card bookings in 50,000 card rows meets its budget")
+	func movedCardBookings() {
+		let account = Account(position: 0, name: "Card history", kind: .creditCard, source: .bank)
+		let today = Day(year: 2026, month: 12, day: 1)
+		var stored: [Transaction] = []
+		stored.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			var t = Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000) - 3), amountMinor: -Int64(i + 1),
+				name: "Shop \(i % 50)", purpose: "Card payment \(i)")
+			t.isFetched = true
+			stored.append(t)
+		}
+		// The bank moved the 300 newest payments two days later, so none of them is delivered on its stored day.
+		var rows: [Transaction] = []
+		for t in stored.prefix(300) {
+			let moved: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate.adding(days: 2), amountMinor: t.amountMinor,
+				name: t.name, purpose: t.purpose)
+			rows.append(moved)
+		}
+		// The answer also holds older payments that did not move, so its days reach back past the stored days of the moved ones.
+		for t in stored[300..<310] {
+			let unchanged: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose)
+			rows.append(unchanged)
+		}
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: nil, maxBookingShift: 7)))
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		var result = Reconciliation()
+		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		#expect(result.skipped == 310 && result.updated.count == 300 && result.added.isEmpty)
+		// About twice the time on a Mac (23 to 31 ms in release while other builds ran), because a runner of GitHub took 63 ms
+		// where a Mac took 20 ms. Most of it is the pairing that every refresh of 50,000 rows runs (13 ms without a window).
+		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(60))), updated=\(result.updated.count)")
+		#if !DEBUG
+		#expect(elapsed < budget(.milliseconds(60)))
+		#endif
+	}
+
 	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
 	func regexRuleBudgets() throws {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)

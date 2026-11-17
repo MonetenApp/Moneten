@@ -107,6 +107,7 @@ struct AutomaticRefreshTests {
 		(.needsUser(.allowHost), true, false), (.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true, false), (.loginRejected, true, false),
 		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false),
 		(.noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen")), true, false),
+		(.noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: "Set up the DKB app."), true, false),
 		(.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung")), false, true),
 		(.network("timeout"), false, false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false, true), (.notFetched, false, false),
 		(.tanRejected(BankMessage(text: "TAN falsch")), false, false), (.challengeExpired, false, true), (.offline, false, false),
