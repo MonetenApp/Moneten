@@ -42,6 +42,11 @@ struct DayBridgeTests {
 		// Noon GMT is 13:00 in Berlin on the same day, which `Day.today()` reads the same way.
 		#expect(Day(day.noon, calendar: mac) == day)
 		#expect(Day(day.date(in: mac), calendar: mac) == day)
+		// The round trip above also holds when both ways count in the calendar of the Mac, so the date itself must be
+		// midnight of 9 November 2026 in Berlin and not of the year 2026 of the Buddhist calendar.
+		var berlin = Calendar(identifier: .gregorian)
+		berlin.timeZone = mac.timeZone
+		#expect(day.date(in: mac) == berlin.date(from: DateComponents(year: 2026, month: 11, day: 9)))
 		#expect(day.adding(days: 30, calendar: mac) == Day(year: 2026, month: 12, day: 9))
 		#expect(day.adding(months: -1, calendar: mac) == Day(year: 2026, month: 10, day: 9))
 	}
