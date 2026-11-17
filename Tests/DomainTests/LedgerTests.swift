@@ -212,6 +212,29 @@ struct LedgerTests {
 		}
 	}
 
+	@Test("An IBAN written with a no-break or a narrow no-break space is found by the plain IBAN, as the rule finds it", arguments: ["\u{00A0}", "\u{202F}"])
+	func searchIBANWithOtherSpaces(_ space: String) throws {
+		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: iban)
+		let other = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline, iban: "DE89370400440532013000")
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_250, name: "Markt", purpose: "REWE"),
+			Transaction(accountID: other.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -500, name: "Kiosk", purpose: "Zeitung", counterpartyIBAN: iban),
+		]
+		let l = Ledger(accounts: [giro, other], transactions: rows)
+		var f = TransactionFilter()
+		for (text, names) in [("DE02120300000000202051", ["Markt", "Kiosk"]), ("local_account:DE0?1203*", ["Markt"]), ("local_account:DE02?1203*", []), ("local_account:DE02120300000000202051", ["Markt"]),
+			("remote_account:DE02120300000000202051", ["Kiosk"])] {
+			f.searchText = text
+			#expect(l.rows(in: .all, filter: f).rows.map(\.name) == names, "\(text)")
+			// A rule searches account fields only with a field name.
+			guard text.contains(":") else { continue }
+			let rule = try Rule(parsing: text)
+			let accounts = [giro.id: giro, other.id: other]
+			#expect(rows.filter { rule.matches(RuleSubject($0, account: accounts[$0.accountID])) }.map(\.name) == names, "\(text)")
+		}
+	}
+
 	@Test("A regular expression that does not end counts as no match", .timeLimit(.minutes(1)))
 	func searchRegexThatDoesNotEnd() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)

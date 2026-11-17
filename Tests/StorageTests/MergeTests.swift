@@ -28,6 +28,19 @@ struct MergeTests {
 		.refresh(RefreshResult(balance: balance, balanceDate: balanceDate, transactions: FetchedTransactions(rows: rows, from: from)))
 	}
 
+	@Test("A rule that stops during a merge matches no row of it, in either order of the rows", .timeLimit(.minutes(1)), arguments: [false, true])
+	func stoppedRuleInMerge(okFirst: Bool) throws {
+		let store = try makeStore()
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/ok|(a+)+$/")
+		let other = Domain.Category(position: 1, name: "Other", rule: "true")
+		try store.save(categories: [phone, other])
+		let ok = row(3, -1_000, "Telekom", "ok")
+		let slow = row(3, -2_000, "Kiosk", String(repeating: "a", count: 32) + "!")
+		let r = try store.merge(refresh(okFirst ? [ok, slow] : [slow, ok]), into: giro.id)
+		#expect(r.added.map(\.categoryID) == [other.id, other.id])
+		#expect(try store.loadLedger().transactions.map(\.categoryID) == [other.id, other.id])
+	}
+
 	@Test("A merge writes new rows, review marks, and drops at once, and the ledger of the app matches the database after it")
 	func writesEverything() throws {
 		let store = try makeStore()

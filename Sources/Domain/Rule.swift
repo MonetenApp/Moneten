@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// The fields of a transaction that a rule can look at.
 public struct RuleSubject: Sendable {
@@ -124,6 +125,54 @@ public struct WildcardPatternBox: Sendable {
 public struct RegexBox: @unchecked Sendable {
 	// NSRegularExpression is immutable and safe to share between threads.
 	let regex: NSRegularExpression
+	/// The position of the slash that opens the regular expression in the rule text, counted from 0.
+	let position: Int
+	/// Most fields of a transaction are empty, and a watched call costs about three times a plain one, so an empty
+	/// field takes this answer, found once when the rule is read.
+	let matchesEmpty: Bool
+
+	init(regex: NSRegularExpression, position: Int) {
+		self.regex = regex
+		self.position = position
+		matchesEmpty = RegexWatch().firstMatch(regex, "") != nil
+	}
+}
+
+/// The position of the first regular expression of one parsed rule that ran too long, and the processor time that its
+/// regular expressions spent. The categorizer can test one rule on more than one thread, so all are atomic.
+private final class RegexStop: Sendable {
+	private let stopped = Atomic<Int>(-1)
+	private let nanoseconds = Atomic<UInt64>(0)
+	private let slowNanoseconds = Atomic<UInt64>(0)
+
+	var spent: UInt64 { nanoseconds.load(ordering: .relaxed) }
+	/// The time of the calls that took `Rule.slowCall` or more each.
+	var slow: UInt64 { slowNanoseconds.load(ordering: .relaxed) }
+
+	func add(_ elapsed: UInt64) {
+		nanoseconds.wrappingAdd(elapsed, ordering: .relaxed)
+		if elapsed >= Rule.slowCall { slowNanoseconds.wrappingAdd(elapsed, ordering: .relaxed) }
+	}
+
+	var position: Int? {
+		let p = stopped.load(ordering: .relaxed)
+		return p < 0 ? nil : p
+	}
+
+	func record(_ position: Int) {
+		_ = stopped.compareExchange(expected: -1, desired: position, ordering: .relaxed)
+	}
+}
+
+extension RuleExpression {
+	var hasRegex: Bool {
+		switch self {
+		case .regex: true
+		case .phrase, .amount, .constant: false
+		case let .not(a): a.hasRegex
+		case let .and(a, b), let .or(a, b): a.hasRegex || b.hasRegex
+		}
+	}
 }
 
 public struct RuleSyntaxError: Error, Equatable, Sendable, CustomStringConvertible {
@@ -136,30 +185,92 @@ public struct RuleSyntaxError: Error, Equatable, Sendable, CustomStringConvertib
 
 public struct Rule: Sendable {
 	public let expression: RuleExpression
+	/// Nil for a rule without a regular expression, which can never stop.
+	private let stop: RegexStop?
 
 	public init(parsing text: String) throws(RuleSyntaxError) {
 		var parser = RuleParser(text)
 		expression = try parser.parse()
+		stop = expression.hasRegex ? RegexStop() : nil
+	}
+
+	/// The processor time that the regular expressions of one parsed rule may spend in all, over every transaction that it
+	/// tests. A pattern that takes 30 ms on each text never reaches the limit of one call, and 200 such texts would
+	/// otherwise take 6 seconds.
+	static let runLimit: UInt64 = 1_000_000_000
+	/// A regular expression on the text of a bank takes a few microseconds. A call of `slowCall` or more is a pattern that
+	/// backtracks without end, so such calls stop the rule once they took `slowLimit` together. A pattern that is slow on
+	/// some texts then costs about 50 ms, not 1 second, also when it is fast on all other texts.
+	static let slowCall: UInt64 = 1_000_000
+	static let slowLimit: UInt64 = 50_000_000
+
+	/// The position of the regular expression that ran too long, counted from 0, or nil. It ran too long when one call
+	/// took about 100 ms, when its slow calls took `slowLimit` together, or when all calls of this parsed rule
+	/// took `runLimit`. ICU never finishes some patterns, such as `^+?49`, so after the first stop this parsed rule
+	/// matches no further transaction. A new parse starts without a stop, so the stop lasts one run: one batch of
+	/// `Categorizer` with all its repeats, one run of `RuleApplier`, or one count of matches.
+	public var stoppedRegexPosition: Int? { stop?.position }
+
+	/// The rule has a regular expression, so it can stop.
+	var hasRegex: Bool { stop != nil }
+
+	/// The processor time that the regular expressions of this parsed rule spent.
+	var regexSpent: UInt64 { stop?.spent ?? 0 }
+
+	/// Stops the rule at its first regular expression, when the rules of one batch together ran too long.
+	func stopAtFirstRegex() {
+		guard let stop, let position = Self.firstRegexPosition(expression) else { return }
+		stop.record(position)
+	}
+
+	private static func firstRegexPosition(_ e: RuleExpression) -> Int? {
+		switch e {
+		case let .regex(box, _): box.position
+		case .phrase, .amount, .constant: nil
+		case let .not(a): firstRegexPosition(a)
+		case let .and(a, b), let .or(a, b):
+			[firstRegexPosition(a), firstRegexPosition(b)].compactMap { $0 }.min()
+		}
 	}
 
 	public func matches(_ subject: RuleSubject) -> Bool {
-		Self.evaluate(expression, subject)
+		if stop?.position != nil { return false }
+		var watch = Watch(stop: stop)
+		// The stop is no match of the whole rule, so NOT before a stopped regular expression does not match.
+		return Self.evaluate(expression, subject, watch: &watch) && stop?.position == nil
 	}
 
-	private static func evaluate(_ e: RuleExpression, _ s: RuleSubject) -> Bool {
+	/// Times the regular expressions of one test with the watch of the search. The watch is created only when the test
+	/// reaches a regular expression, so a rule without one costs nothing more.
+	private struct Watch {
+		let stop: RegexStop?
+		var regex: RegexWatch?
+
+		mutating func firstMatch(_ box: RegexBox, _ text: String) -> Bool {
+			let watch = regex ?? RegexWatch(budget: RegexBudget(limit: Rule.runLimit, spent: stop?.spent ?? 0))
+			regex = watch
+			let before = watch.budget.spent
+			let found = watch.firstMatch(box.regex, text) != nil
+			stop?.add(watch.budget.spent - before)
+			if watch.gaveUp || watch.budget.gaveUp { stop?.record(box.position) }
+			if let stop, stop.slow >= Rule.slowLimit { stop.record(box.position) }
+			return found
+		}
+	}
+
+	private static func evaluate(_ e: RuleExpression, _ s: RuleSubject, watch: inout Watch) -> Bool {
 		switch e {
-		case let .and(a, b): return evaluate(a, s) && evaluate(b, s)
-		case let .or(a, b): return evaluate(a, s) || evaluate(b, s)
-		case let .not(a): return !evaluate(a, s)
+		case let .and(a, b): return evaluate(a, s, watch: &watch) && evaluate(b, s, watch: &watch)
+		case let .or(a, b): return evaluate(a, s, watch: &watch) || evaluate(b, s, watch: &watch)
+		case let .not(a): return !evaluate(a, s, watch: &watch)
 		case let .amount(op, value): return op.holds(s.amount, value)
 		case let .constant(value): return value
 		case let .regex(box, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
-			return fields.contains { f in
-				s.text(of: f).contains { text in
-					box.regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
-				}
+			for f in fields {
+				for text in s.text(of: f) where text.isEmpty ? box.matchesEmpty : watch.firstMatch(box, text) { return true }
 			}
+			return false
 		case let .phrase(patterns, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
 			let p = patterns.map(\.pattern)
@@ -327,7 +438,7 @@ private struct RuleParser {
 	private func regex(_ pattern: String, position: Int) throws(RuleSyntaxError) -> RegexBox {
 		guard !pattern.isEmpty else { throw RuleSyntaxError(position: position, message: String(localized: "The regular expression is empty.")) }
 		do {
-			return RegexBox(regex: try NSRegularExpression(pattern: pattern, options: [.caseInsensitive]))
+			return RegexBox(regex: try NSRegularExpression(pattern: pattern, options: [.caseInsensitive]), position: position)
 		} catch {
 			throw RuleSyntaxError(position: position, message: String(localized: "The regular expression is not valid."))
 		}
