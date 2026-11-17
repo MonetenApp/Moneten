@@ -34,6 +34,13 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 		self.init(minorUnits: NSDecimalNumber(decimal: rounded).int64Value, currency: currency)
 	}
 
+	/// An amount that the user typed into a field, read by `AmountParser.decimal(from:)`. Nil when the text has no reading
+	/// or two with different values, or when the amount is above `maxMinorUnits`, so the field is marked and stores nothing.
+	public init?(typed text: String, currency: String) {
+		guard let decimal = AmountParser.decimal(from: text) else { return nil }
+		self.init(fitting: decimal, currency: currency)
+	}
+
 	public var decimal: Decimal {
 		Decimal(minorUnits) / Decimal(sign: .plus, exponent: Currency.exponent(of: currency), significand: 1)
 	}

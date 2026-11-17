@@ -40,15 +40,6 @@ extension Format {
 		amounts.map(money).joined(separator: "  ")
 	}
 
-	/// The day in the date format of the region, read from noon GMT, so a day that has no local midnight, such as
-	/// 30 December 2011 in Samoa, still shows as itself. `DateField` passes its Gregorian calendar.
-	static func day(_ d: Day, calendar: Calendar = Day.calendar(like: .current)) -> String {
-		var style = Date.FormatStyle.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits)
-		style.calendar = calendar
-		style.timeZone = calendar.timeZone
-		return d.noon.formatted(style)
-	}
-
 	/// The month and year of a day, read from noon GMT as `day` reads it.
 	static func monthTitle(_ d: Day) -> String {
 		var style = Date.FormatStyle.dateTime.month(.wide).year()

@@ -336,9 +336,25 @@ The app SHALL stop a rule when one of its regular expressions takes about 100 ms
 - **WHEN** the rule tests 200 transactions whose purpose is 18 times "a" and then "!"
 - **THEN** the rule stops after about 50 ms of processor time and matches none of them
 
+### Requirement: A slow call of a regular expression counts only when it is slow again
+
+The app SHALL run a regular expression of a rule once more on the same text when a call takes 1 ms or more or stops at the limit of one call, unless the call reached the limit of the run, and SHALL stop the second call at 1 ms. When the second call takes less than 1 ms, only the second call counts toward the limits of the rule. Otherwise both calls count. The host of a virtual machine can pause the Mac during a fast call, and the Mac counts the pause as processor time of that call.
+
+#### Scenario: A pause of the host during a fast call
+
+- **GIVEN** the category "Traders" with the rule `/Haendler1x/`
+- **WHEN** a migration tests the name "Haendler1 Musterstadt", the host of the virtual machine pauses the Mac for 60 ms during that call, and the second call on the name takes 5 µs
+- **THEN** only the second call counts, and the rule does not stop
+
+#### Scenario: A pattern that backtracks
+
+- **GIVEN** the category "Phone" with the rule `purpose:/(a+)+$/`
+- **WHEN** a call on a purpose of 18 times "a" and then "!" takes 3 ms, and the second call stops after 1.1 ms
+- **THEN** both calls count, 4.1 ms in all
+
 ### Requirement: The rules of one run stop together after 3 seconds
 
-The app SHALL stop every rule with a regular expression when the slow calls of the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A slow call is one that takes 0.1 ms or more on one text. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
+The app SHALL stop every rule with a regular expression when the slow calls of the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A slow call is one that takes 0.1 ms or more on one text. A rule that does not stop runs its regular expressions on each text of the run once, apart from the second call of a slow call, also when the run repeats after another rule stopped.
 
 #### Scenario: Many slow rules above a normal one
 

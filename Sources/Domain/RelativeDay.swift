@@ -7,13 +7,7 @@ extension Format {
 	/// with a change of daylight saving time still counts as one.
 	public static func dayAndTime(_ date: Date, now: Date = Date(), calendar: Calendar = .current, locale: Locale = .autoupdatingCurrent) -> String {
 		let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date), to: calendar.startOfDay(for: now)).day ?? 0
-		if days >= 7 {
-			var style = Date.FormatStyle.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits)
-			style.calendar = calendar
-			style.timeZone = calendar.timeZone
-			style.locale = locale
-			return date.formatted(style)
-		}
+		if days >= 7 { return day(Day(date, calendar: calendar), calendar: Day.calendar(like: calendar), locale: locale) }
 		// The short time style of the system, which writes "09:10" in the region Germany, where the format style writes "9:10".
 		let times = DateFormatter()
 		times.locale = locale

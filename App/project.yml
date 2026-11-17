@@ -22,6 +22,11 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     DEAD_CODE_STRIPPING: YES
+  # A release keeps the dSYMs of its build next to its disk image, and scripts/symbolicate-crash.sh
+  # reads them (docs/releasing.md). The release preset of XcodeGen sets this too.
+  configs:
+    Release:
+      DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
 packages:
   MonetenKit:
     path: ..
