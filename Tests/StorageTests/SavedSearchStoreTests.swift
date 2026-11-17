@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Stored saved searches")
 struct SavedSearchStoreTests {
@@ -17,7 +18,7 @@ struct SavedSearchStoreTests {
 	@Test("Saved searches stay after a restart in their order, and a rename and a removal stay too")
 	func restart() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let tax = try add("Tax payments", to: store)
 		let rent = try add("Rent", text: "Miete", to: store)
@@ -52,7 +53,7 @@ struct SavedSearchStoreTests {
 	@Test("A saved search stored with an account keeps it, and one with an account group keeps the group after a restart")
 	func accountAndGroup() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let account = UUID(), group = UUID()
 		// A filter bar as the first version of saved searches wrote it, before the account filter took groups.

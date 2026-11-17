@@ -587,6 +587,8 @@ final class AppModel {
 			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
 			try loadUnlockSettings()
 		} catch {
+			// A write that failed may have removed its entry, which turns that setting off.
+			try? loadUnlockSettings()
 			alert = AlertMessage(title: String(localized: "The database password could not be stored in the Keychain."), message: String(describing: error))
 		}
 		return .unlocked

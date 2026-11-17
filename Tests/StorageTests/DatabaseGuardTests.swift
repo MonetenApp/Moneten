@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// database-encryption: only one running copy uses the database, and a change of the file on disk stops every write.
 @Suite("Guarding the database file")
@@ -16,7 +17,7 @@ struct DatabaseGuardTests {
 	}
 
 	func accountNames() throws -> [String] {
-		let store = try Vault(folder: folder).open(password: Self.password)
+		let store = try Vault(testing: folder).open(password: Self.password)
 		defer { try? store.close() }
 		return try store.loadLedger().accounts.map(\.name).sorted()
 	}
@@ -38,7 +39,7 @@ struct DatabaseGuardTests {
 	func lockAddsNoFile() throws {
 		let lock = try DataFolderLock(folder: folder)
 		#expect(try FileManager.default.contentsOfDirectory(atPath: folder.root.path).isEmpty)
-		#expect(try Vault(folder: folder).state() == .empty)
+		#expect(try Vault(testing: folder).state() == .empty)
 		withExtendedLifetime(lock) {}
 	}
 
@@ -64,7 +65,7 @@ struct DatabaseGuardTests {
 
 	@Test("Own writes, rollbacks, a password change, and a backup never count as a change on disk")
 	func ownWrites() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		let giro = account("Giro")
 		try store.save(accounts: [giro], transactions: [])
@@ -84,7 +85,7 @@ struct DatabaseGuardTests {
 
 	@Test("A backup tool that puts an older copy in place of the file stops every write, and the copy stays as it was")
 	func replacedFile() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		let older = root.appendingPathComponent("Older.sqlite")
 		try store.backup(to: older)
@@ -101,7 +102,7 @@ struct DatabaseGuardTests {
 
 	@Test("A write right after a replacement is refused even without an earlier check, and the copy stays as it was")
 	func writeAfterReplacement() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		let older = root.appendingPathComponent("Older.sqlite")
 		try store.backup(to: older)
@@ -114,7 +115,7 @@ struct DatabaseGuardTests {
 
 	@Test("An older copy written over the file in place stops every write")
 	func overwrittenInPlace() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		let older = root.appendingPathComponent("Older.sqlite")
 		try store.backup(to: older)
@@ -132,7 +133,7 @@ struct DatabaseGuardTests {
 
 	@Test("A write of another program stops every write of the store, and its row stays")
 	func otherProgramWrites() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		var config = Configuration()
 		config.prepareDatabase { db in try db.usePassphrase(Self.password) }
@@ -148,7 +149,7 @@ struct DatabaseGuardTests {
 
 	@Test("A failed write after a write of another program still counts the change")
 	func failedWriteAfterOtherProgram() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		var config = Configuration()
 		config.prepareDatabase { db in try db.usePassphrase(Self.password) }
@@ -167,7 +168,7 @@ struct DatabaseGuardTests {
 
 	@Test("A password change on a file that changed on disk changes no key")
 	func noRekeyAfterChange() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		try store.save(account("Giro"))
 		let older = root.appendingPathComponent("Older.sqlite")
@@ -182,7 +183,7 @@ struct DatabaseGuardTests {
 
 	@Test("A commit of another program right before the re-key stops it, and the commit stays")
 	func foreignCommitBeforeRekey() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		try store.save(account("Giro"))
 		// The commit lands after the checks of the password change and before its exclusive lock.
@@ -205,7 +206,7 @@ struct DatabaseGuardTests {
 
 	@Test("Loading the database again gives a store that writes into the new file")
 	func loadAgain() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		try store.save(account("Giro"))
 		let older = root.appendingPathComponent("Older.sqlite")

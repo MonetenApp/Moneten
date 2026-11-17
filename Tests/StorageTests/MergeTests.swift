@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Merge into the database")
 struct MergeTests {
@@ -11,7 +12,7 @@ struct MergeTests {
 	let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline)
 
 	func makeStore() throws -> Store {
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try store.save(accounts: [giro, savings])
 		return store
 	}

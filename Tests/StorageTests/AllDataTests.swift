@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// A database with every kind of object that the complete export holds. All names and numbers are made up.
 @Suite("Complete export and import")
@@ -58,7 +59,7 @@ struct AllDataTests {
 		#expect(rows.allSatisfy { $0["needsReview"] == nil })
 		let target = try emptyStore("split-target")
 		try target.importAllData(try AllData(json: file))
-		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("split-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let reopened = try Vault(testing: DataFolder(root: root.appendingPathComponent("split-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
 		let ledger = try reopened.loadLedger()
 		#expect(ledger.transactions.count == 2)
 		#expect(ledger.transaction(original.id) == original)
@@ -89,7 +90,7 @@ struct AllDataTests {
 		"""#.utf8)
 		let target = try emptyStore("v1-target")
 		try target.importAllData(try AllData(json: file))
-		let reopened = try Vault(folder: DataFolder(root: root.appendingPathComponent("v1-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let reopened = try Vault(testing: DataFolder(root: root.appendingPathComponent("v1-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
 		let ledger = try reopened.loadLedger()
 		let pending = try #require(ledger.transactions.first { $0.isPending })
 		let booked = try #require(ledger.transactions.first { !$0.isPending })
@@ -199,7 +200,7 @@ struct AllDataTests {
 	let exportedAt = Date(timeIntervalSince1970: 1_794_700_000)
 
 	func emptyStore(_ name: String) throws -> Store {
-		try Vault(folder: DataFolder(root: root.appendingPathComponent(name))).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		try Vault(testing: DataFolder(root: root.appendingPathComponent(name))).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 	}
 
 	func filledStore() throws -> Store {

@@ -44,17 +44,19 @@ let package = Package(
 		.target(name: "ExtensionCatalog", dependencies: ["Domain", "ExtensionHost", "Storage"]),
 		// The time budget of the tests, which grows on a runner that GitHub hosts (issue #372).
 		.target(name: "TestSupport", path: "Tests/TestSupport"),
+		// A keychain file for the tests of the vault, so that no test writes the login Keychain (issue #399).
+		.target(name: "StorageTestSupport", dependencies: ["Storage"], path: "Tests/StorageTestSupport"),
 		.testTarget(name: "DomainTests", dependencies: ["Domain", "TestSupport"]),
-		.testTarget(name: "StorageTests", dependencies: ["Storage", "TestSupport"]),
+		.testTarget(name: "StorageTests", dependencies: ["Storage", "StorageTestSupport", "TestSupport"]),
 		.executableTarget(name: "ExportFileProbe", dependencies: ["Storage"], path: "Tests/ExportFileProbe", exclude: ["sync.c"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import", "TestSupport"]),
-		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage"]),
+		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage", "StorageTestSupport"]),
 		// The tests read helper-lines.jsonl at its path, as the self-test of the helper writes it.
 		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost", "TestSupport"]),
-		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "TestSupport"]),
+		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "StorageTestSupport", "TestSupport"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
 		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
-		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage", "TestSupport"]),
+		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage", "StorageTestSupport", "TestSupport"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS"], exclude: ["helper-lines.jsonl"]),
 	],
 	swiftLanguageModes: [.v6]

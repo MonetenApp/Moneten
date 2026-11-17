@@ -224,12 +224,19 @@ The app SHALL write a password or a key into the Keychain only as a new entry th
 - **WHEN** the user changes the database password to "neu-und-noch-laenger"
 - **THEN** the Keychain holds "neu-und-noch-laenger" in a new entry whose access list names only the app
 
-#### Scenario: The Keychain refuses the new entry after the old one is gone
+#### Scenario: The Keychain refuses the new entries after the old ones are gone
 
-- **GIVEN** "Unlock with Touch ID" is on
-- **WHEN** the user changes the database password and the Keychain removes the entry but refuses the new one
+- **GIVEN** "Unlock automatically at application start" and "Unlock with Touch ID" are on
+- **WHEN** the user changes the database password and the Keychain removes each entry but refuses each new one
 - **THEN** the app shows that the Keychain did not accept the new password
-- **AND** "Unlock with Touch ID" is off, and no entry holds the earlier password
+- **AND** both settings are off, and no entry holds the earlier password
+
+#### Scenario: The Keychain refuses a new entry at an unlock
+
+- **GIVEN** "Unlock with Touch ID" is on, and its entry holds an earlier password of a database that the user restored from a backup
+- **WHEN** the user unlocks with the password and the Keychain removes the entry but refuses the new one
+- **THEN** the app shows that the password could not be stored in the Keychain
+- **AND** "Unlock with Touch ID" is off, and the lock screen no longer offers Touch ID
 
 ### Requirement: Report a Keychain failure
 

@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// Bank accesses in the encrypted database: the access with its connector state, and the accounts
 /// that it refreshes.
@@ -19,7 +20,7 @@ struct AccessStoreTests {
 
 	@Test("An access and its state come back after the database opens again")
 	func roundTrip() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		let giro = giro()
 		try store.add(Self.access, state: AccessState(Data([1, 2, 3])), accounts: [giro])
@@ -33,7 +34,7 @@ struct AccessStoreTests {
 
 	@Test("A refresh stores the new state and the status of its accounts, and keeps the last state when the connector returned none")
 	func recordRefresh() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		var giro = giro()
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro])
 
@@ -50,7 +51,7 @@ struct AccessStoreTests {
 
 	@Test("Edit Login Data stores the new login name, the state of the new login, and the saved PIN at once, and the accounts keep their access")
 	func updateLogin() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		let giro = giro()
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro])
 		try store.savePIN(Secret("11111"), for: Self.access.id)
@@ -67,7 +68,7 @@ struct AccessStoreTests {
 
 	@Test("Adding an access stores nothing when one of its accounts cannot be written")
 	func addIsAtomic() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		var broken = giro()
 		broken.groupID = UUID()  // no such group
 		#expect(throws: (any Error).self) { try store.add(Self.access, state: nil, accounts: [broken]) }
@@ -77,7 +78,7 @@ struct AccessStoreTests {
 
 	@Test("A second setup of a VR-Kennung that the first stored in lower case joins that access and stores the login name in capitals")
 	func sameVRKennungTwice() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		let source = AccessSource.fints(bankCode: "51090000", url: URL(string: "https://fints2.atruvia.de/cgi-bin/hbciservlet")!)
 		let first = Access(source: source, bankName: "Wiesbadener Volksbank", loginName: "vrk12345678")
 		try store.add(first, state: AccessState(Data([1])), accounts: [])
@@ -89,7 +90,7 @@ struct AccessStoreTests {
 
 	@Test("A second setup with 16 digits at a savings bank whose access stored 17 joins that access and stores the 16 digits")
 	func savingsBankLoginOf17DigitsTwice() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		let source = AccessSource.fints(bankCode: "50850049", url: URL(string: "https://banking-hs6.s-fints-pt-hs.de/fints30")!)
 		let first = Access(source: source, bankName: "Sparkasse Musterstadt", loginName: "12345678901234567")
 		try store.add(first, state: AccessState(Data([1])), accounts: [])
@@ -101,7 +102,7 @@ struct AccessStoreTests {
 
 	@Test("A second setup of the same login adds its accounts to the access that exists and keeps the state of that access")
 	func sameLoginTwice() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [giro()])
 
 		let again = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://banking.musterbank.example/fints")!), bankName: "Musterbank",
@@ -127,7 +128,7 @@ struct AccessStoreTests {
 
 	@Test("A setup of a known login never rolls back the state of a refresh, whether the refresh ends before or after Done")
 	func setupKeepsRefreshState() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: AccessState(Data([0])), accounts: [giro()])
 		let again = Access(source: Self.access.source, bankName: "Musterbank", loginName: "erika77")
 
@@ -145,7 +146,7 @@ struct AccessStoreTests {
 
 	@Test("An access and its state go with its last account")
 	func lastAccountRemoved() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		let giro = giro()
 		let savings = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .bank, accessID: Self.access.id, remoteID: "1234567890")
 		let cash = Account(position: 2, name: "Bargeld", kind: .cash, source: .offline)

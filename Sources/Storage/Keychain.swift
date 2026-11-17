@@ -36,6 +36,22 @@ struct Keychain: Sendable {
 		return String(data: data, encoding: .utf8)
 	}
 
+	/// Whether an entry exists. It reads only the attributes, so it needs neither the value nor an unlocked keychain.
+	func contains(account: String) throws -> Bool {
+		let query: [String: Any] = [
+			kSecClass as String: kSecClassGenericPassword,
+			kSecAttrService as String: service,
+			kSecAttrAccount as String: account,
+			kSecReturnAttributes as String: true,
+			kSecMatchLimit as String: kSecMatchLimitOne,
+		].merging(searchList) { $1 }
+		var attributes: CFTypeRef?
+		let status = SecItemCopyMatching(query as CFDictionary, &attributes)
+		if status == errSecItemNotFound { return false }
+		guard status == errSecSuccess else { throw Failure(status: status) }
+		return true
+	}
+
 	/// Stores the value as a new entry. An entry with the same service and account
 	/// goes first, because an update keeps the access list of the entry it finds: another program of the user can
 	/// create the entry in advance with a list that lets every app read it, and would then read the value without a

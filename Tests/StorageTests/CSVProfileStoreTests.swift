@@ -4,6 +4,7 @@ import GRDB
 import Import
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Stored CSV profiles")
 struct CSVProfileStoreTests {
@@ -149,7 +150,7 @@ struct CSVProfileStoreTests {
 	func isolation() throws {
 		let root = URL(fileURLWithPath: "/private/tmp/moneten-profile-\(UUID())")
 		defer { try? FileManager.default.removeItem(at: root) }
-		let vault = Vault(folder: DataFolder(root: root))
+		let vault = Vault(testing: DataFolder(root: root))
 		let saved = try profile()
 		let first = try vault.create(password: "synthetic-password", starterCategories: [])
 		try first.saveCSVProfile(saved, replacing: nil)
@@ -182,7 +183,7 @@ extension SchemaTests {
 			try account.insertOld(db)
 		}
 		try queue.close()
-		let store = try Vault(folder: folder).open(password: "synthetic-password")
+		let store = try Vault(testing: folder).open(password: "synthetic-password")
 		#expect(try store.loadLedger().accounts == [account])
 		#expect(try store.queue.read { db in try db.columns(in: "csvProfile").map(\.name) } == ["name", "version", "payload"])
 		#expect(try store.csvProfiles().isEmpty)
