@@ -3,7 +3,6 @@ import java.util.List;
 import java.util.Map;
 import org.kapott.hbci.GV.HBCIJob;
 import org.kapott.hbci.GV_Result.GVRKUms;
-import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.passport.storage.PassportData;
 import org.kapott.hbci.status.HBCIExecStatus;
@@ -11,6 +10,7 @@ import org.kapott.hbci.status.HBCIRetVal;
 import org.kapott.hbci.structures.Konto;
 
 /// The checks of the rules of Commerzbank and comdirect (issue #229), with made-up answers of the bank.
+@SuppressWarnings("unchecked")
 final class CommerzbankGroupSelfTest {
 	static final String COMMERZBANK = "fints.commerzbank.de/fints";
 	static final String COMDIRECT = "fints.comdirect.de/fints";
@@ -38,31 +38,29 @@ final class CommerzbankGroupSelfTest {
 			"false false false false false false false");
 	}
 
-	/// A pending MT942 row whose entry date is the day of the request and whose value date is the expected booking day.
-	static UmsLine intraday() {
-		UmsLine l = SelfTest.line("2026-11-14", "2026-11-15", "-42.00", "SVWZ+Abschlag November");
-		l.other.name = "Stadtwerke Musterstadt";
-		return l;
+	/// The rows of an MT942 answer of Commerzbank with one ":61:" line, as the helper sends them.
+	static List<Object> intraday(String line61) {
+		GVRKUms answer = new GVRKUms();
+		answer.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Auftrag ausgeführt", null));
+		answer.appendMT942Data("\r\n:20:STARTUMS\r\n:25:12030000/0000202051\r\n:28C:1/1\r\n:34F:EURD0,\r\n:13D:2611141200+0100\r\n:61:" + line61
+			+ "\r\n:86:105?00LASTSCHRIFT?20SVWZ+Abschlag November?32Stadtwerke Musterstadt\r\n:90D:1EUR42,00\r\n:90C:0EUR0,\r\n-\r\n");
+		Map<String, Object> result = FinTSHelper.result("DE02120300000000202051", null, null, answer, false);
+		return (List<Object>) ((Map<String, Object>) result.get("transactions")).get("rows");
 	}
 
+	/// The server of Commerzbank gives a pending MT942 row the day of the request as its value date, and the day on which
+	/// it expects to book the row as the entry date (MMDD) of the ":61:" line. hbci4java reads the entry date as the
+	/// booking date, so the row is pending on the expected day.
 	static void pendingDate() {
 		FinTSHelper.Callback.server = COMMERZBANK;
-		SelfTest.expect("pending MT942 row of Commerzbank takes the value date", FinTSHelper.Json.write(FinTSHelper.row(intraday(), true)),
-			"{\"type\":\"row\",\"booked\":\"2026-11-15\",\"value\":\"2026-11-15\",\"amount\":\"-42\",\"currency\":\"EUR\",\"name\":\"Stadtwerke Musterstadt\","
-				+ "\"purpose\":\"Abschlag November\",\"pending\":true}");
-		SelfTest.expect("booked MT942 row of Commerzbank keeps its entry date", FinTSHelper.row(intraday(), false).get("booked"), "2026-11-14");
-		UmsLine camt = intraday();
-		camt.isCamt = true;
-		SelfTest.expect("pending CAMT row of Commerzbank keeps its booking date", FinTSHelper.row(camt, true).get("booked"), "2026-11-14");
-		UmsLine undated = intraday();
-		undated.valuta = null;
-		SelfTest.expect("pending MT942 row of Commerzbank without a value date keeps its entry date", FinTSHelper.row(undated, true).get("booked"), "2026-11-14");
-		FinTSHelper.Callback.server = "hbci.commerzbank.de/";
-		SelfTest.expect("pending MT942 row of the other host of Commerzbank takes the value date", FinTSHelper.row(intraday(), true).get("booked"), "2026-11-15");
-		for (String host : new String[] {COMDIRECT, MUSTERBANK}) {
-			FinTSHelper.Callback.server = host;
-			SelfTest.expect("pending MT942 row of " + host + " keeps its entry date", FinTSHelper.row(intraday(), true).get("booked"), "2026-11-14");
-		}
+		SelfTest.expect("pending MT942 row of Commerzbank on its expected day", FinTSHelper.Json.write(intraday("2611141115D42,00NTRFNONREF")),
+			"[{\"type\":\"row\",\"booked\":\"2026-11-15\",\"value\":\"2026-11-14\",\"amount\":\"-42\",\"currency\":\"EUR\",\"name\":\"Stadtwerke Musterstadt\","
+				+ "\"purpose\":\"Abschlag November\",\"bookingText\":\"LASTSCHRIFT\",\"pending\":true}]");
+		SelfTest.expect("pending MT942 row of Commerzbank whose expected day is in the year before", ((Map<?, ?>) intraday("2601021231D10,00NTRFNONREF").get(0)).get("booked"),
+			"2025-12-31");
+		SelfTest.expect("pending MT942 row of Commerzbank whose expected day is in the next year", ((Map<?, ?>) intraday("2512310102C25,00NTRFNONREF").get(0)).get("booked"),
+			"2026-01-02");
+		SelfTest.expect("pending MT942 row of Commerzbank without an expected day", ((Map<?, ?>) intraday("261114D42,00NTRFNONREF").get(0)).get("booked"), "2026-11-14");
 	}
 
 	/// The method of a typed TAN and the length that the bank parameters announce for it.

@@ -273,15 +273,15 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 
 #### Scenario: Pending MT942 row of Commerzbank
 
-- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row with the entry date 14.11.2026, the value date 15.11.2026, the amount -42,00 €, and the name "Stadtwerke Musterstadt"
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 14.11.2026, the entry date 15.11 as the expected booking day, the amount -42,00 €, and the name "Stadtwerke Musterstadt"
 - **WHEN** the refresh ends
-- **THEN** the pending transaction has the booking date 15.11.2026 and the name "Stadtwerke Musterstadt"
+- **THEN** the pending transaction has the booking date 15.11.2026, the value date 14.11.2026, and the name "Stadtwerke Musterstadt"
 
-#### Scenario: Pending MT942 row of another bank
+#### Scenario: Expected booking day in the year before
 
-- **GIVEN** the FinTS server of "Musterbank" sends a pending MT942 row with the entry date 14.11.2026 and the value date 15.11.2026
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 02.01.2026 and the entry date 31.12
 - **WHEN** the refresh ends
-- **THEN** the pending transaction has the booking date 14.11.2026
+- **THEN** the pending transaction has the booking date 31.12.2025
 
 ### Requirement: Store booking date and value date
 

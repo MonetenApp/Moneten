@@ -106,9 +106,9 @@ The accounts of the partners, such as a building savings contract of Bausparkass
 
 The helper decides these rules by the FinTS host of the dialog in `Tools/FinTSHelper/CommerzbankGroup.java`, and the connector by the FinTS address in `Sources/FinTS/CommerzbankGroup.swift`. Commerzbank is `fints.commerzbank.de` or `hbci.commerzbank.de`, and comdirect is `fints.comdirect.de`.
 
-- **Date of a pending MT942 row.** The server of Commerzbank gives a pending MT942 row the day of the request as its entry date. The value date of the `:61:` line is the day on which the bank expects to book it, so a pending MT942 row of Commerzbank takes the value date as its booking date. hbci4java marks a CAMT row (`isCamt`), which keeps its booking date, and so does a booked row and every row of another bank. The pending row pairs with its booked version by the rules of add-account-refresh, which allow 7 days between the two dates.
+- **Date of a pending MT942 row.** The server of Commerzbank sends the day on which it expects to book a pending MT942 row as the entry date (MMDD) of its `:61:` line, beside the value date. hbci4java reads the entry date as the booking date, with the year of the value date, or the year before or after when the months lie more than six apart, and the helper sends it as the booking date of the row. So the row is pending on its expected day, with no rule of its own, and pairs with its booked version by the rules of add-account-refresh. A row without an entry date takes its value date. The FinTSHelper self-test parses such an MT942 answer to keep it so. Whether a pending MT942 row of another bank should take its value date instead is an open question.
 - **Request sent again.** comdirect may answer a request with "Bitte senden Sie die Anfrage erneut". The return code is not known, so the text decides. After the dialog, the helper queues the jobs of each account whose answer has that text in an error or a warning of the job or the message, once more, and runs a second dialog for them. The second answer counts as it is: when it has the text again, the account fails with that text and its code. Other banks never get a second request.
-- **Original amount.** An MT942 row of a debit carries the original amount without a sign. Once `Transaction` stores the original amount (task 1.18), it takes the sign of the booked amount when that is negative, for every bank.
+- **Original amount.** An MT942 row of a debit carries the original amount without a sign. Once `Transaction` stores the original amount (task 1.18), a positive original amount takes the sign of the booked amount when that is negative, for every bank. An original amount that is already negative stays negative, and the charges keep their sign.
 
 ### Signing
 
@@ -122,4 +122,6 @@ The helper decides these rules by the FinTS host of the dialog in `Tools/FinTSHe
 
 ## Open Questions
 
-None. Decided for issue #230, rule 9: a building savings contract of Bausparkasse Schwäbisch Hall keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, until a bank test shows real duplicates.
+Decided for issue #230, rule 9: a building savings contract of Bausparkasse Schwäbisch Hall keeps every booked transaction, as "Keep the history for good" in add-account-refresh requires, until a bank test shows real duplicates.
+
+- A pending MT942 row of a bank other than Commerzbank takes its entry date as its booking date, as hbci4java reads it. A bank may send the day of the request there instead (#229). The bank test of issue #11 shows whether such a row should take its value date.

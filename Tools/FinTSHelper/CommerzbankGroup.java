@@ -1,9 +1,7 @@
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 import org.kapott.hbci.GV.HBCIJob;
-import org.kapott.hbci.GV_Result.GVRKUms.UmsLine;
 import org.kapott.hbci.GV_Result.HBCIJobResult;
 import org.kapott.hbci.status.HBCIExecStatus;
 import org.kapott.hbci.status.HBCIRetVal;
@@ -26,15 +24,6 @@ final class CommerzbankGroup {
 	/// The FinTS server of comdirect: the host "fints.comdirect.de".
 	static boolean comdirect(String host) {
 		return SavingsBanks.name(host).equals("fints.comdirect.de");
-	}
-
-	/// The booking date of a row. The server of Commerzbank gives a pending MT942 row the day of the request as its entry
-	/// date, and the value date of its ":61:" line is the day on which the bank expects to book it, so such a row takes
-	/// its value date. A CAMT row, a booked row, and a row of another bank take the entry date, or the value date when
-	/// the entry date is missing.
-	static Date bookingDate(String host, UmsLine l, boolean pending) {
-		if (pending && !l.isCamt && l.valuta != null && commerzbank(host)) return l.valuta;
-		return l.bdate != null ? l.bdate : l.valuta;
 	}
 
 	/// The text with which comdirect asks to send a request again. Its return code is not known, so the text decides.
