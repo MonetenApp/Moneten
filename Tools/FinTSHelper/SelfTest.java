@@ -534,6 +534,10 @@ final class SelfTest {
 			"{\"type\":\"accountFailed\",\"account\":\"7654324\",\"kind\":\"unsupported\",\"text\":\"Moneten can't read this securities account at this bank yet.\"}");
 		expect("giro account without HKSAL and HKKAZ", FinTSHelper.nothingAllowed("1234567890", allowing("1", "HKUEB")).get("text"),
 			"The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+		expect("credit card without the card statement, HKSAL, and HKKAZ: the kind of an account without jobs, which the app names for a DKB card",
+			FinTSHelper.Json.write(FinTSHelper.nothingAllowed("1234567890123456", allowing("50", "HKUEB"))),
+			"{\"type\":\"accountFailed\",\"account\":\"1234567890123456\",\"kind\":\"noJobs\","
+				+ "\"text\":\"The FinTS server of the bank offers neither the balance nor the transactions of this account.\"}");
 		expect("depot without a type and without HKWPD", FinTSHelper.nothingAllowed("7654327", allowing(null, "HKWDU")).get("text"),
 			"Moneten can't read this securities account at this bank yet.");
 		Konto unreadableDepot = allowing(null, "HKWDU", "HKUEB");

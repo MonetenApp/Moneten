@@ -205,6 +205,43 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("Refreshing 300 moved card bookings in 50,000 card rows meets its budget")
+	func movedCardBookings() {
+		let account = Account(position: 0, name: "Card history", kind: .creditCard, source: .bank)
+		let today = Day(year: 2026, month: 12, day: 1)
+		var stored: [Transaction] = []
+		stored.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			var t = Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000) - 3), amountMinor: -Int64(i + 1),
+				name: "Shop \(i % 50)", purpose: "Card payment \(i)")
+			t.isFetched = true
+			stored.append(t)
+		}
+		// The bank moved the 300 newest payments two days later, so none of them is delivered on its stored day.
+		var rows: [Transaction] = []
+		for t in stored.prefix(300) {
+			let moved: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate.adding(days: 2), amountMinor: t.amountMinor,
+				name: t.name, purpose: t.purpose)
+			rows.append(moved)
+		}
+		// The answer also holds older payments that did not move, so its days reach back past the stored days of the moved ones.
+		for t in stored[300..<310] {
+			let unchanged: Transaction = Transaction(accountID: account.id, bookingDate: t.bookingDate, amountMinor: t.amountMinor, name: t.name, purpose: t.purpose)
+			rows.append(unchanged)
+		}
+		let delivery = Delivery.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: nil, maxBookingShift: 7)))
+		let rules = Categorizer(ledger: Ledger(accounts: [account]))
+		var result = Reconciliation()
+		let elapsed = fastest(runs: 15) { result = reconcile(delivery, into: account, stored: stored, deleted: [], rules: rules, now: Date()) }
+		#expect(result.skipped == 310 && result.updated.count == 300 && result.added.isEmpty)
+		// About twice the time on a Mac (23 to 31 ms in release while other builds ran), because a runner of GitHub took 63 ms
+		// where a Mac took 20 ms. Most of it is the pairing that every refresh of 50,000 rows runs (13 ms without a window).
+		print("moved card bookings 50,000/300 \(elapsed), budget \(budget(.milliseconds(60))), updated=\(result.updated.count)")
+		#if !DEBUG
+		#expect(elapsed < budget(.milliseconds(60)))
+		#endif
+	}
+
 	@Test("A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit")
 	func regexRuleBudgets() throws {
 		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
@@ -258,9 +295,12 @@ struct PerformanceTests {
 		ordered += [traders, rest]
 		let mixed = Ledger(accounts: [account], categories: ordered, transactions: mixedRows)
 		var kept = 0
+		var passes = 0
 		let withStops = fastest {
 			let rules = Categorizer(ledger: mixed)
+			passes = 0
 			kept = rules.allOrNothing { () -> Int in
+				passes += 1
 				var count = 0
 				for row in mixedRows {
 					var t: Transaction = row
@@ -270,28 +310,61 @@ struct PerformanceTests {
 				return count
 			}
 		}
-		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows), with twelve rules that stop \(withStops) (\(kept) rows)")
+		print("regex rule over 50,000 rows: count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows), with twelve rules that stop \(withStops) (\(kept) rows, \(passes) passes)")
 		#expect(kept == 7_865)
+		// Every row passes a stopped rule before its match, so the stops change no category that the batch used.
+		#expect(passes == 1)
 		// Haendler1 and Haendler10 to Haendler19: 11 of each 70 rows.
 		#expect(count == 7_865)
 		#expect(sorted == 7_865)
 		#expect(!stopped)
-		// Most of the time builds a `RuleSubject` for each row, about 390 ms. The watched regular expression takes about
-		// 130 ms of it, so the limit of a run, 1 second, leaves room for several times as many rows.
+		// A `RuleSubject` folds words and makes the `Decimal` amount only when a rule reads them, so a count is mostly the
+		// watched regular expression, and the categorization adds the words for "Rechnung".
 		#if !DEBUG
-		// A Mac counts in about 0.55 s and categorizes in about 0.62 s in release; a busy CI runner has taken up to three
-		// times as long. Issue #361 removes the cost of the memo and tightens these budgets again.
-		#expect(counting < budget(.milliseconds(1_500)))
-		#expect(categorizing < budget(.milliseconds(1_500)))
-		// About 1 second of it is the twelve rules until they stop, and the rest two passes over the rows. Before round 3 of
-		// #351 a repeat charged the normal rule again, and the batch took over 10 seconds.
-		#expect(withStops < budget(.seconds(6)))
+		// A Mac counts in about 0.14 s and categorizes in about 0.33 s in release. Before issue #361 it took 0.54 s and
+		// 0.62 s, and a busy CI runner has taken up to three times as long.
+		#expect(counting < budget(.seconds(1)))
+		#expect(categorizing < budget(.seconds(1)))
+		// About 1.55 s on a Mac, of which about 0.9 s is the twelve rules until they stop, and the rest one pass over the
+		// rows. Before issue #361 the batch took 2.6 s in two passes.
+		#expect(withStops < budget(.seconds(4)))
 		#endif
 	}
 
 	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.
+	@Test("Thirty fast regular expressions over 50,000 rows never stop the batch")
+	func fastRegexRules() {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		// A loop with typed values, because the type checker of the CI compiler gives up on this as one closure.
+		var ts: [Transaction] = []
+		ts.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) Kundennummer \(i * 7)"
+			ts.append(Transaction(accountID: account.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose,
+				bookingText: "LASTSCHRIFT", endToEndReference: "E2E-\(i)"))
+		}
+		var categories: [Domain.Category] = []
+		for k in 0..<30 { categories.append(Domain.Category(position: k, name: "Haendler \(k)", rule: "/Haendler\(k)x/")) }
+		let rules = Categorizer(ledger: Ledger(accounts: [account], categories: categories, transactions: ts))
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let sorted = rules.allOrNothing { ts.count(where: { rules.category(for: $0) != nil }) }
+		let elapsed = Duration.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start)
+		let spent = rules.entries.reduce(0) { $0 + $1.rule.regexSpent }
+		let heavy = rules.entries.reduce(0) { $0 + $1.rule.heavySpent }
+		print("thirty fast regular expressions over 50,000 rows: \(elapsed), of it \(Duration.nanoseconds(spent)) in regular expressions, \(Duration.nanoseconds(heavy)) in calls of 100 µs or more")
+		// Each call takes a few microseconds, so almost none counts toward the limit of the batch, also when all of them
+		// take more than its 3 seconds together, as on a busy Mac. Before issue #361 every call counted, and on a busy Mac
+		// all thirty rules stopped.
+		#expect(heavy < spent / 10)
+		#expect(rules.entries.allSatisfy { $0.rule.stoppedRegexPosition == nil })
+		#expect(sorted == 0)
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!

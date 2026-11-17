@@ -958,8 +958,9 @@ struct FinTSConnectorTests {
 			.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung im Zwei-Schritt-Verfahren"))),
 		(#"{"type":"failed","code":"9951","text":"Zeitüberschreitung im Zwei-Schritt-Verfahren"}"#, .bank(BankMessage(code: "9951", text: "Zeitüberschreitung im Zwei-Schritt-Verfahren"))),
 		(#"{"type":"failed","kind":"approvalDeclined","code":"9941","text":"Freigabe abgelehnt"}"#, .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
+		// The access has the Bankleitzahl of DKB, so the next step names the DKB app (DKBTests).
 		(#"{"type":"failed","kind":"noTANMethod","code":"9075","text":"Starke Kundenauthentifizierung notwendig"}"#,
-			.noTANMethod(BankMessage(code: "9075", text: "Starke Kundenauthentifizierung notwendig"))),
+			.noTANMethodOfBank(BankMessage(code: "9075", text: "Starke Kundenauthentifizierung notwendig"), nextStep: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")),
 		(#"{"type":"failed","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}"#, .bank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 	])
 	func errors(line: String, expected: SyncFailure) async throws {
@@ -1023,7 +1024,7 @@ struct FinTSConnectorTests {
 	@Test("The fake helper of a debug build fails the refresh of each login of an error with that error", arguments: [
 		("gesperrt", blocked),
 		("deaktiviert", deactivated),
-		("ohnetan", .noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
+		("ohnetan", .noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
 		("ersetzt", .loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),

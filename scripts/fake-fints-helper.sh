@@ -15,6 +15,8 @@
 # The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
 # The login "kreditkarte" lists "Girokonto" and the credit card "Visa Card" with a 16 digit card number, whose refresh
 # brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does.
+# The login "karteohnejobs" lists only "Visa Card" with a 16 digit card number, whose refresh fails as an account that
+# allows no job that the helper knows.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
@@ -46,7 +48,8 @@
 # in the bank parameters, or of method 902.
 # Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
 # shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
-# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
+# Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB, the DKB step for "ohnetan", and the DKB
+# message of a card without jobs for "karteohnejobs". The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
@@ -136,6 +139,11 @@ case "$cmd" in
 		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
+	*'"user":"karteohnejobs"'*)
+		echo '{"type":"accounts","accounts":[{"number":"1234567890123456","product":"Visa Card","kind":"50","owner":"Erika Mustermann","currency":"EUR"}]}'
+		echo '{"type":"state","data":"MA=="}'
+		exit 0
+	;;
 	*'"user":"unterkonten"'*)
 		echo '{"type":"accounts","accounts":[{"number":"9","subnumber":"01","product":"Sparkonto","kind":"10","currency":"EUR"},{"number":"9","subnumber":"02","product":"Sparkonto Plus","kind":"10","currency":"EUR"}]}'
 		echo '{"type":"state","data":"MA=="}'
@@ -176,6 +184,12 @@ case "$cmd" in
 	;;
 	*'"user":"ohnetan"'*)
 		echo '{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}'
+		exit 0
+	;;
+	*'"user":"karteohnejobs"'*)
+		# The card allows no job that the helper knows, as a DKB card without the card statement would.
+		echo '{"type":"accountFailed","account":"1234567890123456","kind":"noJobs","text":"The FinTS server of the bank offers neither the balance nor the transactions of this account."}'
+		echo '{"type":"state","data":"MA=="}'
 		exit 0
 	;;
 	*'"user":"ersetzt"'*)
