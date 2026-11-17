@@ -27,8 +27,9 @@ public enum UpdateFailure: Sendable, Equatable {
 		guard userInitiated else { return nil }
 		switch code {
 		case Code.runningTranslocated, Code.runningFromDiskImage: return .moveToApplications
-		// A guard that should never run: Sparkle cancels only the request for the password of an
-		// administrator, which comes after "Install".
+		// Sparkle cancels only the request for the password of an administrator, which comes after
+		// "Install", so this case should never run. Without it, a 4007 here would fall to the default
+		// and show a failed check, although the check did not fail.
 		case Code.installationCanceled: return nil
 		default: return .check
 		}

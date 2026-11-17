@@ -4,10 +4,11 @@ import Domain
 /// Compiled into every build, as the rest of the harness, which installs only in Debug and Perf builds.
 extension DebugHarness {
 	/// "update <action>" drives the updater against the test feed of `MONETEN_FEED_URL`: check, install,
-	/// later, close, about, state, beta on|off, and copies, which shows the warning about
-	/// several copies of a release build. "update show <stage>" shows a stage with made-up versions
-	/// for the screenshots of the window: checking, uptodate, systemtooold, found, nonotes, prerelease,
-	/// downloading, installing, waiting, failedcheck, failedinstall, move, and notice.
+	/// later, close, about, state, beta on|off, copies, which shows the warning about several
+	/// copies of a release build, and signature <path>, which logs how the copy at the path is
+	/// signed. "update show <stage>" shows a stage with made-up versions for the screenshots of the
+	/// window: checking, uptodate, systemtooold, found, nonotes, prerelease, downloading, installing,
+	/// waiting, failedcheck, failedinstall, move, and notice.
 	func update(_ argument: String, model: AppModel) {
 		let driver = model.updater.driver
 		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -27,8 +28,22 @@ extension DebugHarness {
 		case "beta": log("update beta", ("stored", .flag(Preference.store(parts.last == "on", forKey: AppUpdater.betaKey))))
 		case "copies":
 			// The warning of a release build, which a Debug build skips at launch.
-			let places = LaunchChecks.warnAboutCopies(driver: driver)
-			log("update copies", ("places", .count(places.count)), ("untested", .position(LaunchChecks.untestedMacOS)))
+			Task {
+				let places = await LaunchChecks.warnAboutCopies(driver: driver)
+				log("update copies", ("places", .count(places.count)), ("untested", .position(LaunchChecks.untestedMacOS)))
+			}
+		case "signature":
+			// The signature of the application file at the path, as the warning about copies reads it.
+			let url = URL(fileURLWithPath: parts.count > 1 ? parts[1] : Bundle.main.bundlePath)
+			Task {
+				let signature = await Task.detached { LaunchChecks.signature(of: url) }.value
+				let kind: LogValue = switch signature {
+				case .developerID: .word("developerID")
+				case .otherCertificate: .word("otherCertificate")
+				case .local: .word("local")
+				}
+				log("update signature", ("", kind))
+			}
 		case "show": showMadeUp(parts.count > 1 ? parts[1] : "", driver: driver)
 		default: log("update unknown")
 		}
