@@ -60,7 +60,9 @@ None.
 - A canceled or interrupted fetch stores nothing for the account that was in progress. This was not observed.
 - The app shows the return code of the bank next to the bank's text. MoneyMoney shows the text.
 - A Sparkasse answer that the user deactivated the app in the online banking is recognized by its text on the servers of the savings banks, because its code was not observed. The app then names "Kontozugriffe" in the online banking as the place to unblock it.
+- comdirect gets a request a second time, once, when its answer asks to send it again. The answer is recognized by its text, because its return code was not observed.
+- A pending MT942 row without an entry date takes its value date as its booking date. MoneyMoney rejects such a statement.
+- An original amount that the bank sends with a minus stays negative on a pending row of a debit. MoneyMoney turns it positive.
 - The hint for the FinTS login of ING that waits for a login on the website does not name the user name of the access. MoneyMoney names it.
-- A pending MT942 row of ING without an entry date keeps its value date. MoneyMoney stores no row of that statement.
 - A pending MT942 row takes the entry date of its ":61:" line for every bank, and the value date only without an entry date. MoneyMoney takes the entry date only for ING, Commerzbank, and HypoVereinsbank, and the value date for other banks. This holds until issue #374, which aligns it.
 - After 2 automatic refreshes in a row that end because ING waits for a login on its website, the automatic refresh of the access pauses until a refresh by hand. MoneyMoney goes on, but no source says whether ING counts these logins toward the block of the PIN.

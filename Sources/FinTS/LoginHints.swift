@@ -54,6 +54,7 @@ extension BankDirectory.Entry {
 	/// a bank of another group with "Sparkasse" in its name. The entry of a merged savings bank is one,
 	/// because the setup goes on with it.
 	public var loginHint: LoginHint? {
+		if let hint = commerzbankGroupHint { return hint }
 		if let hint = LoginHint.byCode[code] { return hint }
 		if let hint = cooperativeHint { return hint }
 		let name = TextFolding.fold(bank.name)
