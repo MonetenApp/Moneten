@@ -1028,29 +1028,320 @@ public class FinTSHelper {
 
 	static final Pattern SEPA_TAG = Pattern.compile("(EREF|KREF|MREF|CRED|DEBT|COAM|OAMT|SVWZ|ABWA|ABWE|IBAN|BIC)\\+");
 
-	/// One transaction for the app. MT940 statements carry the end-to-end reference, the mandate,
-	/// the creditor ID, and the purpose as tagged text in the purpose lines, which the bank cuts every
-	/// 27 characters, also inside words. Tagged lines therefore join without a space.
-	static Map<String, Object> row(UmsLine l, boolean pending) {
-		List<String> lines = l.usage == null ? List.of() : l.usage.stream().filter(FinTSHelper::present).toList();
-		String joined = String.join("", lines);
+	/// A purpose line of MT940 that holds only the slash tags of the original amount, the charges, and the exchange rate.
+	static final Pattern SLASH_TAGS = Pattern.compile("(/(OCMT|CHGS|EXCH)/[^/]*/*)+");
+	static final Pattern ORIGINAL_AMOUNT = Pattern.compile("([A-Za-z]{3})(-?[0-9]+(?:,[0-9]*)?)");
+
+	/// The lines of a purpose: joined without a character for the tags, as every earlier version read them, so that a
+	/// reference or a tag that a line end cuts reads as before and the identity of a stored transaction stays, and with the
+	/// spaces of the joining rule of add-fints-banking where the purpose shows them. MT940: a line of 27 or 35 characters
+	/// is full, so the bank cut the text there, also inside a word, and it joins the next line without a character. A
+	/// shorter line, a full line that ends with a lowercase letter before a line that starts with an uppercase letter, and
+	/// a line before one that starts with a tag join with a space. CAMT: only a line of 140 characters, the most that a line
+	/// holds, joins without a character, and white space folds into one space. Lengths count code points, as
+	/// TransactionFileImporter counts Unicode scalars, and it reads the lines of a file by the same rule.
+	static final class Purpose {
+		final String joined;
+		final boolean camt;
+		/// The positions in `joined` before which the purpose shows a space.
+		final java.util.Set<Integer> spaces = new java.util.HashSet<>();
+		/// Where each line starts in `joined`, and the end of the text last.
+		final List<Integer> starts = new ArrayList<>();
+		/// The lines of white space only, which count for the tags, as before, and not for the purpose.
+		final java.util.Set<Integer> hidden = new java.util.HashSet<>();
+
+		Purpose(List<String> lines, boolean camt) {
+			this.camt = camt;
+			StringBuilder text = new StringBuilder();
+			String previous = null;
+			for (String line : lines) {
+				starts.add(text.length());
+				text.append(line);
+				if (line.codePoints().allMatch(Purpose::white)) {
+					hidden.add(starts.size() - 1);
+					continue;
+				}
+				if (previous != null) {
+					boolean space;
+					if (camt) {
+						String shown = folded(previous);
+						space = shown.codePointCount(0, shown.length()) != 140;
+					} else {
+						int length = previous.codePointCount(0, previous.length());
+						boolean full = length == 27 || length == 35;
+						int last = previous.codePointBefore(previous.length());
+						int first = line.codePointAt(0);
+						boolean newWord = Character.isLowerCase(last) && Character.isUpperCase(first);
+						boolean tag = SEPA_TAG.matcher(line).lookingAt();
+						space = (!full || newWord || tag) && !white(last) && !white(first);
+					}
+					if (space) spaces.add(starts.get(starts.size() - 1));
+				}
+				previous = line;
+			}
+			joined = text.toString();
+			starts.add(joined.length());
+		}
+
+		/// The text from `start` to `end` with its spaces, without white space at both ends. A CAMT line also loses the white
+		/// space at its own ends, and white space in it folds into one space.
+		String shown(int start, int end) {
+			StringBuilder text = new StringBuilder();
+			for (int line = 0; line + 1 < starts.size(); line++) {
+				if (hidden.contains(line)) continue;
+				int from = Math.max(start, starts.get(line)), to = Math.min(end, starts.get(line + 1));
+				if (from >= to) continue;
+				String part = joined.substring(from, to);
+				if (camt) part = folded(part);
+				if (part.isEmpty()) continue;
+				if (text.length() > 0 && from == starts.get(line) && spaces.contains(from)) text.append(' ');
+				text.append(part);
+			}
+			return trimmed(text.toString());
+		}
+
+		/// White space as Unicode defines it, as Swift's `isWhitespace` reads it. `Character.isWhitespace` leaves out the
+		/// space that does not break.
+		static boolean white(int c) {
+			return Character.isWhitespace(c) || Character.isSpaceChar(c);
+		}
+
+		/// The text without white space at both ends, as Swift trims it.
+		static String trimmed(String text) {
+			return UNICODE_ENDS.matcher(text).replaceAll("");
+		}
+
+		/// A CAMT line without white space at both ends, and with each run of white space inside as one space.
+		static String folded(String text) {
+			return trimmed(UNICODE_SPACES.matcher(text).replaceAll(" "));
+		}
+
+		static final Pattern UNICODE_SPACES = Pattern.compile("(?U)\\s+"), UNICODE_ENDS = Pattern.compile("(?U)^\\s+|\\s+$");
+	}
+
+	/// The MT940 lines of a purpose as the purpose shows them. Blank lines are left out, as `row` leaves them out.
+	static String joinMt940(List<String> lines) {
+		Purpose p = new Purpose(lines.stream().filter(FinTSHelper::present).toList(), false);
+		return p.shown(0, p.joined.length());
+	}
+
+	/// The CAMT lines of a purpose as the purpose shows them.
+	static String joinCamt(List<String> lines) {
+		Purpose p = new Purpose(lines.stream().filter(FinTSHelper::present).toList(), true);
+		return p.shown(0, p.joined.length());
+	}
+
+	/// The original amount of a slash tag "/OCMT/USD50,00/" as plain decimal text with every decimal place, and its currency:
+	/// three letters and the amount with a decimal comma, up to the next slash or the end. Null when any of it does not read,
+	/// because a wrong original amount is worse than none. `Value` of hbci4java keeps two decimals and throws on three, so the
+	/// helper keeps the amount as it is.
+	static String[] originalAmount(String line) {
+		int tag = line.indexOf("/OCMT/");
+		if (tag < 0) return null;
+		int end = line.indexOf('/', tag + 6);
+		Matcher m = ORIGINAL_AMOUNT.matcher(line.substring(tag + 6, end < 0 ? line.length() : end));
+		if (!m.matches()) return null;
+		String amount = m.group(2).replace(',', '.');
+		if (amount.endsWith(".")) amount = amount.substring(0, amount.length() - 1);
+		return new String[] { new BigDecimal(amount).toPlainString(), m.group(1).toUpperCase(java.util.Locale.ROOT) };
+	}
+
+	/// The keys under which `StatementJob` keeps the raw MT940 and MT942 text of its answers.
+	static final String RAW_BOOKED = "moneten.booked", RAW_UNBOOKED = "moneten.notbooked";
+
+	/// The transactions in MT940 that also keep the raw text of each answer, because hbci4java reads the original amount
+	/// of `:61:` only when the line has no bank reference after "//", and then also from a token that reads only in part,
+	/// such as "USD50.99". `mt940Originals` reads it from the raw text.
+	static final class StatementJob extends org.kapott.hbci.GV.GVKUmsAll {
+		StatementJob(HBCIHandler handle) {
+			super(handle);
+		}
+
+		@Override
+		protected void extractResults(HBCIMsgStatus status, String header, int index) {
+			super.extractResults(status, header, index);
+			keep(jobResult, RAW_BOOKED, status.getData().getProperty(header + ".booked"));
+			keep(jobResult, RAW_UNBOOKED, status.getData().getProperty(header + ".notbooked"));
+		}
+
+		/// Appends one answer to the raw text of `key`, as hbci4java appends it to the statements it parses.
+		static void keep(HBCIJobResult result, String key, String raw) {
+			if (raw == null) return;
+			String before = result.getResultData().getProperty(key, "");
+			((org.kapott.hbci.GV_Result.HBCIJobResultImpl) result).storeResult(key, before + org.kapott.hbci.swift.Swift.decodeUmlauts(raw));
+		}
+	}
+
+	/// A field `:61:` of raw MT940 text, up to the next field or the end of the statement.
+	static final Pattern MT940_ROW = Pattern.compile("(?m)^:61:(.*?)(?=\\r?\\n(?::[0-9]{2}[A-Z]?:|-))", Pattern.DOTALL);
+
+	/// A row of a raw statement: the original amount that it gives, or null, and what pairs it with a row of hbci4java,
+	/// its booked amount with its sign, and in MT940 its value date (yyMMdd) and its entry date (MMdd) when it has one.
+	record RawRow(String[] original, BigDecimal amount, String value, String entry) {
+		/// Whether `l` is the row that hbci4java made from this one.
+		boolean pairs(UmsLine l) {
+			return amount != null && l.value != null && amount.compareTo(l.value.getBigDecimalValue()) == 0
+				&& (value == null || (l.valuta != null && value.equals(new SimpleDateFormat("yyMMdd").format(l.valuta))))
+				&& (entry == null || (l.bdate != null && entry.equals(new SimpleDateFormat("MMdd").format(l.bdate))));
+		}
+	}
+
+	/// The first line of a field `:61:`: the value date, the entry date, the mark of a reversal and of debit or credit, the
+	/// last letter of the currency, and the amount up to the code of the booking.
+	static final Pattern MT940_LINE = Pattern.compile("([0-9]{6})([0-9]{4})?(R?)([CD])[A-Z]?([0-9]+(?:,[0-9]*)?)N.*");
+
+	/// Each field `:61:` of raw MT940 text, in the order of the text, with the original amount of its supplementary details,
+	/// or null for a field without one or with one that does not read in full. A reversal of a credit (RC) books a debit and
+	/// a reversal of a debit (RD) a credit, as hbci4java signs them.
+	static List<RawRow> mt940Originals(String raw) {
+		List<RawRow> rows = new ArrayList<>();
+		if (raw == null) return rows;
+		Matcher m = MT940_ROW.matcher(raw);
+		while (m.find()) {
+			String field = m.group(1);
+			int lineBreak = field.indexOf('\n');
+			String[] original = lineBreak < 0 ? null : originalAmount(field.substring(lineBreak + 1));
+			Matcher line = MT940_LINE.matcher((lineBreak < 0 ? field : field.substring(0, lineBreak)).strip());
+			if (!line.matches()) {
+				rows.add(new RawRow(original, null, null, null));
+				continue;
+			}
+			boolean negative = line.group(3).isEmpty() ? line.group(4).equals("D") : line.group(4).equals("C");
+			String amount = line.group(5).replace(',', '.');
+			if (amount.endsWith(".")) amount = amount.substring(0, amount.length() - 1);
+			BigDecimal value = new BigDecimal(amount);
+			rows.add(new RawRow(original, negative ? value.negate() : value, line.group(1), line.group(2)));
+		}
+		return rows;
+	}
+
+	/// The original amount of each entry of raw CAMT documents, which hold the bytes of the answer as hbci4java keeps them,
+	/// so they become bytes again in its encoding, as it parses them. In the order in which hbci4java makes its rows: an entry
+	/// whose first transaction details hold no transaction makes none. hbci4java reads the instructed amount only for a
+	/// return. The amount of the entry wins, or else the sum of its transactions when each has one in the same currency.
+	/// Null for an entry without one or with one that does not read in full, and null for the whole list when a document
+	/// does not read.
+	static List<RawRow> camtOriginals(List<String> documents) {
+		List<RawRow> originals = new ArrayList<>();
+		try {
+			javax.xml.parsers.DocumentBuilderFactory factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+			factory.setNamespaceAware(true);
+			factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+			factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+			factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+			factory.setXIncludeAware(false);
+			factory.setExpandEntityReferences(false);
+			for (String document : documents) {
+				org.w3c.dom.NodeList entries = factory.newDocumentBuilder().parse(new ByteArrayInputStream(document.getBytes(org.kapott.hbci.comm.Comm.ENCODING)))
+					.getElementsByTagNameNS("*", "Ntry");
+				for (int i = 0; i < entries.getLength(); i++) {
+					org.w3c.dom.Element entry = (org.w3c.dom.Element) entries.item(i);
+					List<org.w3c.dom.Element> details = children(entry, "NtryDtls");
+					if (!details.isEmpty() && children(details.get(0), "TxDtls").isEmpty()) continue;
+					originals.add(new RawRow(instructed(entry, details), bookedAmount(entry), null, null));
+				}
+			}
+		} catch (Exception e) {
+			return null;
+		}
+		return originals;
+	}
+
+	/// The amount of a CAMT entry with the sign of its `CdtDbtInd`, as hbci4java signs it, or null when it does not read.
+	static BigDecimal bookedAmount(org.w3c.dom.Element entry) {
+		org.w3c.dom.Element amount = path(entry, "Amt"), mark = path(entry, "CdtDbtInd");
+		if (amount == null) return null;
+		String value = amount.getTextContent().strip();
+		if (!value.matches("[0-9]+(\\.[0-9]+)?")) return null;
+		BigDecimal booked = new BigDecimal(value);
+		return mark != null && mark.getTextContent().strip().equals("DBIT") ? booked.negate() : booked;
+	}
+
+	static String[] instructed(org.w3c.dom.Element entry, List<org.w3c.dom.Element> details) {
+		org.w3c.dom.Element own = path(entry, "AmtDtls", "InstdAmt", "Amt");
+		if (own != null) return instructedAmount(own);
+		BigDecimal sum = BigDecimal.ZERO;
+		String currency = null;
+		int count = 0;
+		for (org.w3c.dom.Element detail : details) {
+			for (org.w3c.dom.Element transaction : children(detail, "TxDtls")) {
+				String[] amount = instructedAmount(path(transaction, "AmtDtls", "InstdAmt", "Amt"));
+				if (amount == null || (currency != null && !currency.equals(amount[1]))) return null;
+				currency = amount[1];
+				sum = sum.add(new BigDecimal(amount[0]));
+				count++;
+			}
+		}
+		return count == 0 ? null : new String[] { sum.toPlainString(), currency };
+	}
+
+	/// An instructed amount `Amt` with its attribute `Ccy`, both read in full, or null.
+	static String[] instructedAmount(org.w3c.dom.Element amount) {
+		if (amount == null) return null;
+		String value = amount.getTextContent().strip(), currency = amount.getAttribute("Ccy").strip().toUpperCase(java.util.Locale.ROOT);
+		return value.matches("[0-9]+(\\.[0-9]+)?") && currency.matches("[A-Z]{3}") ? new String[] { new BigDecimal(value).toPlainString(), currency } : null;
+	}
+
+	static List<org.w3c.dom.Element> children(org.w3c.dom.Element parent, String name) {
+		List<org.w3c.dom.Element> found = new ArrayList<>();
+		for (org.w3c.dom.Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) {
+			if (n instanceof org.w3c.dom.Element e && name.equals(e.getLocalName())) found.add(e);
+		}
+		return found;
+	}
+
+	static org.w3c.dom.Element path(org.w3c.dom.Element from, String... names) {
+		org.w3c.dom.Element e = from;
+		for (String name : names) {
+			List<org.w3c.dom.Element> next = children(e, name);
+			if (next.size() != 1) return null;
+			e = next.get(0);
+		}
+		return e;
+	}
+
+	/// MT940 statements carry the end-to-end reference, the mandate, the creditor ID, the deviating party, and the purpose
+	/// as tagged text in the purpose lines, which the bank cuts every 27 characters, also inside words. `Purpose` joins them.
+	/// The original amount comes from the raw statement, `mt940Originals` and `camtOriginals`, never from hbci4java.
+	static Map<String, Object> row(UmsLine l, boolean pending, String[] fromStatement) {
+		List<String> lines = new ArrayList<>();
+		String[] original = fromStatement;
+		for (String line : l.usage == null ? List.<String>of() : l.usage) {
+			if (!present(line)) continue;
+			// A line of slash tags holds the original amount, and the one of :61: wins over it. The line stays in the purpose,
+			// as an earlier version sent it, so that the identity of a stored transaction does not change.
+			if (!l.isCamt && original == null && SLASH_TAGS.matcher(line.strip()).matches()) original = originalAmount(line);
+			lines.add(line);
+		}
+		Purpose text = new Purpose(lines, l.isCamt);
+		String joined = text.joined;
 		Map<String, String> tags = new LinkedHashMap<>();
+		int[] svwz = null;
 		Matcher m = SEPA_TAG.matcher(joined);
 		int start = -1;
 		String tag = null;
-		while (m.find()) {
-			if (tag != null) tags.putIfAbsent(tag, joined.substring(start, m.start()).trim());
+		while (true) {
+			boolean found = m.find();
+			int end = found ? m.start() : joined.length();
+			if (tag != null && !tags.containsKey(tag)) {
+				tags.put(tag, joined.substring(start, end).trim());
+				if (tag.equals("SVWZ")) svwz = new int[] { start, end };
+			}
+			if (!found) break;
 			tag = m.group(1);
 			start = m.end();
 		}
-		if (tag != null) tags.putIfAbsent(tag, joined.substring(start).trim());
-		String purpose = tags.isEmpty() ? String.join(" ", lines.stream().map(String::trim).toList()) : tags.getOrDefault("SVWZ", "");
+		String purpose = tags.isEmpty() ? text.shown(0, joined.length()) : svwz == null ? "" : text.shown(svwz[0], svwz[1]);
 		String endToEnd = text(present(l.endToEndId) ? l.endToEndId : tags.get("EREF"));
 		if ("NOTPROVIDED".equals(endToEnd)) endToEnd = null;
 		if (!present(purpose) && endToEnd != null) purpose = endToEnd;
 		Konto other = l.other;
 		// hbci4java reads no date from a CAMT entry that has a date and time only.
 		if (l.bdate == null && l.valuta == null) throw new Failure("unsupported", null, "The bank sent a transaction without a booking date, so nothing of this account was stored.");
+		// The deviating party of the counterparty: hbci4java keeps the ultimate debtor of a CAMT credit or the ultimate creditor
+		// of a debit as name2. In MT940 it is ABWE+ for a debit and ABWA+ for a credit.
+		boolean debit = l.value.getBigDecimalValue().signum() < 0;
+		String deviating = l.isCamt ? (other == null ? null : text(other.name2)) : text(tags.get(debit ? "ABWE" : "ABWA"));
 		return message("row",
 			"booked", day(PendingDates.booked(l, pending, Callback.server)), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
@@ -1058,7 +1349,9 @@ public class FinTSHelper {
 			"iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
 			"creditor", text(other != null && present(other.creditorid) ? other.creditorid : tags.get("CRED")),
-			"bookingText", text(l.text), "pending", pending);
+			"bookingText", text(l.text),
+			"originalAmount", original == null ? null : original[0], "originalCurrency", original == null ? null : original[1],
+			"deviatingParty", deviating, "pending", pending);
 	}
 
 	/// The errors that the user must act on, in this order: a blocked access, a wrong PIN, an app that
@@ -1204,8 +1497,13 @@ public class FinTSHelper {
 		}
 
 		public HBCIJob newJob(String name) {
-			// The card statement reads its rows itself (cardRows), so hbci4java must not.
-			return name.equals("KreditkartenUmsatz") ? new CardJob(handle) : handle.newJob(name);
+			// The card statement reads its rows itself (cardRows), so hbci4java must not, and the MT940 statement keeps its
+			// raw text for the original amounts (mt940Originals).
+			return switch (name) {
+				case "KreditkartenUmsatz" -> new CardJob(handle);
+				case "KUmsAll" -> new StatementJob(handle);
+				default -> handle.newJob(name);
+			};
 		}
 
 		public HBCIExecStatus execute() {
@@ -1469,14 +1767,32 @@ public class FinTSHelper {
 		if (statementsResult != null) {
 			if (statementsResult.isOK()) {
 				List<Object> rows = new ArrayList<>();
-				for (UmsLine l : statementsResult.getFlatData()) rows.add(row(l, false));
-				for (UmsLine l : statementsResult.getFlatDataUnbooked()) rows.add(row(l, true));
+				addRows(rows, statementsResult.getFlatData(), false, originals(statementsResult, false));
+				addRows(rows, statementsResult.getFlatDataUnbooked(), true, originals(statementsResult, true));
 				transactions = message("transactions", "from", from, "rows", rows);
 			} else {
 				errors.add(problem(statementsResult));
 			}
 		}
 		return message("result", "account", id, "balance", balance, "transactions", transactions, "errors", errors);
+	}
+
+	/// The original amounts that the raw statements give for the booked or the pending rows: from the CAMT documents of
+	/// the answer, or from the MT940 text that `StatementJob` keeps.
+	static List<RawRow> originals(GVRKUms result, boolean pending) {
+		List<String> camt = pending ? result.camtNotBooked : result.camtBooked;
+		if (!camt.isEmpty()) return camtOriginals(camt);
+		return mt940Originals(result.getResultData().getProperty(pending ? RAW_UNBOOKED : RAW_BOOKED));
+	}
+
+	/// The rows of `lines`, each with its original amount. The raw statement pairs with the rows of hbci4java by their
+	/// order, and each pair must agree on the booked amount and, in MT940, on the value date and the entry date. When the
+	/// count differs or one pair does not agree, no row gets an original amount from the statement, because a wrong one is
+	/// worse than none.
+	static void addRows(List<Object> rows, List<UmsLine> lines, boolean pending, List<RawRow> originals) {
+		boolean paired = originals != null && originals.size() == lines.size();
+		for (int i = 0; paired && i < lines.size(); i++) paired = originals.get(i).pairs(lines.get(i));
+		for (int i = 0; i < lines.size(); i++) rows.add(row(lines.get(i), pending, paired ? originals.get(i).original() : null));
 	}
 
 	/// The result of the card statement DKKKU from its answer DIKKU, which hbci4java keeps as raw data: the
@@ -1524,8 +1840,8 @@ public class FinTSHelper {
 	/// The rows of all parts, in the order of the answer. The merchant text of a row is also its name, because the
 	/// card statement has no other field for the other party, and a pending row pairs with its booked version only
 	/// by a name or an IBAN. A row that the bank marks with "finalized" N is not final,
-	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row stays out until
-	/// the app stores it (task 1.18), so its precision cannot fail the row.
+	/// such as the reservation of a hotel, so it is pending. The original amount of a converted row keeps every decimal
+	/// place, and one that does not read is left out, so it cannot fail the row.
 	static List<Object> cardRows(Properties data) {
 		return cardRowKeys(data).stream().map(row -> (Object) cardRow(data, row)).toList();
 	}
@@ -1545,10 +1861,17 @@ public class FinTSHelper {
 		String booked = cardDay(data.getProperty(row + ".bookingdate")), value = cardDay(data.getProperty(row + ".valuedate"));
 		BigDecimal amount = signed(data.getProperty(row + ".value"), data.getProperty(row + ".creditdebit"));
 		if (amount == null || (booked == null && value == null)) throw new Failure("unsupported", null, CARD_ROW_UNREADABLE);
+		// An original amount that does not read, or whose currency is no code of three letters, is left out.
+		String originalCurrency = StringUtil.normalize(data.getProperty(row + ".originalcurrency"));
+		if (originalCurrency != null) originalCurrency = originalCurrency.toUpperCase(java.util.Locale.ROOT);
+		BigDecimal original = originalCurrency == null || !originalCurrency.matches("[A-Z]{3}") ? null
+			: signed(data.getProperty(row + ".originalvalue"), data.getProperty(row + ".originalcreditdebit"));
 		return message("row", "booked", booked != null ? booked : value, "value", value, "amount", amount.toPlainString(),
 			"currency", StringUtil.normalize(data.getProperty(row + ".currency")), "name", StringUtil.normalize(data.getProperty(row + ".purpose")),
 			"purpose", StringUtil.joinDescription(data.getProperty(row + ".purpose"), data.getProperty(row + ".location")),
-			"bookingText", "Kreditkartenzahlung", "pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
+			"bookingText", "Kreditkartenzahlung",
+			"originalAmount", original == null ? null : original.toPlainString(), "originalCurrency", original == null ? null : originalCurrency,
+			"pending", "N".equalsIgnoreCase(StringUtil.normalize(data.getProperty(row + ".finalized"))));
 	}
 
 	/// A day of a row, null when the bank sent none. A day that does not read fails the row.

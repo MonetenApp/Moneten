@@ -47,7 +47,7 @@ let package = Package(
 		.testTarget(name: "DomainTests", dependencies: ["Domain", "TestSupport"]),
 		.testTarget(name: "StorageTests", dependencies: ["Storage", "TestSupport"]),
 		.executableTarget(name: "ExportFileProbe", dependencies: ["Storage"], path: "Tests/ExportFileProbe", exclude: ["sync.c"]),
-		.testTarget(name: "ImportTests", dependencies: ["Import"]),
+		.testTarget(name: "ImportTests", dependencies: ["Import", "TestSupport"]),
 		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage"]),
 		// The tests read helper-lines.jsonl at its path, as the self-test of the helper writes it.
 		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost", "TestSupport"]),

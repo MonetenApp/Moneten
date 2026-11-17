@@ -152,6 +152,8 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `bookingText` | Booking text of the bank, such as "Lastschrift" |
 | `endToEndReference`, `mandateReference`, `creditorID` | SEPA references |
 | `returnReason` | ISO 20022 return reason of a returned payment, such as `"AC04"` for a closed account. Missing means no return reason. |
+| `originalAmount`, `originalCurrency` | The amount before the bank converted it, as decimal text in its own currency, such as `"-50.00"` and `"USD"`. Both are missing when the bank reported no conversion, and one never comes without the other. |
+| `deviatingParty` | The deviating originator of a credit or the deviating recipient of a debit, such as the shop behind a payment service. Missing means none. |
 | `comment` | Comment of the user |
 | `isChecked` | The checkmark |
 | `isPending` | Whether the bank has not booked the transaction yet |

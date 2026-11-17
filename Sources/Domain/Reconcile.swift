@@ -182,6 +182,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
 					next.sourceID = Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending)
 				}
+				// A row that an earlier version stored lacks these, and the source reports them now. The row keeps its other fields.
+				if next.originalAmount == nil { next.originalAmount = delivered.originalAmount }
+				if next.deviatingParty == nil { next.deviatingParty = delivered.deviatingParty }
 			}
 			if fetched { next.isFetched = true }
 			// A manual row that a file matched is a booking of that file from now on, so its deletion keeps a record.
@@ -881,7 +884,8 @@ extension Transaction {
 			currency: delivered.currency, name: delivered.name, purpose: delivered.purpose, counterpartyIBAN: delivered.counterpartyIBAN,
 			counterpartyBIC: delivered.counterpartyBIC, bookingText: delivered.bookingText, endToEndReference: delivered.endToEndReference,
 			mandateReference: delivered.mandateReference, creditorID: delivered.creditorID, comment: delivered.comment, isPending: delivered.isPending,
-			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason, fileIdentity: delivered.fileIdentity)
+			categoryID: delivered.categoryID, categorizedBy: delivered.categorizedBy, isNew: true, isFetched: fetched, sourceID: delivered.sourceID, createdAt: delivered.createdAt, returnReason: delivered.returnReason, fileIdentity: delivered.fileIdentity,
+			originalAmount: delivered.originalAmount, deviatingParty: delivered.deviatingParty)
 	}
 
 	func takingBankFields(of delivered: Transaction) -> Transaction {
@@ -900,6 +904,8 @@ extension Transaction {
 		t.mandateReference = delivered.mandateReference ?? mandateReference
 		t.creditorID = delivered.creditorID ?? creditorID
 		t.returnReason = delivered.returnReason ?? returnReason
+		t.originalAmount = delivered.originalAmount ?? originalAmount
+		t.deviatingParty = delivered.deviatingParty ?? deviatingParty
 		t.isPending = delivered.isPending
 		// A migration ID never replaces the ID of a source that took the row over.
 		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {

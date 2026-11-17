@@ -421,6 +421,15 @@ enum Schema {
 		m.registerMigration("v28") { db in
 			try db.alter(table: "account") { t in t.add(column: "clearingEntry", .text) }
 		}
+		// The original amount of a converted transaction and the deviating party (add-fints-banking, task 1.18). Rows stored
+		// before have neither. It comes after v28.
+		m.registerMigration("v29") { db in
+			try db.alter(table: "bankTransaction") { t in
+				t.add(column: "originalAmountMinor", .integer)
+				t.add(column: "originalCurrency", .text)
+				t.add(column: "deviatingParty", .text)
+			}
+		}
 		return m
 	}
 

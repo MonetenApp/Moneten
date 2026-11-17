@@ -667,7 +667,8 @@ extension TransactionDetail {
 	/// The value as the help tag and the transaction sheet show it.
 	var shownValue: String {
 		switch self {
-		case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .bic(v): v
+		case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .bic(v), let .deviatingParty(v, _): v
+		case let .originalAmount(money): Format.money(money)
 		case let .valueDate(day): Format.day(day)
 		case let .iban(v): Format.iban(v)
 		}

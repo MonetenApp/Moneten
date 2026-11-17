@@ -48,7 +48,7 @@ The app SHALL show each detail that the bank delivered for a transaction with it
 
 - **GIVEN** a transaction with a booking text, a return reason, an end-to-end reference, a mandate reference, a creditor ID, a value date, an IBAN, and a BIC
 - **WHEN** the user rests the pointer on its purpose
-- **THEN** the help tag shows the whole purpose and below it one line for each detail, in the order booking text with the label "Transaction type", return reason, end-to-end reference, mandate reference, creditor ID, value date, IBAN, and BIC
+- **THEN** the help tag shows the whole purpose and below it one line for each detail, in the order booking text with the label "Transaction type", return reason, end-to-end reference, mandate reference, creditor ID, original amount, deviating originator or recipient, value date, IBAN, and BIC
 
 #### Scenario: Returned direct debit
 
@@ -156,7 +156,7 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **AND** a row with no purpose, the comment "Paid twice?", the transaction type "Lastschrift", the return reason "AC04", the end-to-end reference "E2E-9", the mandate reference "M-2026-0042", and the creditor ID "DE98ZZZ09999999999"
 - **WHEN** the user copies the row
 - **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Return reason: AC04, End-to-end reference: E2E-9, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
-- **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, and creditor ID
+- **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, creditor ID, original amount, and deviating recipient or originator
 
 #### Scenario: Text that a spreadsheet would read as a formula
 
@@ -170,6 +170,13 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **GIVEN** a row with the purpose "＝1+1"
 - **WHEN** the user copies the row
 - **THEN** the purpose field is "'＝1+1"
+
+#### Scenario: Copy a card payment abroad
+
+- **GIVEN** the language of the app is German and the region of the Mac is Germany
+- **AND** a card payment of -11.400,00 € with the purpose "Kartenzahlung" and the original amount -12.345,00 US dollars
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "Kartenzahlung, Originalbetrag: -12.345,00 USD"
 
 #### Scenario: Account number and BIC
 

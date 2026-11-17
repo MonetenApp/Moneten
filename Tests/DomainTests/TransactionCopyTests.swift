@@ -191,6 +191,37 @@ struct TransactionCopyTests {
 		#expect(row(100, on: 1).details.isEmpty)
 	}
 
+	@Test("The original amount and the deviating party come after the creditor ID, with the label of the side of the payment")
+	func originalAmountAndDeviatingParty() {
+		var t = debit
+		t.creditorID = "DE98ZZZ09999999999"
+		t.originalAmount = Money(minorUnits: -1_234_500, currency: "USD")
+		t.deviatingParty = "Buchhandlung Beispiel"
+		t.valueDate = Day(year: 2026, month: 11, day: 5)
+		#expect(t.details.map(\.label) == ["Mandate reference", "Creditor ID", "Original amount", "Deviating recipient", "Value date", "IBAN", "BIC"])
+		var credit = row(2_500, on: 3)
+		credit.deviatingParty = "Erika Mustermann"
+		#expect(credit.details == [.deviatingParty("Erika Mustermann", recipient: false)])
+		#expect(credit.details.map(\.label) == ["Deviating originator"])
+		credit.deviatingParty = " "
+		#expect(credit.details.isEmpty)
+	}
+
+	@Test("A copied row with an original amount and a deviating party ends its purpose with both, the amount in the marks of the region and with its currency")
+	func copyOriginalAmount() {
+		var t = debit
+		t.originalAmount = Money(minorUnits: -1_234_500, currency: "USD")
+		t.deviatingParty = "=HYPERLINK(1)\tBuchhandlung"
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields.count == 6)
+		#expect(fields[2] == "Abschlag November, Mandate reference: M-2026-0042, Original amount: -12.345,00 USD, Deviating recipient: =HYPERLINK(1) Buchhandlung")
+		t.purpose = ""
+		t.mandateReference = nil
+		t.originalAmount = Money(minorUnits: -1_234, currency: "KWD")
+		#expect(TransactionCopy.text([t], locale: Locale(identifier: "en_US")).components(separatedBy: "\t")[2]
+			== "Original amount: -1.234 KWD, Deviating recipient: =HYPERLINK(1) Buchhandlung")
+	}
+
 	@Test("An empty text from the source counts as no value")
 	func emptyDetail() {
 		var t = row(100, on: 1)

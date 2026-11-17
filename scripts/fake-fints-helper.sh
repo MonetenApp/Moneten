@@ -14,7 +14,8 @@
 # A refresh of the full history, the first one and an enforced one, brings one more "Girokonto" row from 30 days ago.
 # The login "neu" brings one more "Girokonto" row with each refresh, a deposit on even runs and a withdrawal on odd ones.
 # The login "kreditkarte" lists "Girokonto" and the credit card "Visa Card" with a 16 digit card number, whose refresh
-# brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does.
+# brings its balance and one transaction from the card statement, as the card job DKKKU of DKB does, with an original
+# amount in US dollars. The rent of "Girokonto" has a deviating recipient.
 # The login "karteohnejobs" lists only "Visa Card" with a 16 digit card number, whose refresh fails as an account that
 # allows no job that the helper knows.
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
@@ -254,7 +255,7 @@ case "$cmd" in
 			sign=; [ $(( ${runs:-0} % 2 )) = 1 ] && sign=-
 			extra=",{\"booked\":\"$(day 0)\",\"value\":\"$(day 0)\",\"amount\":\"${sign}25.00\",\"currency\":\"EUR\",\"name\":\"Max Mustermann\",\"purpose\":\"Umbuchung ${runs:-0}\",\"pending\":false}"
 		;; esac
-		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}$extra]},\"errors\":[]}"
+		echo "{\"type\":\"result\",\"account\":\"DE02120300000000202051\",\"balance\":{\"amount\":\"2340.15\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"transactions\":{\"from\":$from,\"rows\":[$oldest{\"booked\":\"$(day 9)\",\"value\":\"$(day 9)\",\"amount\":\"3200.00\",\"currency\":\"EUR\",\"name\":\"Beispiel GmbH\",\"iban\":\"DE02120300000000202051\",\"purpose\":\"Gehalt November\",\"bookingText\":\"GUTSCHRIFT\",\"pending\":false},{\"booked\":\"$(day 4)\",\"value\":\"$(day 4)\",\"amount\":\"-950.00\",\"currency\":\"EUR\",\"name\":\"Wohnbau Musterstadt eG\",\"purpose\":\"Miete\",\"endToEnd\":\"MIETE-2026-11\",\"bookingText\":\"DAUERAUFTRAG\",\"deviatingParty\":\"Hausverwaltung Beispiel\",\"pending\":false},{\"booked\":\"$(day 1)\",\"value\":\"$(day 1)\",\"amount\":\"-42.50\",\"currency\":\"EUR\",\"name\":\"Tankstelle Beispiel\",\"purpose\":\"Kartenzahlung\",\"pending\":true}$extra]},\"errors\":[]}"
 	;; esac
 	echo '{"type":"progress","done":1,"of":3}'
 	case "$cmd" in *'"id":"1234567890"'*)
@@ -266,7 +267,7 @@ case "$cmd" in
 	;; esac
 	echo '{"type":"progress","done":2,"of":3}'
 	case "$cmd" in *'"id":"1234567890123456"'*)
-		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"pending\":false}]},\"errors\":[]}"
+		echo "{\"type\":\"result\",\"account\":\"1234567890123456\",\"balance\":{\"amount\":\"-1234.56\",\"currency\":\"EUR\",\"date\":\"$(day 1)\"},\"transactions\":{\"from\":\"$(day 90)\",\"rows\":[{\"booked\":\"$(day 3)\",\"value\":\"$(day 4)\",\"amount\":\"-19.90\",\"currency\":\"EUR\",\"name\":\"Streaming Beispiel\",\"purpose\":\"Streaming Beispiel / Musterstadt\",\"bookingText\":\"Kreditkartenzahlung\",\"originalAmount\":\"21.49\",\"originalCurrency\":\"USD\",\"pending\":false}]},\"errors\":[]}"
 	;; esac
 	case "$cmd" in *'"id":"4711"'*)
 		echo "{\"type\":\"result\",\"account\":\"4711\",\"balance\":{\"amount\":\"-120.00\",\"currency\":\"EUR\",\"date\":\"$(day 0)\"},\"errors\":[]}"
