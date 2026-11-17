@@ -52,8 +52,8 @@ public enum TransactionCopy {
 		let date = dateFormatter(locale)
 		let marks = Marks(locale)
 		return rows.map { t in
-			[date.string(from: t.bookingDate.noon), oneLine(t.shownName), purpose(t), accountNumber(t.counterpartyIBAN), bankCode(t.counterpartyBIC),
-				marks.amount(t.amountMinor, t.currency)].joined(separator: "\t")
+			[date.string(from: t.bookingDate.noon), noFormula(oneLine(t.shownName)), noFormula(purpose(t)), noFormula(accountNumber(t.counterpartyIBAN)),
+				noFormula(bankCode(t.counterpartyBIC)), marks.amount(t.amountMinor, t.currency)].joined(separator: "\t")
 		}.joined(separator: "\n")
 	}
 
@@ -69,6 +69,14 @@ public enum TransactionCopy {
 			}
 		}
 		return pieces.filter { !$0.isEmpty }.joined(separator: ", ")
+	}
+
+	/// A spreadsheet reads a pasted text that starts with "=", "+", "-", or "@" as a formula, which can show an error
+	/// or open a link. An apostrophe in front keeps it text, as in the CSV export. The fields come from `oneLine`, which
+	/// removes leading whitespace, so whitespace cannot hide the sign. The amount never goes through here.
+	static func noFormula(_ field: String) -> String {
+		guard let first = field.first, "=+-@".contains(first) else { return field }
+		return "'" + field
 	}
 
 	/// Every run of whitespace, also a line break or a tab, becomes one space.
@@ -118,8 +126,13 @@ public enum TransactionCopy {
 		let grouping: String
 
 		init(_ locale: Locale) {
-			let decimal = locale.decimalSeparator ?? ","
-			let grouping = (locale.groupingSeparator ?? "").replacingOccurrences(of: "\u{00A0}", with: " ")
+			self.init(decimal: locale.decimalSeparator ?? ",", grouping: locale.groupingSeparator ?? "")
+		}
+
+		/// A no-break space, also the narrow one of France, becomes a plain space, so that the text holds no invisible
+		/// character.
+		init(decimal: String, grouping: String) {
+			let grouping = grouping.replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\u{202F}", with: " ")
 			if [",", "."].contains(decimal), [",", ".", " ", "'", "\u{2019}", ""].contains(grouping), grouping != decimal {
 				self.decimal = decimal
 				self.grouping = grouping

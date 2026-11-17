@@ -637,7 +637,7 @@ struct TransactionCell: View {
 			Text(transaction.purpose.isEmpty ? " " : transaction.purpose.split(whereSeparator: \.isNewline).joined(separator: " "))
 				.foregroundStyle(Palette.detail)
 				.lineLimit(1)
-				.help(Self.helpText(transaction))
+				.modifier(DetailsHelp(transaction: transaction))
 		}
 		.font(.system(size: 13))
 		.textSelection(.enabled)
@@ -647,6 +647,19 @@ struct TransactionCell: View {
 	static func helpText(_ t: Transaction) -> String {
 		let details = t.details.map { "\($0.label): \($0.shownValue)" }
 		return ([t.purpose].filter { !$0.isEmpty } + (details.isEmpty ? [] : [details.joined(separator: "\n")])).joined(separator: "\n\n")
+	}
+}
+
+/// The help tag of the purpose with the details from the bank. The text is built when the pointer enters the purpose,
+/// not each time SwiftUI builds a cell while the list scrolls. Until then the help tag is the purpose, which costs nothing.
+struct DetailsHelp: ViewModifier {
+	let transaction: Transaction
+	@State private var hovered = false
+
+	func body(content: Content) -> some View {
+		content
+			.onHover { hovered = $0 }
+			.help(hovered ? TransactionCell.helpText(transaction) : transaction.purpose)
 	}
 }
 

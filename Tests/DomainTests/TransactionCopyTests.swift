@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Domain
 
-/// The scenarios "Copy a row" and "Copy two rows" of "Text can be selected and copied", and the details of
-/// "Details from the bank", in openspec/changes/add-transaction-list/specs/transaction-list/spec.md. The tests
+/// The requirements "Copy selected rows as text" and "Details from the bank" in
+/// openspec/changes/add-transaction-list/specs/transaction-list/spec.md. The tests
 /// run without the string catalog of the app, so the labels are the English keys.
 @Suite("Copy rows and the details of a row")
 struct TransactionCopyTests {
@@ -59,6 +59,42 @@ struct TransactionCopyTests {
 		#expect(text.components(separatedBy: "\t")[2] == "Abschlag November 2026 Kunde 4711, Comment: erst prüfen")
 	}
 
+	@Test("A text field that a spreadsheet would read as a formula starts with an apostrophe", arguments: ["=", "+", "-", "@"])
+	func formula(prefix: String) {
+		var t = debit
+		t.name = prefix + "Rabatt-"
+		t.purpose = prefix + "HYPERLINK(\"https://example.com\")"
+		t.mandateReference = nil
+		t.counterpartyIBAN = prefix + "1"
+		t.counterpartyBIC = prefix + "2"
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields[1] == "'" + prefix + "Rabatt-")
+		#expect(fields[2] == "'" + prefix + "HYPERLINK(\"https://example.com\")")
+		#expect(fields[3] == "'" + prefix + "1")
+		#expect(fields[4] == "'" + prefix + "2")
+		// The amount must start with a minus sign.
+		#expect(fields[5] == "-1.234,50")
+	}
+
+	@Test("Leading whitespace does not hide a formula: the field loses the whitespace and gets the apostrophe")
+	func formulaAfterWhitespace() {
+		var t = debit
+		t.name = " \t=1+1"
+		t.purpose = "\n  +Rabatt-"
+		t.mandateReference = nil
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields[1] == "'=1+1")
+		#expect(fields[2] == "'+Rabatt-")
+	}
+
+	@Test("A purpose that is empty starts with the first detail, which never starts a formula")
+	func formulaInDetail() {
+		var t = debit
+		t.purpose = ""
+		t.mandateReference = "=M-1"
+		#expect(TransactionCopy.text([t], locale: german).components(separatedBy: "\t")[2] == "Mandate reference: =M-1")
+	}
+
 	@Test("A row without a name copies the booking text that the row shows in its place")
 	func nameFromBookingText() {
 		var t = row(-250, on: 5)
@@ -100,10 +136,12 @@ struct TransactionCopyTests {
 		#expect(amount(-5, "EUR", "de_DE") == "-0,05")
 		// The currency keeps its own decimal places.
 		#expect(amount(-125_000, "JPY", "de_DE") == "-125.000")
-		// Switzerland groups with an apostrophe, which a spreadsheet reads.
+		// Switzerland groups with an apostrophe, which the copy keeps as the region writes it.
 		#expect(amount(123_456, "CHF", "de_CH").replacingOccurrences(of: "\u{2019}", with: "'") == "1'234.56")
-		// France groups with a narrow no-break space, which the copy does not keep: it falls back to the point and the comma.
-		#expect(amount(123_456, "EUR", "fr_FR") == "1.234,56")
+		// France groups with a narrow no-break space, which the copy writes as a plain space, as the no-break space.
+		#expect(amount(123_456, "EUR", "fr_FR") == "1 234,56")
+		// A grouping that is neither a mark nor a space leaves the region and falls back to the point and the comma.
+		#expect(TransactionCopy.Marks(decimal: ",", grouping: "_").amount(123_456, "EUR") == "1.234,56")
 	}
 
 	@Test("The date is the short date of the region with a four-digit year")

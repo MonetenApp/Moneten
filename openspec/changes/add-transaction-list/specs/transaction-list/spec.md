@@ -138,7 +138,7 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 
 #### Scenario: Copy a row
 
-- **GIVEN** the region of the Mac is Germany
+- **GIVEN** the language of the app is German and the region of the Mac is Germany
 - **AND** a direct debit on 04.11.2026 to "Stadtwerke Musterstadt" with the purpose "Abschlag November", the mandate reference "M-2026-0042", the IBAN DE02120300000000202051, the BIC "DEUTDEFFXXX", and -1.234,50 €
 - **WHEN** the user selects its row and presses ⌘C
 - **THEN** the pasteboard holds one line with the fields "04.11.2026", "Stadtwerke Musterstadt", "Abschlag November, Mandatsreferenz: M-2026-0042", "DE02120300000000202051", "DEUTDEFF", and "-1.234,50", separated by tabs
@@ -149,6 +149,13 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **GIVEN** two selected rows with -10,00 € on 03.11.2026 and 5,00 € on 02.11.2026
 - **WHEN** the user presses ⌘C
 - **THEN** the pasteboard holds two lines, the row of 03.11.2026 first, with the amounts "-10,00" and "5,00"
+
+#### Scenario: Text that a spreadsheet would read as a formula
+
+- **GIVEN** a row with the counterparty name "+Rabatt-"
+- **WHEN** the user copies the row
+- **THEN** the name field is "'+Rabatt-", so that a spreadsheet shows the text and computes nothing
+- **AND** the amount field keeps its minus sign without an apostrophe
 
 #### Scenario: Account number and BIC
 
