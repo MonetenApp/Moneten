@@ -63,7 +63,7 @@ public enum TransactionCSV {
 
 	private static func quoted(_ field: String, protectFormula: Bool) -> String {
 		var field = field
-		if protectFormula, let first = field.unicodeScalars.first, "=+-@\t\r\n".unicodeScalars.contains(first) { field = "'" + field }
+		if protectFormula { field = SpreadsheetFormula.escaped(field) }
 		guard field.contains(where: { $0 == ";" || $0 == "\"" || $0.isNewline }) else { return field }
 		return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
 	}

@@ -109,7 +109,7 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 
 ### Requirement: Spreadsheet formula protection
 
-The app SHALL prefix a text field with an apostrophe when its first character is `=`, `+`, `-`, `@`, a tab, a carriage return, or a line feed. The Amount column stays numeric. CSV quoting follows this prefix.
+The app SHALL prefix a text field with an apostrophe when its first character is a tab, a carriage return, or a line feed, or when its first character after leading whitespace is `=`, `+`, `-`, `@`, or one of the full-width signs `＝`, `＋`, `－`, `＠`. The Amount column stays numeric. CSV quoting follows this prefix.
 
 #### Scenario: Formula in bank text
 
@@ -122,6 +122,16 @@ The app SHALL prefix a text field with an apostrophe when its first character is
 
 - **WHEN** a text field starts with `+1+1`, `-1+1`, `@SUM(1)`, a tab, a carriage return, or a line feed
 - **THEN** its cell starts with an apostrophe
+
+#### Scenario: Full-width formula signs
+
+- **WHEN** a text field starts with `＝HYPERLINK(1)`, `＋1+1`, `－1+1`, or `＠SUM(1)`
+- **THEN** its cell starts with an apostrophe
+
+#### Scenario: Formula after leading whitespace
+
+- **WHEN** the Name is " =1+1"
+- **THEN** the Name cell is "' =1+1"
 
 ### Requirement: Categories in a CSV file
 

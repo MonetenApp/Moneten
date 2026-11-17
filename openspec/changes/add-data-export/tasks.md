@@ -79,6 +79,10 @@ The selection, formula, Arabic digit, cancellation, and write-only folder regres
 
 - [x] Preserve the locale calendar when choosing ASCII digits. TransactionCSVTests.localeCalendar first failed with th_TH "03/11/2026" and now checks "03/11/2569". The formatter changes only the numbering system.
 
+## Full-width formula signs (issue #383)
+
+- [x] Escape the full-width formula signs, also after leading whitespace. TransactionCSVTests.formulaProtection checks "＝HYPERLINK(1)", "＋1+1", "－1+1", "＠SUM(1)", " =1+1", a full-width space before "＝", and a no-break space and a space before "＠" in every bank-controlled column. These seven cases failed before the fix. `SpreadsheetFormula.escaped` in `Domain` now holds the rule for the CSV export and for Copy. Amount stays "-89,00".
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.
