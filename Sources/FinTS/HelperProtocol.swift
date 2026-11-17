@@ -155,6 +155,7 @@ struct Ask: Decodable {
 	/// The request for the session. A PIN request after a rejection carries the answer of the bank, so
 	/// the broker never answers it from memory and shows the sheet again. A blocked access, or an app that
 	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
+	/// A login that ING accepts only after a login on its website stops the run too, because a new PIN does not help.
 	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
 	/// `server` is the FinTS address of the bank, whose rules some requests follow.
 	func request(server: URL?) throws -> UserRequest {
@@ -162,7 +163,7 @@ struct Ask: Decodable {
 			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
 			switch rejected.failure {
-			case .accessBlocked, .appBlocked: throw rejected.failure
+			case .accessBlocked, .appBlocked, .websiteLoginNeeded: throw rejected.failure
 			default: break
 			}
 			return .pin(PINRequest(rejected: rejected.message, rules: rules))
@@ -194,8 +195,9 @@ struct Ask: Decodable {
 }
 
 /// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
-/// "noTANMethod", "approvalDeclined", or "appBlocked". The helper sends "appBlocked" for the answer of a savings bank
-/// that the user blocked the app in its online banking, which it knows by the host of the bank and the text.
+/// "noTANMethod", "approvalDeclined", "appBlocked", or "websiteLogin". The helper sends "appBlocked" for the answer of a savings bank
+/// that the user blocked the app in its online banking, and "websiteLogin" for the answer of ING that it accepts the
+/// login only after a login on its website, which it knows by the host of the bank and the text.
 ///
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
 /// (FinTS_Rueckmeldungscodes_2019-07-22): 9942 and 9340 a wrong PIN, 9930 a blocked PIN, 9933 a blocked
@@ -255,6 +257,7 @@ struct HelperError: Decodable, Equatable {
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
 		case ("appBlocked", _): .appBlocked(message)
+		case ("websiteLogin", _): .websiteLoginNeeded(message)
 		case (_, "9078"): .notRegistered
 		case (_, "9931"): Self.reportsBlock(text) ? .accessBlocked(message) : .pinRejected(message)
 		case (_, "9942"), (_, "9340"): .pinRejected(message)

@@ -1040,6 +1040,8 @@ public class FinTSHelper {
 	static HBCIRetVal relevant(List<HBCIRetVal> errors) {
 		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
 		for (String code : URGENT) {
+			// The request of ING for a login on its website comes before a wrong PIN of the same code.
+			if (code.equals("9942")) for (HBCIRetVal r : errors) if (Ing.websiteLoginNeeded(Callback.server, r.code, r.text)) return r;
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
 		return errors.isEmpty() ? null : errors.get(0);
@@ -1063,9 +1065,11 @@ public class FinTSHelper {
 	}
 
 	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
-	/// savings bank, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	/// savings bank, a login that ING refuses until the user logged in to its website, or a refused TAN after an
+	/// approval in the app, which means that the approval did not happen.
 	static String kind(String code, String text) {
 		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
+		if (Ing.websiteLoginNeeded(Callback.server, code, text)) return "websiteLogin";
 		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 

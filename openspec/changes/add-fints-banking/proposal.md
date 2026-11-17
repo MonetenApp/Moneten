@@ -60,3 +60,5 @@ None.
 - A canceled or interrupted fetch stores nothing for the account that was in progress. This was not observed.
 - The app shows the return code of the bank next to the bank's text. MoneyMoney shows the text.
 - A Sparkasse answer that the user deactivated the app in the online banking is recognized by its text on the servers of the savings banks, because its code was not observed. The app then names "Kontozugriffe" in the online banking as the place to unblock it.
+- The hint for the FinTS login of ING that waits for a login on the website does not name the user name of the access. MoneyMoney names it.
+- A pending MT942 row of ING without an entry date keeps its value date. MoneyMoney stores no row of that statement.

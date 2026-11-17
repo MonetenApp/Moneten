@@ -271,6 +271,22 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the list shows the payment as a pending transaction
 
+### Requirement: Date a pending MT942 transaction of ING by its expected day
+
+The app SHALL give a pending transaction from an MT942 statement of the FinTS server of ING (`fints.ing.de`) the entry date of its ":61:" line as its date, because ING sends there the day on which it expects to book the transaction. A line without an entry date keeps its value date.
+
+#### Scenario: Pending ING row with an expected date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € to "Musterverlag" with the value date 14.11.2026 and the entry date 15.11.2026
+- **THEN** the pending transaction of -9,99 € has the date 15.11.2026 and the value date 14.11.2026
+
+#### Scenario: Pending row without an entry date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € with the value date 14.11.2026 and no entry date
+- **THEN** the pending transaction of -9,99 € has the date 14.11.2026
+
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.
@@ -729,6 +745,36 @@ The app SHALL stop when a bank on the FinTS servers of the savings banks answers
 - **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
 - **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
 - **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
+
+### Requirement: Say how to unlock the FinTS login of ING
+
+The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the login with the code 9942 and "Bitte erneuern Sie ihre Authentifizierung", show the text and code of the bank, and add that the user logs in once at https://www.ing.de/ with the user name and the password, not with the QR code, and that the login works again after about 24 hours. The app keeps the PIN and opens no PIN sheet.
+
+#### Scenario: Login locked until a login on the website
+
+- **GIVEN** the app has the PIN of the ING access saved, and a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9800 "Der Dialog wurde abgebrochen." and the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** "Giro" shows that ING asks for a login on its website first, the text "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." with the code 9942, and "Log in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again."
+- **AND** the app opens no PIN sheet and keeps the saved PIN
+- **AND** the next automatic refresh logs in to ING again
+
+#### Scenario: Login locked during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** the assistant lists no accounts and says that the user logs in once at https://www.ing.de/ with the user name and the password
+
+#### Scenario: Wrong PIN at ING
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no https://www.ing.de/
+
+#### Scenario: Same sentence with another code or from another bank
+
+- **WHEN** ING answers with the code 9010 "Bitte erneuern Sie ihre Authentifizierung.", or "Musterbank" with the FinTS address "https://fints.musterbank.example/fints" answers with the code 9942 and the same sentence
+- **THEN** the app shows the text of the bank with its code as for any other answer with that code, and names no https://www.ing.de/
 
 ### Requirement: Cancel and interruption
 

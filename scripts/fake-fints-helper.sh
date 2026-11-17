@@ -24,7 +24,8 @@
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
 # notice about maintenance and then fails the login with 9800. The login "setupwartung" does the same in the setup.
 # The setup login and the refresh of the login "gesperrt" fail with the block 3938, and those of "deaktiviert" with the
-# answer of a Sparkasse whose user blocked the app in its online banking. The refresh of "ohnetan" fails
+# answer of a Sparkasse whose user blocked the app in its online banking, and those of "erneuern" with the answer of ING
+# that it accepts the login only after a login on its website. The refresh of "ohnetan" fails
 # with no TAN method, of "falschetan" with the wrong TAN 9941 after a TAN request, and of "abgelehnt" with an approval
 # in the app that the bank reports as declined after 3 seconds, or after the seconds in MONETEN_FAKE_APPROVAL_SECONDS,
 # which the tests set to 0.
@@ -33,6 +34,7 @@
 # The bank directory has two branches of Musterbank, the bank without a FinTS server Neobank Muster
 # (99999999), a made-up Sparkasse, the entry of a merged Sparkasse (21099999), and Consorsbank
 # (76030080) and DAB BNP Paribas (70120400) with their real FinTS address, so the setup shows the login hint of Consorsbank and none for DAB.
+# ING (50010517) has its real FinTS address too, so the setup shows the login hint of ING.
 # Frankfurter Sparkasse (50050201) and 1822direkt (50050222) have their real FinTS addresses too, so an IBAN with
 # 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
 # The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
@@ -54,6 +56,7 @@ answer() {
 pin='{"type":"ask","id":1,"kind":"pin","rules":{"minLength":4,"maxLength":10}}'
 blocked='{"type":"failed","code":"3938","text":"Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."}'
 deactivated='{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}'
+renew='{"type":"failed","kind":"websiteLogin","code":"9942","text":"Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."}'
 
 case "$cmd" in
 *'"type":"banks"'*)
@@ -66,6 +69,7 @@ case "$cmd" in
 '{"code":"21099999","name":"Sparkasse Altstadt -alt-","city":"Altstadt","url":"https://banking-mu1.s-fints-pt-mu.de/fints30"},'\
 '{"code":"50050201","name":"Frankfurter Sparkasse","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://banking-hs6.s-fints-pt-hs.de/fints30"},'\
 '{"code":"50050222","name":"1822direkt (PIN/TAN)","city":"Frankfurt am Main","bic":"HELADEF1822","url":"https://fints.1822direkt.com/fints/hbci"},'\
+'{"code":"50010517","name":"ING-DiBa","city":"Frankfurt am Main","bic":"INGDDEFFXXX","url":"https://fints.ing.de/fints/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
 	;;
@@ -78,6 +82,10 @@ case "$cmd" in
 	;;
 	*'"user":"deaktiviert"'*)
 		echo "$deactivated"
+		exit 0
+	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
 		exit 0
 	;; esac
 	if [ "$value" = 0000 ]; then
@@ -139,6 +147,10 @@ case "$cmd" in
 	;;
 	*'"user":"deaktiviert"'*)
 		echo "$deactivated"
+		exit 0
+	;;
+	*'"user":"erneuern"'*)
+		echo "$renew"
 		exit 0
 	;;
 	*'"user":"ohnetan"'*)

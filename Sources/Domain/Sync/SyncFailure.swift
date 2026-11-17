@@ -29,6 +29,10 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// A savings bank answered that the user blocked this app under "Kontozugriffe" in its online banking. Only the
 	/// user can unblock it there, so it acts like a blocked access.
 	case appBlocked(BankMessage)
+	/// ING refuses the FinTS login until the user logged in to its website, which it asks for at least every 90 days.
+	/// The PIN is right, so it stays, and no PIN sheet opens. The automatic refresh goes on, so the access works again
+	/// by itself once ING lets it log in.
+	case websiteLoginNeeded(BankMessage)
 	/// The bank did not accept the TAN that the user typed.
 	case tanRejected(BankMessage)
 	/// The user declined the approval in the app of the bank, or did not answer there in time.
@@ -98,7 +102,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The answer of the bank in this failure, for its code in the error popover.
 	public var bankMessage: BankMessage? {
 		switch self {
-		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .tanRejected(m), let .bank(m): m
+		case let .pinRejected(m), let .accessBlocked(m), let .appBlocked(m), let .websiteLoginNeeded(m), let .tanRejected(m), let .bank(m): m
 		case let .approvalDeclined(m), let .noTANMethod(m): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
 		}
@@ -132,6 +136,8 @@ public enum SyncFailure: Error, Sendable, Equatable {
 			String(localized: "The bank blocked the access: \(m.text)\nAsk the bank to unblock it.")
 		case let .appBlocked(m):
 			String(localized: "Moneten is blocked in the online banking of the Sparkasse: \(m.text)\nUnblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account.")
+		case let .websiteLoginNeeded(m):
+			String(localized: "ING asks for a login on its website first: \(m.text)\nLog in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again.")
 		case let .tanRejected(m):
 			String(localized: "The bank did not accept the entered TAN: \(m.text)")
 		case let .approvalDeclined(m):
