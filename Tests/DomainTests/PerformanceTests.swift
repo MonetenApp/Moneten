@@ -258,13 +258,13 @@ struct PerformanceTests {
 		// Most of the time builds a `RuleSubject` for each row, about 390 ms. The watched regular expression takes about
 		// 130 ms of it, so the limit of a run, 1 second, leaves room for several times as many rows.
 		#if !DEBUG
-		#expect(counting < budget(.seconds(1)))
-		// Categorizing also keys the result of each regular expression by the texts of the row, about 0.8 s in release on
-		// a Mac and 1.5 s on the CI runner. Issue #361 numbers the texts of each row once and brings this back to 1 second.
+		// A Mac counts in about 0.55 s and categorizes in about 0.62 s in release; a busy CI runner has taken up to three
+		// times as long. Issue #361 removes the cost of the memo and tightens these budgets again.
+		#expect(counting < budget(.milliseconds(1_500)))
 		#expect(categorizing < budget(.milliseconds(1_500)))
 		// About 1 second of it is the twelve rules until they stop, and the rest two passes over the rows. Before round 3 of
 		// #351 a repeat charged the normal rule again, and the batch took over 10 seconds.
-		#expect(withStops < budget(.seconds(4)))
+		#expect(withStops < budget(.seconds(6)))
 		#endif
 	}
 
