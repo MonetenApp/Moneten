@@ -1,4 +1,6 @@
 import AppKit
+import DiskArbitration
+import Domain
 import FinTS
 
 /// The checks at launch of the design of add-software-update, in their order: a damaged application
@@ -20,11 +22,7 @@ enum LaunchChecks {
 		let untested = untestedMacOS
 		#if !(DEBUG || PERF_HARNESS)
 		// A developer has many builds on the Mac, so only a release build warns about copies.
-		if let folders = otherCopies() {
-			let list = folders.joined(separator: "\n")
-			updater.driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
-				message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
-		}
+		warnAboutCopies(driver: updater.driver)
 		#endif
 		if let untested {
 			let version = AppVersion.current.display
@@ -41,19 +39,42 @@ enum LaunchChecks {
 		return running > tested ? running : nil
 	}
 
-	/// The folders of all copies of the app when Launch Services knows more than one. Copies on a
-	/// disk image or another read-only volume and copies in the Trash do not count.
-	static func otherCopies() -> [String]? {
-		guard let id = Bundle.main.bundleIdentifier else { return nil }
-		let copies = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: id).filter(counts)
-		let folders = Set(copies.map { $0.resolvingSymlinksInPath().deletingLastPathComponent().path })
-		return folders.count > 1 ? folders.sorted() : nil
+	/// Shows the warning about several copies when there are, and returns the places that it names.
+	@discardableResult
+	static func warnAboutCopies(driver: UpdateDriver) -> [String] {
+		guard let places = severalCopies() else { return [] }
+		driver.show(severalCopiesNotice(places))
+		return places
 	}
 
-	private static func counts(_ copy: URL) -> Bool {
-		guard FileManager.default.fileExists(atPath: copy.path) else { return false }
-		if copy.pathComponents.contains(".Trash") { return false }
-		let volume = try? copy.resourceValues(forKeys: [.volumeIsReadOnlyKey])
-		return volume?.volumeIsReadOnly != true
+	/// The warning that names `places`, a folder or an application file each.
+	static func severalCopiesNotice(_ places: [String]) -> UpdateStage {
+		let list = places.joined(separator: "\n")
+		return .notice(title: String(localized: "Several copies of Moneten are installed."),
+			message: String(localized: "Moneten is in these places:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version."))
+	}
+
+	/// The places of the copies of the app when more than one counts (`AppCopies`). Launch Services
+	/// knows the copies, and may still list one that was deleted, so only copies on the disk count.
+	private static func severalCopies() -> [String]? {
+		guard let id = Bundle.main.bundleIdentifier else { return nil }
+		let urls = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: id) + [Bundle.main.bundleURL]
+		let session = DASessionCreate(kCFAllocatorDefault)
+		let copies = urls.compactMap { url -> AppCopy? in
+			let copy = url.resolvingSymlinksInPath()
+			guard FileManager.default.fileExists(atPath: copy.path) else { return nil }
+			let volume = try? copy.resourceValues(forKeys: [.volumeIsReadOnlyKey, .volumeURLKey])
+			return AppCopy(path: copy.path, isOnReadOnlyVolume: volume?.volumeIsReadOnly == true,
+				isOnDiskImage: volume?.volume.map { isDiskImage($0, session: session) } ?? false)
+		}
+		return AppCopies.folders(of: copies)
+	}
+
+	/// Whether the volume lies on a mounted disk image, read-only or writable. Disk Arbitration names
+	/// the model of the device of every disk image "Disk Image", for HFS+ and APFS alike.
+	private static func isDiskImage(_ volume: URL, session: DASession?) -> Bool {
+		guard let session, let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, volume as CFURL),
+		      let description = DADiskCopyDescription(disk) as? [CFString: Any] else { return false }
+		return description[kDADiskDescriptionDeviceModelKey] as? String == "Disk Image"
 	}
 }

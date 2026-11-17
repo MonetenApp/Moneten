@@ -97,24 +97,28 @@ public struct FinTSConnector: BankConnector {
 	let killAfter: TimeInterval
 	/// Judges the certificate chain of the bank's server: `verdict`, unless a test holds the check.
 	let trust: @Sendable (_ host: String, _ chain: [Data]) -> String
+	/// The bank list that `BankDataUpdater` installed, checked again before each start of the helper, or
+	/// nil for the list in the jar of hbci4java.
+	let bankList: @Sendable () -> Data?
 
-	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist.
-	public init() {
+	/// The connector of the app, with the product ID that scripts/build-app.sh puts into Info.plist, and
+	/// the bank list of `BankDataUpdater.bankList()`.
+	public init(bankList: @escaping @Sendable () -> Data?) {
 		self.init(helper: .bundled, productID: Bundle.main.object(forInfoDictionaryKey: "MonetenFinTSProductID") as? String,
-			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+			version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "", bankList: bankList)
 	}
 
 	#if DEBUG
 	/// A connector whose helper is the program at `path`, with a made-up product ID. A debug build of
 	/// the app takes it from the environment variable `MONETEN_FINTS_HELPER`, so that the setup and the
 	/// refresh run against `scripts/fake-fints-helper.sh` without a bank.
-	public init(debugHelper path: String) {
-		self.init(helper: Helper(executable: URL(filePath: path), arguments: []), productID: "MONETENDEBUG", version: "0.0.0")
+	public init(debugHelper path: String, bankList: @escaping @Sendable () -> Data?) {
+		self.init(helper: Helper(executable: URL(filePath: path), arguments: []), productID: "MONETENDEBUG", version: "0.0.0", bankList: bankList)
 	}
 	#endif
 
 	init(helper: Helper, productID: String?, version: String, inactivity: TimeInterval = 30, grace: TimeInterval = 5, killAfter: TimeInterval = 2,
-		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict) {
+		trust: @escaping @Sendable (_ host: String, _ chain: [Data]) -> String = FinTSConnector.verdict, bankList: @escaping @Sendable () -> Data? = { nil }) {
 		self.helper = helper
 		self.productID = productID
 		self.version = version
@@ -122,6 +126,7 @@ public struct FinTSConnector: BankConnector {
 		self.grace = grace
 		self.killAfter = killAfter
 		self.trust = trust
+		self.bankList = bankList
 	}
 
 	/// The bank directory of hbci4java, for the search of the first step of "Add Account".
@@ -247,7 +252,9 @@ public struct FinTSConnector: BankConnector {
 		// The timer runs from the first write, so a helper that never reads its command times out. The
 		// command goes out before the cancellation handler, so a cancel always follows it.
 		watchdog.restart()
-		process.send(command)
+		var sent = command
+		sent.bankList = bankList().map { String(decoding: $0, as: UTF8.self) }
+		process.send(sent)
 		await withTaskCancellationHandler {
 			do {
 				reading: for await line in process.lines {

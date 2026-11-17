@@ -1,6 +1,6 @@
 import Foundation
 
-/// The folder that holds all data of the app: "Database", "Extensions", and "Statements".
+/// The folder that holds all data of the app: "Database", "Extensions", "Statements", and "Bank Data".
 public struct DataFolder: Sendable {
 	public let root: URL
 
@@ -59,6 +59,8 @@ public struct DataFolder: Sendable {
 	public var databaseFile: URL { databaseFolder.appendingPathComponent("Moneten.sqlite") }
 	public var extensionsFolder: URL { root.appendingPathComponent("Extensions", isDirectory: true) }
 	public var statementsFolder: URL { root.appendingPathComponent("Statements", isDirectory: true) }
+	/// The bank list that the app downloaded between releases, which `BankDataUpdater` in FinTS keeps.
+	public var bankDataFolder: URL { root.appendingPathComponent("Bank Data", isDirectory: true) }
 
 	/// Creates the folders with access for the user only.
 	public func createFolders() throws {

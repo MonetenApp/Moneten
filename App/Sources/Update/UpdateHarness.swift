@@ -4,7 +4,8 @@ import Domain
 /// Compiled into every build, as the rest of the harness, which installs only in Debug and Perf builds.
 extension DebugHarness {
 	/// "update <action>" drives the updater against the test feed of `MONETEN_FEED_URL`: check, install,
-	/// later, close, about, state, and copies. "update show <stage>" shows a stage with made-up versions
+	/// later, close, about, state, beta on|off, and copies, which shows the warning about
+	/// several copies of a release build. "update show <stage>" shows a stage with made-up versions
 	/// for the screenshots of the window: checking, uptodate, systemtooold, found, nonotes, prerelease,
 	/// downloading, installing, waiting, failedcheck, failedinstall, move, and notice.
 	func update(_ argument: String, model: AppModel) {
@@ -20,11 +21,14 @@ extension DebugHarness {
 			log(LogLine("update state", values: [("version", .version(AppVersion.current.display)), ("build", .count(Int(AppVersion.current.build) ?? 0)),
 				("accounts", .count(model.ledger.accounts.count)), ("phase", .state(model.phase)), ("available", .flag(model.updater.isAvailable)),
 				("canCheck", .flag(model.updater.canCheck)), ("automatic", .flag(model.updater.checksAutomatically)),
-				("beta", .flag(model.updater.offersPreReleases)), ("stage", driver.stage.map { .list($0.logValues.map(\.1)) } ?? .word("none")),
+				("beta", .flag(AppUpdater.offersPreReleases)), ("stage", driver.stage.map { .list($0.logValues.map(\.1)) } ?? .word("none")),
 				("agent", .hash(AppUpdater.userAgent))]))
 		case "automatic": model.updater.checksAutomatically = parts.last == "on"
-		case "beta": model.updater.offersPreReleases = parts.last == "on"
-		case "copies": log("update copies", ("copies", .count(LaunchChecks.otherCopies()?.count ?? 1)), ("untested", .position(LaunchChecks.untestedMacOS)))
+		case "beta": log("update beta", ("stored", .flag(Preference.store(parts.last == "on", forKey: AppUpdater.betaKey))))
+		case "copies":
+			// The warning of a release build, which a Debug build skips at launch.
+			let places = LaunchChecks.warnAboutCopies(driver: driver)
+			log("update copies", ("places", .count(places.count)), ("untested", .position(LaunchChecks.untestedMacOS)))
 		case "show": showMadeUp(parts.count > 1 ? parts[1] : "", driver: driver)
 		default: log("update unknown")
 		}
@@ -56,9 +60,7 @@ extension DebugHarness {
 		case "move": driver.show(.failed(.moveToApplications))
 		case "notice":
 			// The texts of LaunchChecks.run, so a screenshot shows the language of the app.
-			let list = "/Applications\n/Users/erika/Downloads"
-			driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
-				message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
+			driver.show(LaunchChecks.severalCopiesNotice(["/Applications", "/Users/erika/Downloads"]))
 		default: log("update unknown stage")
 		}
 	}

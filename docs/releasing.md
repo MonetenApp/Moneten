@@ -67,7 +67,7 @@ Allow only the tags `v*`, and add the owner as a required reviewer. The workflow
 |---|---|---|
 | `SPARKLE_ED_PRIVATE_KEY` | secret | The private EdDSA update key of Sparkle |
 
-**Update key.** This key signs every update and the bank data files. With it alone, someone could sign an update that every installed copy accepts, so it is the most critical secret of the project.
+**Update key.** This key signs every update and the bank data files. The environment `bank-data` below holds a copy of it. With it alone, someone could sign an update that every installed copy accepts, so it is the most critical secret of the project.
 
 1. Run `"$(scripts/sparkle-tools.sh)/generate_keys"` on the Mac of the owner. It stores the private key in the login Keychain and prints the public key.
 2. Run `"$(scripts/sparkle-tools.sh)/generate_keys" -x update-key.txt` to export the private key, and paste the content of the file as `SPARKLE_ED_PRIVATE_KEY`.
@@ -75,6 +75,16 @@ Allow only the tags `v*`, and add the owner as a required reviewer. The workflow
 4. In `App/project.yml`, replace the placeholder `none` of `MONETEN_UPDATE_PUBLIC_KEY` in the base settings of the target `Moneten` with the public key, and merge it in a pull request. The public key is not secret. Until then, a Release build does not look for updates, and `scripts/release.sh preflight` and `package` refuse to run. They also refuse the public test key of `Fixtures/update`, and `feed` refuses a private key that does not belong to the public key in the app.
 
 Never create a second key for the same feed. A lost key means that every user must download the next version by hand.
+
+### Environment `bank-data`
+
+Allow only the branch `main` under "Deployment branches and tags", and add the owner as a required reviewer. The workflow waits for this approval before it signs the bank list.
+
+| Name | Kind | Content |
+|---|---|---|
+| `SPARKLE_ED_PRIVATE_KEY` | secret | The same private update key as in the environment `release` |
+
+The environment `release` allows only the tags `v*`, so the bank data, which a run by hand publishes from `main`, needs an environment of its own. Replace both secrets together when the key changes.
 
 ### Offline backups
 
@@ -104,6 +114,38 @@ To start over after a failed run, delete the draft and run the workflow again on
 - [ ] CI is green on the commit.
 - [ ] The release candidate was tested on the newest major version of macOS, and the key `MonetenTestedMacOS` in `App/Info.plist` names that version. The app warns at launch on a newer major version of macOS.
 - [ ] The production update key in `App/project.yml` is the public key of `SPARKLE_ED_PRIVATE_KEY`. `scripts/release.sh` checks this too.
+- [ ] If hbci4java or `BankData/corrections.properties` changed since the last bank data, the workflow "Bank data" published them on this commit.
+
+## Publish bank data
+
+The app downloads the bank list `blz.properties` and its signature `blz.properties.sig` from the release `bank-data` at most once a day, and uses the list only when the update key signed it. The list holds the name, the place, the BIC, and the FinTS address of each Bankleitzahl, so it is also the BIC directory of the app. The [design](../openspec/changes/add-software-update/design.md#bank-data-files-use-the-same-key) explains the checks.
+
+`scripts/bank-data.py build` takes the list from the hbci4java jar that `Tools/FinTSProbeJava/dependencies.lock` pins, applies `BankData/corrections.properties`, and starts the list with two comment lines: `# serial=` with the time of the build in UTC, and `# hbci4java=` with the version of the jar. The app installs a list only when its serial is above the serial of its installed list, and its version of hbci4java is not below the one of the app. So a replay of an older signed list, or a list from an older jar, never replaces a newer one. To change the address of one bank before hbci4java does, add a line in the format of the list to that file in a pull request.
+
+### One-time setup
+
+1. Create the environment `bank-data` with the secret above.
+2. Nothing else. The first run creates the release `bank-data` on `main`, with "Set as the latest release" turned off. Never turn it on, because the feed URL follows the latest release. Do not create the release by hand.
+
+### Publish
+
+1. Run the dry run first, which needs no secret: `python3 scripts/bank-data.py dry-run --out dist/bank-data`. It builds the list, signs it with a throwaway key, checks it, and checks that one changed byte fails. A pull request that changes these files runs it in CI, and so does a run by hand without "publish".
+2. Under Actions, "Bank data", "Run workflow" on `main`, check "publish".
+3. Approve the job `publish`. It fails at once without the secret, outside `main`, or while `App/project.yml` has no production update key. It builds the list, signs it with `sign_update` of Sparkle, checks the signature with the key of `App/project.yml`, and uploads both files. Then it downloads them again, checks them, checks that `bank-data` is not the latest release, and that the feed URL still answers.
+
+Publish the bank data after each change of hbci4java in `dependencies.lock` and after each change of `BankData/corrections.properties`, before the tag of the next version. A new build of the app with a newer jar refuses a list from an older jar, so until the bank data is published again, it uses the list of its own jar. When hbci4java changes in `dependencies.lock`, also change `BankData.bundledHBCI4Java` in `Sources/FinTS/BankData.swift`. A test fails while the two differ.
+
+During the upload, the old signature can be online next to the new list for a moment. An app that downloads then rejects the list, keeps its own, and tries again a day later.
+
+To test the download in a Debug build, sign a changed list with the test key of `Fixtures/update` and serve it, as `Fixtures/bank-data/README.md` explains:
+
+```sh
+python3 scripts/bank-data.py sign --key-file Fixtures/update/test-update.key /tmp/bank-data/blz.properties
+python3 -m http.server --directory /tmp/bank-data --bind 127.0.0.1 8794
+open -g --env MONETEN_BANK_DATA_URL=http://127.0.0.1:8794/ --env MONETEN_DATA_DIR=/tmp/moneten-bank-data dist/Moneten.app
+```
+
+The data folder then holds the list in "Bank Data/Current", and the debug log a line "bank data installed" or "bank data rejected".
 
 ## Symbolicate a crash report
 
@@ -143,7 +185,7 @@ Follow the risk "The EdDSA private key leaks" in the [design](../openspec/change
 1. Create a new key pair with `generate_keys --account moneten-2`.
 2. Publish at once a recovery release, signed with the old key, whose app carries the new public key and the new feed URL `appcast-2.xml`, and refuses every bank data file signed with the old key.
 3. The old `appcast.xml` is then frozen: it stays signed with the old key and offers only the recovery release. Every later stable release carries this frozen `appcast.xml` next to `appcast-2.xml`, so a copy that was offline during the change still reaches the recovery release. A pre-release replaces only `appcast-2.xml`, never the frozen `appcast.xml`.
-4. Replace `SPARKLE_ED_PRIVATE_KEY` and the offline backups, and announce the change.
+4. Replace `SPARKLE_ED_PRIVATE_KEY` in the environments `release` and `bank-data` and the offline backups, publish the bank data again with the new key, and announce the change.
 
 The workflow does not automate this yet, because it has never been needed. The steps above must be done by hand with `scripts/release-notes.py` and `sign_update`. Before each upload, run `python3 scripts/release-notes.py check-feed --feed <file> --public-key <key>` on the signed file, with the old public key for `appcast.xml` and the new one for `appcast-2.xml`. A feed that the installed copies cannot check stops their updates, because `SUSignedFeedFailureExpirationInterval` is 0. Both feeds get a revision above the last one of the old feed, because every installed copy keeps the highest revision that it read.
 
