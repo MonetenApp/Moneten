@@ -129,6 +129,7 @@ final class SelfTest {
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
 		SavingsBanksSelfTest.run();
+		IngSelfTest.run();
 		CommerzbankGroupSelfTest.run();
 		DeutscheBankGroupSelfTest.run();
 

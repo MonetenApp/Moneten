@@ -3663,6 +3663,7 @@
       }
     },
     "Creditor ID" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4263,6 +4264,7 @@
       }
     },
     "End-to-end reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5290,6 +5292,17 @@
         }
       }
     },
+    "ING asks for a login on its website first: %@\nLog in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ING verlangt zuerst eine Anmeldung auf ihrer Website: %@\nMelden Sie sich einmal auf https://www.ing.de/ mit dem Benutzernamen und dem Passwort an, nicht mit dem QR-Code. Nach ungefähr 24 Stunden funktioniert die Anmeldung von Moneten wieder."
+          }
+        }
+      }
+    },
     "ING expects the user name that you chose for its online banking." : {
       "localizations" : {
         "de" : {
@@ -5897,6 +5910,7 @@
       }
     },
     "Mandate reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8256,6 +8270,17 @@
         }
       }
     },
+    "Return reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgabegrund"
+          }
+        }
+      }
+    },
     "Review Update" : {
       "localizations" : {
         "de" : {
@@ -9771,6 +9796,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Programmdatei von Moneten ist beschädigt. Legen Sie Moneten in den Papierkorb, laden Sie es erneut und installieren Sie es. Ihre Konten bleiben erhalten, weil Moneten seine Daten an einem anderen Ort speichert."
+          }
+        }
+      }
+    },
+    "The automatic refresh paused after %lld attempts. After the login on the website, refresh the account by hand." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die automatische Aktualisierung pausiert nach %lld Versuchen. Aktualisieren Sie das Konto nach der Anmeldung auf der Website von Hand."
           }
         }
       }
@@ -12377,6 +12413,7 @@
       }
     },
     "Transaction type" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {

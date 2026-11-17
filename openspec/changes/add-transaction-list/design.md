@@ -22,6 +22,20 @@ Every gate of `reconcile` that reads the day of a stored row reads `sourceValues
 
 Only an edited row carries the copy, so the migration rewrites no row. An edited amount counts in every sum, so the computed balance can then differ from the bank balance, which the calibration notice shows.
 
+### Details stand in the help tag and in the sheet
+
+`Transaction.details` lists the details that the source delivered, in the order of the help tag: transaction type, return reason, end-to-end reference, mandate reference, creditor ID, value date, IBAN, and BIC. A detail without a value is left out. The help tag of the purpose shows the whole purpose and below it one line "Label: value" for each detail. `DetailsHelp` builds that text when the pointer enters the purpose. Before, the help tag is the purpose alone, so a cell that SwiftUI builds while the list scrolls looks up no labels. The transaction sheet shows the same details in its section "Details". The row keeps its height of 55 points, so the table never measures a row again on a change of the selection. `Transaction` has no receipt date yet. The original amount in a foreign currency and a deviating originator or recipient come with task 1.18 of `add-fints-banking`, which adds them to `Transaction`.
+
+### Copied rows are text with tabs
+
+Copy of selected rows writes one line per row in the order of the list, joined with line breaks and without a header. `TransactionCopy.text` in `Domain` builds the text, so its rules have tests. The six fields are the booking date, the name as the row shows it, the purpose, the IBAN, the BIC, and the amount, separated by tabs. Whitespace inside a field, also a line break, becomes one space, so a field never breaks the line or the columns. The purpose ends with each detail that has a value, after a comma: the comment, the transaction type, the return reason, the end-to-end reference, the mandate reference, and the creditor ID. The date is the short date of the region with a four-digit year. The amount has the decimal places of its currency, thousands separators, a hyphen as the minus sign, and no currency, so a spreadsheet reads it as a number. A no-break space as thousands separator, also the narrow one of France, becomes a plain space. A decimal mark other than a comma or a point, or a thousands separator other than a comma, a point, an apostrophe, or a space, falls back to the point and the comma. A text field that starts with "=", "+", "-", or "@" gets an apostrophe in front, as in the CSV export, so that a spreadsheet does not read it as a formula. The amount never gets one, because a withdrawal starts with a minus sign.
+
+The table has `onCopyCommand`, on the table and not on its rows. When the user selected text in a row, the field editor of that text is the first responder and copies only the selected text. The command of the table then does not run.
+
+### Services come from the text field
+
+The selectable texts of a row are AppKit text fields. A double click starts their field editor, which is a text view, selects the word, and becomes the first responder. A right click on the selected text then opens the context menu of the text view, not the menu of the table. macOS adds the Services that accept text to that menu. Without selected text, the right click opens the menu of the table. The app adds no code for this, and the debug harness command `textmenu` checks it.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

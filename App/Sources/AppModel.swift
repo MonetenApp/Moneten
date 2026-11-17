@@ -392,9 +392,11 @@ final class AppModel {
 				Task {
 					while self.tableUndrawn { await self.drawn() }
 					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+					self.sync.recordedRefresh(of: access)
 				}
 			} else {
 				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+				self.sync.recordedRefresh(of: access)
 			}
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
@@ -410,6 +412,7 @@ final class AppModel {
 		}
 		sync.userCanceled = { [weak self] accounts in self?.recordCancel(of: accounts) }
 		sync.mayStartUnattended = { [weak self] in self?.autoRefresh.allowsUnattended ?? false }
+		sync.pausesUnattended = { [weak self] access in self?.ledger.pausesAutomaticRefresh(of: access) ?? false }
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self
@@ -1473,7 +1476,7 @@ final class AppModel {
 	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
 	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh], attended: Bool) {
 		guard let store else { return }
-		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
+		let accounts = ledger.recorded(results, of: access, attended: attended)
 		guard state != nil || !accounts.isEmpty else { return }
 		do {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)
