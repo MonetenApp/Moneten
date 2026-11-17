@@ -107,6 +107,10 @@ final class DebugHarness {
 		log(LogLine(event, values: values))
 	}
 
+	func logMigration(_ progress: MoneyMoneyMigration.Progress) {
+		log("migration", ("step", .count(progress.step.rawValue)), ("completed", .count(progress.completed)), ("total", .count(progress.total ?? -1)))
+	}
+
 	func run(_ command: String, _ argument: String) {
 		guard let model else { return }
 		switch command {
@@ -305,6 +309,9 @@ final class DebugHarness {
 			}
 		// Moves the focus to the next field of the sheet on top, as the Tab key does.
 		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
+		// Whether a sheet window is on screen. The window shows a moment after the state of the model, and a closing one
+		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
+		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -449,7 +456,11 @@ final class DebugHarness {
 			let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
-		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
+		// Also whether a file import or an export runs, and whether a migration stores, which alone holds back the commands,
+		// the settings, and the extensions.
+		case "menucommands":
+			log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)), ("transferring", .flag(model.isTransferringTransactions)),
+				("migration", .flag(model.isStoringMigration)))
 		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
 		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
 		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
@@ -918,7 +929,7 @@ final class DebugHarness {
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
 				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
 				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
-				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+				("focus", splitFocus(amount)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }
 			offscreenSnapshot(VStack(alignment: .leading, spacing: 8) {
@@ -1292,7 +1303,9 @@ final class DebugHarness {
 			guard let self else { return }
 			// The switches of the "General" tab in their order, as the defaults of the app store them, or "-" for none. A switch that
 			// differs from its stored value shows a value that macOS does not use, such as one that a launch argument overrides.
-			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey]
+			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey,
+				// SUEnableAutomaticChecksKey of Sparkle, whose header SUConstants.h is not public.
+				"SUEnableAutomaticChecks", AppUpdater.betaKey]
 			let id = Bundle.main.bundleIdentifier ?? ""
 			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
 			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
@@ -1424,6 +1437,15 @@ final class DebugHarness {
 
 	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
 	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
+
+	/// Which field of the split sheet takes the text of "type": "amount", "other", or "none". The check waits for "amount"
+	/// before it types, because the sheet sets the focus a moment after it shows, later still on a loaded Mac.
+	private func splitFocus(_ amount: NSObject?) -> LogValue {
+		guard let field = (topSheet?.firstResponder as? NSTextView)?.delegate as? NSTextField else { return .word("none") }
+		// SwiftUI on macOS 26 keeps the identifier on an accessibility child of the AppKit field. Another version may put it on the field itself.
+		let children = field.accessibilityChildren() ?? []
+		return amount != nil && (amount === field || children.contains { ($0 as AnyObject) === amount }) ? .word("amount") : .word("other")
+	}
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {

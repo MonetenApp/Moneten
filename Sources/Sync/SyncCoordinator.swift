@@ -19,6 +19,8 @@ public final class SyncCoordinator {
 	/// The accounts of each access that runs or waits, with what each asks for.
 	private var requested: [UUID: [AccountRequest]] = [:]
 	private var running: [UUID: Task<Void, Never>] = [:]
+	private var refreshPauses = 0
+	private var pauseWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 	/// The source of each running access, so that the refreshes of one extension can be canceled, also the setup
 	/// of an access that the app does not have yet.
 	private var runningSources: [UUID: AccessSource] = [:]
@@ -47,7 +49,7 @@ public final class SyncCoordinator {
 	/// access and how each requested account ended. A canceled refresh brings no account, so its accounts keep
 	/// their last state. It may store the accounts later, for example after the transaction table is drawn.
 	/// The last value says whether the refresh could ask the user, so that the app shows no alert for an automatic one.
-	@ObservationIgnored public var ended: @MainActor (UUID, [UUID: AccountRefresh], Bool) -> Void = { _, _, _ in }
+	@ObservationIgnored public var ended: @MainActor (UUID, [UUID: AccountRefresh], Bool) async -> Void = { _, _, _ in }
 	/// Runs on the main actor when the refresh of an access ended, before `ended`, with the notices that its
 	/// bank sent, such as planned maintenance, also when the access failed after them (`FailureWithNotices`).
 	/// A canceled refresh brings none.
@@ -207,6 +209,26 @@ public final class SyncCoordinator {
 		return true
 	}
 
+	/// Runs `work` after every running refresh ended, and starts no refresh until it returns, as a migration needs while it
+	/// holds the database. A refresh that waits stays queued, and a cancel of the caller ends the wait.
+	public func withRefreshesPaused<T>(_ work: @MainActor () async throws -> T) async throws -> T {
+		refreshPauses += 1
+		defer { refreshPauses -= 1; startNext() }
+		if !running.isEmpty {
+			let id = UUID()
+			try await withTaskCancellationHandler {
+				try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+					if Task.isCancelled { continuation.resume(throwing: CancellationError()) }
+					else { pauseWaiters[id] = continuation }
+				}
+			} onCancel: {
+				Task { @MainActor in self.pauseWaiters.removeValue(forKey: id)?.resume(throwing: CancellationError()) }
+			}
+		}
+		try Task.checkCancellation()
+		return try await work()
+	}
+
 	/// The user closed the account: it leaves every refresh that waits, and a waiting refresh without another account is
 	/// dropped, so no bank is asked for it. A running refresh still ends. The app then drops what it delivers for the
 	/// closed account, because a closed account takes no refresh.
@@ -299,6 +321,12 @@ public final class SyncCoordinator {
 	/// An automatic refresh whose turn comes while it may not start, or while the automatic refresh of its access paused,
 	/// is dropped. Its accounts stay due.
 	private func startNext() {
+		if running.isEmpty {
+			let waiting = pauseWaiters.values
+			pauseWaiters.removeAll()
+			for continuation in waiting { continuation.resume() }
+		}
+		guard refreshPauses == 0 else { return }
 		while running.count < limit, !queue.isEmpty {
 			let job = queue.removeFirst()
 			if job.attended || mayStartUnattended() && !holdsBackUnattended(job.request.access.id) {
@@ -379,9 +407,6 @@ public final class SyncCoordinator {
 			let stillRequested = Set((requested[access.id] ?? []).map(\.accountID))
 			let retried = job.request.accounts.filter { stillRequested.contains($0.accountID) }
 			endProgress(of: access.id)
-			running[access.id] = nil
-			runningSources[access.id] = nil
-			self.attendance[access.id] = nil
 			// A command came after the refresh had failed for want of the user: run it again with dialogs.
 			if !job.attended, attendance.isOn, !attendance.asked, case let .fail(failure) = event, failure.dialogResolves, !retried.isEmpty {
 				let again = Job(request: RefreshRequest(access: job.request.access, state: job.request.state, accounts: retried), connector: job.connector,
@@ -398,7 +423,10 @@ public final class SyncCoordinator {
 			// The cancel can also come while `deliver` waits, after the connector returned its report.
 			if !Task.isCancelled, !notices.isEmpty { noticed(access, notices) }
 			if let state { storeState(access.id, state, attendance.isOn) }
-			ended(access.id, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
+			await ended(access.id, end.accountRefreshes(of: accountIDs, notices: notices, at: Date()), attendance.isOn)
+			running[access.id] = nil
+			runningSources[access.id] = nil
+			self.attendance[access.id] = nil
 			if var next = afterRun.removeValue(forKey: access.id) {
 				// The state that this run returned replaces the one that the command read before.
 				if let state {

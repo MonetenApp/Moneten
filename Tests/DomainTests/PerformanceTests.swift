@@ -357,9 +357,19 @@ struct PerformanceTests {
 		let spent = rules.entries.reduce(0) { $0 + $1.rule.regexSpent }
 		let heavy = rules.entries.reduce(0) { $0 + $1.rule.heavySpent }
 		print("thirty fast regular expressions over 50,000 rows: \(elapsed), of it \(Duration.nanoseconds(spent)) in regular expressions, \(Duration.nanoseconds(heavy)) in calls of 100 µs or more")
+		// The time of a rule and of its calls of 1 ms or more show which limit stopped it: `Rule.runLimit`, `Rule.slowLimit`,
+		// or else the limit of one call.
+		let most = rules.entries.map(\.rule.regexSpent).max() ?? 0
+		let slowest = rules.entries.map(\.rule.slowSpent).max() ?? 0
+		print("the most of one rule: \(Duration.nanoseconds(most)), and \(Duration.nanoseconds(slowest)) in calls of 1 ms or more")
+		for (k, entry) in rules.entries.enumerated() {
+			guard let position = entry.rule.stoppedRegexPosition else { continue }
+			print("rule \(k) stopped at \(position) after \(Duration.nanoseconds(entry.rule.regexSpent)), \(Duration.nanoseconds(entry.rule.slowSpent)) in calls of 1 ms or more")
+		}
 		// Each call takes a few microseconds, so almost none counts toward the limit of the batch, also when all of them
 		// take more than its 3 seconds together, as on a busy Mac. Before issue #361 every call counted, and on a busy Mac
-		// all thirty rules stopped.
+		// all thirty rules stopped. A CI runner is a virtual machine that charges a pause of its host to a call, and such
+		// pauses stopped one rule by `Rule.slowLimit` until a slow call had to be slow again (#398).
 		#expect(heavy < spent / 10)
 		#expect(rules.entries.allSatisfy { $0.rule.stoppedRegexPosition == nil })
 		#expect(sorted == 0)

@@ -125,7 +125,37 @@ struct MoneyMoneyMigrationTests {
 		#expect(giro.iban == "DE02120300000000202051" && giro.bic == "BYLADEM1001")
 		#expect(giro.accountNumber == "DE02120300000000202051")
 		#expect(p.accounts.first { $0.name == "Savings" }?.iban == nil)
-		#expect(p.portfolioAccounts == ["Depot"])
+		#expect(p.portfolios.map(\.name) == ["Depot"])
+	}
+
+	@Test("An unverified portfolio export names missing positions on first and repeated runs")
+	func missingPortfolioPositions() throws {
+		let first = try plan()
+		let note = "The positions of \"Depot\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions."
+		#expect(first.notes.contains(note))
+		let depot = try #require(first.accounts.first { $0.kind == .portfolio })
+		#expect(depot.bankBalanceMinor == 1_000_000)
+		#expect(depot.portfolioValue()?.minorUnits == 1_000_000)
+		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: first.transactions)
+		let second = try plan(into: ledger)
+		#expect(second.notes.contains(note))
+		#expect(second.portfolios.map(\.name) == ["Depot"])
+		#expect(second.accounts.isEmpty)
+	}
+
+	@Test("A connected portfolio gets a note on its bank access instead of a request to connect it")
+	func connectedPortfolioNote() throws {
+		let first = try plan()
+		var accounts = first.accounts
+		let index = try #require(accounts.firstIndex { $0.kind == .portfolio })
+		accounts[index].source = .bank
+		accounts[index].accessID = UUID()
+		let ledger = Ledger(groups: first.groups, accounts: accounts, categories: first.categories, transactions: first.transactions)
+		let second = try plan(into: ledger)
+		let prefix = "The positions of \"Depot\" were not migrated, because the portfolio export format is not verified."
+		#expect(second.notes.contains("\(prefix) Its bank access fetches them with each refresh."))
+		#expect(!second.notes.contains { $0.contains("Connect the portfolio") })
+		#expect(second.portfolios.map(\.name) == ["Depot"])
 	}
 
 	@Test("The computed balance ends at the balance of the source plus its pending rows")
@@ -1180,7 +1210,7 @@ struct MoneyMoneyMigrationTests {
 			Depot: 0 transactions, balance 10,000.00 EUR. MoneyMoney: 0 transactions, balance 10,000.00 EUR. Matches.
 
 			Notes
-			Portfolio accounts were taken over with their balance.
+			The positions of "Depot" were not migrated, because the portfolio export format is not verified.
 			"""))
 		#expect(text.hasSuffix("Statements were not migrated, because the AppleScript export of MoneyMoney does not contain them. Use \"Show in Finder...\" on \"Statements\" in MoneyMoney to find the statement files and copy them to keep them.\n"))
 	}

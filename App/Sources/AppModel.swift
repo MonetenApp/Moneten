@@ -10,6 +10,7 @@ import Observation
 import Storage
 import Sync
 import SwiftUI
+import Synchronization
 
 enum SidebarSelection: Hashable {
 	case account(UUID)
@@ -166,8 +167,12 @@ final class AppModel {
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
 	@ObservationIgnored private(set) var ledgerRevision = 0
+	@ObservationIgnored var migrationTask: Task<Void, Never>?
+	/// True while a migration holds the database writer. Commands that read or change the database wait for its end, because
+	/// a write on the main actor would block the window until the migration commits. A file import or an export does not set it.
+	private(set) var isStoringMigration = false
 	var exportTask: Task<Void, Never>?
-	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil }
+	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil || isStoringMigration }
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
@@ -388,16 +393,10 @@ final class AppModel {
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
 			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
-			if self.tableUndrawn {
-				Task {
-					while self.tableUndrawn { await self.drawn() }
-					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
-					self.sync.recordedRefresh(of: access)
-				}
-			} else {
-				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
-				self.sync.recordedRefresh(of: access)
-			}
+			// `ended` is awaited, so a migration that pauses the refreshes starts only after this write.
+			while self.tableUndrawn { await self.drawn() }
+			self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+			self.sync.recordedRefresh(of: access)
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
 		}
@@ -660,6 +659,7 @@ final class AppModel {
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
 		fileImport?.cancel()
+		migrationTask?.cancel()
 		exportTask?.cancel()
 		if let result = importResult { result.window.sheetParent?.endSheet(result.window) }
 		autoRefresh.isUnlocked = false
@@ -671,7 +671,11 @@ final class AppModel {
 		setup = nil
 		ruleRun?.cancel()
 		extensions.close()
-		try? store?.close()
+		if isStoringMigration, let store {
+			Task.detached { try? store.close() }
+		} else {
+			try? store?.close()
+		}
 		store = nil
 		accesses = [:]
 		bankNotices = BankNotices()
@@ -831,6 +835,7 @@ final class AppModel {
 
 	/// New transactions count as seen when the user opens their account.
 	private func markSeen() {
+		guard !isStoringMigration else { return }
 		// The rows wait until SwiftUI drew a new table.
 		if tableUndrawn {
 			afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
@@ -1453,13 +1458,13 @@ final class AppModel {
 	}
 
 	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !ledger.refreshAccounts(scope).isEmpty
+		phase == .unlocked && !isStoringMigration && !ledger.refreshAccounts(scope).isEmpty
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
-		guard let store else { return }
+		guard !isStoringMigration, let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
@@ -1589,31 +1594,57 @@ final class AppModel {
 
 	// MARK: Migration
 
-	func runMigration(plan: MoneyMoneyMigration.Plan) async throws {
-		guard let store else { return }
-		let starters = replaceableStarterCategories
-		try store.save(groups: plan.groups, accounts: plan.accounts + plan.updatedAccounts, categories: plan.categories + plan.updatedCategories,
-			transactions: plan.transactions + plan.updatedTransactions, relinking: plan.relinkedDeletedRows)
-		for c in starters { try? store.deleteCategory(c.id) }
-		try await reloadAfterImport()
+	func runMigration(plan: MoneyMoneyMigration.Plan, cancel: MigrationCancel,
+		progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
+		// The sheet swallows a CancellationError and keeps waiting, so a refusal must be an error that it shows.
+		guard let store else { throw MigrationRefused(description: String(localized: "The database is not open.")) }
+		guard !isTransferringTransactions, !isApplyingRule else {
+			throw MigrationRefused(description: String(localized: "Another import, an export, or a rule runs. Start this import again when that has ended."))
+		}
+		isStoringMigration = true
+		defer {
+			isStoringMigration = false
+			Task { await extensions.applyUpdates() }
+		}
+		return try await sync.withRefreshesPaused {
+			while !self.extensions.working.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+			try Task.checkCancellation()
+			// Another store, such as after a lock and an unlock during the wait, is not the one the plan was read against.
+			guard self.store === store else { throw MigrationRefused(description: String(localized: "The database is not open.")) }
+			let starters = replaceableStarterCategories.map(\.id)
+			// A cancel of this task reaches the cancel token through importMigration.
+			let imported = try await store.importMigration(plan, replacing: starters, cancel: cancel, progress: progress)
+			progress(.init(step: .finishing))
+			try await reloadAfterImport()
+			return imported
+		}
 	}
 
 	/// Loads the ledger and the bank accesses again after a migration or a complete import replaced the table, and
 	/// selects the first group when the selection is gone.
 	func reloadAfterImport() async throws {
 		guard let store else { return }
-		try await replacingTable {
-			let loaded = try store.loadLedger()
-			ledgerChange = "load"
-			ledger = loaded
-			accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
-			// A complete import brings saved searches.
-			savedSearches = try store.savedSearches()
-			filter.dropMissing(in: ledger)
-			if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
-			// A complete import replaces the account groups.
-			if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
-			if selection == nil { selection = firstSidebarRow }
+		while true {
+			let revision = ledgerRevision
+			let (loaded, loadedAccesses, loadedSearches) = try await Task.detached {
+				(try store.loadLedger(), try store.accesses(), try store.savedSearches())
+			}.value
+			guard self.store === store else { return }
+			let applied = await replacingTable {
+				guard ledgerRevision == revision else { return false }
+				ledgerChange = "load"
+				ledger = loaded
+				accesses = Dictionary(uniqueKeysWithValues: loadedAccesses.map { ($0.id, $0) })
+				// A complete import brings saved searches.
+				savedSearches = loadedSearches
+				filter.dropMissing(in: ledger)
+				if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
+				// A complete import replaces the account groups.
+				if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
+				if selection == nil { selection = firstSidebarRow }
+				return true
+			}
+			if applied { return }
 		}
 	}
 
@@ -1844,4 +1875,9 @@ enum SheetKind: Identifiable, Equatable {
 	case renameSearch(UUID)
 
 	var id: String { String(describing: self) }
+}
+
+/// Why a migration did not start. The sheet shows it, and nothing was stored.
+private struct MigrationRefused: Error, CustomStringConvertible {
+	let description: String
 }

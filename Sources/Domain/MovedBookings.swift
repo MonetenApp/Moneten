@@ -119,8 +119,11 @@ struct MovedBookings {
 /// row takes. Stored rows go by their ID, deleted and delivered rows by their fields, and delivered rows with equal fields
 /// are interchangeable. Each delivered row is created at its place in the fixed order, so no tie falls back to the order
 /// of the source. The pairs refer to the rows in the order that the caller gave.
-func canonicalPartners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
-	guard mayCompete(rows, stored: stored, deleted: deleted) else { return partners(of: rows, stored: stored, deleted: deleted, delivery: delivery, today: today) }
+func canonicalPartners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day,
+	checkpoint: () throws -> Void) rethrows -> [Partner?] {
+	guard mayCompete(rows, stored: stored, deleted: deleted) else {
+		return try partners(of: rows, stored: stored, deleted: deleted, delivery: delivery, today: today, checkpoint: checkpoint)
+	}
 	let rowKeys = rows.map(sortKey)
 	let deletedKeys = deleted.map(sortKey)
 	let rowOrder = rows.indices.sorted { rowKeys[$0].lexicographicallyPrecedes(rowKeys[$1]) }
@@ -140,8 +143,8 @@ func canonicalPartners(of rows: [Transaction], stored: [Transaction], deleted: [
 		t.createdAt = Date(timeIntervalSince1970: TimeInterval(rank))
 		return t
 	}
-	let found = partners(of: ordered, stored: storedOrder.map { stored[$0] }, deleted: deletedOrder.map { deleted[$0] },
-		delivery: delivery, today: today)
+	let found = try partners(of: ordered, stored: storedOrder.map { stored[$0] }, deleted: deletedOrder.map { deleted[$0] },
+		delivery: delivery, today: today, checkpoint: checkpoint)
 	var result = [Partner?](repeating: nil, count: rows.count)
 	for (k, partner) in found.enumerated() {
 		guard let partner else { continue }

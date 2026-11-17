@@ -216,13 +216,19 @@ The app SHALL keep the running version intact when an update cannot be installed
 
 ### Requirement: Ask to move the app to the Applications folder
 
-The app SHALL refuse to update itself while macOS runs it from a temporary, read-only location, and it SHALL ask the user to move the application file to the Applications folder first.
+The app SHALL refuse to update itself while macOS runs it from a temporary, read-only location, and it SHALL ask the user to move the application file to the Applications folder first when the user checks for updates.
 
 #### Scenario: Started from the Downloads folder
 
 - **GIVEN** the user started the app from the Downloads folder right after the download
-- **WHEN** the user chooses "Install" in the update window
+- **WHEN** the user chooses "Check for Updates..."
 - **THEN** the app asks the user to drag the application file to the Applications folder and to start the update from there
+
+#### Scenario: Automatic check from the Downloads folder
+
+- **GIVEN** the user started the app from the Downloads folder right after the download
+- **WHEN** the app checks for updates automatically
+- **THEN** the app shows no message and loads no update feed
 
 ### Requirement: Warn about several copies
 

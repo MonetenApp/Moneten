@@ -171,6 +171,14 @@ public struct RegexBox: @unchecked Sendable {
 	}
 }
 
+/// One call of a regular expression on one text: whether it matched, the processor time it took, and whether it
+/// stopped at the limit of one call.
+struct RegexTry: Equatable, Sendable {
+	let found: Bool
+	let elapsed: UInt64
+	let stopped: Bool
+}
+
 /// The position of the first regular expression of one parsed rule that ran too long, and the processor time that its
 /// regular expressions spent. The categorizer can test one rule on more than one thread, so all are atomic.
 private final class RegexStop: Sendable {
@@ -237,7 +245,8 @@ public struct Rule: Sendable {
 	static let runLimit: UInt64 = 1_000_000_000
 	/// A regular expression on the text of a bank takes a few microseconds. A call of `slowCall` or more is a pattern that
 	/// backtracks without end, so such calls stop the rule once they took `slowLimit` together. A pattern that is slow on
-	/// some texts then costs about 50 ms, not 1 second, also when it is fast on all other texts.
+	/// some texts then costs about 50 ms, not 1 second, also when it is fast on all other texts. `counted` checks each
+	/// slow call once more, so a pause of a virtual machine does not count.
 	static let slowCall: UInt64 = 1_000_000
 	static let slowLimit: UInt64 = 50_000_000
 	/// A call of `heavyCall` or more counts toward the limit of a batch of `Categorizer`. A call on the text of a bank
@@ -260,6 +269,10 @@ public struct Rule: Sendable {
 
 	/// The processor time of the calls of this parsed rule that took `heavyCall` or more each.
 	var heavySpent: UInt64 { stop?.heavy ?? 0 }
+
+	/// The processor time of the calls of this parsed rule that took `slowCall` or more each.
+	// periphery:ignore - the tests read it to show which limit stopped a rule.
+	var slowSpent: UInt64 { stop?.slow ?? 0 }
 
 	/// Stops the rule at its first regular expression, when the rules of one batch together ran too long.
 	func stopAtFirstRegex() {
@@ -284,6 +297,18 @@ public struct Rule: Sendable {
 		return Self.evaluate(expression, subject, watch: &watch) && stop?.position == nil
 	}
 
+	/// Checks a call of a regular expression that took `slowCall` or more, or that reached the limit of one call, with
+	/// `again`, a second call on the same text that stops at `slowCall`. Inside a virtual machine, such as a CI runner,
+	/// the guest charges a pause of its host to the thread that runs, so a call of a few microseconds can take 60 ms of
+	/// thread processor time. A pattern that backtracks is slow again, so both calls count. A pause rarely hits the same
+	/// short call twice, so a fast second call counts alone. The check of a slow pattern costs about 1 ms.
+	static func counted(_ first: RegexTry, again: () -> RegexTry) -> RegexTry {
+		guard first.stopped || first.elapsed >= slowCall else { return first }
+		let second = again()
+		guard second.stopped || second.elapsed >= slowCall else { return second }
+		return RegexTry(found: first.found, elapsed: first.elapsed + second.elapsed, stopped: first.stopped)
+	}
+
 	/// Times the regular expressions of one test with the watch of the search. The watch is created only when the test
 	/// reaches a regular expression, so a rule without one costs nothing more.
 	private struct Watch {
@@ -291,14 +316,22 @@ public struct Rule: Sendable {
 		var regex: RegexWatch?
 
 		mutating func firstMatch(_ box: RegexBox, _ text: String) -> Bool {
-			let watch = regex ?? RegexWatch(budget: RegexBudget(limit: Rule.runLimit, spent: stop?.spent ?? 0))
+			// A second call sets `regex` to nil, so without this guard the next field of a stopped rule would start a new call.
+			guard let stop, stop.position == nil else { return false }
+			let watch = regex ?? RegexWatch(budget: RegexBudget(limit: Rule.runLimit, spent: stop.spent))
 			regex = watch
 			let before = watch.budget.spent
-			let found = watch.firstMatch(box.regex, text) != nil
-			stop?.add(watch.budget.spent - before)
-			if watch.gaveUp || watch.budget.gaveUp { stop?.record(box.position) }
-			if let stop, stop.slow >= Rule.slowLimit { stop.record(box.position) }
-			return found
+			let first = RegexTry(found: watch.firstMatch(box.regex, text) != nil, elapsed: watch.budget.spent - before, stopped: watch.gaveUp)
+			// The limit of the run counts the time of all calls, so a call that reaches it needs no check.
+			let result = watch.budget.gaveUp ? first : Rule.counted(first) {
+				// The next call of this test goes on from the time that counted, because the watch of a stopped call stays stopped.
+				regex = nil
+				let check = RegexWatch(budget: RegexBudget(limit: .max), callLimit: Rule.slowCall, interval: 1)
+				return RegexTry(found: check.firstMatch(box.regex, text) != nil, elapsed: check.budget.spent, stopped: check.gaveUp)
+			}
+			stop.add(result.elapsed)
+			if result.stopped || watch.budget.gaveUp || stop.slow >= Rule.slowLimit { stop.record(box.position) }
+			return result.found
 		}
 	}
 

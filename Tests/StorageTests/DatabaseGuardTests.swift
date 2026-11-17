@@ -166,6 +166,25 @@ struct DatabaseGuardTests {
 		#expect(try accountNames() == ["Fremd"])
 	}
 
+	@Test("After a rollback of the store, a later write of another program still stops every write")
+	func otherProgramAfterRollback() throws {
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
+		try store.save(account("Giro"))
+		// A transaction for an account that does not exist fails its foreign key and rolls back.
+		let orphan = Transaction(accountID: UUID(), bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -500, name: "Beispiel Markt")
+		#expect(throws: (any Error).self) { try store.save([orphan]) }
+		#expect(!store.isChangedOnDisk())
+		var config = Configuration()
+		config.prepareDatabase { db in try db.usePassphrase(Self.password) }
+		let other = try DatabaseQueue(path: folder.databaseFile.path, configuration: config)
+		try other.write { db in try db.execute(sql: "UPDATE account SET name = 'Fremd'") }
+		try other.close()
+
+		#expect(throws: DatabaseChangedOnDisk.self) { try store.save(account("Depot", at: 1)) }
+		try store.close()
+		#expect(try accountNames() == ["Fremd"])
+	}
+
 	@Test("A password change on a file that changed on disk changes no key")
 	func noRekeyAfterChange() throws {
 		let vault = Vault(testing: folder)

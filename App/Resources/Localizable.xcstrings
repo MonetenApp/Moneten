@@ -576,6 +576,17 @@
         }
       }
     },
+    "%@: %@ of %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@ von %3$@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%@: %@, balance %@." : {
       "localizations" : {
         "de" : {
@@ -2031,6 +2042,16 @@
       },
       "extractionState" : "manual"
     },
+    "Another import, an export, or a rule runs. Start this import again when that has ended." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Import, ein Export oder eine Regel läuft. Starten Sie diesen Import erneut, sobald der Vorgang beendet ist."
+          }
+        }
+      }
+    },
     "Another program has the database open." : {
       "localizations" : {
         "de" : {
@@ -3064,6 +3085,17 @@
           }
         }
       }
+    },
+    "Comparing transactions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umsätze werden verglichen"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Computer" : {
       "localizations" : {
@@ -4610,6 +4642,17 @@
         }
       }
     },
+    "Finishing..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird abgeschlossen..."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "FinTS/HBCI with TAN method" : {
       "localizations" : {
         "de" : {
@@ -5282,15 +5325,16 @@
         }
       }
     },
-    "Importing..." : {
+    "Importing transactions" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wird importiert..."
+            "value" : "Umsätze werden importiert"
           }
         }
-      }
+      },
+      "extractionState" : "manual"
     },
     "In group" : {
       "localizations" : {
@@ -6237,12 +6281,12 @@
         }
       }
     },
-    "Moneten is in these folders:\n%@\n\nDelete the copies that you do not use, so that you always start the newest version." : {
+    "Moneten is in these places:\n%@\n\nDelete the copies that you do not use, so that you always start the newest version." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moneten liegt in diesen Ordnern:\n%@\n\nLöschen Sie die Kopien, die Sie nicht verwenden, damit Sie immer die neueste Version starten."
+            "value" : "Moneten liegt an diesen Orten:\n%@\n\nLöschen Sie die Kopien, die Sie nicht verwenden, damit Sie immer die neueste Version starten."
           }
         }
       }
@@ -6273,6 +6317,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten bewahrt Ihre Konten, Umsätze und Kategorien in einer verschlüsselten Datenbank auf diesem Mac auf. Ein Datenbankpasswort schützt sie."
+          }
+        }
+      }
+    },
+    "Moneten needs the permission of an administrator to replace the app in its folder." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten braucht die Erlaubnis eines Administrators, um die App in ihrem Ordner zu ersetzen."
           }
         }
       }
@@ -7134,16 +7188,6 @@
         }
       }
     },
-    "Nothing was imported. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Es wurde nichts importiert. %@"
-          }
-        }
-      }
-    },
     "Notice" : {
       "localizations" : {
         "de" : {
@@ -7632,17 +7676,6 @@
       },
       "extractionState" : "manual"
     },
-    "Portfolio accounts were taken over with their balance. Their positions follow when securities accounts are supported." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Depots wurden mit ihrem Saldo übernommen. Ihre Positionen folgen, sobald Depots unterstützt werden."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
     "Portfolios from %@" : {
       "localizations" : {
         "de" : {
@@ -7694,6 +7727,17 @@
           }
         }
       }
+    },
+    "Preparing import..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import wird vorbereitet..."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Preparing update..." : {
       "localizations" : {
@@ -7904,16 +7948,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datei wird gelesen..."
-          }
-        }
-      }
-    },
-    "Reading transactions... This can take a minute for a long history." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Umsätze werden gelesen... Bei einer langen Historie kann das eine Minute dauern."
           }
         }
       }
@@ -10498,6 +10532,16 @@
         }
       }
     },
+    "The database is not open." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank ist nicht geöffnet."
+          }
+        }
+      }
+    },
     "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
       "localizations" : {
         "de" : {
@@ -11480,6 +11524,16 @@
       },
       "extractionState" : "manual"
     },
+    "The migration could not finish. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Migration konnte nicht abgeschlossen werden. %@"
+          }
+        }
+      }
+    },
     "The new list of extensions could not be verified." : {
       "localizations" : {
         "de" : {
@@ -11615,6 +11669,28 @@
           }
         }
       }
+    },
+    "The positions of \"%@\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Positionen von „%@“ wurden nicht übernommen, weil das Exportformat von Depots nicht geprüft ist. Verbinden Sie das Depot mit seiner Bank, um seine Positionen abzurufen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The positions of \"%@\" were not migrated, because the portfolio export format is not verified. Its bank access fetches them with each refresh." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Positionen von „%@“ wurden nicht übernommen, weil das Exportformat von Depots nicht geprüft ist. Sein Bankzugang ruft sie bei jeder Aktualisierung ab."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The regular expression at position %lld stopped because it is too slow." : {
       "localizations" : {
@@ -13033,6 +13109,17 @@
           }
         }
       }
+    },
+    "Waiting for transactions..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warten auf die Umsätze..."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Wallet" : {
       "localizations" : {

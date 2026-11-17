@@ -113,8 +113,16 @@ public struct Reconciliation: Sendable, Equatable {
 /// nothing to write except the balance. `stored` must be all live rows of `account`, and `deleted` all
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
-public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
+public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction], deleted: [DeletedTransaction],
 	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
+	reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now, checkpoint: { _ in })
+}
+
+/// `checkpoint` receives the number of delivered rows compared so far and may throw to stop the comparison, as a
+/// canceled migration does.
+public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
+	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date, checkpoint: (Int) throws -> Void) rethrows -> Reconciliation {
+	try checkpoint(0)
 	// A closed account is left out of every refresh. A refresh that was already running when the user closed the account
 	// still delivers, and its rows, its balance, and its pending rows must not undo the clearing entry. The check runs in the
 	// write of the merge, so no delivery passes it after the close was stored.
@@ -129,20 +137,22 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let honored = deleted.filter(delivery.honors)
 	let today = Day(now)
 	// A source that moves bookings pairs on a fixed order of the rows, so that no order decides a move (`MovedBookings`).
-	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
-		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+	let partners = delivery.maxBookingShift > 0
+		? try canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, checkpoint: { try checkpoint(0) })
+		: try partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, checkpoint: { try checkpoint(0) })
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
 	let released = stored.indices.filter { stored[$0].isPending && !taken.contains($0) }
 	let fresh = rows.indices.filter { partners[$0] == nil && !rows[$0].isPending }
-	let bookings = Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) })
+	let bookings = try Bookings(pending: released.map { ($0, stored[$0]) }, booked: fresh.map { ($0, rows[$0]) }, checkpoint: { try checkpoint(0) })
 	let moved = MovedBookings(delivery, rows: rows, stored: stored, partners: partners, fresh: Set(fresh.filter { bookings.ofBooked[$0] == nil }))
 	// An edited row counts by the day of its source, as the pairing and the drop below read it.
 	let future = Set(released.filter { !stored[$0].isFetched && stored[$0].sourceBookingDate >= today && stored[$0].review == nil })
 
 	var r = Reconciliation()
 	for (i, delivered) in rows.enumerated() {
+		try checkpoint(i)
 		if let partner = partners[i] {
 			guard case let .live(j) = partner.slot else {
 				if case let .deleted(k) = partner.slot, delivery.isMigration, let id = delivered.sourceID,
@@ -234,6 +244,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		}
 	}
 	for j in released {
+		try checkpoint(rows.count)
 		let pending = stored[j]
 		switch bookings.ofPending[j] {
 		case .pair: break
@@ -299,6 +310,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 		let owned = delivered.map { var holding = $0; holding.accountID = account.id; return holding }
 		r.holdings = Reconciliation.Holdings(accountID: account.id, holdings: Holding.identify(owned, stored: holdings))
 	}
+	try checkpoint(rows.count)
 	return r
 }
 
@@ -346,22 +358,25 @@ struct Partner {
 
 /// Each step takes rows out of the pool, so a weaker rule never takes a row that a stronger one claimed.
 /// At each step a stored row comes before a deleted one.
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction]) -> [Partner?] {
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], checkpoint: () throws -> Void) rethrows -> [Partner?] {
 	var result = [Partner?](repeating: nil, count: rows.count)
 	var taken = Set<Slot>()
 	let ids = Set(rows.compactMap(\.sourceID))
 	if !ids.isEmpty {
 		var byID: [String: [Slot]] = [:]
 		for (j, t) in stored.enumerated() {
+			try checkpoint()
 			if let id = t.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.live(j)) }
 		}
 		for (k, d) in deleted.enumerated() {
+			try checkpoint()
 			if let id = d.sourceID.map(Transaction.matchingID), ids.contains(id) { byID[id, default: []].append(.deleted(k)) }
 		}
 		func isDeletedPending(_ slot: Slot) -> Bool {
 			if case let .deleted(k) = slot { deleted[k].isPending } else { false }
 		}
 		for (i, t) in rows.enumerated() {
+			try checkpoint()
 			guard let id = t.sourceID, let slots = byID[id] else { continue }
 			let free = slots.filter { !taken.contains($0) }
 			if let slot = free.first(where: { t.isPending || !isDeletedPending($0) }) {
@@ -377,16 +392,19 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let days = Set(rows.map(\.bookingDate))
 	var candidates: [Identity.Key: [(slot: Slot, identity: Identity)]] = [:]
 	for (j, t) in stored.enumerated() where days.contains(t.sourceBookingDate) && !taken.contains(.live(j)) {
+		try checkpoint()
 		let identity = Identity(t)
 		candidates[identity.key, default: []].append((.live(j), identity))
 	}
 	for (k, d) in deleted.enumerated() where days.contains(d.bookingDate) && !taken.contains(.deleted(k)) {
+		try checkpoint()
 		let identity = Identity(d)
 		candidates[identity.key, default: []].append((.deleted(k), identity))
 	}
 	let identities = rows.map(Identity.init)
 	for step in Identity.steps {
 		for i in rows.indices where result[i] == nil {
+			try checkpoint()
 			let delivered = identities[i]
 			guard let match = candidates[delivered.key]?.first(where: { !taken.contains($0.slot) && step.accepts(delivered, $0.identity) }) else { continue }
 			taken.insert(match.slot)
@@ -396,7 +414,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	return result
 }
 
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day, checkpoint: () throws -> Void) rethrows -> [Partner?] {
 	let days = Set(rows.flatMap { t in
 		let day = t.bookingDate.daysSince1970
 		return (-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { day + $0 }
@@ -415,7 +433,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	let dead = deleted.indices.filter { relevant(day: deleted[$0].bookingDate, amount: deleted[$0].amountMinor, sourceID: deleted[$0].sourceID, fileIdentity: deleted[$0].fileIdentity, reference: deleted[$0].endToEndReference) }
 	if rows.allSatisfy({ !$0.isPending }), stored.allSatisfy({ !$0.isPending }), deleted.allSatisfy({ !$0.isPending }),
 		live.allSatisfy({ stored[$0].fileIdentity == nil }), dead.allSatisfy({ deleted[$0].fileIdentity == nil }) {
-		return partners(of: rows, stored: stored, deleted: deleted)
+		return try partners(of: rows, stored: stored, deleted: deleted, checkpoint: checkpoint)
 	}
 
 	enum Priority: Int { case identity, bookedFingerprint, reference, fetchedPending, filePending }
@@ -444,6 +462,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	var byFileIdentity: [String: [Slot]] = [:]
 	var byID: [String: [Slot]] = [:]
 	for j in live {
+		try checkpoint()
 		let t = stored[j]
 		byDay[liveMatches[j]!.day, default: []].append(.live(j))
 		byKey[liveMatches[j]!.identity.key, default: []].append(.live(j))
@@ -452,6 +471,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		if let id = t.sourceID { byID[Transaction.matchingID(id), default: []].append(.live(j)) }
 	}
 	for k in dead {
+		try checkpoint()
 		let d = deleted[k]
 		byDay[deadMatches[k]!.day, default: []].append(.deleted(k))
 		byKey[deadMatches[k]!.identity.key, default: []].append(.deleted(k))
@@ -462,6 +482,7 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	var candidates: [Candidate] = []
 
 	for (i, t) in rows.enumerated() {
+		try checkpoint()
 		let initialSlots: [Slot] = (t.isPending ? byDay[matches[i].day] : byKey[incoming[i].key]) ?? []
 		var slots: Set<Slot> = Set(initialSlots)
 		if let id = t.sourceID { slots.formUnion(byID[id] ?? []) }
@@ -493,8 +514,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			let distance = abs(matches[i].day - match.day)
 			if !t.isPending && !identity.isPending && identity.fileIdentity == nil {
 				let legacy: Partner? = switch slot {
-				case let .live(j): partners(of: [t], stored: [stored[j]], deleted: [])[0]
-				case let .deleted(k): partners(of: [t], stored: [], deleted: [deleted[k]])[0]
+				case let .live(j): partners(of: [t], stored: [stored[j]], deleted: [], checkpoint: {})[0]
+				case let .deleted(k): partners(of: [t], stored: [], deleted: [deleted[k]], checkpoint: {})[0]
 				}
 				guard let legacy else { continue }
 				let source = legacy.evidence == .sourceID
@@ -752,7 +773,7 @@ struct Bookings {
 	private(set) var ofPending: [Int: Outcome] = [:]
 	private(set) var ofBooked: [Int: Outcome] = [:]
 
-	init(pending: [(Int, Transaction)], booked: [(Int, Transaction)]) {
+	init(pending: [(Int, Transaction)], booked: [(Int, Transaction)], checkpoint: () throws -> Void) rethrows {
 		guard !pending.isEmpty, !booked.isEmpty else { return }
 		let p: [PendingMatch] = pending.map { (entry: (Int, Transaction)) -> PendingMatch in PendingMatch(entry.1) }
 		let b: [PendingMatch] = booked.map { (entry: (Int, Transaction)) -> PendingMatch in PendingMatch(entry.1) }
@@ -761,6 +782,7 @@ struct Bookings {
 		var pendingByAmount: [Money: [Int]] = [:]
 		for (x, m) in p.enumerated() { pendingByAmount[m.amount, default: []].append(x) }
 		for (y, m) in b.enumerated() {
+			try checkpoint()
 			let sameAmount: [Int] = pendingByAmount[m.amount] ?? []
 			// The bank's own pending row may be booked on an earlier day, such as a salary shown for a Sunday and booked on the
 			// Friday before. A file row only books on or after its own day. Rows on or before the booked day still come first.
