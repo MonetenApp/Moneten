@@ -40,6 +40,17 @@ public struct VATRate: Hashable, Sendable, Codable {
 		self.hundredths = hundredths
 	}
 
+	public init?(text: String) {
+		let parts = text.trimmingCharacters(in: .whitespacesAndNewlines)
+			.replacingOccurrences(of: ",", with: ".").split(separator: ".", omittingEmptySubsequences: false)
+		guard (1...2).contains(parts.count), parts.allSatisfy({ !$0.isEmpty && $0.allSatisfy({ $0 >= "0" && $0 <= "9" }) }) else { return nil }
+		let fraction = parts.count == 2 ? String(parts[1]) : ""
+		guard fraction.count <= 2,
+			let value = Int64(String(parts[0]) + fraction + String(repeating: "0", count: 2 - fraction.count)),
+			Self.accepted.contains(value) else { return nil }
+		self.init(hundredths: value)
+	}
+
 	public init(from decoder: any Decoder) throws {
 		let values = try decoder.container(keyedBy: CodingKeys.self)
 		let value = try values.decode(Int64.self, forKey: .hundredths)
@@ -50,6 +61,26 @@ public struct VATRate: Hashable, Sendable, Codable {
 	}
 
 	public static let standard = [VATRate(hundredths: 1900), VATRate(hundredths: 700)]
+
+	/// The rates of a stored list that the settings would accept, each once, in their order. A list stored
+	/// before the upper limit or before the duplicate rule shows no rate that the settings now refuse.
+	public static func list(hundredths: [Int64]) -> [VATRate] {
+		hundredths.filter(accepted.contains).map(VATRate.init(hundredths:)).reduce(into: []) { list, rate in
+			if !list.contains(rate) { list.append(rate) }
+		}
+	}
+
+	/// The list after the user adds a rate, or changes the rate at `index`. Each rate stays once, so the
+	/// submenu never shows one entry twice: an added rate that is in the list changes nothing, and a rate
+	/// changed to one that is in the list leaves only the one at the earlier position.
+	public static func setting(_ rate: VATRate, at index: Int?, in rates: [VATRate]) -> [VATRate] {
+		var result = rates
+		if let index { result[index] = rate } else { result.append(rate) }
+		return list(hundredths: result.map(\.hundredths))
+	}
+
+	/// Rates above zero up to 100 percent. A rate of 190 is a typo for 19,0, not a rate.
+	private static let accepted: ClosedRange<Int64> = 1...10_000
 
 	public var text: String {
 		let fraction = hundredths % 100
@@ -66,6 +97,23 @@ public struct VATRate: Hashable, Sendable, Codable {
 
 public enum SplitError: Error, Equatable {
 	case pending, zeroPart, onePart, unbalanced
+	/// The row no longer exists, for example because a refresh removed it.
+	case missing
+	/// The amount, the category, or the comment of the row is not the one the user saw.
+	case changed
+}
+
+/// The values of a transaction that its split parts copy, and its parts. `Ledger.splitBase(of:)` gives it.
+public struct SplitBase: Equatable, Sendable {
+	let amount: Money
+	let categoryID: UUID?
+	let comment: String?
+	let parts: [SplitPart]
+
+	/// Written out, because Periphery counts fields that only a synthesized `==` reads as assigned but never used.
+	public static func == (a: SplitBase, b: SplitBase) -> Bool {
+		a.amount == b.amount && a.categoryID == b.categoryID && a.comment == b.comment && a.parts == b.parts
+	}
 }
 
 public enum Split {
@@ -78,7 +126,7 @@ public enum Split {
 		var scaled = value * Decimal(sign: .plus, exponent: row.decimalPlaces, significand: 1)
 		var whole = Decimal()
 		NSDecimalRound(&whole, &scaled, 0, .plain)
-		guard whole == scaled, scaled >= Decimal(Int64.min), scaled <= Decimal(Int64.max) else { return nil }
+		guard whole == scaled, scaled.magnitude <= Decimal(Money.maxMinorUnits) else { return nil }
 		return Money(minorUnits: NSDecimalNumber(decimal: scaled).int64Value, currency: row.currency)
 	}
 

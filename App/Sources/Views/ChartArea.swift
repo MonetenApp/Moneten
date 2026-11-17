@@ -25,7 +25,8 @@ struct ChartArea: View {
 					.foregroundStyle(Palette.bandLabel)
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
-				BalanceChart(accountIDs: ids)
+				// A closed account is left out of the chart of its group, as it is out of the sum of the group.
+				BalanceChart(accountIDs: ids.filter { model.ledger.account($0)?.isClosed == false })
 			}
 		default:
 			EmptyView()
@@ -41,7 +42,8 @@ struct BalanceChart: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed }
+		// The chart of a selected closed account shows its history, which ends at zero from its clearing entry on.
+		let accounts = accountIDs.compactMap { model.ledger.account($0) }
 		let currencies = ChartCurrency.ranked(accounts.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let shown = accounts.filter { $0.currency == currency }
@@ -55,8 +57,8 @@ struct BalanceChart: View {
 			HStack(alignment: .bottom, spacing: 8) {
 				bars(ids: Set(shown.map(\.id)), currency: currency, monthly: monthly)
 				ChartModeSwitch(selection: $model.balanceMode, options: [
-					.init(value: .daily, label: "D", help: "Daily balance"),
-					.init(value: .monthlyAverage, label: "M", help: "Monthly average balance"),
+					.init(value: .daily, label: String(localized: "D", comment: "The switch to the daily balance"), help: String(localized: "Daily balance")),
+					.init(value: .monthlyAverage, label: String(localized: "M", comment: "The switch to the monthly average balance or the monthly view"), help: String(localized: "Monthly average balance")),
 				])
 			}
 		}
@@ -68,8 +70,8 @@ struct BalanceChart: View {
 	private func portfolioCaption(_ portfolios: [Account], currency: String) -> some View {
 		let first = portfolios.compactMap { model.ledger.portfolioValues(of: $0.id).first?.day }.min()
 		let unrecorded = portfolios.filter { model.ledger.portfolioValues(of: $0.id).isEmpty }
-		let leftOut = Money(minorUnits: unrecorded.reduce(0) { $0 + model.ledger.balance(of: $1).minorUnits }, currency: currency)
-		let parts = [first.map { "Portfolios from \(Format.day($0))" }, unrecorded.isEmpty ? nil : "Portfolios not shown: \(Format.money(leftOut))"]
+		let leftOut = Money(minorUnits: Int64(clampingSum: unrecorded.reduce(Int128(0)) { $0 + Int128(model.ledger.balance(of: $1).minorUnits) }), currency: currency)
+		let parts = [first.map { String(localized: "Portfolios from \(Format.day($0))") }, unrecorded.isEmpty ? nil : String(localized: "Portfolios not shown: \(Format.money(leftOut))")]
 		let text = parts.compactMap { $0 }.joined(separator: " · ")
 		if !text.isEmpty {
 			Text(text)
@@ -105,7 +107,7 @@ struct BalanceChart: View {
 			return ledger.monthlyAverageBalances(accountIDs: ids, range: range).map { point in
 				let first = point.day.month == 1
 				return StripBar(start: point.day, end: point.day.adding(months: 1), money: Money(minorUnits: point.minorUnits, currency: currency),
-					title: Format.monthTitle(point.day) + ", average", label: first ? String(point.day.year) : nil, startsGroup: first)
+					title: String(localized: "\(Format.monthTitle(point.day)), average"), label: first ? String(point.day.year) : nil, startsGroup: first)
 			}
 		}
 		return ledger.balanceBars(accountIDs: ids, range: range).map { bar in
@@ -131,9 +133,9 @@ struct CategoryBars: View {
 			HStack(alignment: .bottom, spacing: 8) {
 				bars(sums, currency: currency)
 				ChartModeSwitch(selection: $model.chartPeriod, options: [
-					.init(value: .month, label: "M", help: "Monthly view"),
-					.init(value: .quarter, label: "Q", help: "Quarterly view"),
-					.init(value: .year, label: "Y", help: "Yearly view"),
+					.init(value: .month, label: String(localized: "M", comment: "The switch to the monthly average balance or the monthly view"), help: String(localized: "Monthly view")),
+					.init(value: .quarter, label: String(localized: "Q", comment: "The switch to the quarterly view"), help: String(localized: "Quarterly view")),
+					.init(value: .year, label: String(localized: "Y", comment: "The switch to the yearly view"), help: String(localized: "Yearly view")),
 				])
 			}
 		}
@@ -225,8 +227,8 @@ struct CategoryPie: View {
 				let width = min(PieChart.width, geometry.size.width / 2)
 				let outerRoom = PieChart.innerRoom(width: width) + (geometry.size.width - 2 * width) / 2
 				HStack(spacing: 0) {
-					PieChart(title: "Withdrawals", empty: "No withdrawals", slices: slices.withdrawals, outside: .leading, width: width, outerRoom: outerRoom)
-					PieChart(title: "Deposits", empty: "No deposits", slices: slices.deposits, outside: .trailing, width: width, outerRoom: outerRoom)
+					PieChart(title: String(localized: "Withdrawals"), empty: String(localized: "No withdrawals"), slices: slices.withdrawals, outside: .leading, width: width, outerRoom: outerRoom)
+					PieChart(title: String(localized: "Deposits"), empty: String(localized: "No deposits"), slices: slices.deposits, outside: .trailing, width: width, outerRoom: outerRoom)
 				}
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 			}

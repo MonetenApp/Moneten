@@ -42,17 +42,19 @@ let package = Package(
 		.executableTarget(name: "ext", dependencies: ["Domain", "ExtensionHost", "ExtensionConnector"], path: "Tools/ext"),
 		// Verifies the signed catalog index, installs its packages, and plans updates (ADR 0015).
 		.target(name: "ExtensionCatalog", dependencies: ["Domain", "ExtensionHost", "Storage"]),
-		.testTarget(name: "DomainTests", dependencies: ["Domain"]),
-		.testTarget(name: "StorageTests", dependencies: ["Storage"]),
+		// The time budget of the tests, which grows on a runner that GitHub hosts (issue #372).
+		.target(name: "TestSupport", path: "Tests/TestSupport"),
+		.testTarget(name: "DomainTests", dependencies: ["Domain", "TestSupport"]),
+		.testTarget(name: "StorageTests", dependencies: ["Storage", "TestSupport"]),
 		.executableTarget(name: "ExportFileProbe", dependencies: ["Storage"], path: "Tests/ExportFileProbe", exclude: ["sync.c"]),
 		.testTarget(name: "ImportTests", dependencies: ["Import"]),
 		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage"]),
 		// The tests read helper-lines.jsonl at its path, as the self-test of the helper writes it.
-		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost"]),
-		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage"]),
+		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost", "TestSupport"]),
+		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "TestSupport"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
 		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
-		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage"]),
+		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage", "TestSupport"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS"], exclude: ["helper-lines.jsonl"]),
 	],
 	swiftLanguageModes: [.v6]

@@ -33,7 +33,7 @@ public final class MigrationCancel: Sendable {
 extension Store {
 	public func importMigration(_ preview: MoneyMoneyMigration.Plan, replacing starters: [UUID] = [],
 		cancel: MigrationCancel = MigrationCancel(), progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void = { _ in }) async throws -> MoneyMoneyMigration.Plan {
-		try await queue.write { db in
+		try await write { db in
 			func check() throws { if cancel.isCanceled { throw CancellationError() } }
 			try check()
 			var ledger = try Self.loadLedger(in: db)
@@ -50,7 +50,7 @@ extension Store {
 				})
 			for id in replacing {
 				try check()
-				_ = try Domain.Category.deleteOne(db, key: id)
+				try Self.deleteCategory(id, in: db)
 			}
 			try cancel.seal()
 			return plan

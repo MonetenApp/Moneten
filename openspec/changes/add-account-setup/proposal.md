@@ -68,3 +68,9 @@ None.
 - An account is the same account only in the same currency, and two subaccounts of one account number are two accounts. A closed account without a bank access is left as it is, and the setup adds the account of the bank as a new one. The matching rule of the third step was not observed.
 - When the access method changes, the app matches accounts by IBAN, or by account number and Bankleitzahl. The matching rule was not observed.
 - The subscription appears as an access method only when the change `add-aggregator-subscription` is built.
+- A login name of exactly 17 digits for a bank on the FinTS servers of the savings banks is sent and stored as its first 16 digits. MoneyMoney's handling was not observed.
+- The note that a customer of 1822direkt enters the Bankleitzahl 50050222 shows only for an IBAN with the Bankleitzahl 50050201, not for a Bankleitzahl that the user enters or chooses. MoneyMoney's condition was not observed.
+- The search names 37070060 "Deutsche Bank" and not "Deutsche Bank / CosmosDirekt" until a bank test shows that a CosmosDirekt account answers on the FinTS server of Deutsche Bank. MoneyMoney names both and offers its website route for CosmosDirekt.
+- norisbank gets no login hint, because no public page of the bank names its FinTS login.
+- A login name of 10 digits at Deutsche Bank and norisbank shows in groups also in the PIN dialog, the TAN dialog, the progress of a challenge, and the account settings. MoneyMoney shows the groups only in the login data sheet.
+- After a login that a new login replaced, the error says to enter the new login of the bank. MoneyMoney names the new Deutsche Bank ID, in German also for Postbank and norisbank. Moneten also leaves the access out of the automatic refresh until the user refreshes it by hand.

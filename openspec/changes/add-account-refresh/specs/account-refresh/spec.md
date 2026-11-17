@@ -249,7 +249,7 @@ The app SHALL keep every fetched transaction until the user deletes it or remove
 
 ### Requirement: Do not store a transaction twice
 
-The app SHALL recognize a fetched transaction that it already stored and not add it again. It uses the ID of the source when the source gives one. Otherwise it compares account, booking date, amount, counterparty account, end-to-end reference, and purpose, and ignores case and spacing in the purpose.
+The app SHALL recognize a fetched transaction that it already stored and not add it again. It uses the ID of the source when the source gives one. Otherwise it compares account, booking date, amount, currency, counterparty account, end-to-end reference, and purpose, and ignores case and spacing in the purpose.
 
 #### Scenario: Overlapping fetch
 
@@ -262,6 +262,13 @@ The app SHALL recognize a fetched transaction that it already stored and not add
 - **GIVEN** a stored transaction with the purpose "Rechnung 1001  Kundennr 4711"
 - **WHEN** the bank delivers the same transaction with the purpose "RECHNUNG 1001 KUNDENNR 4711"
 - **THEN** the app adds no transaction
+
+#### Scenario: Same amount in another currency
+
+- **GIVEN** "Giro" holds a booked transaction of -800,00 USD on 3 November 2026 with the purpose "Miete November"
+- **WHEN** the bank delivers a booked transaction of -800,00 € on 3 November 2026 with the purpose "Miete November"
+- **THEN** "Giro" has both transactions
+- **AND** the balance in euros counts the new -800,00 €
 
 ### Requirement: Update a transaction that the source changed
 
@@ -294,6 +301,101 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 - **WHEN** the bank delivers a booked transaction of -23,80 € to "Buchhandlung Beispiel" two days later
 - **THEN** the list shows one booked transaction with the comment "Gift"
 - **AND** the pending row is gone
+
+### Requirement: Keep a moved card booking as one transaction
+
+The app SHALL update a stored booked transaction of a DKB credit card with a delivered booked transaction of the same amount and counterparty at most seven days before or after it, when no other transaction fits either of the two, directly or through a third one, and the delivered booked transactions span the day of the stored one but no longer include it. The stored transaction keeps its user fields and its split, and takes the date and the texts of the delivered one.
+
+#### Scenario: Booking moved to a later day
+
+- **GIVEN** the DKB card "Visa" has a booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024 from an earlier refresh, with the comment "Family plan", the category "Subscriptions" that the user assigned by hand, and a checkmark
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 8 March 2024
+- **THEN** "Visa" shows one transaction of -19,90 € on 10 March 2024 with the comment "Family plan", the category "Subscriptions", and the checkmark
+
+#### Scenario: Booking moved to an earlier day
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024, with the comment "Family plan"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 8 March 2024 and none on 10 March 2024
+- **THEN** "Visa" shows one transaction of -19,90 € on 8 March 2024 with the comment "Family plan"
+
+#### Scenario: Stored booking still delivered
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers that transaction again and another one of -19,90 € to "Streaming Beispiel" on 10 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: More than seven days apart
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 16 March 2024 and none on 8 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: Day before the refresh
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 9 March 2024 delivers a booked transaction of -19,90 € to "Streaming Beispiel" on 10 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: Answer shorter than asked
+
+- **GIVEN** "Visa" has a booked transaction of -3,20 € to "Café Beispiel" on 2 March 2024
+- **WHEN** a refresh from 1 March 2024 delivers booked transactions only from 6 to 12 March 2024, among them -3,20 € to "Café Beispiel" on 6 March 2024
+- **THEN** "Visa" shows both transactions of -3,20 €
+
+#### Scenario: Two stored bookings fit
+
+- **GIVEN** "Visa" has two booked transactions of -19,90 € to "Streaming Beispiel", on 7 and on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them one of -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 7 or 8 March 2024
+- **THEN** "Visa" shows all three transactions
+
+#### Scenario: Two delivered bookings fit
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 9 and on 10 March 2024 and none on 8 March 2024
+- **THEN** "Visa" shows all three transactions
+
+#### Scenario: Two equal bookings on one day
+
+- **GIVEN** "Visa" has two booked transactions of -3,20 € to "Café Beispiel" on 8 March 2024, one with the comment "with Max" and one with the comment "with Erika"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -3,20 € to "Café Beispiel" on 8 March 2024 and on 10 March 2024
+- **THEN** "Visa" shows both transactions of 8 March 2024 with their comments, and a new transaction on 10 March 2024
+
+#### Scenario: Bookings with other names on one day
+
+- **GIVEN** "Visa" has two booked transactions of -3,20 € with the purpose "Kartenzahlung" on 8 March 2024, one to "Café Beispiel" and one to "Kino Beispiel", and one of -3,20 € to "Café Beispiel" on 9 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -3,20 € to "Café Beispiel" with the purpose "Kartenzahlung" on 8 March 2024 and on 10 March 2024
+- **THEN** "Visa" shows the three stored transactions on their days and a new transaction on 10 March 2024
+
+#### Scenario: Two delivered bookings with references
+
+- **GIVEN** "Visa" has a booked transaction of -3,20 € to "Café Beispiel" on 8 March 2024 without a reference, and one on 9 March 2024 with the end-to-end reference "A"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them two of -3,20 € to "Café Beispiel" on 8 March 2024, with the end-to-end references "A" and "B"
+- **THEN** "Visa" shows the two stored transactions on their days and a new transaction on 8 March 2024 with the reference "B"
+
+#### Scenario: Any order of the transactions
+
+- **GIVEN** the stored transactions and the refresh of any scenario of this requirement
+- **WHEN** the app holds the stored transactions in another order, or the bank delivers the transactions in another order
+- **THEN** "Visa" shows the same transactions with the same fields
+
+#### Scenario: Different references
+
+- **GIVEN** "Visa" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024 with the end-to-end reference "ABO-2024-03"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 10 March 2024 with the end-to-end reference "ABO-2024-04", and none on 8 March 2024
+- **THEN** "Visa" shows both transactions
+
+#### Scenario: Split booking moved
+
+- **GIVEN** "Visa" has a booked transaction of -80,00 € to "Supermarkt Beispiel" on 8 March 2024 with the category "Groceries", split into two parts
+- **AND** a rule assigns the category "Drinks" to the purpose "SUPERMARKT SAGT DANKE"
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -80,00 € to "Supermarkt Beispiel" on 10 March 2024 with the purpose "SUPERMARKT SAGT DANKE", and none on 8 March 2024
+- **THEN** "Visa" shows the split transaction on 10 March 2024 with its two parts and the category "Groceries"
+
+#### Scenario: Giro account of DKB
+
+- **GIVEN** the DKB giro account "Giro" has the booked transaction of -19,90 € to "Streaming Beispiel" on 8 March 2024
+- **WHEN** a refresh from 5 March 2024 delivers booked transactions from 5 to 25 March 2024, among them -19,90 € to "Streaming Beispiel" on 10 March 2024 and none on 8 March 2024
+- **THEN** "Giro" shows both transactions
 
 ### Requirement: Do not guess between several pending transactions
 

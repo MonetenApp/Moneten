@@ -86,7 +86,7 @@ struct PerfScenario {
 					return c.fail("the split did not start in a drawn view of 50000 rows")
 				}
 				let balance = c.model.ledger.computedBalance(of: account)
-				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) else {
+				guard await c.model.split(row: row.id, off: [Money(minorUnits: -2500, currency: row.currency)]) == .done else {
 					return c.fail("split failed")
 				}
 				await c.settle()
@@ -339,6 +339,38 @@ struct PerfScenario {
 				c.model.move(account: moved.id, toGroup: bulk)
 				await c.settle()
 			}),
+		// "The list stays fluid with a large history" (add-transaction-list, task 1.20): the group of 50,000 rows from
+		// the top to the bottom in 20 steps, and every visible row has its view after each step.
+		PerfScenario(name: "scroll-large-group", budget: halfSecond,
+			setUp: { await $0.select("Bulk"); await $0.scroll { _ in 0 } },
+			run: { c in
+				for step in 1...20 {
+					c.harness.scrollTables { min($0 * step / 20, $0 - 1) }
+					await c.settle()
+					guard let table = c.harness.transactionTables().first else { return c.fail("no transaction table") }
+					let visible = table.rows(in: table.visibleRect)
+					let blank = (visible.location..<visible.location + visible.length).filter { table.rowView(atRow: $0, makeIfNecessary: false) == nil }
+					if !blank.isEmpty { c.fail("blank rows", ("step", .count(step)), ("rows", .count(blank.count))) }
+				}
+			}),
+		PerfScenario(name: "select-all-in-large-group", budget: halfSecond,
+			setUp: { await $0.select("Bulk") },
+			run: { c in
+				c.harness.transactionTables().first?.selectAll(nil)
+				await c.settle()
+				if c.model.selectedTransactions.count != c.model.visibleTransactions.count {
+					c.fail("rows not all selected", ("selected", .count(c.model.selectedTransactions.count)), ("shown", .count(c.model.visibleTransactions.count)))
+				}
+				c.harness.transactionTables().first?.deselectAll(nil)
+			}),
+		// "Daily balance" reads the balances of every day of the account from the whole ledger.
+		PerfScenario(name: "daily-balance-in-account", budget: halfSecond,
+			setUp: { await $0.select("Account 1") },
+			run: { c in
+				c.model.showsDailyBalance = true
+				await c.settle()
+				c.model.showsDailyBalance = false
+			}),
 		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
@@ -349,6 +381,11 @@ struct PerfScenario {
 				await c.select("Account 2")
 			},
 			run: { await $0.select("Bulk") }),
+		// The seal check of the whole app, which the launch runs before it opens the database. It reads
+		// more than 100 MB with the Java runtime, so it must run away from the main thread.
+		PerfScenario(name: "seal-check-at-launch", budget: halfSecond,
+			setUp: { await $0.settle() },
+			run: { await checkSeal($0) }),
 		// Opens the Extensions window on a catalog of 200 packages, through the menu item.
 		PerfScenario(name: "open-extensions-window", budget: halfSecond,
 			setUp: { c in
@@ -453,7 +490,83 @@ struct PerfScenario {
 				SupportedBanksPerf.window?.close()
 				SupportedBanksPerf.window = nil
 			}),
+		// The sidebar opens a group of 200 bank accounts with long names and balances in three currencies. Each row asks
+		// its balances for their ideal width before the name gets the rest (issue #359).
+		PerfScenario(name: "expand-group-of-200-wallets", budget: halfSecond,
+			setUp: { await manyWallets($0) },
+			run: { c in
+				guard var group = c.model.ledger.groups.first(where: { $0.name == "Wallets" }) else { return c.fail("no group Wallets") }
+				let wallets = c.model.ledger.accounts.filter { $0.groupID == group.id }.count
+				if wallets != 200 { c.fail("the group has the wrong number of accounts", ("accounts", .count(wallets)), ("expected", .count(200))) }
+				let rowsBefore = c.harness.sidebarList()?.numberOfRows ?? 0
+				group.isExpanded = true
+				c.model.save(group: group)
+				await c.settle()
+				let added = (c.harness.sidebarList()?.numberOfRows ?? 0) - rowsBefore
+				if added != 200 { c.fail("the sidebar did not show the accounts of the group", ("added", .count(added)), ("expected", .count(200))) }
+				// Collapsed again, so that the next scenario starts from the sidebar it had before.
+				group.isExpanded = false
+				c.model.save(group: group)
+			}),
+		// Last, because it adds 50,000 rows and leaves the window for a new transaction open: closing it draws the
+		// table of 100,000 rows again, which this scenario does not measure. Each keystroke in the name field searches
+		// 50,000 different names for suggestions. A name that matches none reads every row, the slowest case.
+		PerfScenario(name: "type-name-over-50000-names", budget: .milliseconds(100),
+			setUp: { await nameHistory($0) },
+			run: { c in
+				for character in "Zahnarzt" {
+					c.harness.run("type", String(character))
+					await c.settle()
+				}
+				if c.harness.focusedSheetText() != "Zahnarzt" { c.fail("the name field did not take the typed name") }
+			}),
 	]
+
+	/// Runs the seal check of the launch again and logs how long it took.
+	@MainActor static func checkSeal(_ c: PerfContext) async {
+		let start = ContinuousClock.now
+		if await !LaunchChecks.sealIsIntactNow() { c.fail("the seal check of the app failed") }
+		c.harness.log("perf seal", ("check_ms", .count(Int(((ContinuousClock.now - start) / .milliseconds(1)).rounded()))))
+	}
+
+	/// The setup of "type-name-over-50000-names": an offline account with 50,000 different names, and the window for a
+	/// new transaction open. It is a function of its own, because inside the list of scenarios the type checker of the
+	/// CI compiler gives up on it.
+	@MainActor private static func nameHistory(_ c: PerfContext) async {
+		let account = Account(position: c.model.ledger.accounts.count, name: "Name history", kind: .cash, source: .offline)
+		c.model.save(account: account)
+		let today: Day = Day.today()
+		var rows: [Transaction] = []
+		rows.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let name: String = i % 2 == 0 ? "Händler \(i)" : "Haendler \(i)"
+			let amount: Int64 = -Int64(100 + i % 9_000)
+			rows.append(Transaction(accountID: account.id, bookingDate: today.adding(days: -(i % 2_000)), amountMinor: amount,
+				name: name, purpose: "Names \(i)"))
+		}
+		do { _ = try c.model.merge(.file(rows), into: account.id) }
+		catch { c.fail("name history setup failed") }
+		await c.select("Name history")
+		c.model.sheet = .transaction(nil)
+		await c.settle()
+	}
+
+	/// The setup of "expand-group-of-200-wallets": a collapsed group with 200 bank accounts, each with a long name and
+	/// balances in euros, US dollars, and Swiss francs. A plain loop with typed locals, so the CI compiler checks it in time.
+	@MainActor private static func manyWallets(_ c: PerfContext) async {
+		await c.model.addGroup(name: "Wallets")
+		guard var group = c.model.ledger.groups.first(where: { $0.name == "Wallets" }) else { return c.fail("no group Wallets") }
+		for i in 0..<200 {
+			let euros: Int64 = 1_000_000_000 + Int64(i) * 12_345
+			let others: [Money] = [Money(minorUnits: 900_000_000 + Int64(i) * 101, currency: "USD"), Money(minorUnits: 50_000_000 + Int64(i), currency: "CHF")]
+			let account = Account(groupID: group.id, position: c.model.ledger.nextTreePosition(in: group.id), name: "Gemeinsame Reisekasse \(i)",
+				kind: .other, source: .bank, bankBalanceMinor: euros, otherBankBalances: others)
+			c.model.save(account: account)
+		}
+		group.isExpanded = false
+		c.model.save(group: group)
+		await c.select("Account 1")
+	}
 
 	/// A CSV file waits in the preview, which reads it away from the main actor, until "Import".
 	@MainActor static func confirmPreview(_ model: AppModel, creatingCategories: Bool = false) async {
@@ -542,7 +655,7 @@ struct PerfContext {
 
 	func checkStaleSplitWrites(_ original: Transaction) async {
 		var row = original
-		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) }
+		let currencySplit = Task { await model.split(row: row.id, off: [Money(minorUnits: -2500, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await currencySplit.value
@@ -564,7 +677,7 @@ struct PerfContext {
 		guard let parts = try? model.ledger.splitting(row: row.id, off: [Money(minorUnits: -3000, currency: "EUR")]),
 			await model.replaceParts(of: row.id, with: parts) else { return fail("no parts for the edit race") }
 		await settle()
-		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		let editedSplit = Task { await model.split(row: parts[0].id, off: [Money(minorUnits: -1000, currency: "EUR")]) == .done }
 		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
 		guard model.tableHolds > 0 else {
 			_ = await editedSplit.value
@@ -585,6 +698,47 @@ struct PerfContext {
 			}
 		} catch { return fail("the part edit race could not be read") }
 		guard await model.replaceParts(of: row.id, with: []) else { return fail("the part edit race did not reset") }
+		await settle()
+		await checkStaleSplitOfCategory(row)
+	}
+
+	/// ⌘K or a rule run during the drawing wait moves the row to another category. The waiting split would store
+	/// its parts in the old category, so it reports a change and stores nothing.
+	func checkStaleSplitOfCategory(_ row: Transaction) async {
+		guard let category = model.ledger.categories.first(where: { !$0.isGroup && !$0.isDefault && $0.id != row.categoryID }) else {
+			return fail("no category for the category race")
+		}
+		let split = Task { await model.split(row: row.id, off: [Money(minorUnits: -1000, currency: "EUR")]) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await split.value
+			return fail("the category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		let outcome = await split.value
+		do {
+			guard let stored = try model.store?.loadLedger() else { return fail("no stored category race") }
+			if outcome != .changed || !model.ledger.parts(of: row.id).isEmpty || !stored.parts(of: row.id).isEmpty
+				|| stored.transaction(row.id)?.categoryID != category.id {
+				fail("a waiting split stored its parts in the old category")
+			}
+		} catch { return fail("the category race could not be read") }
+		model.assign(category: row.categoryID, to: [row.id])
+		await settle()
+		// A VAT entry has no window to stay open, so the same race shows a message.
+		let vat = Task { await model.splitVAT(row: row.id, rate: VATRate(hundredths: 1900)) }
+		for _ in 0..<1000 where model.tableHolds == 0 { await Task.yield() }
+		guard model.tableHolds > 0 else {
+			_ = await vat.value
+			return fail("the VAT category race missed the drawing wait")
+		}
+		model.assign(category: category.id, to: [row.id])
+		if await vat.value || !model.ledger.parts(of: row.id).isEmpty
+			|| model.alert?.message != String(localized: "The transaction changed. Try again.") {
+			fail("a waiting VAT split did not report the change")
+		}
+		model.alert = nil
+		model.assign(category: row.categoryID, to: [row.id])
 		await settle()
 	}
 

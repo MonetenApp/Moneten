@@ -34,13 +34,27 @@ The app SHALL order the list by booking date with the newest transaction at the 
 
 ### Requirement: Details from the bank
 
-The app SHALL show each detail that the bank delivered for a transaction with its label in the row. The details are the booking text, the value date, the receipt date of a card payment, the IBAN and BIC of the counterparty, the end-to-end reference, the mandate reference, the creditor ID, the original amount in a foreign currency, the return reason, and a deviating originator or recipient. A detail without a value does not appear.
+The app SHALL show each detail that the bank delivered for a transaction with its label in the help tag of the row and in the transaction sheet. The details are the booking text, the value date, the receipt date of a card payment, the IBAN and BIC of the counterparty, the end-to-end reference, the mandate reference, the creditor ID, the original amount in a foreign currency, the return reason, and a deviating originator or recipient. A detail without a value does not appear.
 
 #### Scenario: Direct debit with references
 
-- **GIVEN** a direct debit with the mandate reference "M-2026-0042", the creditor ID "DE98ZZZ09999999999", and the value date 04.11.2026
-- **WHEN** the user looks at its row
-- **THEN** the row shows "Mandate reference" with M-2026-0042, "Creditor ID" with DE98ZZZ09999999999, and "Value date" with 04.11.2026
+- **GIVEN** a direct debit with the purpose "Abschlag November", the mandate reference "M-2026-0042", the creditor ID "DE98ZZZ09999999999", and the value date 04.11.2026
+- **WHEN** the user rests the pointer on the purpose of its row
+- **THEN** the help tag shows "Abschlag November", then "Mandate reference: M-2026-0042", "Creditor ID: DE98ZZZ09999999999", and "Value date: 04.11.2026"
+- **AND** the transaction sheet shows the same three details with their labels
+- **AND** the row has the same height as a row without details
+
+#### Scenario: Order of the details
+
+- **GIVEN** a transaction with a booking text, a return reason, an end-to-end reference, a mandate reference, a creditor ID, a value date, an IBAN, and a BIC
+- **WHEN** the user rests the pointer on its purpose
+- **THEN** the help tag shows the whole purpose and below it one line for each detail, in the order booking text with the label "Transaction type", return reason, end-to-end reference, mandate reference, creditor ID, value date, IBAN, and BIC
+
+#### Scenario: Returned direct debit
+
+- **GIVEN** a returned direct debit with the return reason "AC04"
+- **WHEN** the user opens its transaction sheet
+- **THEN** the sheet shows "Return reason" with AC04
 
 #### Scenario: Card payment abroad
 
@@ -51,7 +65,7 @@ The app SHALL show each detail that the bank delivered for a transaction with it
 #### Scenario: No details
 
 - **WHEN** a transaction has no end-to-end reference
-- **THEN** its row shows no line for the end-to-end reference
+- **THEN** its help tag and its transaction sheet show no line for the end-to-end reference
 
 ### Requirement: Account name in group and category views
 
@@ -117,6 +131,51 @@ The app SHALL let the user select text inside a row and copy it. A double click 
 
 - **WHEN** the user triple-clicks the purpose of a row
 - **THEN** the whole purpose is selected
+
+### Requirement: Copy selected rows as text
+
+The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose on one line with the details of the row, the IBAN, the BIC, and the amount. A text field that starts with `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` gets an apostrophe in front, so that a spreadsheet does not read it as a formula.
+
+#### Scenario: Copy a row
+
+- **GIVEN** the language of the app is German and the region of the Mac is Germany
+- **AND** a direct debit on 04.11.2026 to "Stadtwerke Musterstadt" with the purpose "Abschlag November", the mandate reference "M-2026-0042", the IBAN DE02120300000000202051, the BIC "DEUTDEFFXXX", and -1.234,50 €
+- **WHEN** the user selects its row and presses ⌘C
+- **THEN** the pasteboard holds one line with the fields "04.11.2026", "Stadtwerke Musterstadt", "Abschlag November, Mandatsreferenz: M-2026-0042", "DE02120300000000202051", "DEUTDEFF", and "-1.234,50", separated by tabs
+- **AND** the date and the amount follow the region, and the amount has no currency
+
+#### Scenario: Copy two rows
+
+- **GIVEN** two selected rows with -10,00 € on 03.11.2026 and 5,00 € on 02.11.2026
+- **WHEN** the user presses ⌘C
+- **THEN** the pasteboard holds two lines, the row of 03.11.2026 first, with the amounts "-10,00" and "5,00"
+
+#### Scenario: Details in the purpose
+
+- **GIVEN** the language of the app is English
+- **AND** a row with no purpose, the comment "Paid twice?", the transaction type "Lastschrift", the return reason "AC04", the end-to-end reference "E2E-9", the mandate reference "M-2026-0042", and the creditor ID "DE98ZZZ09999999999"
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Return reason: AC04, End-to-end reference: E2E-9, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
+- **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, and creditor ID
+
+#### Scenario: Text that a spreadsheet would read as a formula
+
+- **GIVEN** a row with the counterparty name "+Rabatt-"
+- **WHEN** the user copies the row
+- **THEN** the name field is "'+Rabatt-", so that a spreadsheet shows the text and computes nothing
+- **AND** the amount field keeps its minus sign without an apostrophe
+
+#### Scenario: Full-width formula sign
+
+- **GIVEN** a row with the purpose "＝1+1"
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "'＝1+1"
+
+#### Scenario: Account number and BIC
+
+- **GIVEN** a row with the account number "0000532013000" and the BIC "DEUTDEFFXXX"
+- **WHEN** the user copies the row
+- **THEN** the line holds "532013000" without the leading zeros and "DEUTDEFF" without the "XXX" of the head office
 
 ### Requirement: Several rows can be selected
 
@@ -258,13 +317,19 @@ The app SHALL let the user write a comment for a transaction with "Add Comment..
 
 ### Requirement: Daily balance in the list
 
-The app SHALL show the balance at the end of each day between the rows of a single account when the user turns on "Daily balance" in the filter bar or chooses "Daily Balance" in the View menu. The switch and the command are available only in the view of a single account.
+The app SHALL show the balance at the end of each day below the amount of the top row of that day in the view of a single account when the user turns on "Daily balance" in the filter bar or chooses "Daily Balance" in the View menu. The switch and the command are available only in the view of a single account, and the app remembers the choice after a restart.
 
 #### Scenario: Turn on
 
 - **GIVEN** the account "Giro" with a computed balance of 1.200,00 € at the end of 02.11.2026 and two transactions of -50,00 € and -25,00 € on 03.11.2026
 - **WHEN** the user turns on "Daily balance"
-- **THEN** the list shows 1.125,00 € as the balance of 03.11.2026
+- **THEN** the top row of 03.11.2026 shows 1.125,00 € below its amount
+- **AND** the other row of 03.11.2026 shows no balance
+
+#### Scenario: Turn off
+
+- **WHEN** the user turns off "Daily balance"
+- **THEN** no row shows a balance
 
 #### Scenario: Group view
 

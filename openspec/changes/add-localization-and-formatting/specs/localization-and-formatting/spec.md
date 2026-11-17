@@ -40,13 +40,19 @@ The app SHALL use German when German is the preferred language of macOS and Engl
 
 ### Requirement: Language setting
 
-The app SHALL offer a "Language" menu on the "General" tab of the settings with German and English. A change applies after the next start of the app, and the app says so.
+The app SHALL offer a "Language" menu on the "General" tab of the settings with "System", German, and English. "System" follows the language of macOS and is the choice until the user picks a language. A change applies after the next start of the app, and the app says so.
 
 #### Scenario: Switch to English
 
 - **GIVEN** macOS is set to German and the interface is German
 - **WHEN** the user sets "Language" to English and restarts the app
 - **THEN** the interface is English
+
+#### Scenario: Follow macOS again
+
+- **GIVEN** macOS is set to German and "Language" is set to English
+- **WHEN** the user sets "Language" to "System" and restarts the app
+- **THEN** the interface is German
 
 ### Requirement: Text from a bank stays as received
 

@@ -5,9 +5,9 @@ import SwiftUI
 /// at the bottom. A destructive action such as "Remove..." goes on the leading side.
 struct SheetFrame<Content: View, Leading: View>: View {
 	@Environment(\.dismiss) private var dismiss
-	var title: String
-	var confirmTitle: String?
-	var cancelTitle: String?
+	var title: LocalizedStringKey
+	var confirmTitle: LocalizedStringKey?
+	var cancelTitle: LocalizedStringKey?
 	var canConfirm: Bool
 	var canCancel: Bool
 	var width: CGFloat
@@ -17,7 +17,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	var leading: Leading
 	var content: Content
 
-	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
+	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, canCancel: Bool = true,
 		width: CGFloat = 460, onCancel: @escaping () -> Bool = { true }, onConfirm: @escaping () -> Bool,
 		@ViewBuilder leading: () -> Leading, @ViewBuilder content: () -> Content) {
 		self.title = title
@@ -57,7 +57,7 @@ struct SheetFrame<Content: View, Leading: View>: View {
 }
 
 extension SheetFrame where Leading == EmptyView {
-	init(title: String, confirmTitle: String? = "OK", cancelTitle: String? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
+	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
 		onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool, @ViewBuilder content: () -> Content) {
 		self.init(title: title, confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: width,
 			onCancel: { onCancel(); return true }, onConfirm: onConfirm, leading: { EmptyView() }, content: content)
@@ -96,8 +96,8 @@ struct SheetButtons<Content: View>: View {
 }
 
 struct NameSheet: View {
-	var title: String
-	var placeholder: String
+	var title: LocalizedStringKey
+	var placeholder: LocalizedStringKey
 	/// The name the field starts with, such as the current name for a rename.
 	@State var name = ""
 	var onSave: (String) -> Void
@@ -153,11 +153,18 @@ struct AccountSettingsSheet: View {
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
+	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
+	private func typedInitialBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: initialBalance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
-			SheetFrame(title: "Settings for \(original.name)", canConfirm: Format.isReadableAmount(initialBalance), width: 500, onConfirm: {
+			// An initial balance above the limit, which an older version may have stored, keeps OK disabled even when the
+			// user changes another field: saving would store the text of the field, and that amount must not pass again.
+			SheetFrame(title: "Settings for \(original.name)", canConfirm: initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil, width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
-				if let d = AmountParser.decimal(from: initialBalance) { edited.initialBalanceMinor = Money(d, currency: a.currency).minorUnits }
+				if let typed = typedInitialBalance(in: a.currency) { edited.initialBalanceMinor = typed.minorUnits }
 				// A refresh that ended while the settings were open may have set a new initial balance.
 				if edited.initialBalanceMinor == account?.initialBalanceMinor { edited.initialBalanceMinor = a.initialBalanceMinor }
 				// An account keeps the color of its bank or kind until the user picks one.
@@ -208,7 +215,7 @@ struct AccountSettingsSheet: View {
 					}
 					if let access = original.accessID.flatMap({ model.accesses[$0] }) {
 						Section("Online banking") {
-							LabeledContent("User ID", value: access.loginName)
+							LabeledContent("User ID", value: access.shownLoginName)
 							Picker("Refresh", selection: binding.refreshInterval) {
 								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
 							}
@@ -244,12 +251,21 @@ struct CalibrationSheet: View {
 	let accountID: UUID
 	@State private var balance = ""
 
+	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
+	private func typedBalance(in currency: String) -> Money? {
+		AmountParser.decimal(from: balance).flatMap { Money(fitting: $0, currency: currency) }
+	}
+
+	/// The account with the initial balance that the typed balance gives, nil while there is none or it is above
+	/// `Money.maxMinorUnits`. Then OK stays disabled, the sheet says why, and nothing is written.
+	private func calibrated(_ account: Account) -> Account? {
+		typedBalance(in: account.currency).flatMap { try? model.ledger.calibrated(account, balanceToday: $0.minorUnits, today: .today()) }
+	}
+
 	var body: some View {
 		if let account = model.ledger.account(accountID) {
-			SheetFrame(title: "Calibrate \(account.name)", canConfirm: AmountParser.decimal(from: balance) != nil, onConfirm: {
-				guard let d = AmountParser.decimal(from: balance), var a = model.ledger.account(accountID) else { return true }
-				a.initialBalanceMinor = model.ledger.calibratedInitialBalance(of: a, balanceToday: Money(d, currency: a.currency).minorUnits, today: .today())
-				a.initialBalanceIsSet = true
+			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
+				guard let current = model.ledger.account(accountID), let a = calibrated(current) else { return true }
 				model.save(account: a)
 				return true
 			}) {
@@ -262,6 +278,12 @@ struct CalibrationSheet: View {
 							.marksUnreadableAmount(balance)
 							.multilineTextAlignment(.trailing)
 							.monospacedDigit()
+					}
+					// The transactions add up to so much that no initial balance within the limit meets the typed balance.
+					if typedBalance(in: account.currency) != nil, calibrated(account) == nil {
+						Text(InitialBalanceTooLarge(accountName: account.name).description)
+							.foregroundStyle(Palette.red)
+							.fixedSize(horizontal: false, vertical: true)
 					}
 				}
 			}
@@ -319,108 +341,140 @@ struct CommentSheet: View {
 struct TransactionSheet: View {
 	@Environment(AppModel.self) private var model
 	let transactionID: UUID?
-	@State private var date = Date()
-	/// The value date of an existing row, nil for none.
-	@State private var valueDate: Date?
-	@State private var name = ""
-	@State private var purpose = ""
-	@State private var amount = ""
-	@State private var isDeposit = false
-	@State private var categoryID: UUID?
+	/// The booking date, nil while its field holds a text that is not a date.
+	@State private var date: Day? = .today()
+	/// Whether an existing row has a value date.
+	@State private var hasValueDate = false
+	/// The value date, nil while its field holds a text that is not a date.
+	@State private var valueDate: Day?
+	@State private var draft = TransactionDraft()
 	@State private var comment = ""
+	@State private var problem: AmountProblem?
+	/// The suggestions for the name as it stands. Only a change of the name searches again, never a redraw.
+	@State private var suggestions: [Transaction] = []
+	@FocusState private var nameHasFocus: Bool
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
-	/// A new row only goes into an offline account. "Edit Transaction..." changes every row but a part of a split
-	/// (add-transaction-list, task 1.16).
-	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? (account?.isOffline == true) }
-	/// The typed amount with the sign of the type, nil while it cannot be read or does not fit.
-	private var amountMinor: Int64? {
-		guard let currency = existing?.currency ?? account?.currency, let value = AmountParser.decimal(from: amount) else { return nil }
-		return Money(fitting: isDeposit ? abs(value) : -abs(value), currency: currency)?.minorUnits
+	/// "Add Transaction..." adds a row to every account but a portfolio, also to one with bank access (add-offline-accounts,
+	/// task 1.13). "Edit Transaction..." changes every row but a part of a split (add-transaction-list, task 1.16).
+	private var editable: Bool { transactionID.map(model.ledger.editsFields) ?? true }
+	/// A marked or impossible date refuses the sheet, as in the custom period.
+	private var datesAreValid: Bool { !editable || (date != nil && (!hasValueDate || valueDate != nil)) }
+
+	/// The name field of a new transaction offers earlier names. A chosen one fills the purpose and the category
+	/// while they are empty.
+	private var name: Binding<String> {
+		Binding(get: { draft.name }, set: { typed in
+			guard transactionID == nil, let account else { return draft.name = typed }
+			draft.enterName(typed, offered: suggestions, for: account.id, in: model.ledger)
+			suggestions = model.ledger.nameSuggestions(for: typed).filter { $0.name != typed }
+		})
 	}
 
 	var body: some View {
-		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: !editable || amountMinor != nil, width: 500, onConfirm: save) {
+		SheetFrame(title: transactionID == nil ? "New Transaction" : "Edit Transaction", canConfirm: datesAreValid, width: 500, onConfirm: save) {
 			if let review = existing?.review {
 				Section { Label(review.note, systemImage: "exclamationmark.circle").foregroundStyle(.orange) }
 			}
 			if editable {
 				Section {
-					DatePicker("Date", selection: $date, displayedComponents: .date)
+					DateField(title: "Date", day: $date)
 					if existing != nil {
 						LabeledContent("Value date") {
 							HStack {
-								Toggle("Value date", isOn: Binding(get: { valueDate != nil }, set: { valueDate = $0 ? (valueDate ?? date) : nil }))
-									.labelsHidden()
-								if let shown = valueDate {
-									DatePicker("Value date", selection: Binding(get: { shown }, set: { valueDate = $0 }), displayedComponents: .date)
+								Toggle("Value date", isOn: Binding(get: { hasValueDate }, set: { on in
+									hasValueDate = on
+									if on, valueDate == nil { valueDate = date }
+								}))
+								.labelsHidden()
+								.accessibilityIdentifier("valuedate-switch")
+								if hasValueDate {
+									DateField(title: "Value date", day: $valueDate, identifier: "valuedate")
 										.labelsHidden()
 								}
 							}
 						}
 					}
-					TextField("Name", text: $name)
-					Picker("Type", selection: $isDeposit) {
-						Text("Withdrawal").tag(false)
-						Text("Deposit").tag(true)
-					}
-					.pickerStyle(.segmented)
-					TextField("Amount", text: $amount, prompt: Text("0,00"))
+					TextField("Name", text: name)
+						.focused($nameHasFocus)
+						.textInputSuggestions(suggestions) { t in
+							Text(t.name).textInputCompletion(t.name)
+						}
+					TextField("Amount", text: $draft.amount, prompt: Text("-0,00"))
 						.multilineTextAlignment(.trailing)
-						.marksUnreadableAmount(amount)
+						.marksUnreadableAmount(draft.amount)
 						.monospacedDigit()
-					TextField("Purpose", text: $purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
+					if let problem {
+						Text(problem.message).foregroundStyle(Palette.red)
+					}
+					TextField("Purpose", text: $draft.purpose, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
+				}
+			} else if let t = existing {
+				// A part of a split shows its values, because the parts must add up to the amount of the split transaction.
+				Section {
+					LabeledContent("Date", value: Format.day(t.bookingDate))
+					if let v = t.valueDate { LabeledContent("Value date", value: Format.day(v)) }
+					LabeledContent("Name", value: t.name)
+					LabeledContent("Amount") { AmountText(money: t.amount) }
+					LabeledContent("Purpose") { Text(t.purpose).textSelection(.enabled).multilineTextAlignment(.trailing) }
 				}
 			}
-			if let t = existing {
-				if t.counterpartyIBAN != nil || t.bookingText != nil || t.endToEndReference != nil || t.mandateReference != nil || t.creditorID != nil {
-					Section("Details") {
-						if let iban = t.counterpartyIBAN { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
-						if let bic = t.counterpartyBIC { LabeledContent("BIC", value: bic) }
-						if let text = t.bookingText { LabeledContent("Transaction type", value: text) }
-						if let e = t.endToEndReference { LabeledContent("End-to-end reference") { Text(e).textSelection(.enabled) } }
-						if let m = t.mandateReference { LabeledContent("Mandate reference") { Text(m).textSelection(.enabled) } }
-						if let c = t.creditorID { LabeledContent("Creditor ID") { Text(c).textSelection(.enabled) } }
+			// The details from the bank, in the order of the help tag of the row. The value date is a field above.
+			if let details = existing?.details.filter({ if case .valueDate = $0 { false } else { true } }), !details.isEmpty {
+				Section("Details") {
+					ForEach(details, id: \.self) { d in
+						LabeledContent(d.label) { Text(d.shownValue).textSelection(.enabled) }
 					}
 				}
 			}
 			Section {
-				Picker("Category", selection: $categoryID) {
-					Text(model.ledger.defaultCategory?.name ?? "Uncategorized").tag(UUID?.none)
+				Picker("Category", selection: $draft.categoryID) {
+					Text(model.ledger.defaultCategory?.name ?? String(localized: "Uncategorized")).tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter { !$0.isGroup && !$0.isDefault }) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
 				TextField("Comment", text: $comment, prompt: Text("Optional"), axis: .vertical).lineLimit(1...4)
 			}
 		}
-		.onAppear(perform: load)
+		.onChange(of: draft.amount) { problem = nil }
+		.onAppear {
+			load()
+			nameHasFocus = editable
+		}
 	}
 
+	/// An existing row shows its values. A new one starts from the one selected row of the account, with today's date.
 	private func load() {
-		guard let t = existing else { return }
-		date = t.bookingDate.date()
-		valueDate = t.valueDate?.date()
-		name = t.name
-		purpose = t.purpose
-		isDeposit = t.amountMinor > 0
-		// Every import refuses `Int64.min`, and clamping keeps a row stored before that from stopping the app.
-		if editable { amount = Format.editableAmount(Int64(clamping: t.amountMinor.magnitude), t.currency) }
-		categoryID = t.categoryID
-		comment = t.comment ?? ""
+		if let t = existing {
+			date = t.bookingDate
+			hasValueDate = t.valueDate != nil
+			valueDate = t.valueDate
+			draft = TransactionDraft(template: t)
+			comment = t.comment ?? ""
+		} else if let account {
+			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection)
+		}
 	}
 
 	private func save() -> Bool {
 		if let transactionID, model.ledger.row(transactionID) == nil { return true }
 		guard let account else { return true }
-		var t = existing ?? Transaction(accountID: account.id, bookingDate: Day(date), amountMinor: 0, currency: account.currency, name: "")
+		var t = existing ?? Transaction(accountID: account.id, bookingDate: date ?? .today(), amountMinor: 0, currency: account.currency, name: "", isManual: true)
 		if editable {
-			guard let minor = amountMinor else { return false }
-			// `edit` keeps the values of a source, so that a refresh or a file does not add the row again.
-			t.edit(OriginalValues(bookingDate: Day(date), valueDate: valueDate.map { Day($0) }, amountMinor: minor, name: name, purpose: purpose))
+			guard let date, !hasValueDate || valueDate != nil else { return false }
+			switch draft.amountMinor(in: t.currency, region: DecimalMark(region: .current), allowsZero: existing.map { !$0.isManual } ?? false) {
+			case let .failure(p):
+				problem = p
+				return false
+			case let .success(minor):
+				// `edit` keeps the values of a source, so that a refresh or a file does not add the row again. A manual
+				// row has no source and takes the values.
+				t.edit(OriginalValues(bookingDate: date, valueDate: hasValueDate ? valueDate : nil, amountMinor: minor, name: draft.name, purpose: draft.purpose))
+			}
 		}
-		if categoryID != t.categoryID {
-			t.categoryID = categoryID
-			t.categorizedBy = categoryID == nil ? .none : .manual
+		if draft.categoryID != t.categoryID {
+			t.categoryID = draft.categoryID
+			t.categorizedBy = draft.categoryID == nil ? .none : .manual
 		}
 		t.comment = comment.isEmpty ? nil : comment
 		model.save(transaction: t, adding: transactionID == nil)
@@ -457,7 +511,7 @@ struct ChangePasswordSheet: View {
 	var body: some View {
 		SheetFrame(title: "Change Database Password", canConfirm: !current.isEmpty && !new.isEmpty && new == repeated, onConfirm: {
 			if new == current {
-				error = "The new password must not be identical to the old password."
+				error = String(localized: "The new password must not be identical to the old password.")
 				return false
 			}
 			error = model.changePassword(current: current, new: new)

@@ -34,9 +34,9 @@ fi
 # Adds the FinTS helper to the app $1 after the build and signs both again with the certificate of
 # the app, which must be in the Keychain with its private key. The helper lives in Contents/Resources, because codesign
 # takes every file in Contents/Helpers for code, and the Java runtime needs its data files next to
-# its libraries. The helper gets the hardened
-# runtime when the app has it: an ad hoc signature has no team, and library validation would refuse
-# the libraries of the Java runtime. Only the helper gets allow-jit.
+# its libraries. The helper gets the hardened runtime when the app has it. Only the helper gets
+# allow-jit. Signed to run locally, it also turns off library validation, as the app does: an ad
+# hoc signature has no team, and library validation would refuse the libraries of the Java runtime.
 embed_fints_helper() {
 	HELPER="$1/Contents/Resources/FinTSHelper"
 	scripts/build-fints-helper.sh --bundle "$HELPER" >/dev/null
@@ -60,7 +60,9 @@ embed_fints_helper() {
 	while read -r f; do
 		codesign --force $RUNTIME $TIMESTAMP --sign "$IDENTITY" "$f" || { echo "Could not sign $f of the FinTS helper." >&2; exit 1; }
 	done < "$CODE"
-	codesign --force $RUNTIME $TIMESTAMP --entitlements App/FinTSHelper.entitlements --sign "$IDENTITY" "$HELPER/runtime/bin/java" \
+	ENTITLEMENTS=App/FinTSHelper.entitlements
+	[ "$IDENTITY" = - ] && [ -n "$RUNTIME" ] && ENTITLEMENTS=App/FinTSHelperLocal.entitlements
+	codesign --force $RUNTIME $TIMESTAMP --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "$HELPER/runtime/bin/java" \
 		|| { echo "Could not sign the java of the FinTS helper." >&2; exit 1; }
 	# The product ID goes through a pipe, never through an argument, a variable, or a log.
 	if [ -n "$MONETEN_FINTS_PRODUCT_ID_FILE" ]; then
@@ -102,8 +104,25 @@ if entitlements != {"com.apple.security.app-sandbox": True, "com.apple.security.
 	[ "$(signer "$HOST")" = "$(signer "$1")" ] || { echo "The extension host is not signed like the app." >&2; exit 1; }
 }
 
+# A Release build is hardened (ADR 0017): the app, the extension host, and the java of the FinTS
+# helper have the hardened runtime, and none of them lets another process attach.
+check_hardened() {
+	# Only a build without a team may turn library validation off (App/Signing.xcconfig).
+	TEAM_OF_APP=$(codesign -dv "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p')
+	for code in "$1" "$1/Contents/Helpers/MonetenExtensionHost" "$1/Contents/Resources/FinTSHelper/runtime/bin/java"; do
+		codesign -dv "$code" 2>&1 | grep -q '^CodeDirectory.*flags=.*runtime' || { echo "$code has no hardened runtime." >&2; exit 1; }
+		codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q get-task-allow && { echo "$code lets other processes attach." >&2; exit 1; }
+		if [ -n "$TEAM_OF_APP" ] && [ "$TEAM_OF_APP" != "not set" ]; then
+			codesign -d --entitlements - --xml "$code" 2>/dev/null | grep -q disable-library-validation \
+				&& { echo "$code turns library validation off, which only a build without a team may do." >&2; exit 1; }
+		fi
+	done
+	return 0
+}
+
 scripts/generate-project.sh
-XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet"
+# SWIFT_EMIT_LOC_STRINGS also for the libraries, so that scripts/check-localization.py can read their texts.
+XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet SWIFT_EMIT_LOC_STRINGS=YES"
 if [ -z "$ARCHIVE" ]; then
 	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"
@@ -139,5 +158,6 @@ mkdir -p dist
 cp -R "$PRODUCT" dist/
 embed_fints_helper dist/Moneten.app
 check_extension_host dist/Moneten.app
+[ "$CONFIG" = Debug ] || check_hardened dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"

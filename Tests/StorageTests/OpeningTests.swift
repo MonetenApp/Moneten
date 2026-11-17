@@ -417,6 +417,117 @@ struct OpeningTests {
 		#expect(try !files().contains("RekeyCopies"))
 	}
 
+	/// Makes the next write transaction of the database fail, as on a full disk: SQLite cannot create its journal
+	/// in a folder without write permission. `body` runs while the folder is write-protected.
+	func withoutDiskSpace(_ body: () throws -> Void) throws {
+		let fm = FileManager.default
+		try fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder.databaseFolder.path)
+		defer { try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.databaseFolder.path) }
+		try body()
+	}
+
+	@Test("A password change that fails on the disk keeps the current password, and later saves still open with it")
+	func failedChangeKeepsPassword() throws {
+		let vault = Vault(folder: folder)
+		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
+		let t = try sampleData(store)
+		try withoutDiskSpace {
+			#expect {
+				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+		}
+		// Before the fix, this save wrote pages with the new key into a file with the old key, and then neither opened it.
+		let later = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)
+		try store.save(accounts: [later], transactions: [])
+		try store.close()
+
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: "neu-und-noch-laenger") }
+		let ledger = try vault.open(password: "alt-und-lang-genug").loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.account(later.id)?.name == "Tagesgeld")
+		#expect(try files() == ["Moneten.sqlite"])
+	}
+
+	@Test("A password change that a reader of another program stops leaves the copies and the Keychain with the current password", .enabled(if: hasKeychain))
+	func failedChangeKeepsCopiesAndKeychain() throws {
+		let vault = Vault(folder: folder)
+		defer { for entry in Vault.PasswordEntry.allCases { try? vault.removeStoredPassword(for: entry) } }
+		let store = try databaseWithCopies(vault)
+		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
+		// A reader of another program stops the re-key of the database after `RekeyCopies` is written.
+		let reader = try DatabaseQueue(path: folder.databaseFile.path, configuration: Self.keyed("alt-und-lang-genug"))
+		try reader.writeWithoutTransaction { db in
+			try db.execute(sql: "BEGIN")
+			_ = try Int.fetchOne(db, sql: "SELECT count(*) FROM account")
+			#expect {
+				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+			try db.execute(sql: "COMMIT")
+		}
+		try reader.close()
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
+		#expect(try !files().contains("RekeyCopies"))
+		for name in try files() { #expect(opens(name, with: "alt-und-lang-genug"), "\(name)") }
+		#expect(try vault.open(password: "alt-und-lang-genug").loadLedger().accounts.count == 2)
+	}
+
+	/// A database with the password "alt-und-lang-genug" that another program switched to WAL before the app opened it.
+	func databaseInWAL(_ vault: Vault) throws -> Store {
+		let created = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
+		_ = try sampleData(created)
+		try created.close()
+		let other = try DatabaseQueue(path: folder.databaseFile.path, configuration: Self.keyed("alt-und-lang-genug"))
+		#expect(try other.writeWithoutTransaction { db in try String.fetchOne(db, sql: "PRAGMA journal_mode = WAL") } == "wal")
+		try other.close()
+		return try vault.open(password: "alt-und-lang-genug")
+	}
+
+	@Test("A reader of another program in WAL mode stops the password change")
+	func walReaderStopsChange() throws {
+		let vault = Vault(folder: folder)
+		let store = try databaseInWAL(vault)
+		// A reader of another program, which in WAL does not stop BEGIN EXCLUSIVE.
+		let other = try DatabaseQueue(path: folder.databaseFile.path, configuration: Self.keyed("alt-und-lang-genug"))
+		try other.writeWithoutTransaction { db in
+			try db.execute(sql: "BEGIN")
+			_ = try Int.fetchOne(db, sql: "SELECT count(*) FROM account")
+			#expect {
+				try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+			// The reader of the other program still reads with the key it has.
+			#expect(try Int.fetchOne(db, sql: "SELECT count(*) FROM account") == 1)
+			try db.execute(sql: "COMMIT")
+		}
+		try other.close()
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+		#expect(try vault.open(password: "alt-und-lang-genug").loadLedger().accounts.count == 2)
+	}
+
+	@Test("A password change takes a file in WAL mode back to the rollback journal first")
+	func walWithoutReader() throws {
+		let vault = Vault(folder: folder)
+		let store = try databaseInWAL(vault)
+		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
+		try store.close()
+		let reopened = try vault.open(password: "neu-und-noch-laenger")
+		#expect(try reopened.queue.read { db in try String.fetchOne(db, sql: "PRAGMA journal_mode") } == "delete")
+		#expect(try reopened.loadLedger().accounts.count == 1)
+		try reopened.close()
+	}
+
 	@Test("A password change removes the journal of a work file whose work file is already gone")
 	func orphanSideFileGoes() throws {
 		let vault = Vault(folder: folder)
@@ -747,41 +858,106 @@ struct OpeningTests {
 		#expect(try !files().contains("RekeyCopies"))
 	}
 
+	@Test("A first password that fails on the disk keeps the random key, and later saves still open with it", .enabled(if: hasKeychain))
+	func failedFirstPasswordKeepsRandomKey() throws {
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let store = try vault.create(password: nil, starterCategories: [])
+		let t = try sampleData(store)
+		let key = try #require(try vault.keyKeychain.read(account: folder.keychainAccount))
+		try withoutDiskSpace {
+			#expect {
+				try vault.setPassword(Self.password, on: store)
+			} throws: { error in
+				guard case .passwordNotChanged? = error as? Vault.Failure else { return false }
+				return true
+			}
+		}
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+
+		#expect(try vault.state() == .randomKey)
+		#expect(try vault.keyKeychain.read(account: folder.keychainAccount) == key)
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: Self.password) }
+		let ledger = try vault.openWithRandomKey().loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.accounts.count == 2)
+	}
+
+	@Test("A first password without the random key in the Keychain changes no key", .enabled(if: hasKeychain))
+	func firstPasswordNeedsRandomKey() throws {
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let store = try vault.create(password: nil, starterCategories: [])
+		let t = try sampleData(store)
+		let key = try #require(try vault.keyKeychain.read(account: folder.keychainAccount))
+		// Another program removed the entry while the database was open. Without it, a failed re-key could not be undone.
+		try vault.keyKeychain.delete(account: folder.keychainAccount)
+		#expect(throws: Vault.Failure.keyNotInKeychain(nil)) { try vault.setPassword(Self.password, on: store) }
+		try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		try store.close()
+
+		#expect(try vault.state() == .randomKey)
+		#expect(!vault.verify(password: Self.password))
+		try vault.keyKeychain.write(key, account: folder.keychainAccount)
+		let ledger = try vault.openWithRandomKey().loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.accounts.count == 2)
+	}
+
+	@Test("A first password whose result no fresh connection can read refuses every later write", .enabled(if: hasKeychain))
+	func unknownRekeyResultRefusesWrites() throws {
+		let fm = FileManager.default
+		let vault = Vault(folder: folder)
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
+		let store = try vault.create(password: nil, starterCategories: [])
+		let t = try sampleData(store)
+		// The re-key fails for want of a journal, and no other connection can open the file to tell which key it has.
+		try fm.setAttributes([.posixPermissions: 0o000], ofItemAtPath: folder.databaseFile.path)
+		try withoutDiskSpace {
+			#expect(throws: (any Error).self) { try vault.setPassword(Self.password, on: store) }
+		}
+		try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: folder.databaseFile.path)
+		// Before the fix, this save wrote pages with the new key into the file with the random key.
+		#expect(throws: DatabaseChangedOnDisk.self) {
+			try store.save(accounts: [Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline)], transactions: [])
+		}
+		try store.close()
+		let ledger = try vault.openWithRandomKey().loadLedger()
+		#expect(ledger.transaction(t.id) != nil)
+		#expect(ledger.accounts.count == 1)
+	}
+
 	@Test("A restored backup with an older password replaces the newer password in the Keychain after the unlock", .enabled(if: hasKeychain))
 	func restoreReplacesKeychainEntry() throws {
 		let vault = Vault(folder: folder)
-		defer { try? vault.removeStoredPassword() }
+		defer { try? vault.removeStoredPassword(for: .automaticUnlock) }
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		let backup = root.appendingPathComponent("Moneten-2026-11-09.sqlite")
 		try store.backup(to: backup)
-		try vault.storePassword("alt-und-lang-genug")
+		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
 		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
-		#expect(try vault.storedPassword() == "neu-und-noch-laenger")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "neu-und-noch-laenger")
 		try store.close()
 
 		_ = try FileManager.default.replaceItemAt(folder.databaseFile, withItemAt: backup)
-		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword())) }
+		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword(for: .automaticUnlock))) }
 		try vault.open(password: "alt-und-lang-genug").close()
 		try vault.refreshStoredPassword("alt-und-lang-genug")
-		#expect(try vault.storedPassword() == "alt-und-lang-genug")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
 	}
 
-	@Test("A new database keeps the Keychain entries that a renamed database still needs", .enabled(if: hasKeychain))
-	func newDatabaseKeepsKeychain() throws {
+	@Test("A new database keeps the random key that a renamed database still needs", .enabled(if: hasKeychain))
+	func newDatabaseKeepsRandomKey() throws {
 		let fm = FileManager.default
 		let vault = Vault(folder: folder)
-		defer {
-			try? vault.removeStoredPassword()
-			try? vault.keyKeychain.delete(account: folder.keychainAccount)
-		}
+		defer { try? vault.keyKeychain.delete(account: folder.keychainAccount) }
 		let old = try vault.create(password: nil, starterCategories: [])
 		_ = try sampleData(old)
 		try old.close()
-		try vault.storePassword(Self.password)
 		let renamed = folder.root.appendingPathComponent("Database_OLD")
 		try fm.moveItem(at: folder.databaseFolder, to: renamed)
 		try vault.create(password: nil, starterCategories: []).close()
-		#expect(try vault.storedPassword() == Self.password)
 
 		try fm.removeItem(at: folder.databaseFolder)
 		try fm.moveItem(at: renamed, to: folder.databaseFolder)

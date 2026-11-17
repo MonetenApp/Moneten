@@ -17,10 +17,6 @@ extension Format {
 		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 
-	static func money(_ minor: Int64, _ currency: String) -> String {
-		money(Money(minorUnits: minor, currency: currency))
-	}
-
 	/// An amount in major units for a chart, with the decimal places of its currency.
 	static func chartValue(_ minor: Int64, _ currency: String) -> Double {
 		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
@@ -44,27 +40,38 @@ extension Format {
 		amounts.map(money).joined(separator: "  ")
 	}
 
-	static func day(_ d: Day) -> String {
-		d.date().formatted(.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits))
+	/// The day in the date format of the region, read from noon GMT, so a day that has no local midnight, such as
+	/// 30 December 2011 in Samoa, still shows as itself. `DateField` passes its Gregorian calendar.
+	static func day(_ d: Day, calendar: Calendar = Day.calendar(like: .current)) -> String {
+		var style = Date.FormatStyle.dateTime.day(.twoDigits).month(.twoDigits).year(.defaultDigits)
+		style.calendar = calendar
+		style.timeZone = calendar.timeZone
+		return d.noon.formatted(style)
 	}
 
 	/// "Today, 09:41", "Yesterday, 21:19", or the date and the time.
 	static func dayAndTime(_ date: Date, calendar: Calendar = .current) -> String {
 		let time = date.formatted(date: .omitted, time: .shortened)
-		if calendar.isDateInToday(date) { return "Today, \(time)" }
-		if calendar.isDateInYesterday(date) { return "Yesterday, \(time)" }
+		if calendar.isDateInToday(date) { return String(localized: "Today, \(time)") }
+		if calendar.isDateInYesterday(date) { return String(localized: "Yesterday, \(time)") }
 		return date.formatted(date: .abbreviated, time: .shortened)
 	}
 
+	/// The month and year of a day, read from noon GMT as `day` reads it.
 	static func monthTitle(_ d: Day) -> String {
-		d.date().formatted(.dateTime.month(.wide).year())
+		var style = Date.FormatStyle.dateTime.month(.wide).year()
+		style.calendar = Day.calendar(like: .current)
+		style.timeZone = style.calendar.timeZone
+		return d.noon.formatted(style)
 	}
 
-	/// A month on a chart, as MoneyMoney writes it: "Oct 26".
-	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.date()) }
+	/// A month on a chart, as MoneyMoney writes it: "Oct 26". Read from noon GMT as `day` reads it.
+	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.noon) }
 
 	private static let shortMonthFormatter: DateFormatter = {
 		let f = DateFormatter()
+		f.calendar = Day.calendar(like: .current)
+		f.timeZone = f.calendar.timeZone
 		f.setLocalizedDateFormatFromTemplate("MMMyy")
 		return f
 	}()
@@ -105,6 +112,76 @@ struct AmountText: View {
 		Text(showsCurrency ? Format.money(money) : Format.amount(money))
 			.monospacedDigit()
 			.foregroundStyle(money.isNegative && prominence != .increased ? AnyShapeStyle(red) : AnyShapeStyle(.primary))
+	}
+}
+
+/// The balances of an account in a row: the one in the account currency first, then each other currency the source reported.
+/// In a sidebar or popover row they take the room they need before the account name beside them does, so a narrow row
+/// shortens the name first. When the row is too narrow for all of them, the row shows the first balance whole and the
+/// number of the others, and when even that does not fit, the first balance shortened and a short count of the others.
+/// Every amount on screen is whole or ends with an ellipsis, never cut off at the edge of the row, and no balance leaves
+/// the row without a count. The header shortens its title and the balances together.
+struct BalancesText: View {
+	let amounts: [Money]
+
+	var body: some View {
+		Group {
+			if let first = amounts.first {
+				// `ViewThatFits` takes the first option whose full width fits. Each option is a view of its own, never an
+				// empty one, because an empty view fits every width.
+				if amounts.count > 1 {
+					ViewThatFits(in: .horizontal) {
+						all
+						HStack(spacing: 8) {
+							AmountText(money: first)
+							Text("+ \(amounts.count - 1) more")
+								.foregroundStyle(Palette.detail)
+						}
+						.fixedSize()
+						// The shortest form still says how many balances it leaves out.
+						HStack(spacing: 6) {
+							shortened(first)
+							Text(verbatim: "+\(amounts.count - 1)").foregroundStyle(Palette.detail).fixedSize()
+						}
+					}
+					// Every form gives the tooltip and VoiceOver all balances, also the ones that the row leaves out.
+					.help(allAmounts)
+					.accessibilityElement(children: .ignore)
+					.accessibilityLabel(allAmounts)
+				} else {
+					// A single balance in one line is whole when it fits and ends with an ellipsis when it does not.
+					shortened(first)
+				}
+			}
+		}
+		.layoutPriority(1)
+	}
+
+	/// Every balance, for the tooltip and for VoiceOver.
+	private var allAmounts: String {
+		amounts.map { Format.money($0) }.formatted(.list(type: .and))
+	}
+
+	private var all: some View {
+		HStack(spacing: 8) {
+			ForEach(amounts, id: \.currency) { AmountText(money: $0) }
+		}
+		.fixedSize()
+	}
+
+	private func shortened(_ money: Money) -> some View {
+		AmountText(money: money).lineLimit(1).atLeastEllipsisWide()
+	}
+}
+
+extension View {
+	/// Keeps a name that a row shortens at least as wide as an ellipsis, so it shows "…" and never a cut part of a
+	/// letter when the balances beside it take the rest of the row.
+	func atLeastEllipsisWide() -> some View {
+		ZStack(alignment: .leading) {
+			Text(verbatim: "…").fixedSize().hidden().accessibilityHidden(true)
+			self
+		}
 	}
 }
 
@@ -250,32 +327,32 @@ enum CategorySymbols {
 	/// "receipt" of macOS 15.2, would show nothing there. Check a new one in the "name_availability"
 	/// list of SF Symbols.
 	static let choices: [(symbol: String, name: String)] = [
-		("house.fill", "House"), ("building.2.fill", "Building"), ("bolt.fill", "Electricity"), ("drop.fill", "Water"),
-		("flame.fill", "Heating"), ("wifi", "Internet"), ("phone.fill", "Phone"), ("tv.fill", "Television"),
-		("sofa.fill", "Furniture"), ("wrench.and.screwdriver.fill", "Repairs"),
-		("cart.fill", "Shopping cart"), ("basket.fill", "Basket"), ("fork.knife", "Restaurant"), ("cup.and.saucer.fill", "Café"),
-		("wineglass.fill", "Drinks"), ("birthday.cake.fill", "Cake"),
-		("car.fill", "Car"), ("fuelpump.fill", "Fuel"), ("parkingsign.circle.fill", "Parking"), ("bus.fill", "Bus"),
-		("tram.fill", "Train"), ("bicycle", "Bicycle"), ("airplane", "Airplane"), ("suitcase.fill", "Suitcase"),
-		("beach.umbrella.fill", "Holiday"),
-		("bag.fill", "Shopping bag"), ("tshirt.fill", "Clothing"), ("gift.fill", "Gift"), ("shippingbox.fill", "Parcel"),
-		("desktopcomputer", "Computer"), ("scissors", "Hairdresser"), ("hammer.fill", "Tools"),
-		("cross.case.fill", "Medical"), ("pills.fill", "Pharmacy"), ("stethoscope", "Doctor"), ("heart.fill", "Heart"),
-		("figure.run", "Sport"), ("dumbbell.fill", "Fitness"),
-		("gamecontroller.fill", "Games"), ("film.fill", "Film"), ("music.note", "Music"), ("book.fill", "Books"),
-		("theatermasks.fill", "Theater"), ("pawprint.fill", "Pets"), ("leaf.fill", "Garden"), ("star.fill", "Star"),
-		("person.fill", "Person"), ("person.2.fill", "People"), ("figure.2.and.child.holdinghands", "Family"),
-		("graduationcap.fill", "Education"), ("briefcase.fill", "Work"),
-		("banknote.fill", "Cash"), ("eurosign.circle.fill", "Euro"), ("dollarsign.circle.fill", "Dollar"),
-		("creditcard.fill", "Credit card"), ("wallet.pass.fill", "Wallet"), ("building.columns.fill", "Bank"),
-		("chart.line.uptrend.xyaxis", "Investments"), ("chart.pie.fill", "Shares"), ("percent", "Interest"),
-		("arrow.left.arrow.right", "Transfer"), ("umbrella.fill", "Insurance"), ("shield.lefthalf.filled", "Protection"),
-		("doc.text.fill", "Document"), ("list.bullet.rectangle.portrait.fill", "Bill"), ("tag.fill", "Tag"),
+		("house.fill", String(localized: "House")), ("building.2.fill", String(localized: "Building")), ("bolt.fill", String(localized: "Electricity")), ("drop.fill", String(localized: "Water")),
+		("flame.fill", String(localized: "Heating")), ("wifi", String(localized: "Internet")), ("phone.fill", String(localized: "Phone")), ("tv.fill", String(localized: "Television")),
+		("sofa.fill", String(localized: "Furniture")), ("wrench.and.screwdriver.fill", String(localized: "Repairs")),
+		("cart.fill", String(localized: "Shopping cart")), ("basket.fill", String(localized: "Basket")), ("fork.knife", String(localized: "Restaurant")), ("cup.and.saucer.fill", String(localized: "Café")),
+		("wineglass.fill", String(localized: "Drinks")), ("birthday.cake.fill", String(localized: "Cake")),
+		("car.fill", String(localized: "Car")), ("fuelpump.fill", String(localized: "Fuel")), ("parkingsign.circle.fill", String(localized: "Parking")), ("bus.fill", String(localized: "Bus")),
+		("tram.fill", String(localized: "Train")), ("bicycle", String(localized: "Bicycle")), ("airplane", String(localized: "Airplane")), ("suitcase.fill", String(localized: "Suitcase")),
+		("beach.umbrella.fill", String(localized: "Holiday")),
+		("bag.fill", String(localized: "Shopping bag")), ("tshirt.fill", String(localized: "Clothing")), ("gift.fill", String(localized: "Gift")), ("shippingbox.fill", String(localized: "Parcel")),
+		("desktopcomputer", String(localized: "Computer")), ("scissors", String(localized: "Hairdresser")), ("hammer.fill", String(localized: "Tools")),
+		("cross.case.fill", String(localized: "Medical")), ("pills.fill", String(localized: "Pharmacy")), ("stethoscope", String(localized: "Doctor")), ("heart.fill", String(localized: "Heart")),
+		("figure.run", String(localized: "Sport")), ("dumbbell.fill", String(localized: "Fitness")),
+		("gamecontroller.fill", String(localized: "Games")), ("film.fill", String(localized: "Film")), ("music.note", String(localized: "Music")), ("book.fill", String(localized: "Books")),
+		("theatermasks.fill", String(localized: "Theater")), ("pawprint.fill", String(localized: "Pets")), ("leaf.fill", String(localized: "Garden")), ("star.fill", String(localized: "Star")),
+		("person.fill", String(localized: "Person")), ("person.2.fill", String(localized: "People")), ("figure.2.and.child.holdinghands", String(localized: "Family")),
+		("graduationcap.fill", String(localized: "Education")), ("briefcase.fill", String(localized: "Work")),
+		("banknote.fill", String(localized: "Cash")), ("eurosign.circle.fill", String(localized: "Euro")), ("dollarsign.circle.fill", String(localized: "Dollar")),
+		("creditcard.fill", String(localized: "Credit card")), ("wallet.pass.fill", String(localized: "Wallet")), ("building.columns.fill", String(localized: "Bank")),
+		("chart.line.uptrend.xyaxis", String(localized: "Investments")), ("chart.pie.fill", String(localized: "Shares")), ("percent", String(localized: "Interest")),
+		("arrow.left.arrow.right", String(localized: "Transfer")), ("umbrella.fill", String(localized: "Insurance")), ("shield.lefthalf.filled", String(localized: "Protection")),
+		("doc.text.fill", String(localized: "Document")), ("list.bullet.rectangle.portrait.fill", String(localized: "Bill")), ("tag.fill", String(localized: "Tag")),
 	]
 
 	/// The name of a symbol for the tooltip and VoiceOver, or "Bookmark" and "Folder" for none.
 	static func label(_ symbol: String?, isGroup: Bool) -> String {
-		guard let symbol else { return isGroup ? "Folder" : "Bookmark" }
+		guard let symbol else { return isGroup ? String(localized: "Folder") : String(localized: "Bookmark") }
 		return choices.first { $0.symbol == symbol }?.name ?? symbol
 	}
 

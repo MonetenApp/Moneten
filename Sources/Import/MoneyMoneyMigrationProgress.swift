@@ -20,17 +20,18 @@ extension MoneyMoneyMigration {
 
 		public func text(locale: Locale = .current) -> String {
 			let label = switch step {
-			case .accounts: "Reading accounts..."
-			case .categories: "Reading categories..."
-			case .waitingTransactions: "Waiting for transactions..."
-			case .preparing: "Preparing import..."
-			case .transactions: "Transactions"
-			case .reconciling: "Comparing transactions"
-			case .importing: "Importing transactions"
-			case .finishing: "Finishing..."
+			case .accounts: String(localized: "Reading accounts...")
+			case .categories: String(localized: "Reading categories...")
+			case .waitingTransactions: String(localized: "Waiting for transactions...")
+			case .preparing: String(localized: "Preparing import...")
+			case .transactions: String(localized: "Transactions")
+			case .reconciling: String(localized: "Comparing transactions")
+			case .importing: String(localized: "Importing transactions")
+			case .finishing: String(localized: "Finishing...")
 			}
 			guard let total else { return label }
-			return "\(label): \(completed.formatted(.number.locale(locale))) of \(total.formatted(.number.locale(locale)))"
+			let done = completed.formatted(.number.locale(locale)), all = total.formatted(.number.locale(locale))
+			return String(localized: "\(label): \(done) of \(all)")
 		}
 
 		public func shouldPublish(after previous: Self?, elapsed: Duration) -> Bool {

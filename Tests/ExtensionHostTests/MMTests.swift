@@ -48,7 +48,7 @@ let german = HostEnvironment(productVersion: "2.0", productBuild: 42, variant: .
 	}
 
 	@Test func sleepPausesTheScript() {
-		#expect(mm("(function() local start = MM.time() MM.sleep(0.2) local slept = MM.time() - start return slept >= 0.2 and slept < 2 end)()") == .boolean(true))
+		#expect(mm("(function() local start = MM.time() MM.sleep(0.2) local slept = MM.time() - start return slept >= 0.2 and slept < 2 end)()") == .boolean(true)) // time-ok: a sleep of 0.2 s, ten times the room
 	}
 
 	@Test func germanInterface() {

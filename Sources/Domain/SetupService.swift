@@ -9,7 +9,7 @@ public enum SetupService: Hashable, Sendable {
 	public var title: String {
 		switch self {
 		case let .extensionService(_, name): name
-		case .offline: "Offline account / Cash"
+		case .offline: String(localized: "Offline account / Cash")
 		}
 	}
 

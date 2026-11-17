@@ -4,6 +4,7 @@ import ExtensionHost
 import FinTS
 import Import
 import Foundation
+import Storage
 import Sync
 import SyncTesting
 import SwiftUI
@@ -28,6 +29,8 @@ final class DebugHarness {
 	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
+	/// Whether the popover of the custom period that "datefield popover" shows is open.
+	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 
@@ -128,7 +131,7 @@ final class DebugHarness {
 			log("crash inject", ("frames", .count(diagnostic.frames.count)), ("pending", .flag(model.crashes.pending != nil)), ("timeMatches", .flag(model.crashes.pending?.date == date)))
 		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
-			log("crash status", ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
+			log("crash status", ("started", .flag(model.crashes.started)), ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
 		#endif
 		case "crashdecision":
 			guard let pending = model.crashes.pending else { return log("crash decision", ("pending", .flag(false))) }
@@ -154,12 +157,44 @@ final class DebugHarness {
 			log("crash intentional")
 			intentionalCrash()
 		case "snapshot": snapshot(argument)
+		// "<name>" draws the sidebar 340 points wide, "<name> <width>" that many points wide, such as "narrow 240".
 		case "sidebarsnapshot": sidebarSnapshot(argument)
 		case "setpassword": model.setPassword(argument)
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
+		case "update": update(argument, model: model)
+		// "Try Again" of the window that shows why the database did not open.
+		case "tryagain":
+			log("tryagain", ("phase", .state(model.phase)))
+			model.start()
+		// Closes the open database as a password change does that left the connection unable to write, for the
+		// snapshots of that window. OpeningTests drive the real cause, which needs the random key in the Keychain.
+		case "passwordunfinished":
+			guard model.phase == .unlocked else { return }
+			model.closeDatabase(then: .passwordChangeUnfinished)
+			log("passwordunfinished", ("phase", .state(model.phase)))
+		// "Load Database Again" of the window that a change of the database file on disk shows.
+		case "loadagain":
+			log("loadagain", ("phase", .state(model.phase)))
+			model.loadDatabaseAgain()
+		// Whether the window says that a database file from the Finder is not opened, and the open store.
+		case "openedfile": log("openedfile", ("alert", .flag(model.openedDatabaseFile)), ("phase", .state(model.phase)))
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
+		// Sets the width of the sidebar to a number of points, as a drag of the divider does, and logs the width and
+		// the frame of the main window.
+		case "sidebarwidth":
+			func splits(in view: NSView) -> [NSSplitView] { ((view as? NSSplitView).map { [$0] } ?? []) + view.subviews.flatMap(splits) }
+			guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+				let split = window.contentView.flatMap({ splits(in: $0).first { $0.isVertical && $0.arrangedSubviews.count > 1 } }) else {
+				return log("sidebarwidth no split view")
+			}
+			if let width = Double(argument) { split.setPosition(width, ofDividerAt: 0) }
+			DispatchQueue.main.async { [weak self] in
+				self?.log("sidebarwidth", ("", .count(Int(split.arrangedSubviews[0].frame.width))), ("window", .count(Int(window.frame.width))),
+					("height", .count(Int(window.frame.height))), ("mode", .state(model.viewMode)))
+			}
 		// "<name>": the import sheet while it reads the second of two made-up files, and while it stores their rows.
 		case "importsheetsnapshot":
 			let reading = FileImport(names: ["umsaetze-januar.csv", "umsaetze-februar.csv"])
@@ -171,10 +206,52 @@ final class DebugHarness {
 		case "settingssnapshot":
 			offscreenSnapshot(SecuritySettings().environment(model), width: 500, name: argument, kind: "security")
 			offscreenSnapshot(GeneralSettings().environment(model), width: 500, name: argument, kind: "general")
+			offscreenSnapshot(PasswordPromptSheet(storesPassword: false) { _ in nil }.environment(model), width: 400, name: argument, kind: "prompt")
+		// "<setting> <value> <password>" changes a setting of the Security tab as its password prompt does. The setting is
+		// lockOnClose, lockAfter, or the key of an unlock setting; the value is on, off, or minutes. The log never holds the password.
+		case "security": security(argument)
+		case "vatsettings":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: GeneralSettings().environment(model).frame(width: 500))
+			let window = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			window.contentView = host
+			main.beginSheet(window)
+			log("vatsettings opened")
+		case "vatbutton":
+			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "vat-\(argument)" }
+			log("vatbutton", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "vatstate":
+			let controls = sheetAccessibility()
+			let expected = argument.split(separator: ",").compactMap { Int64($0) }
+			log("vatstate", ("rates", .count(Preference.rates.count)),
+				("matches", .flag(Preference.rates.map(\.hundredths) == expected)),
+				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
+		case "vatclose":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// "open" shows the custom period and a field that expects a future date in a sheet, and "popover" shows the
+		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there or in the transaction
+		// sheet, "calendar <from|to|scheduled|date|valuedate>" opens the calendar of a field, "press <identifier>"
+		// presses a control, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the date that
+		// each field reads, whether it has the focus, and the open popovers.
+		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
+		// "calendarsnapshot <name>" draws the calendar alone.
+		case "datefield": dateField(argument)
+		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
-			do { try model.vault.storePassword(argument); log("storepassword", ("", .flag(true))) } catch { log("storepassword", ("failed", .type(of: error))) }
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let entry = Vault.PasswordEntry(rawValue: parts[0]) else { return log("storepassword", ("", .word("rejected"))) }
+			do {
+				let changed = try model.changeSecurity(.unlock(entry, true), password: parts[1])
+				log("storepassword", ("", .flag(changed)))
+			} catch {
+				log("storepassword", ("failed", .type(of: error)))
+			}
 		case "removepassword":
-			do { try model.vault.removeStoredPassword() } catch { log("removepassword", ("failed", .type(of: error))) }
+			for entry in Vault.PasswordEntry.allCases {
+				do { try model.vault.removeStoredPassword(for: entry) } catch { log("removepassword", ("failed", .type(of: error))) }
+			}
+			do { try model.vault.removeSharedEntry() } catch { log("removepassword", ("failed", .type(of: error))) }
+			do { try model.loadUnlockSettings() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)
@@ -230,6 +307,8 @@ final class DebugHarness {
 				if !handled, argument == "tab" { sheet.sendEvent(event) }
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
+		// Moves the focus to the next field of the sheet on top, as the Tab key does.
+		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -282,6 +361,31 @@ final class DebugHarness {
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
+		#if DEBUG || PERF_HARNESS
+		// "click" clicks the menu bar icon, and "press <n>" clicks control number n of the popover, counted from 0: the account
+		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
+		// the popover, and the main window, after the app has drawn the change.
+		case "menubar": menuBar(argument)
+		// "<key> on" or "<key> off" writes the default of a switch directly, for example "showMenuBarIcon on". It skips what
+		// the toggle does besides, such as asking macOS for the notification permission. Only the switches of the checks of
+		// the notifications and the menu bar are allowed. The security settings stay out, because they live in the database or
+		// the Keychain and change only with the password, through "security". The line logs the position of the key in the
+		// list and the new value.
+		case "setting":
+			let keys = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey,
+				RefreshSettings.playsSoundKey]
+			let parts = argument.split(separator: " ").map(String.init)
+			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
+			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
+		case "noticeclick":
+			Task {
+				guard let notice = await Notices.delivered().first else { return self.log("noticeclick none") }
+				model.notices.onOpen(notice.accounts)
+				self.log("noticeclick", ("accounts", .count(notice.accounts.count)), ("phase", .state(model.phase)))
+			}
+		#endif
 		// The delivered notifications of this app in the Notification Center, with their titles and the number of their accounts.
 		case "notices": logNotices()
 		// What the button "OK" of the window "Notice" does.
@@ -350,6 +454,11 @@ final class DebugHarness {
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
 				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		case "menucommands": log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)))
+		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
+		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
+		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
+		// sheet is visible, its tab, the switches that are on, the stored values of the switches of "General", and the stored language.
+		case "settings": settings(argument)
 		#if DEBUG
 		case "extcatalog":
 			guard let url = URL(string: argument) else { return log("ext error=extcatalog needs a URL") }
@@ -443,6 +552,11 @@ final class DebugHarness {
 		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
 		// counts of the preview, or "rows", which logs the count and the days of its first rows.
 		case "csv": csvPreview(argument)
+		// "<kind> <name>": an empty offline account in euros, such as "loan Darlehen".
+		case "offline":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let kind = AccountKind(rawValue: parts[0]) else { return log("offline error=argument") }
+			Task { await model.addOfflineAccount(name: parts[1], kind: kind, currency: "EUR", groupID: nil); log("offline done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -460,6 +574,18 @@ final class DebugHarness {
 			model.save(transaction: t, adding: false)
 			model.sheet = .transaction(t.id)
 			log("edit done", ("original", .flag(t.original != nil)))
+		// "<account>=on" or "<account>=off" turns "The account has been closed" on or off and saves, as OK in the
+		// account settings does. It logs whether the account is closed, the count of its rows, and whether it keeps a clearing entry.
+		case "closed":
+			let parts = argument.components(separatedBy: "=")
+			guard parts.count == 2, var a = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("closed refused", ("needs", .word("account=on|off"))) }
+			var edited = a
+			edited.isClosed = parts[1] == "on"
+			a.takeSettings(from: edited, opened: a)
+			model.save(account: a)
+			let saved = model.ledger.account(a.id)
+			log("closed", ("closed", .flag(saved?.isClosed == true)), ("rows", .count(model.ledger.transactions(ofAccount: a.id).count)),
+				("entry", .flag(saved?.clearingEntry != nil)))
 		case "deleterows":
 			if let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) {
 				model.delete(transactions: Set(model.ledger.transactions(ofAccount: giro.id).filter { $0.name == argument }.map(\.id)))
@@ -472,6 +598,13 @@ final class DebugHarness {
 					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
+			}
+		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
+		case "manualrows":
+			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				let rows = model.ledger.transactions(ofAccount: account.id).filter(\.isManual)
+				for t in rows { log("manualrow", ("day", .day(t.bookingDate)), ("valueDay", .day(t.valueDate))) }
+				log("manualrows", ("", .count(rows.count)))
 			}
 		case "symbol":
 			// "<category>=<symbol>" sets the icon of a category, "<category>=" removes it.
@@ -503,12 +636,39 @@ final class DebugHarness {
 				.frame(maxWidth: .infinity).foregroundStyle(Palette.onBand).environment(\.negativeRed, Palette.bandRed).background(Palette.band)
 				.environment(model), width: 520, name: argument, kind: "pie")
 		case "portfolio":
-			// "<group> <euros>" adds a portfolio with that bank balance to a group.
+			// "<group> <euros> [currency]" adds a portfolio with that bank balance to a group, in euros or in the currency.
 			let parts = argument.split(separator: " ")
-			if parts.count == 2, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
-				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: "EUR")
+			if parts.count == 2 || parts.count == 3, let euros = Int64(parts[1]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				let currency = parts.count == 3 ? String(parts[2]) : "EUR"
+				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: currency)
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
+			}
+		case "wallet":
+			// "<group> <euros> <US dollars> [<name>]" adds a wallet of a bank that reports a balance in euros and one in US
+			// dollars, named "Reisekasse" or the name, which may hold spaces. The group is the first word, so the command
+			// cannot target a group whose name has a space.
+			let parts = argument.split(separator: " ", maxSplits: 3)
+			if parts.count >= 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: parts.count == 4 ? String(parts[3]) : "Reisekasse",
+					kind: .other, source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
+			}
+		case "currencies":
+			// "<group> <count>" adds the wallet "Devisen" of a bank that reports 1.250,00 € and a balance in each of up to
+			// 19 other currencies, as an extension may.
+			let parts = argument.split(separator: " ")
+			let codes = ["USD", "CHF", "GBP", "JPY", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "CAD", "AUD", "NZD", "SGD", "HKD", "CNY", "INR", "ZAR", "MXN"]
+			if parts.count == 2, let count = Int(parts[1]), (1...20).contains(count), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				var others: [Money] = []
+				for (i, code) in codes.prefix(count - 1).enumerated() { others.append(Money(minorUnits: Int64(10_000 + i * 2_345), currency: code)) }
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Devisen", kind: .other,
+					source: .bank, bankBalanceMinor: 125_000, otherBankBalances: others))
+			}
+		case "refreshfailed":
+			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
+			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
+				account.refreshError = RefreshError(message: "The bank refused the refresh.", date: Date())
+				model.save(account: account)
 			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.
@@ -597,6 +757,9 @@ final class DebugHarness {
 		case "perf": Task { await runPerf() }
 		#endif
 		case "view": model.viewMode = ViewMode(rawValue: argument) ?? .list
+		case "selectall": transactionTables().first?.selectAll(nil)
+		case "checkmarks": model.showsCheckmarks = argument != "off"
+		case "dailybalance": model.showsDailyBalance = argument != "off"
 		case "balance": model.balanceMode = BalanceMode(rawValue: argument) ?? .daily
 		case "search":
 			model.filter.searchText = argument
@@ -637,8 +800,7 @@ final class DebugHarness {
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
 			Task {
-				await model.saveAllData(to: URL(filePath: argument))
-				log("exportall", ("", .word(model.alert?.title == "All data has been exported." ? "done" : "error=set")))
+				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
 		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
 		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
@@ -709,19 +871,42 @@ final class DebugHarness {
 			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
 			Task {
 				let saved: Bool
-				if let rate = VATRate.standard.first(where: { $0.text == argument }) {
+				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
-					saved = await model.split(row: row.id, off: [amount])
+					saved = await model.split(row: row.id, off: [amount]) == .done
 				} else { return log("split refused") }
 				let count = saved ? model.ledger.parts(of: originalID).count : 0
-				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "undosplit":
 			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
 			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "deleteparts":
 			model.delete(transactions: model.visibleSelection)
 			log("deleteparts", ("refused", .flag(model.alert != nil)), ("selected", .count(model.visibleSelection.count)))
+		// What a cancel right after the confirm of the split window does, before the window shows its disabled
+		// "Cancel": the split must store nothing. Logs the parts of the row after the drawing wait.
+		case "splitcancel":
+			guard case let .split(row) = model.sheet, let sheet = topSheet else { return log("splitcancel refused") }
+			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
+			for (key, code) in [("\r", 36), ("\u{1b}", 53)] {
+				if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber,
+					context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: UInt16(code)) {
+					_ = sheet.performKeyEquivalent(with: event)
+				}
+			}
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				log("splitcancel", ("parts", .count(model.ledger.parts(of: originalID).count)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+			}
+		// "<currency>": what a refresh that corrects the currency does to the transaction of the open split window.
+		case "splitcurrency":
+			guard case let .split(row) = model.sheet,
+				var t = model.ledger.transaction(model.ledger.part(row.id)?.transactionID ?? row.id) else { return log("splitcurrency refused") }
+			t.currency = argument
+			model.save(transaction: t, adding: false)
+			log("splitcurrency", ("currency", .flag(model.ledger.transaction(t.id)?.currency == argument)))
 		case "splitnext":
 			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
 			log("splitnext", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
@@ -732,6 +917,8 @@ final class DebugHarness {
 			log("splitui", ("amountLabel", .flag(amount.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextLabel", .flag(next.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
+				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
+				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
 				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }
@@ -790,6 +977,13 @@ final class DebugHarness {
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
 		case "mainkey": mainKey(argument)
+		// Copy with ⌘C while the table has the focus: "copyrows <n>" selects the first n rows and sends the action of Edit > Copy.
+		case "copyrows": copyRows(Int(argument) ?? 1)
+		// A double click on the name of the first row, Copy, and the context menu of the selected word.
+		case "textmenu": textMenu()
+		// Adds a made-up direct debit with every detail from the bank to "Girokonto", selects it, and opens its sheet. It logs
+		// whether the help tag of its purpose lists the eight details in order, and the heights of the visible rows.
+		case "details": details()
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
@@ -842,11 +1036,15 @@ final class DebugHarness {
 		.choice(String((window.identifier?.rawValue ?? "").prefix { $0 != "-" }), of: ["main", "extensions", "notice"], otherwise: "other")
 	}
 
-	/// The category and the account of the filter by their positions, or "all".
+	/// The category and the account or account group of the filter by their positions, or "all".
 	private static func filterTargets(_ model: AppModel) -> [(StaticString, LogValue)] {
 		let ledger = model.ledger
-		return [("category", model.filter.categoryID.map { sidebarPosition($0, in: ledger) } ?? .word("all")),
-			("account", model.filter.accountID.map { id in .position(ledger.accounts.firstIndex { $0.id == id }) } ?? .word("all"))]
+		let account: (StaticString, LogValue) = switch model.filter.account {
+		case let .account(id): ("account", .position(ledger.accounts.firstIndex { $0.id == id }))
+		case let .group(id): ("group", .position(ledger.groups.firstIndex { $0.id == id }))
+		case nil: ("account", .word("all"))
+		}
+		return [("category", model.filter.categoryID.map { sidebarPosition($0, in: ledger) } ?? .word("all")), account]
 	}
 
 	private func setup(_ argument: String) {
@@ -972,7 +1170,143 @@ final class DebugHarness {
 		}
 	}
 
-	private func sheetAccessibility() -> [NSObject] {
+	private func dateField(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ").map(String.init)
+		func fields(in view: NSView) -> [NSTextField] {
+			if let field = view as? NSTextField, field.isEditable { return [field] }
+			return view.subviews.flatMap(fields)
+		}
+		func calendars() -> [NSDatePicker] {
+			func pickers(in view: NSView) -> [NSDatePicker] { (view as? NSDatePicker).map { [$0] } ?? view.subviews.flatMap(pickers) }
+			return NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap(pickers).filter { $0.datePickerStyle == .clockAndCalendar }
+		}
+		// The custom period in its popover, the visible popover with text fields, or else the sheet of "open".
+		let popoverWindow = NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") && !($0.contentView.map(fields) ?? []).isEmpty }
+		let window = popoverWindow ?? topSheet
+		switch parts.first ?? "" {
+		case "open":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
+			let sheet = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			sheet.contentView = host
+			main.beginSheet(sheet)
+			log("datefield opened")
+		// What "Custom..." in the period menu of the filter bar does: a SwiftUI popover with `CustomPeriodView`, here on
+		// an anchor at the top of the main window.
+		case "popover":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let view = main.contentView else { return }
+			if !datePopover.isAnchored {
+				let anchor = NSHostingView(rootView: DateFieldPopoverAnchor(state: datePopover).environment(model))
+				anchor.frame = NSRect(x: view.bounds.midX, y: view.bounds.maxY - 80, width: 1, height: 1)
+				view.addSubview(anchor)
+				datePopover.isAnchored = true
+			}
+			datePopover.isShown = true
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield popover", ("shown", .flag(shown)))
+			}
+		// "<position>" puts the focus into that field of the popover or the sheet, "type <text>" types there, and "tab"
+		// sends the Tab key, as the general commands do for a sheet.
+		case "focus" where parts.count == 2:
+			guard let window, let position = Int(parts[1]), let view = window.contentView, fields(in: view).indices.contains(position) else { return log("datefield focus", ("", .flag(false))) }
+			window.makeFirstResponder(fields(in: view)[position])
+			fields(in: view)[position].selectText(nil)
+			log("datefield focus", ("", .flag(window.firstResponder is NSTextView)))
+		case "type" where parts.count == 2:
+			(window?.firstResponder as? NSTextView)?.insertText(parts[1], replacementRange: NSRange(location: NSNotFound, length: 0))
+		case "tab":
+			guard let window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+				context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) else { return }
+			window.sendEvent(event)
+		case "calendar" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
+			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		// "<identifier>" presses that control, such as "valuedate-switch" of the transaction sheet.
+		case "press" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == parts[1] }
+			log("datefield press", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "pick" where parts.count == 2:
+			guard let picker = calendars().first, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
+			// What a click on a day does: the picker takes the date and sends its action.
+			picker.dateValue = Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100).noon
+			picker.sendAction(picker.action, to: picker.target)
+			log("datefield pick", ("picker", .flag(true)))
+		// What a click outside does: SwiftUI sets the binding of the popover to false.
+		case "closepopover":
+			datePopover.isShown = false
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield closepopover", ("shown", .flag(shown)), ("calendars", .count(calendars().count)))
+			}
+		case "state":
+			let editable = window?.contentView.map(fields) ?? []
+			let editor = window?.firstResponder as? NSTextView
+			for (i, field) in editable.enumerated() {
+				let read = Day(typed: field.stringValue, today: .today(), order: DateOrder(locale: .current))
+				log("datefield state", ("", .position(i)), ("day", .day(read)), ("focused", .flag(editor?.delegate === field)),
+					("popover", .flag(window === popoverWindow)), ("calendars", .count(calendars().count)))
+			}
+		case "close":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// The calendar at 15 December 2026, drawn outside a popover, whose glass a snapshot does not draw.
+		case "calendarsnapshot" where parts.count == 2:
+			let name = parts[1]
+			offscreenSnapshot(DateFieldCalendar(title: LocalizedStringKey(name), shown: Day(year: 2026, month: 12, day: 15)) { _, _ in }, width: 200, name: name, kind: "calendar")
+		default: log("datefield rejected")
+		}
+	}
+
+	private func settings(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		let window = { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" } }
+		let elements = { window().map(self.accessibility) ?? [] }
+		func role(_ element: NSObject) -> NSAccessibility.Role? { (element as AnyObject).accessibilityRole?() }
+		let switches = { elements().filter { role($0) == .checkBox } }
+		switch parts.first ?? "" {
+		case "open":
+			// An app in the background updates its menus only when they open, so the item may still show the lock.
+			if let menu = NSApp.mainMenu?.items.first?.submenu {
+				menu.delegate?.menuNeedsUpdate?(menu)
+				menu.update()
+			}
+			guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0, context: nil,
+				characters: ",", charactersIgnoringModifiers: ",", isARepeat: false, keyCode: 43) else { return }
+			// The menu claims the key also while the item is disabled, so only the window in the log shows what happened.
+			_ = NSApp.mainMenu?.performKeyEquivalent(with: event)
+		case "force":
+			// The window that an earlier "open" left behind, put on screen past the menu item, as a stale or restored window would be.
+			guard let hidden = NSApp.windows.first(where: { $0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" }) else {
+				return log("settings force", ("found", .flag(false)))
+			}
+			hidden.orderFrontRegardless()
+		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
+		case "press":
+			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
+			_ = (switches()[number] as AnyObject).accessibilityPerformPress?()
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+			guard let self else { return }
+			// The switches of the "General" tab in their order, as the defaults of the app store them, or "-" for none. A switch that
+			// differs from its stored value shows a value that macOS does not use, such as one that a launch argument overrides.
+			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey]
+			let id = Bundle.main.bundleIdentifier ?? ""
+			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
+			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
+			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
+			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
+				("tab", .word(model.settingsTab == .general ? "general" : "security")),
+				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
+					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
+				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))
+		}
+	}
+
+	private func accessibility(in window: NSWindow) -> [NSObject] {
 		// SwiftUI builds its accessibility nodes only after a client requests the enhanced interface.
 		NSApp.accessibilitySetValue(true, forAttribute: NSAccessibility.Attribute(rawValue: "AXEnhancedUserInterface"))
 		var seen: Set<ObjectIdentifier> = []
@@ -981,14 +1315,114 @@ final class DebugHarness {
 			let children = (element as AnyObject).accessibilityChildren?() ?? []
 			return [element] + (children + ((element as? NSView)?.subviews ?? [])).flatMap(descendants)
 		}
-		return topSheet?.contentView.map(descendants) ?? []
+		return window.contentView.map(descendants) ?? []
+	}
+
+	private func sheetAccessibility() -> [NSObject] {
+		topSheet.map(accessibility) ?? []
+	}
+
+	/// Whether the text on the pasteboard is the copy of the first `count` visible rows, one line per row with six fields.
+	private func copyRows(_ count: Int) {
+		guard let model, let table = transactionTables().first, let window = table.window else { return log("copyrows no table") }
+		let rows = Array(model.visibleTransactions.prefix(count))
+		model.selectedTransactions = Set(rows.map(\.id))
+		// SwiftUI offers the copy of the table only after it has seen the focus, as after a click before ⌘C.
+		window.makeFirstResponder(table)
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(300))
+			NSPasteboard.general.clearContents()
+			let copy = self.copyMenuItem()
+			let handled = copy?.action.map { table.tryToPerform($0, with: copy) } ?? false
+			let text = NSPasteboard.general.string(forType: .string) ?? ""
+			let lines = text.isEmpty ? [] : text.components(separatedBy: "\n")
+			self.log("copyrows", ("handled", .flag(handled)), ("lines", .count(lines.count)),
+				("fields", .count(lines.map { $0.components(separatedBy: "\t").count }.max() ?? 0)),
+				("matches", .flag(text == TransactionCopy.text(rows, locale: .current))))
+		}
+	}
+
+	private func details() {
+		guard let model, let giro = model.ledger.accounts.first(where: { $0.name == "Girokonto" }) else { return log("details no account") }
+		let t = Transaction(accountID: giro.id, bookingDate: Day.today(), valueDate: Day.today().adding(days: 1), amountMinor: -123_450, name: "Stadtwerke Musterstadt",
+			purpose: "Abschlag November\nKundennummer 4711", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "DEUTDEFFXXX", bookingText: "Lastschrift",
+			endToEndReference: "E2E-2026-11", mandateReference: "M-2026-0042", creditorID: "DE98ZZZ09999999999", returnReason: "AC04", isManual: true)
+		model.save(transaction: t, adding: true)
+		model.navigate(to: .account(giro.id))
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(500))
+			model.selectedTransactions = [t.id]
+			model.sheet = .transaction(t.id)
+			try? await Task.sleep(for: .milliseconds(500))
+			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
+			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""), .valueDate(Day.today()),
+				.iban(""), .bic("")].map(\.label)
+			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
+			let table = self.transactionTables().first
+			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()
+			let heights = Set((visible.location..<(visible.location + visible.length)).compactMap { table?.rect(ofRow: $0).height })
+			self.log("details", ("purposelines", .count(help.prefix { !$0.isEmpty }.count)), ("details", .count(shown.count)),
+				("order", .flag(shown == labels)), ("rowheights", .list(heights.sorted().map { .count(Int($0)) })),
+				("sheet", .presence(model.sheet != nil)))
+		}
+	}
+
+	/// The item of the Edit menu with ⌘C, whose action the key sends along the responder chain.
+	private func copyMenuItem() -> NSMenuItem? {
+		NSApp.mainMenu?.items.lazy.compactMap(\.submenu).flatMap(\.items).first { $0.keyEquivalent == "c" && $0.keyEquivalentModifierMask == .command }
+	}
+
+	/// What a double click on the name of the first row selects, what Copy then copies, and the menu that a right
+	/// click on the selected word opens. The menu is read when it starts tracking and closed at once.
+	private func textMenu() {
+		guard let model, let table = transactionTables().first, let window = table.window else { return log("textmenu no table") }
+		let cell = table.frameOfCell(atColumn: 1, row: 0)
+		let point = table.convert(NSPoint(x: cell.minX + 20, y: cell.minY + 17), to: nil)
+		func event(_ type: NSEvent.EventType, clicks: Int) -> NSEvent? {
+			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+				context: nil, eventNumber: 0, clickCount: clicks, pressure: type == .leftMouseUp ? 0 : 1)
+		}
+		for clicks in 1...2 {
+			guard let down = event(.leftMouseDown, clicks: clicks), let up = event(.leftMouseUp, clicks: clicks) else { return }
+			// The text field tracks the mouse until the button goes up, so the up event waits in the queue.
+			NSApp.postEvent(up, atStart: false)
+			window.sendEvent(down)
+		}
+		guard let editor = window.firstResponder as? NSTextView else { return log("textmenu", ("editor", .flag(false))) }
+		let selected = (editor.string as NSString).substring(with: editor.selectedRange())
+		NSPasteboard.general.clearContents()
+		editor.copy(nil)
+		let copied = NSPasteboard.general.string(forType: .string)
+		let services = NSApp.mainMenu?.items.first?.submenu?.items.first { $0.submenu != nil && $0.submenu === NSApp.servicesMenu }?.title
+		var token: NSObjectProtocol?
+		token = NotificationCenter.default.addObserver(forName: NSMenu.didBeginTrackingNotification, object: nil, queue: nil) { [weak self] note in
+			if let token { NotificationCenter.default.removeObserver(token) }
+			// AppKit posts the notification on the main thread while the menu starts tracking.
+			nonisolated(unsafe) let tracked = note.object as? NSMenu
+			MainActor.assumeIsolated {
+				guard let menu = tracked else { return }
+				let titles = menu.items.map(\.title)
+				self?.log("textmenu", ("editor", .flag(true)), ("word", .flag(!selected.isEmpty && !selected.contains(" "))), ("copied", .flag(copied == selected)),
+					("sheet", .presence(model.sheet != nil)), ("copy", .flag(titles.contains(String(localized: "Copy")) || titles.contains("Copy"))),
+					("rowmenu", .flag(titles.contains(String(localized: "Edit Transaction...")))),
+					("services", .flag(menu.items.contains { $0.submenu === NSApp.servicesMenu || ($0.title == services && $0.hasSubmenu) })),
+					("items", .count(menu.items.count)))
+				RunLoop.current.perform(inModes: [.eventTracking, .default]) { menu.cancelTracking() }
+			}
+		}
+		if let right = event(.rightMouseDown, clicks: 1) { window.sendEvent(right) }
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
-	func transactionTables() -> [NSTableView] { tables(withColumn: "Amount") }
+	/// SwiftUI gives a column a new random identifier in each run, so the harness finds a table by the title of a column,
+	/// in the language of this run.
+	func transactionTables() -> [NSTableView] { tables(withColumn: String(localized: "Amount")) }
 
 	/// The tables of positions in all windows.
-	func holdingsTables() -> [NSTableView] { tables(withColumn: "Quantity") }
+	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
+
+	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
+	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {
@@ -1058,6 +1492,57 @@ final class DebugHarness {
 		}
 	}
 
+	#if DEBUG || PERF_HARNESS
+	private func menuBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let number = parts.count > 1 ? Int(parts[1]) : nil
+		// The button of the icon in the menu bar of one of the displays. A removed icon keeps its window, which macOS no longer shows.
+		func button(in view: NSView) -> NSButton? { view as? NSButton ?? view.subviews.lazy.compactMap(button).first }
+		let icon = {
+			NSApp.windows.lazy.filter { $0.className == "NSStatusBarWindow" && $0.occlusionState.contains(.visible) }.compactMap { $0.contentView.flatMap(button) }.first
+		}
+		let popover = { NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtra") } }
+		let report: @MainActor () -> Void = { [weak self] in
+			self?.log("menubar", ("icon", .flag(icon() != nil)), ("symbol", .word(MenuBarIcon.symbol(of: model))), ("popover", .flag(popover() != nil)),
+				("main", .flag(NSApp.windows.contains { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })), ("selected", .state(model.selectedAccount?.kind)))
+		}
+		switch parts.first ?? "" {
+		case "click":
+			guard let icon = icon() else { return log("menubar no icon") }
+			icon.performClick(nil)
+		case "press":
+			// The popover closes while another app is in front, so the press opens it first when it is closed.
+			if popover() == nil {
+				guard let icon = icon() else { return log("menubar no icon") }
+				icon.performClick(nil)
+			}
+			Task { @MainActor [weak self] in
+				try? await Task.sleep(for: .milliseconds(500))
+				// SwiftUI gives the controls of the popover no accessibility elements until an assistive app asks, but a
+				// focus ring view for each, in the order of the view. The press is a click in the middle of control number n.
+				@MainActor func controls(in view: NSView) -> [NSView] {
+					String(describing: type(of: view)) == "_FocusRingView" ? [view] : view.subviews.flatMap(controls)
+				}
+				guard let window = popover(), let view = window.contentView else { self?.log("menubar no popover"); return }
+				let all = controls(in: view)
+				guard let n = number, all.indices.contains(n) else { self?.log("menubar", ("controls", .count(all.count))); return }
+				let point = all[n].convert(NSPoint(x: all[n].bounds.midX, y: all[n].bounds.midY), to: nil)
+				for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+					if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+						windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1) { window.sendEvent(event) }
+				}
+				self?.log("menubar pressed", ("control", .position(n)), ("controls", .count(all.count)))
+				try? await Task.sleep(for: .milliseconds(500))
+				report()
+			}
+			return
+		default: break
+		}
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { report() }
+	}
+	#endif
+
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
 		model.sync.broker.answer(make(), to: prompt.id)
@@ -1090,7 +1575,7 @@ final class DebugHarness {
 					("current", .position(current.flatMap { id in methods.firstIndex { $0.id == id } })))
 			case let .openBrowser(approval): log("ext prompt browser", ("host", .hash(approval.url.host() ?? "")))
 			case let .captcha(captcha): log("ext prompt captcha", ("provider", .state(captcha.provider)), ("page", captcha.page?.host().map { .hash($0) } ?? .presence(false)))
-			case .chooseTANMedium, .flickerCode: log("ext prompt other")
+			case .chooseTANMedium, .nameTANMedium, .flickerCode: log("ext prompt other")
 			}
 		}
 	}
@@ -1113,13 +1598,22 @@ final class DebugHarness {
 		}
 	}
 
-	/// Chooses "Extensions" in the Window menu, as the user does.
+	/// Chooses "Extensions" in the Window menu, as the user does. SwiftUI gives a menu item no identifier,
+	/// and its title follows the language, so the harness finds the item by its place: right after
+	/// "Main Window", the only item with the key equivalent Command-0.
 	func openExtensionsWindow() {
-		openMenuItem("Extensions")
+		let isMainWindow = { (item: NSMenuItem) in item.keyEquivalent == "0" && item.keyEquivalentModifierMask == .command }
+		let menu = NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains(where: isMainWindow) }
+		guard let menu, let main = menu.items.firstIndex(where: isMainWindow), menu.items.indices.contains(main + 1) else {
+			return log("extensions no menu item")
+		}
+		menu.performActionForItem(at: main + 1)
+		log("extensions opened")
 	}
 
 	private func supportedBanksKey(_ name: String) {
-		guard let window = NSApp.windows.first(where: { $0.title == "Supported Banks" && $0.isVisible }) else { return log("supportedkey no window") }
+		// The title follows the language, so the harness finds the window by the identifier of its scene.
+		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("supportedBanks") == true && $0.isVisible }) else { return log("supportedkey no window") }
 		let keys: [String: (Int, UInt16)] = ["down": (NSDownArrowFunctionKey, 125), "up": (NSUpArrowFunctionKey, 126), "pagedown": (NSPageDownFunctionKey, 121),
 			"pageup": (NSPageUpFunctionKey, 116), "home": (NSHomeFunctionKey, 115), "end": (NSEndFunctionKey, 119), "tab": (9, 48)]
 		// "command-down" and the like send the key with Command, which the window leaves to the system.
@@ -1145,8 +1639,11 @@ final class DebugHarness {
 		}
 	}
 
+	/// Chooses the menu item with this English title. The title of an item follows the language, so the harness
+	/// compares it with the text in the language of this run.
 	private func openMenuItem(_ title: StaticString) {
-		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == "\(title)" }
+		let localized = String(localized: String.LocalizationValue(title.description))
+		let item = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items).first { $0.title == localized }
 		guard let item, let menu = item.menu else { return log("menu no item", ("title", .word(title))) }
 		menu.performActionForItem(at: menu.index(of: item))
 		log("menu opened", ("title", .word(title)))
@@ -1160,14 +1657,15 @@ final class DebugHarness {
 		case "status": model.filter.status = value == "checked" ? .checked : value == "unchecked" ? .unchecked : .all
 		case "amount": model.filter.amount = value == "deposits" ? .deposits : value == "withdrawals" ? .withdrawals : .all
 		case "category": model.filter.categoryID = model.ledger.categories.first { $0.name == value }?.id
-		case "account": model.filter.accountID = model.ledger.accounts.first { $0.name == value }?.id
+		case "account": model.filter.account = model.ledger.accounts.first { $0.name == value }.map { .account($0.id) }
+		case "group": model.filter.account = model.ledger.groups.first { $0.name == value }.map { .group($0.id) }
 		case "custom":
 			let days = value.split(separator: " ").compactMap { Int($0) }.map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
 			if days.count == 2 { model.choose(period: .custom(days[0], days[1])) }
 		case "pin": model.isFilterBarPinned = value == "on"
 		default: return log("filterbar rejected")
 		}
-		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "custom", "pin"]))] + Self.filterTargets(model)))
+		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "group", "custom", "pin"]))] + Self.filterTargets(model)))
 	}
 
 	private func savedSearch(_ argument: String) {
@@ -1236,7 +1734,7 @@ final class DebugHarness {
 				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
 				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
 				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),
-				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("createsCategories", .flag(preview.layout.createsCategories)),
+				("name", .word(preview.profileName.isEmpty ? "empty" : "typed")), ("nameTaken", .flag(preview.nameProblem != nil)), ("createsCategories", .flag(preview.layout.createsCategories)),
 				("profiles", .count(preview.profiles.count)))
 		}
 	}
@@ -1261,7 +1759,8 @@ final class DebugHarness {
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
 			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
-				let submenu = menu?.items.first(where: { $0.title == "Move to Group" })?.submenu {
+				// "Move to Group" is the only submenu of a row, and its title follows the language.
+				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
 				submenu.update()
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")
@@ -1288,7 +1787,8 @@ final class DebugHarness {
 		}
 		let place = parts[0].split(separator: " ")
 		let menu: NSMenu? = switch place.first {
-		case "account": NSApp.mainMenu?.item(withTitle: "Account")?.submenu
+		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
+		case "account": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } }
 		case "sidebar": place.count == 2 ? Int(place[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
 		case "row":
 			// "row <n> <count>" selects the first <count> rows before the right click.
@@ -1301,7 +1801,10 @@ final class DebugHarness {
 		default: nil
 		}
 		menu?.update()
-		guard let menu, let index = menu.items.firstIndex(where: { $0.title.hasPrefix("Export Transaction") }) else { return log("menuexport no item") }
+		// The export item has another place in each menu and SwiftUI gives it no identifier, so the harness finds it by
+		// the text that the user reads, in the language of this run.
+		let titles = [String(localized: "Export Transactions..."), String(localized: "Export Transaction...")]
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else { return log("menuexport no item") }
 		guard menu.items[index].isEnabled else {
 			// SwiftUI enables the commands of the Account menu only while the app is active, which a locked Mac does
 			// not allow. When the conditions of the item hold, the check runs its action, `exportTransactions()`.
@@ -1316,7 +1819,7 @@ final class DebugHarness {
 	}
 
 	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
-	private func sidebarList() -> NSOutlineView? {
+	func sidebarList() -> NSOutlineView? {
 		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
 		func outlines(in view: NSView) -> [NSOutlineView] { ((view as? NSOutlineView).map { [$0] } ?? []) + view.subviews.flatMap(outlines) }
 		return outlines(in: content).min { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
@@ -1379,9 +1882,12 @@ final class DebugHarness {
 
 	/// Draws the sidebar in a plain window that is off screen, because the sidebar of the main
 	/// window uses a material that only the window server draws.
-	private func sidebarSnapshot(_ name: String) {
+	private func sidebarSnapshot(_ argument: String) {
 		guard let model else { return }
-		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: 340, name: name, kind: "sidebar")
+		let parts = argument.split(separator: " ")
+		let width = parts.count > 1 ? parts.last.flatMap { Double($0) } : nil
+		let name = width == nil ? argument : parts.dropLast().joined(separator: " ")
+		offscreenSnapshot(SidebarView().environment(model).frame(height: 1200), width: width ?? 340, name: name, kind: "sidebar")
 	}
 
 	/// Draws a view in a window outside the screen, as tall as the view wants to be, into the file
@@ -1405,6 +1911,30 @@ final class DebugHarness {
 
 	@inline(never)
 	private func intentionalCrash() { fatalError("Synthetic crash check") }
+
+	/// Changes a setting of the Security tab as its password prompt does, and logs every setting and entry after it.
+	private func security(_ argument: String) {
+		let parts = argument.split(separator: " ", maxSplits: 2).map(String.init)
+		guard let model, parts.count == 3 else { return }
+		let change: SecurityChange
+		switch parts[0] {
+		case "lockOnClose": change = .lockOnClose(parts[1] == "on")
+		case "lockAfter": change = .lockAfter(Int(parts[1]) ?? 0)
+		default:
+			guard let entry = Vault.PasswordEntry(rawValue: parts[0]) else { return log("security", ("", .word("rejected"))) }
+			change = .unlock(entry, parts[1] == "on")
+		}
+		let result: LogValue
+		do { result = try model.changeSecurity(change, password: parts[2]) ? .word("changed") : .word("incorrectPassword") } catch { result = .word("failed") }
+		let on = model.unlockSettings
+		func stored(_ entry: Vault.PasswordEntry) -> LogValue { .flag((try? model.vault.storedPassword(for: entry)).map { $0 != nil } ?? false) }
+		log("security",
+			("setting", .choice(parts[0], of: ["lockOnClose", "lockAfter", "unlockAutomatically", "unlockWithTouchID", "unlockWithAppleWatch"])),
+			("result", result),
+			("lockOnClose", .flag(model.lockSettings.lockOnClose)), ("lockAfter", .count(model.lockSettings.lockAfterMinutes)),
+			("automatic", .flag(on.contains(.automaticUnlock))), ("touchID", .flag(on.contains(.touchID))), ("watch", .flag(on.contains(.appleWatch))),
+			("keychainAutomatic", stored(.automaticUnlock)), ("keychainTouchID", stored(.touchID)), ("keychainWatch", stored(.appleWatch)))
+	}
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {
@@ -1662,3 +2192,39 @@ extension NSApplication {
 	}
 }
 #endif
+
+/// The custom period and a field that expects a future date, for the checks of the date field in the debug harness.
+/// No window of the app has a field that expects a future date yet, so the harness shows one with an English label.
+private struct DateFieldHarnessView: View {
+	@State private var scheduled: Day? = .today()
+	private let label = "Scheduled date"
+
+	var body: some View {
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					DateField(title: LocalizedStringKey(label), day: $scheduled, expectsFuture: true, identifier: "scheduled")
+				}
+				// The bound day, read here as well, so that the check for unused code sees the same use with every
+				// toolchain, whether or not it counts a read through the binding of the field.
+				.accessibilityValue(scheduled.map { String($0.rawValue) } ?? "")
+			}
+			CustomPeriodView()
+		}
+	}
+}
+
+@MainActor @Observable
+private final class DateFieldPopoverState {
+	var isShown = false
+	var isAnchored = false
+}
+
+/// The anchor of the popover of the custom period in the debug harness, as the filter bar has it.
+private struct DateFieldPopoverAnchor: View {
+	@Bindable var state: DateFieldPopoverState
+
+	var body: some View {
+		Color.clear.frame(width: 1, height: 1).popover(isPresented: $state.isShown) { CustomPeriodView() }
+	}
+}

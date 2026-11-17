@@ -155,6 +155,17 @@ The expected file has the format of the output of `ext run`. `ext test` compares
 
 A passing test prints "PASS 1 account, 4 transactions". `--update` writes the result to the expected file.
 
+### Release of the tool
+
+Authors install a released binary instead of building `ext` with Xcode. `.github/workflows/release-ext.yml` runs `scripts/release-ext.sh` when a maintainer pushes a tag `ext-v<version>`. [docs/releasing-ext.md](../../../docs/releasing-ext.md) has the steps.
+
+- `swift build --arch arm64 --arch x86_64` builds one universal binary. The script links an Info.plist into it with the key `MonetenCommit`, the full commit of the tag. `ext --version` reads the key, so a build from source has no commit and prints none. The version stays in `Tools/ext/Ext.swift`, and the release fails when the tag names another version or a commit outside `main`.
+- The binary is signed with the Developer ID certificate of the app release, with the hardened runtime and a secure timestamp, and notarized with the same App Store Connect API key. Both come from the GitHub environment `build`, which also allows the tags `ext-v*` ([ADR 0019](../../../docs/decisions/0019-ext-releases-in-the-build-environment.md)), so the maintainer sets up the secrets once. Apple cannot staple a ticket to a bare binary. Gatekeeper looks up the ticket online when it checks a downloaded `ext` for the first time.
+- The release asset is `ext-<version>-macos.zip`, the file that Apple notarized, next to `ext-<version>-macos.zip.sha256`. The release text names the SHA-256 and the commit, so the catalog repository can pin both.
+- Before the upload, the script runs the replay of the example extension with the signed binary from the zip, which also starts its host process under the hardened runtime.
+- The job with the secrets has only read access to the repository. A second job without secrets creates the release. A release of `ext` is never marked as the latest release, because the update feed of the app lives on the latest release.
+- A pull request that changes the tool or its packaging runs `scripts/release-ext.sh dry-run`, which builds and checks the same zip without secrets and signs it to run locally.
+
 ## Risks / Trade-offs
 
 - A secret that a script hides in a way of its own, such as a hash or a Base64 block that holds more than the secret, stays in the fixture. The reminder after each recording and the review of the catalog cover it.
@@ -162,3 +173,4 @@ A passing test prints "PASS 1 account, 4 transactions". `--update` writes the re
 - The waits of a decoupled approval keep their pause of one second between calls during a replay.
 - A login value or an answer that a server sends back in a response as a JSON number, or glued to letters or digits, stays in the fixture. A password with fewer than 8 characters or only digits stops the recording instead. Replacing it there would turn amounts and identifiers into placeholders and break the replay.
 - During a replay, a question about a new host that the recording did not answer is allowed. The replay reaches no network, and the missing request then fails with its method and URL.
+- A release of `ext` has no stapled ticket. Gatekeeper on a Mac without network access refuses a downloaded `ext` that carries the quarantine flag until the Mac is online. A download with `curl`, as the guide shows, has no quarantine flag.

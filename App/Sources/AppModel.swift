@@ -27,6 +27,29 @@ enum SidebarSelection: Hashable {
 		case .search: .all
 		}
 	}
+
+	/// The row as the preference `Preference.selectedRow` stores it, such as "account:<UUID>".
+	var preferenceValue: String {
+		switch self {
+		case let .account(id): "account:\(id.uuidString)"
+		case let .group(id): "group:\(id.uuidString)"
+		case let .category(id): "category:\(id.uuidString)"
+		case let .search(id): "search:\(id.uuidString)"
+		}
+	}
+
+	/// The stored row, or nil when it no longer exists in `ledger` or in `searches`.
+	init?(preferenceValue: String, in ledger: Ledger, searches: [SavedSearch]) {
+		let parts = preferenceValue.split(separator: ":", maxSplits: 1).map(String.init)
+		guard parts.count == 2, let id = UUID(uuidString: parts[1]) else { return nil }
+		switch parts[0] {
+		case "account" where ledger.account(id) != nil: self = .account(id)
+		case "group" where ledger.group(id) != nil: self = .group(id)
+		case "category" where ledger.category(id) != nil: self = .category(id)
+		case "search" where searches.contains(where: { $0.id == id }): self = .search(id)
+		default: return nil
+		}
+	}
 }
 
 enum ViewMode: String, CaseIterable {
@@ -40,16 +63,11 @@ enum BalanceMode: String {
 /// Settings that the app needs before the database is open. Only `savedFilterBar` holds data of the user: the
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
-	static let lockOnClose = "lockWhenMainWindowIsClosed"
-	/// Version 1 stored "lockAfterMinutes" also while the lock was off, as the suggestion of the
-	/// old number field. The new key starts at the default of 10 minutes; `registerDefaults` keeps
-	/// the old value only where the lock was on.
-	static let lockAfterMinutes = "lockAfterInactivityMinutes"
-	static let lockAfterEnabled = "lockAfterInactivity"
-	static let unlockAutomatically = "unlockAutomatically"
-	static let unlockWithTouchID = "unlockWithTouchID"
-	static let unlockWithAppleWatch = "unlockWithAppleWatch"
+	// The unlock settings are their Keychain entries (`Vault.PasswordEntry`), and the lock settings live in the
+	// database (`LockSettings`): any program of the user can write the settings file, and every data folder shares it.
 	static let viewMode = "viewMode"
+	/// The selected sidebar row, which the next launch selects again.
+	static let selectedRow = "selectedSidebarRow"
 	static let balanceMode = "balanceMode"
 	/// "Update extensions automatically" in the Extensions window, on unless the user turns it off.
 	static let updateExtensionsAutomatically = "updateExtensionsAutomatically"
@@ -58,23 +76,19 @@ enum Preference {
 	/// The pin of the filter bar, and the `SavedFilterBar` it keeps for the next launch.
 	static let pinFilterBar = "pinFilterBar"
 	static let savedFilterBar = "savedFilterBar"
+	/// "Checkmarks" and "Daily Balance" in the View menu.
+	static let showsCheckmarks = "showsCheckmarks"
+	static let showsDailyBalance = "showsDailyBalance"
+	static let vatRates = "vatRates"
 
-	/// The app locks after 10 minutes without activity unless the user turns it off. MoneyMoney has
-	/// this off and suggests 5 minutes; the owner chose on with 10 minutes.
-	static let defaultLockAfterMinutes = 10
+	static var rates: [VATRate] {
+		VATRate.list(hundredths: UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? [])
+	}
 
-	/// The values of settings the user has not changed. A user who turned the inactivity lock on in
-	/// version 1 keeps the minutes chosen there.
+	/// The values of settings the user has not changed.
 	static func registerDefaults() {
 		adoptLegacyDomain()
-		let d = UserDefaults.standard
-		let oldMinutes = "lockAfterMinutes"
-		if d.object(forKey: lockAfterMinutes) == nil, d.object(forKey: lockAfterEnabled) as? Bool == true,
-			d.integer(forKey: oldMinutes) > 0 {
-			d.set(d.integer(forKey: oldMinutes), forKey: lockAfterMinutes)
-		}
-		d.removeObject(forKey: oldMinutes)
-		d.register(defaults: [lockAfterEnabled: true, lockAfterMinutes: defaultLockAfterMinutes])
+		UserDefaults.standard.register(defaults: [vatRates: VATRate.standard.map(\.hundredths)])
 	}
 
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
@@ -99,16 +113,24 @@ final class AppModel {
 		case locked
 		case unlocked
 		case failed(String)
+		/// The database file changed outside the app while it was open. The store is closed, and the window
+		/// offers to load the database again.
+		case changedOnDisk
+		/// A password change left the open connection unable to write safely. The store is closed, and the window
+		/// offers to load the database again.
+		case passwordChangeUnfinished
 	}
 
 	let vault = Vault(folder: .current)
-	let crashes = CrashReportController(folder: .current)
+	let crashes: CrashReportController
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
 	let extensions = ExtensionLibrary()
+	/// The updates of the app through Sparkle.
+	let updater = AppUpdater()
 	/// The connector of each extension that the debug harness loaded from a path, by the name of its package.
 	/// An installed extension of the same name goes first.
 	var extensionConnectors: [String: ExtensionConnector] = [:]
@@ -144,7 +166,7 @@ final class AppModel {
 	}
 	/// The kind of the next change of `ledger`, for the trail.
 	@ObservationIgnored var ledgerChange = "edit"
-	@ObservationIgnored private var ledgerRevision = 0
+	@ObservationIgnored private(set) var ledgerRevision = 0
 	@ObservationIgnored var migrationTask: Task<Void, Never>?
 	private var migrationStoring = false
 	var exportTask: Task<Void, Never>?
@@ -177,6 +199,7 @@ final class AppModel {
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
+			UserDefaults.standard.set(selection?.preferenceValue, forKey: Preference.selectedRow)
 			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
 			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
 			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
@@ -283,6 +306,14 @@ final class AppModel {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
 	var chartPeriod: ChartPeriod = .month
+	/// The checkmark controls of the list. Hiding them keeps the stored checkmarks.
+	var showsCheckmarks = UserDefaults.standard.object(forKey: Preference.showsCheckmarks) as? Bool ?? true {
+		didSet { UserDefaults.standard.set(showsCheckmarks, forKey: Preference.showsCheckmarks) }
+	}
+	/// The balance at the end of each day in the list of a single account.
+	var showsDailyBalance = UserDefaults.standard.bool(forKey: Preference.showsDailyBalance) {
+		didSet { UserDefaults.standard.set(showsDailyBalance, forKey: Preference.showsDailyBalance) }
+	}
 	/// The cells of the transaction table read the selection, so a change of it waits for a drawing before the
 	/// table goes, like a change of the ledger (issue #135).
 	var selectedTransactions = Set<UUID>() {
@@ -314,7 +345,7 @@ final class AppModel {
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
 	}
-	var settingsTab = SettingsTab.security
+	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
 	@ObservationIgnored private(set) var tableGeneration = 0
 	/// The changes of `replacingTable` that wait for their new table. While there is one, a placeholder
@@ -323,17 +354,29 @@ final class AppModel {
 	/// Column widths and order of the transaction table. They live here, so a new table keeps them.
 	var transactionColumns = TableColumnCustomization<Transaction>()
 
+	/// The lock settings of the open database. The database holds them, so they come with each unlock.
+	private(set) var lockSettings = LockSettings()
+	/// The unlock settings of this database that are on: the ones whose Keychain entry exists. The launch reads
+	/// them, and a change on the "Security" tab updates them after it wrote or deleted the entry.
+	var unlockSettings: Set<Vault.PasswordEntry> = []
 	private var lastActivity = Date()
 	private var eventMonitor: Any?
 	private var idleTimer: Timer?
 
 	init() {
+		// The lock of the data folder comes before every service that writes into it, such as the crash reports, so a
+		// second running copy changes no file there.
+		let lock = try? DataFolderLock(folder: .current)
+		crashes = CrashReportController(folder: .current)
+		if lock != nil { crashes.start() }
+		folderLock = lock
 		Preference.registerDefaults()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
 		// A closure that captures `self` can be handed over only once every stored property is set.
 		sync.deliver = { [weak self] accountID, result in
-			guard let self else { return }
+			// A refresh that ran while the user closed the account delivers nothing into it. The merge checks it again in its write.
+			guard let self, self.ledger.account(accountID)?.isClosed != true else { return }
 			self.announcer.stored(try await self.mergeRefresh(result, into: accountID).added)
 			if let kind = self.ledger.account(accountID)?.kind {
 				self.bankHistories[accountID] = result.bankHistory(after: self.bankHistories[accountID], of: kind)
@@ -348,14 +391,17 @@ final class AppModel {
 			guard let self else { return }
 			Trail.log("refresh end access=\(self.trailNumber(of: access)) accounts=\(accounts.count) failed=\(failed)")
 			// The times and errors change the accounts in the ledger, which must not meet a new view in one drawing.
+			// `ended` is awaited, so a migration that pauses the refreshes starts only after this write.
 			while self.tableUndrawn { await self.drawn() }
 			self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+			self.sync.recordedRefresh(of: access)
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }
 		}
 		sync.noticed = { [weak self] access, messages in
-			guard let self, let bank = self.accesses[access]?.bankName else { return }
-			self.bankNotices.add(messages, from: bank)
+			// A setup access is not stored, so its service names the bank.
+			guard let self else { return }
+			self.bankNotices.add(messages, from: self.accesses[access.id]?.bankName ?? access.bankName)
 		}
 		sync.runEnded = { [weak self] in
 			guard let self else { return }
@@ -363,6 +409,7 @@ final class AppModel {
 		}
 		sync.userCanceled = { [weak self] accounts in self?.recordCancel(of: accounts) }
 		sync.mayStartUnattended = { [weak self] in self?.autoRefresh.allowsUnattended ?? false }
+		sync.pausesUnattended = { [weak self] access in self?.ledger.pausesAutomaticRefresh(of: access) ?? false }
 		autoRefresh.run = { [weak self] now in self?.refreshDue(at: now) }
 		notices.onOpen = { [weak self] accounts in self?.show(notified: accounts) }
 		extensions.model = self
@@ -374,6 +421,9 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
+		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
+		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
+		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
 	}
 
 	// MARK: Opening and locking
@@ -381,17 +431,41 @@ final class AppModel {
 	/// What the window shows while the database opens: "Opening database..." or "Upgrading database...".
 	/// Nil while nothing opens.
 	private(set) var opening: String?
+	/// Held while the app runs, so that no second running copy opens the same data folder.
+	private var folderLock: DataFolderLock?
+	/// Reports each change of the entries in the database folder, such as a backup put in place of the file.
+	var diskSource: DispatchSourceFileSystemObject?
+	/// True while a check of the database file runs away from the main thread.
+	var checksDisk = false
+	/// True while the window says that a database file from the Finder is not opened.
+	var openedDatabaseFile = false
 	/// Why the lock screen asks for the password although an unlock setting is on, such as a Keychain error
 	/// or a password in the Keychain that does not open a database restored from a backup.
 	private(set) var lockNotice: String?
 
+	/// Opens the database after the seal check of the app, which runs away from the main thread. A command of
+	/// the debug harness that opened or created the database meanwhile wins.
 	func start() {
-		Task { await startOpening() }
+		let from = phase
+		Task {
+			if let damaged = await LaunchChecks.damagedApp { return phase = .failed(damaged) }
+			guard phase == from else { return }
+			await startOpening()
+		}
 	}
 
 	private func startOpening() async {
 		guard opening == nil else { return }
 		phase = .starting
+		// A second running copy of the app, such as one in the Downloads folder, opens nothing in this data folder.
+		if folderLock == nil {
+			do { folderLock = try DataFolderLock(folder: vault.folder) } catch {
+				phase = .failed(String(describing: error))
+				return
+			}
+			// A copy that got the lock only now, through "Try Again", starts its crash reports now.
+			crashes.start()
+		}
 		do {
 			switch try vault.state() {
 			case .empty:
@@ -407,12 +481,14 @@ final class AppModel {
 				}
 			case .password:
 				hasPassword = true
-				guard UserDefaults.standard.bool(forKey: Preference.unlockAutomatically) else {
-					phase = .locked
-					return
-				}
+				// Only the entry of the automatic unlock opens the database at launch, never one of Touch ID or Apple Watch.
 				let stored: String?
-				do { stored = try vault.storedPassword() } catch {
+				do {
+					// The settings first, so a failed cleanup of the old shared entry still shows the entries that exist.
+					try loadUnlockSettings()
+					try vault.removeSharedEntry()
+					stored = try vault.storedPassword(for: .automaticUnlock)
+				} catch {
 					lockNotice = String(describing: error)
 					phase = .locked
 					return
@@ -447,20 +523,21 @@ final class AppModel {
 		case failed
 	}
 
-	private static let staleKeychainNotice =
-		"The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again."
+	private static var staleKeychainNotice: String {
+		String(localized: "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again.")
+	}
 
 	/// Opens the database away from the main thread, so that the window can show what happens.
 	/// When the app moved on while the database opened, the new store is closed and nothing is unlocked.
 	private func openAway(_ opener: @escaping @Sendable (Vault, @escaping @Sendable () -> Void) throws -> Store) async throws {
 		let phaseBefore = phase
-		opening = "Opening database..."
+		opening = String(localized: "Opening database...")
 		defer { opening = nil }
 		let vault = vault
 		let store = try await Task.detached {
 			try opener(vault) {
 				Task { @MainActor [weak self] in
-					if self?.opening != nil { self?.opening = "Upgrading database..." }
+					if self?.opening != nil { self?.opening = String(localized: "Upgrading database...") }
 				}
 			}
 		}.value
@@ -472,12 +549,12 @@ final class AppModel {
 	}
 
 	func createDatabase(password: String?) {
+		// Only the copy that holds the lock of the data folder creates a database. The vault itself refuses a folder with files.
+		guard folderLock != nil else { return }
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
-			// A new database starts without the unlock settings of the database that was here before.
-			for key in [Preference.unlockAutomatically, Preference.unlockWithTouchID, Preference.unlockWithAppleWatch] {
-				UserDefaults.standard.removeObject(forKey: key)
-			}
+			// `create` removed the entries of a database that was here before, so every unlock setting is off.
+			unlockSettings = []
 			hasPassword = password != nil
 			try open(store)
 		} catch {
@@ -504,24 +581,24 @@ final class AppModel {
 		lockNotice = nil
 		do {
 			try vault.refreshStoredPassword(password)
+			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
+			try loadUnlockSettings()
 		} catch {
-			alert = AlertMessage(title: "The database password could not be stored in the Keychain.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "The database password could not be stored in the Keychain."), message: String(describing: error))
 		}
 		return .unlocked
 	}
 
-	/// The unlock methods whose setting is on. They need the database password in the Keychain.
+	/// The unlock methods whose setting is on, which means that their own entry is in the Keychain.
 	func unlockMethods() -> [UnlockMethod] {
 		guard hasPassword else { return [] }
-		let on = UnlockMethod.allCases.filter { UserDefaults.standard.bool(forKey: $0.preference) }
-		guard !on.isEmpty else { return [] }
-		do {
-			guard try vault.storedPassword() != nil else { return [] }
-		} catch {
-			lockNotice = String(describing: error)
-			return []
-		}
-		return on
+		return UnlockMethod.allCases.filter { unlockSettings.contains($0.entry) }
+	}
+
+	/// Reads which unlock settings of this database are on. The launch calls it once, and so does the debug
+	/// harness after it removed entries.
+	func loadUnlockSettings() throws {
+		unlockSettings = try vault.unlockSettings()
 	}
 
 	func unlock(with methods: [UnlockMethod]) {
@@ -529,7 +606,7 @@ final class AppModel {
 			Task { @MainActor in
 				guard ok else { return }
 				do {
-					guard let pw = try self.vault.storedPassword() else { return }
+					guard let pw = try self.vault.unlockPassword(offered: methods.map(\.entry)) else { return }
 					if await self.unlock(password: pw) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
 				} catch {
 					self.lockNotice = String(describing: error)
@@ -540,6 +617,7 @@ final class AppModel {
 
 	private func open(_ store: Store) throws {
 		self.store = store
+		lockSettings = try store.lockSettings()
 		let loaded = try store.loadLedger()
 		ledgerChange = "load"
 		ledger = loaded
@@ -549,14 +627,13 @@ final class AppModel {
 		try sync.broker.open(store)
 		if selection == nil {
 			restoreFilterBar()
-			if let first = ledger.childGroups(of: nil).first {
-				selection = .group(first.id)
-			} else if let a = ledger.accounts(inGroup: nil).first {
-				selection = .account(a.id)
-			}
+			// The row of the last session, or the first row when it no longer exists.
+			selection = UserDefaults.standard.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger, searches: savedSearches) }
+				?? firstSidebarRow
 		}
 		lastActivity = Date()
 		phase = .unlocked
+		watchDisk()
 		extensions.open(store)
 		announcer.unlock()
 		if let notified = notifiedAccounts {
@@ -568,6 +645,12 @@ final class AppModel {
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
+		closeDatabase(then: .locked)
+	}
+
+	/// Closes the store and forgets everything that came from it, for the lock and after a change on disk.
+	func closeDatabase(then next: Phase) {
+		stopWatchingDisk()
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
@@ -594,12 +677,12 @@ final class AppModel {
 		bankNotices = BankNotices()
 		bankHistories = [:]
 		sheet = nil
-		phase = .locked
+		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
 		// table never goes in the drawing that changes its rows (issue #151).
 		afterDraw { [weak self] in
 			Task { @MainActor in
-				guard let self, self.phase == .locked else { return }
+				guard let self, self.phase == next else { return }
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
 				self.savedSearches = []
@@ -613,12 +696,13 @@ final class AppModel {
 		do {
 			try vault.setPassword(password, on: store)
 			hasPassword = true
-			alert = AlertMessage(title: "The password has been changed.", message: "From now on, the database password opens Moneten.")
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(localized: "From now on, the database password opens Moneten."))
 		} catch let failure as Vault.Failure where failure.passwordChanged {
 			hasPassword = true
-			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 		} catch {
-			alert = AlertMessage(title: "Could not change password of database.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not change password of database."), message: String(describing: error))
+			closeIfPasswordChangeLeftNoWrites(error)
 		}
 	}
 
@@ -627,15 +711,18 @@ final class AppModel {
 		guard let store else { return nil }
 		do {
 			try vault.changePassword(current: current, new: new, on: store)
-			alert = AlertMessage(title: "The password has been changed.", message: "")
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: "")
 			return nil
 		} catch Vault.Failure.incorrectPassword {
-			return "Incorrect password!"
+			return String(localized: "Incorrect password!")
 		} catch let failure as Vault.Failure where failure.passwordChanged {
-			alert = AlertMessage(title: "The password has been changed.", message: String(describing: failure))
+			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {
-			return "Could not change password of database. \(error)"
+			closeIfPasswordChangeLeftNoWrites(error)
+			if case .passwordNotChanged? = error as? Vault.Failure { return String(describing: error) }
+			if error is DatabaseChangedOnDisk { return String(describing: error) }
+			return String(localized: "Could not change password of database. \(String(describing: error))")
 		}
 	}
 
@@ -647,7 +734,13 @@ final class AppModel {
 			return event
 		}
 		idleTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
-			MainActor.assumeIsolated { self?.checkIdle() }
+			MainActor.assumeIsolated {
+				self?.checkIdle()
+				self?.checkDisk()
+			}
+		}
+		NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated { self?.checkDisk() }
 		}
 		NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
 			MainActor.assumeIsolated { self?.checkIdle() }
@@ -655,15 +748,23 @@ final class AppModel {
 	}
 
 	private func checkIdle() {
-		let d = UserDefaults.standard
-		guard phase == .unlocked, d.bool(forKey: Preference.lockAfterEnabled) else { return }
-		let stored = d.integer(forKey: Preference.lockAfterMinutes)
-		let minutes = max(1, stored == 0 ? Preference.defaultLockAfterMinutes : stored)
-		if Date().timeIntervalSince(lastActivity) >= Double(minutes) * 60 { lock() }
+		guard phase == .unlocked, lockSettings.lockAfterMinutes > 0 else { return }
+		#if DEBUG || PERF_HARNESS
+		// The scripts of the debug harness run longer than the shortest lock time.
+		if ProcessInfo.processInfo.environment["MONETEN_DEBUG_NO_IDLE_LOCK"] == "1" { return }
+		#endif
+		if Date().timeIntervalSince(lastActivity) >= Double(lockSettings.lockAfterMinutes) * 60 { lock() }
 	}
 
 	func mainWindowClosed() {
-		if UserDefaults.standard.bool(forKey: Preference.lockOnClose) { lock() }
+		if lockSettings.lockOnClose { lock() }
+	}
+
+	/// Writes the lock settings to the database first, as every change does.
+	func saveLockSettings(_ settings: LockSettings) throws {
+		guard let store else { throw SecurityChangeFailure(description: String(localized: "Unlock Moneten to change this setting.")) }
+		try store.saveLockSettings(settings)
+		lockSettings = settings
 	}
 
 	/// Brings the window "Notice" forward when a notice came since it last did. The app calls it only when
@@ -674,6 +775,15 @@ final class AppModel {
 	}
 
 	// MARK: Selection and filters
+
+	/// The first group or account of the sidebar, or nil without accounts.
+	var firstSidebarRow: SidebarSelection? {
+		switch ledger.accountTree(in: nil).first {
+		case let .group(g): .group(g.id)
+		case let .account(a): .account(a.id)
+		case nil: nil
+		}
+	}
 
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
@@ -745,18 +855,21 @@ final class AppModel {
 
 	// MARK: Changing transactions
 
-	/// Saves the rows and returns whether they are saved. A locked app has no database and saves nothing.
+	/// Saves the rows, with the accounts whose derived initial balance they change, and returns whether they are saved.
+	/// A locked app has no database and saves nothing.
 	@discardableResult
 	private func commit(_ changed: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
 		guard let store else { return false }
 		guard !changed.transactions.isEmpty || !changed.parts.isEmpty else { return true }
 		do {
-			try store.save(changed.transactions, parts: changed.parts)
+			let accounts = try ledger.followingBankBalance(saving: changed.transactions)
+			try store.save(changed.transactions, parts: changed.parts, accounts: accounts)
 			ledgerChange = "commit rows=\(changed.transactions.count) parts=\(changed.parts.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.update(changed.transactions, parts: changed.parts)
 			return true
 		} catch {
-			alert = AlertMessage(title: "Could not save the change.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
 			return false
 		}
 	}
@@ -886,7 +999,7 @@ final class AppModel {
 			ledgerChange = "move categories=\(changed.count)"
 			ledger = moved
 		} catch {
-			alert = AlertMessage(title: "Could not move the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not move the category."), message: String(describing: error))
 		}
 	}
 
@@ -911,10 +1024,10 @@ final class AppModel {
 		guard count > 0 else { return }
 		let accounts = Set(rows.map(\.accountID)).count
 		let alert = NSAlert()
-		alert.messageText = "Mark all transactions as checked?"
-		alert.informativeText = "A total of \(count) \(count == 1 ? "transaction" : "transactions") in \(accounts) \(accounts == 1 ? "account" : "accounts") will be marked as checked."
-		alert.addButton(withTitle: "Mark as Checked")
-		alert.addButton(withTitle: "Cancel")
+		alert.messageText = String(localized: "Mark all transactions as checked?")
+		alert.informativeText = String(localized: "A total of \(String(localized: "\(count) transactions")) in \(String(localized: "\(accounts) accounts")) will be marked as checked.")
+		alert.addButton(withTitle: String(localized: "Mark as Checked"))
+		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { setChecked(true, for: Set(rows.map(\.id))) }
 	}
 
@@ -924,30 +1037,41 @@ final class AppModel {
 	}
 
 	func save(transaction t: Transaction, adding: Bool) {
-		var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
 		let categorizer = Categorizer(ledger: ledger)
-		for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
-			categorizer.categorize(&changed.transactions[i])
+		let changed = categorizer.allOrNothing {
+			var changed = adding ? (transactions: [t], parts: [SplitPart]()) : ledger.changes(from: [t])
+			for i in changed.transactions.indices where changed.transactions[i].categoryID == nil && changed.transactions[i].categorizedBy != .manual {
+				categorizer.categorize(&changed.transactions[i])
+			}
+			return changed
 		}
 		commit(changed)
 	}
 
 	@discardableResult
 	func replaceParts(of transactionID: UUID, with parts: [SplitPart]) async -> Bool {
-		guard let store, let original = ledger.transaction(transactionID) else { return false }
-		let previous = ledger.parts(of: transactionID)
+		await replacingParts(of: transactionID, with: parts) == .done
+	}
+
+	/// The parts were computed from the ledger before the drawing wait. A rule run, ⌘K, or a refresh can change
+	/// the transaction or its parts during the wait, so the parts are stored only when `Ledger.splitBase(of:)`
+	/// is the same after it.
+	func replacingParts(of transactionID: UUID, with parts: [SplitPart]) async -> SplitOutcome {
+		guard let store, let base = ledger.splitBase(of: transactionID) else { return .missing }
 		return await replacingTable {
-			guard self.store === store, ledger.transaction(transactionID)?.amount == original.amount,
-				ledger.parts(of: transactionID) == previous else { return false }
+			// The split window cancels its split when it closes, for example on a lock during the wait.
+			guard !Task.isCancelled else { return .cancelled }
+			guard self.store === store, let now = ledger.splitBase(of: transactionID) else { return .missing }
+			guard now == base else { return .changed }
 			do {
 				try store.replaceParts(of: transactionID, with: parts)
 				ledgerChange = "split parts=\(parts.count)"
 				ledger.replaceParts(of: transactionID, with: parts)
 				selectedTransactions = parts.isEmpty ? [transactionID] : Set(parts.map(\.id))
-				return true
+				return .done
 			} catch {
-				alert = AlertMessage(title: "Could not split the transaction.", message: String(describing: error))
-				return false
+				alert = AlertMessage(title: String(localized: "Could not split the transaction."), message: String(describing: error))
+				return .failed
 			}
 		}
 	}
@@ -959,8 +1083,8 @@ final class AppModel {
 		do {
 			commit((transactions: try ledger.offsettingEntries(of: ids.compactMap { ledger.row($0) }, into: target), parts: []))
 		} catch {
-			alert = AlertMessage(title: "Could not create the offsetting entries.",
-				message: "The amount of a selected transaction has no opposite amount that the app can store.")
+			alert = AlertMessage(title: String(localized: "Could not create the offsetting entries."),
+				message: String(localized: "The amount of a selected transaction has no opposite amount that the app can store."))
 		}
 	}
 
@@ -968,26 +1092,53 @@ final class AppModel {
 		guard !refusePartDeletion(in: ids) else { return }
 		guard let store else { return }
 		do {
-			try store.deleteTransactions(Array(ids))
+			let accounts = try ledger.followingBankBalance(saving: [], deleting: ids)
+			try store.deleteTransactions(Array(ids), accounts: accounts)
 			ledgerChange = "delete rows=\(ids.count)"
+			for a in accounts { ledger.upsert(a) }
 			ledger.remove(transactionIDs: ids)
 			selectedTransactions.subtract(ids)
 		} catch {
-			alert = AlertMessage(title: "Could not delete the transactions.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not delete the transactions."), message: String(describing: error))
 		}
 	}
 
 	// MARK: Accounts and groups
 
+	/// Saves the account. Marking it as closed also stores its clearing entry, and reopening it removes the entry that
+	/// the user did not change, each in one write with the account.
 	func save(account: Account) {
 		guard let store else { return }
+		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
-			try store.save(account)
-			ledger.upsert(account)
-			if let value = account.portfolioValue() { ledger.record(value) }
+			var saved = account
+			var entry: Transaction?
+			var removed: UUID?
+			if account.isClosed, wasClosed == false {
+				(saved, entry) = try ledger.closing(account, today: .today())
+			} else if !account.isClosed, wasClosed == true {
+				(saved, removed) = try ledger.reopening(account)
+			}
+			if let entry {
+				try store.save([entry], accounts: [saved])
+			} else if let removed {
+				try store.deleteTransactions([removed], accounts: [saved])
+			} else {
+				try store.save(saved)
+			}
+			ledgerChange = "account closed=\(saved.isClosed) entry=\(entry != nil) removed=\(removed != nil)"
+			// A closed account takes no refresh: it leaves the refreshes that wait, and the merge drops what a running one delivers.
+			if saved.isClosed, wasClosed == false { sync.leaveOut(account: saved.id) }
+			ledger.upsert(saved)
+			if let value = saved.portfolioValue() { ledger.record(value) }
+			if let entry { ledger.update([entry]) }
+			if let removed {
+				ledger.remove(transactionIDs: [removed])
+				selectedTransactions.remove(removed)
+			}
 			ledger.replace()
 		} catch {
-			alert = AlertMessage(title: "Could not save the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account."), message: String(describing: error))
 		}
 	}
 
@@ -1024,7 +1175,7 @@ final class AppModel {
 			do {
 				try sync.broker.remember(pin, for: access.id, save: savePIN)
 			} catch {
-				alert = AlertMessage(title: "Could not save the PIN.", message: String(describing: error))
+				alert = AlertMessage(title: String(localized: "Could not save the PIN."), message: String(describing: error))
 			}
 		}
 		accesses[access.id] = access
@@ -1093,7 +1244,7 @@ final class AppModel {
 				selection = .group(g.id)
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1103,7 +1254,7 @@ final class AppModel {
 			try store.save(group)
 			ledger.upsert(group)
 		} catch {
-			alert = AlertMessage(title: "Could not save the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1141,7 +1292,7 @@ final class AppModel {
 			ledgerChange = "move groups=\(change.groups.count) accounts=\(change.accounts.count)"
 			ledger.apply(change)
 		} catch {
-			alert = AlertMessage(title: "Could not move the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not move the account."), message: String(describing: error))
 		}
 	}
 
@@ -1150,7 +1301,7 @@ final class AppModel {
 		do {
 			try sync.broker.removeSavedPIN(of: access)
 		} catch {
-			alert = AlertMessage(title: "Could not remove the saved PIN.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the saved PIN."), message: String(describing: error))
 		}
 	}
 
@@ -1167,7 +1318,7 @@ final class AppModel {
 				if selection == .account(id) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the account.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the account."), message: String(describing: error))
 		}
 	}
 
@@ -1179,10 +1330,11 @@ final class AppModel {
 				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
 				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
 				ledger.replace(groups: groups, accounts: accounts)
+				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the account group.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the account group."), message: String(describing: error))
 		}
 	}
 
@@ -1202,7 +1354,7 @@ final class AppModel {
 	/// why nothing happens.
 	func refresh(_ scope: RefreshScope, enforced: Bool = false) {
 		guard autoRefresh.isOnline else {
-			alert = AlertMessage(title: SyncFailure.offline.message, message: "Connect this Mac to the Internet and try again.")
+			alert = AlertMessage(title: SyncFailure.offline.message, message: String(localized: "Connect this Mac to the Internet and try again."))
 			return
 		}
 		refresh(ledger.refreshAccounts(scope), enforced: enforced)
@@ -1303,7 +1455,7 @@ final class AppModel {
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
-				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: "Moneten has no connector for this access yet.") }
+				if attended { alert = AlertMessage(title: String(localized: "Could not refresh \(access.bankName)."), message: String(localized: "Moneten has no connector for this access yet.")) }
 				continue
 			}
 			do {
@@ -1311,7 +1463,7 @@ final class AppModel {
 					attended: attended)
 				Trail.log("refresh start access=\(trailNumber(of: access.id)) accounts=\(accounts.count) attended=\(attended)")
 			} catch {
-				if attended { alert = AlertMessage(title: "Could not refresh \(access.bankName).", message: String(describing: error)) }
+				if attended { alert = AlertMessage(title: String(localized: "Could not refresh \(access.bankName)."), message: String(describing: error)) }
 			}
 		}
 	}
@@ -1319,7 +1471,7 @@ final class AppModel {
 	private func connector(for source: AccessSource) -> (any BankConnector)? {
 		switch source {
 		case .fints: fints
-		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? CheckedAtStart { throw SyncFailure.unsupported("The extension \(id) is not installed.") }
+		case let .extension(id): extensions.connector(for: id) ?? extensionConnectors[id] ?? CheckedAtStart { throw SyncFailure.unsupported(String(localized: "The extension \(id) is not installed.")) }
 		case .finAPI: nil
 		}
 	}
@@ -1327,7 +1479,7 @@ final class AppModel {
 	/// Stores how a refresh ended: the new state of the access, and the time or the error of each account.
 	private func recordRefresh(of access: UUID, state: AccessState?, accounts results: [UUID: AccountRefresh], attended: Bool) {
 		guard let store else { return }
-		let accounts = results.compactMap { id, result in ledger.account(id).map { a -> Account in var a = a; a.record(result); return a } }
+		let accounts = ledger.recorded(results, of: access, attended: attended)
 		guard state != nil || !accounts.isEmpty else { return }
 		do {
 			try store.recordRefresh(of: access, state: state, accounts: accounts)
@@ -1336,7 +1488,7 @@ final class AppModel {
 				ledger.upsert(a)
 			}
 		} catch {
-			report(AlertMessage(title: "Could not save the result of the refresh.", message: String(describing: error)), attended: attended)
+			report(AlertMessage(title: String(localized: "Could not save the result of the refresh."), message: String(describing: error)), attended: attended)
 		}
 	}
 
@@ -1347,13 +1499,13 @@ final class AppModel {
 
 	/// The step of the first running refresh, for the status line.
 	var refreshStatus: String? {
-		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? "the bank", state) : nil }.sorted { $0.0 < $1.0 }
+		let running = sync.states.compactMap { id, state in state.isRunning ? (accesses[id]?.bankName ?? String(localized: "the bank"), state) : nil }.sorted { $0.0 < $1.0 }
 		guard let (bank, state) = running.first else { return nil }
 		switch state {
-		case let .fetching(done, of): return "Getting transactions from \(bank) (\(min(done + 1, of)) of \(of))..."
-		case .needsUser(_, waiting: true, _): return "\(bank) waits for your input..."
-		case .needsUser: return "\(bank) needs your input..."
-		default: return "Connecting to \(bank)..."
+		case let .fetching(done, of): return String(localized: "Getting transactions from \(bank) (\(min(done + 1, of)) of \(of))...")
+		case .needsUser(_, waiting: true, _): return String(localized: "\(bank) waits for your input...")
+		case .needsUser: return String(localized: "\(bank) needs your input...")
+		default: return String(localized: "Connecting to \(bank)...")
 		}
 	}
 
@@ -1376,7 +1528,7 @@ final class AppModel {
 			ledger.upsert(category)
 			ledger.replace()
 		} catch {
-			alert = AlertMessage(title: "Could not save the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not save the category."), message: String(describing: error))
 		}
 	}
 
@@ -1391,7 +1543,7 @@ final class AppModel {
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
 		} catch {
-			alert = AlertMessage(title: "Could not remove the category.", message: String(describing: error))
+			alert = AlertMessage(title: String(localized: "Could not remove the category."), message: String(describing: error))
 		}
 	}
 
@@ -1411,13 +1563,20 @@ final class AppModel {
 		for await done in reports { ruleProgress = (done, total) }
 		let changed = await run.value
 		guard !run.isCancelled else { return }
+		if changed.isEmpty, let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+			return
+		}
 		let saved = await replacingTable { () -> Int? in
 			// A run saves only into the database it started with. A lock closes it, and an unlock opens a new one.
 			guard self.store === store else { return nil }
+			// A stopped rule gives no rows, also when a row that changed during the run stopped it.
 			let rows = RuleApplier.rebase(changed, from: ledger, onto: self.ledger, category: category, rule: rule, mode: mode)
 			return commit((transactions: rows, parts: [])) ? rows.count : nil
 		}
-		if let saved { alert = AlertMessage(title: "Categorized transactions: \(saved)", message: "") }
+		if let position = rule.stoppedRegexPosition {
+			alert = AlertMessage(title: RuleStop.message(position: position), message: "")
+		} else if let saved { alert = AlertMessage(title: String(localized: "Categorized transactions: \(saved)"), message: "") }
 	}
 
 	// MARK: Migration
@@ -1467,9 +1626,7 @@ final class AppModel {
 				if case let .category(id) = selection, ledger.category(id) == nil { selection = nil }
 				// A complete import replaces the account groups.
 				if case let .group(id) = selection, ledger.group(id) == nil { selection = nil }
-				if selection == nil {
-					selection = ledger.childGroups(of: nil).first.map { .group($0.id) } ?? ledger.accounts(inGroup: nil).first.map { .account($0.id) }
-				}
+				if selection == nil { selection = firstSidebarRow }
 				return true
 			}
 			if applied { return }

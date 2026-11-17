@@ -20,12 +20,21 @@ After the user chooses a method or a medium, `SessionBroker` keeps the dialog of
 
 ### Images and the flicker code
 
+- Image bytes come from the bank, from the FinTS helper, and from extensions, and the image decoders of macOS have had exploited memory bugs. So `ChallengeImage` checks the bytes where a connector creates it: a PNG or JPEG signature, at most 1 MB, and at most 2048 by 2048 pixels as the PNG header or the JPEG frame header states. It keeps no bytes that fail the check. Real photoTAN images and QR codes are a few kilobytes and a few hundred pixels wide, so the limits leave room. The dialog then decodes with ImageIO through `ChallengePicture` in `Sync`, which hints the checked type, allows only that type from macOS 27 on, rejects any other detected type, checks the dimensions again, and draws at most 2048 pixels on the long side. An image that fails a check shows "The bank sent an image that cannot be shown." under the text of the bank, and the TAN field stays.
 - A photoTAN image or a QR code has "Enlarge", which shows it at 400 points instead of 220, and the dialog grows with it. Command-plus and Command-minus do the same.
 - `FlickerCodeSize` in `Sync` keeps the width of the flicker code in the settings, from 160 to 400 points in steps of 40, and 240 at first. "Larger" waits for the warning that flicker codes might cause epileptic seizures, and enlarges only after "Continue". The answer is kept, so the warning comes once.
 
 ### Invalid challenge
 
 hbci4java leaves out the flicker code when the challenge data of the bank does not read. The helper keeps the challenge data that hbci4java removes before its callback. When a TAN request has challenge data but no flicker code, the helper fails the access with "The bank responded with an invalid challenge.", and so does the connector for a flicker code that does not read. `SyncFailure.invalidChallenge` carries it.
+
+### TAN length of Commerzbank and comdirect
+
+The helper sends with each typed TAN request the code of its method (`current`) and the maximum TAN length that the bank parameters (HITANS) announce for it (`maxLength`). `CommerzbankGroup.tanField` in `Sources/FinTS` turns them into the `TANField` of the request: for the method 900 on a server of Commerzbank, 7 digits up to the announced length, which counts between 7 and 15, and 15 when the bank announces none; for the method 902 on the server of comdirect, 6 or 7 digits. Both fields are numeric, so a blank or another character never counts toward the length. The photoTAN app of Commerzbank shows 7 characters and the bank announces more, so the announced length alone would let a 6 character TAN through. Every other method keeps the field without a length, as before.
+
+### TAN in capitals
+
+Deutsche Bank, Postbank, and norisbank take a TAN with letters only in capitals. The connector gives the request of these hosts, `FinTSServer.isDeutscheBankGroup`, a `TANField` with `isUppercase`, so the field turns letters into capitals as the user types, as it does for an extension that asks for it. A numeric TAN is unchanged by it. Which methods of these banks send a TAN with letters is not recorded yet, so the bank test of issue #11 checks it.
 
 ## Deviations from the spec
 

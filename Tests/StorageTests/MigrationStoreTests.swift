@@ -1,5 +1,6 @@
 import Domain
 import Foundation
+import GRDB
 @testable import Import
 import Synchronization
 import Testing
@@ -125,6 +126,26 @@ struct MigrationStoreTests {
 		#expect(after.transactions.isEmpty)
 		#expect(try store.exportAllData().portfolioValues.isEmpty)
 		#expect(after.categories == before.categories)
+	}
+
+	@Test("A migration into a file that another program changed writes nothing")
+	func changedOnDisk() async throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		defer { try? store.close() }
+		try store.save(Account(position: 0, name: "Synthetic giro", kind: .giro, source: .offline))
+		var config = Configuration()
+		config.prepareDatabase { db in try db.usePassphrase("synthetic-migration") }
+		let other = try DatabaseQueue(path: folder.databaseFile.path, configuration: config)
+		try await other.write { db in try db.execute(sql: "UPDATE account SET name = 'Synthetic other'") }
+		try other.close()
+		await #expect(throws: DatabaseChangedOnDisk.self) {
+			_ = try await store.importMigration(try sourcePlan(amounts: [0.01]))
+		}
+		let after = try store.loadLedger()
+		#expect(after.accounts.map(\.name) == ["Synthetic other"])
+		#expect(after.transactions.isEmpty)
 	}
 
 	@Test("Import saves counts and portfolio history and preserves fetched holdings")

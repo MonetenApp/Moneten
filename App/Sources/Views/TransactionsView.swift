@@ -97,12 +97,19 @@ struct HeaderView: View {
 					.foregroundStyle(Palette.detail)
 				}
 			}
+			// The title and the balances share the row before the space between them, so the space shrinks first.
+			.layoutPriority(1)
 			Spacer()
 			VStack(alignment: .trailing, spacing: 2) {
 				switch model.selection {
 				case let .account(id):
 					if let a = model.ledger.account(id) {
-						AmountText(money: model.ledger.balance(of: a)).font(.title2)
+						BalancesText(amounts: model.ledger.balances(of: a)).font(.title2)
+						// A portfolio never stores bonus points, so the line shows only for an account with a bonus program.
+						// A closed account shows its computed balance and none of the values that its bank reported.
+						if !a.isClosed, let points = a.bonusPoints {
+							Text("Bonus points: \(points.formatted())").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
+						}
 					}
 				case let .group(id):
 					Text(Format.sums(model.ledger.sum(ofGroup: id))).font(.title2).monospacedDigit()
@@ -121,6 +128,7 @@ struct HeaderView: View {
 					CalibrationNotice(accountID: account.id, difference: proposal.difference)
 				}
 			}
+			.layoutPriority(1)
 		}
 		.padding(.horizontal, 16)
 		.padding(.top, 12)
@@ -241,7 +249,7 @@ struct FilterBar: View {
 			separator
 			// A saved search shows both menus, so selecting it resets no filter.
 			if case .category = model.selection {} else {
-				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? "Show All") {
+				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.categoryID = nil }
 					Divider()
 					ForEach(model.ledger.categoriesInSidebarOrder) { c in Button(model.ledger.categoryPath(c.id)) { model.filter.categoryID = c.id } }
@@ -250,13 +258,24 @@ struct FilterBar: View {
 			if case .search = model.selection { separator }
 			switch model.selection {
 			case .category, .search:
-				filterMenu("Account:", title: model.filter.accountID.flatMap { model.ledger.account($0)?.name } ?? "Show All") {
-					Button("Show All") { model.filter.accountID = nil }
+				filterMenu("Account:", title: model.filter.account.flatMap { model.ledger.name(of: $0) } ?? String(localized: "Show All")) {
+					Button("Show All") { model.filter.account = nil }
 					Divider()
-					ForEach(model.ledger.accounts.sorted { $0.name < $1.name }) { a in Button(a.name) { model.filter.accountID = a.id } }
+					// The groups and accounts in the order of the sidebar. A menu item has no indentation of its own,
+					// so em spaces indent the rows of a group.
+					ForEach(model.ledger.accountTreeInSidebarOrder, id: \.item.id) { entry in
+						Button(String(repeating: "\u{2003}", count: entry.depth) + entry.item.name) { model.filter.account = entry.item.accountFilter }
+					}
 				}
 			default:
 				EmptyView()
+			}
+			// Only a single account has one balance for each day.
+			if case .account = model.selection {
+				separator
+				Toggle("Daily balance", isOn: $model.showsDailyBalance)
+					.toggleStyle(.checkbox)
+					.hoverHighlight()
 			}
 			Spacer()
 			// An icon like the pin, because a saved search already fills the bar with five menus.
@@ -282,7 +301,7 @@ struct FilterBar: View {
 		Rectangle().fill(Palette.filterSeparator).frame(width: 1, height: 16)
 	}
 
-	private func filterMenu<Content: View>(_ label: String, title: String, @ViewBuilder content: () -> Content) -> some View {
+	private func filterMenu<Content: View>(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) -> some View {
 		HStack(spacing: 4) {
 			Text(label).foregroundStyle(Palette.detail).fixedSize()
 			Menu(title, content: content)
@@ -294,10 +313,10 @@ struct FilterBar: View {
 
 	private var periodTitle: String {
 		switch model.period {
-		case .all: "Show All"
-		case .days30: "30 Days"
-		case .days90: "90 Days"
-		case .months12: "12 Months"
+		case .all: String(localized: "Show All")
+		case .days30: String(localized: "30 Days")
+		case .days90: String(localized: "90 Days")
+		case .months12: String(localized: "12 Months")
 		case let .month(d): Format.monthTitle(d)
 		case let .quarter(d): "Q\((d.month - 1) / 3 + 1) \(String(d.year))"
 		case let .year(d): String(d.year)
@@ -307,18 +326,18 @@ struct FilterBar: View {
 
 	private var statusTitle: String {
 		switch model.filter.status {
-		case .all: "Show All"
-		case .checked: "Checked"
-		case .unchecked: "Unchecked"
+		case .all: String(localized: "Show All")
+		case .checked: String(localized: "Checked")
+		case .unchecked: String(localized: "Unchecked")
 		}
 	}
 
 	private var amountTitle: String {
 		switch model.filter.amount {
-		case .all: "Show All"
-		case .deposits: "Deposits"
-		case .withdrawals: "Withdrawals"
-		case .range: "Custom"
+		case .all: String(localized: "Show All")
+		case .deposits: String(localized: "Deposits")
+		case .withdrawals: String(localized: "Withdrawals")
+		case .range: String(localized: "Custom")
 		}
 	}
 }
@@ -326,24 +345,27 @@ struct FilterBar: View {
 struct CustomPeriodView: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
-	@State private var from = Calendar.current.date(byAdding: .month, value: -1, to: Date())!
-	@State private var to = Date()
+	/// Nil while the field holds a text that is not a date.
+	@State private var from: Day? = Day.today().adding(months: -1)
+	@State private var to: Day? = Day.today()
 
 	var body: some View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					DatePicker("From", selection: $from, displayedComponents: .date)
-					DatePicker("To", selection: $to, displayedComponents: .date)
+					DateField(title: "From", day: $from, identifier: "from")
+					DateField(title: "To", day: $to, identifier: "to")
 				}
 			}
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					model.choose(period: .custom(Day(from), Day(to)))
+					guard let from, let to else { return }
+					model.choose(period: .custom(from, to))
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
+				.disabled(from == nil || to == nil)
 			}
 		}
 		.frame(width: 300)
@@ -414,7 +436,9 @@ struct TransactionTable: View {
 				Spacer()
 				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
-				if let a = model.selectedOfflineAccount, model.ledger.transactions(ofAccount: a.id).isEmpty {
+				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
+					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
+						.foregroundStyle(.secondary)
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
 				}
 				Spacer()
@@ -427,6 +451,8 @@ struct TransactionTable: View {
 			// A pending transaction is hatched.
 			// Amounts omit the currency only when the whole view has one. A mixed group keeps it on every row.
 			let currency = rows.first.flatMap { first in rows.allSatisfy { $0.currency == first.currency } ? first.currency : nil }
+			let balances = dayEndBalances
+			let checkmarks = model.showsCheckmarks
 			// The rows go in as a collection and carry no modifier. A ForEach of rows, and even more a
 			// modifier on a row such as .draggable or .itemProvider, makes SwiftUI build a view graph for
 			// every one of 50,000 rows on each change of the view, which took most of a second. The cells
@@ -440,7 +466,7 @@ struct TransactionTable: View {
 					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
 					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
 					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency)
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
 					} rows: {
 						ForEach(sections, id: \.account.id) { section in
 							Section(section.account.name) {
@@ -450,12 +476,15 @@ struct TransactionTable: View {
 					}
 				} else {
 					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency)
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
 					}
 				}
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
+			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
+			// only that text, so this runs only without selected text.
+			.onCopyCommand { copiedRows() }
 			.contextMenu(forSelectionType: UUID.self) { ids in
 				TransactionMenu(ids: ids)
 			} primaryAction: { ids in
@@ -472,7 +501,7 @@ struct TransactionTable: View {
 	}
 
 	@TableColumnBuilder<Transaction, Never>
-	private func columns(currency: String?) -> some TableColumnContent<Transaction, Never> {
+	private func columns(currency: String?, balances: [UUID: Money], checkmarks: Bool) -> some TableColumnContent<Transaction, Never> {
 			TableColumn("Date") { (t: Transaction) in
 				DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
 			}
@@ -490,10 +519,21 @@ struct TransactionTable: View {
 			// The checkmark sits 11 points right of the amount, as in MoneyMoney.
 			TableColumn("Amount") { (t: Transaction) in
 				HStack(spacing: 5) {
-					AmountText(money: t.amount, showsCurrency: t.currency != currency)
-						.font(.system(size: 18))
-						.modifier(PendingValue(pending: t.isPending))
-					CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+					VStack(alignment: .trailing, spacing: 1) {
+						AmountText(money: t.amount, showsCurrency: t.currency != currency)
+							.font(.system(size: 18))
+							.modifier(PendingValue(pending: t.isPending))
+						if let balance = balances[t.id] {
+							Text(Format.money(balance))
+								.font(.system(size: 11))
+								.monospacedDigit()
+								.foregroundStyle(Palette.detail)
+								.help("Balance at the end of \(Format.day(t.bookingDate))")
+						}
+					}
+					if checkmarks {
+						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
+					}
 				}
 				.padding(.trailing, 2)
 				// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
@@ -503,6 +543,13 @@ struct TransactionTable: View {
 			.width(min: 120, ideal: 150)
 			.alignment(.trailing)
 			.customizationID("amount")
+	}
+
+	/// "Daily balance": the balance at the end of each day, on the top row of the day. Empty when it is off or
+	/// the view is not a single account.
+	private var dayEndBalances: [UUID: Money] {
+		guard model.showsDailyBalance, case let .account(id) = key.selection, let account = model.ledger.account(id) else { return [:] }
+		return model.ledger.dayEndBalances(of: account, rows: rows)
 	}
 
 	/// The selection, as long as the model shows this table: see `AppModel.shows(_:)`.
@@ -532,6 +579,14 @@ struct TransactionTable: View {
 		}
 	}
 
+	/// The selected rows as text, in the order of the list, also under the headings of "Group transactions by account".
+	private func copiedRows() -> [NSItemProvider] {
+		let selection = model.visibleSelection
+		guard !selection.isEmpty else { return [] }
+		let ordered = (accountSections?.flatMap(\.rows) ?? rows).filter { selection.contains($0.id) }
+		return [NSItemProvider(object: TransactionCopy.text(ordered, locale: .current) as NSString)]
+	}
+
 	private func draggedIDs(for t: Transaction) -> DraggedTransactions {
 		let selection = model.visibleSelection
 		return model.startDrag(of: selection.contains(t.id) ? selection : [t.id])
@@ -547,7 +602,7 @@ struct TransactionCell: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
 			HStack(spacing: 4) {
-				Text(transaction.name.isEmpty ? (transaction.bookingText ?? "") : transaction.name).fontWeight(.bold).lineLimit(1)
+				Text(transaction.shownName).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
 				}
@@ -578,14 +633,44 @@ struct TransactionCell: View {
 			}
 			// A row without a purpose keeps the empty line, so that every row is the same height.
 			// As in MoneyMoney, the purpose takes one line, its lines joined with spaces. The whole text
-			// is in the help tag and in the transaction sheet.
+			// and the details from the bank are in the help tag and in the transaction sheet, so the row keeps its height.
 			Text(transaction.purpose.isEmpty ? " " : transaction.purpose.split(whereSeparator: \.isNewline).joined(separator: " "))
 				.foregroundStyle(Palette.detail)
 				.lineLimit(1)
-				.help(transaction.purpose)
+				.modifier(DetailsHelp(transaction: transaction))
 		}
 		.font(.system(size: 13))
 		.textSelection(.enabled)
+	}
+
+	/// The whole purpose, then one line "Label: value" for each detail from the bank.
+	static func helpText(_ t: Transaction) -> String {
+		let details = t.details.map { "\($0.label): \($0.shownValue)" }
+		return ([t.purpose].filter { !$0.isEmpty } + (details.isEmpty ? [] : [details.joined(separator: "\n")])).joined(separator: "\n\n")
+	}
+}
+
+/// The help tag of the purpose with the details from the bank. The text is built when the pointer enters the purpose,
+/// not each time SwiftUI builds a cell while the list scrolls. Until then the help tag is the purpose, which costs nothing.
+struct DetailsHelp: ViewModifier {
+	let transaction: Transaction
+	@State private var hovered = false
+
+	func body(content: Content) -> some View {
+		content
+			.onHover { hovered = $0 }
+			.help(hovered ? TransactionCell.helpText(transaction) : transaction.purpose)
+	}
+}
+
+extension TransactionDetail {
+	/// The value as the help tag and the transaction sheet show it.
+	var shownValue: String {
+		switch self {
+		case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .bic(v): v
+		case let .valueDate(day): Format.day(day)
+		case let .iban(v): Format.iban(v)
+		}
 	}
 }
 
@@ -649,7 +734,7 @@ struct CategoryRibbon: View {
 						.overlay { RibbonShape().fill(.white.opacity(hovered ? 0.18 : 0)) }
 				} else {
 					// An uncategorized row shows a gray ribbon only under the pointer.
-					ribbon("Category".uppercased(), Color(white: 0.55))
+					ribbon(String(localized: "Category").uppercased(), Color(white: 0.55))
 						.opacity(hovered ? 0.6 : 0)
 				}
 			}
@@ -659,9 +744,9 @@ struct CategoryRibbon: View {
 		.fixedSize()
 		.onHover { hovered = $0 }
 		.animation(.easeOut(duration: 0.15), value: hovered)
-		.help(category.map { ledger.categoryPath($0.id) } ?? "Assign Category")
+		.help(category.map { ledger.categoryPath($0.id) } ?? String(localized: "Assign Category"))
 		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
-		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? "Uncategorized")
+		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? String(localized: "Uncategorized"))
 		.accessibilityHint("Assign Category")
 	}
 }
@@ -861,7 +946,7 @@ struct CategoryChoices: View {
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
-		menu.addItem(ActionMenuItem(title: "Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) })
+		menu.addItem(ActionMenuItem(title: String(localized: "Add category")) { model.sheet = .newCategory(isGroup: false, assigning: ids) })
 		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
 	}
 
@@ -941,11 +1026,11 @@ struct TransactionMenu: View {
 	private func confirmDelete(_ ids: Set<UUID>) {
 		guard !model.refusePartDeletion(in: ids) else { return }
 		let alert = NSAlert()
-		alert.messageText = ids.count == 1 ? "Delete selected transaction?" : "Delete \(ids.count) selected transactions?"
-		alert.informativeText = "Deleted transactions CANNOT be restored!"
+		alert.messageText = ids.count == 1 ? String(localized: "Delete selected transaction?") : String(localized: "Delete \(ids.count) selected transactions?")
+		alert.informativeText = String(localized: "Deleted transactions CANNOT be restored!")
 		alert.alertStyle = .warning
-		alert.addButton(withTitle: "Delete")
-		alert.addButton(withTitle: "Cancel")
+		alert.addButton(withTitle: String(localized: "Delete"))
+		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { model.delete(transactions: ids) }
 	}
 }
@@ -989,9 +1074,16 @@ struct StatusLine: View {
 				HStack(spacing: 12) {
 					Text(selected.count > 1 ? "\(selected.count) of \(rows.count) transactions" : (rows.count == 1 ? "1 transaction" : "\(rows.count.formatted()) transactions"))
 						.foregroundStyle(Palette.detail)
-					Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)))")
+					let amounts = sums.shownAmounts(viewCurrency: model.selectedCurrency, rows: shown)
+					Text("Sum: \(Format.sums(amounts))")
 						.monospacedDigit()
-						.textSelection(.enabled)
+						// The number alone, which a spreadsheet or a text field takes as it is.
+						.contextMenu {
+							Button("Copy Sum") {
+								NSPasteboard.general.clearContents()
+								NSPasteboard.general.setString(MoneySums.copyText(amounts, locale: .current), forType: .string)
+							}
+						}
 				}
 				.fixedSize()
 				// As wide as the note, so that the count stays in the middle and the note truncates first.

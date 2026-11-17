@@ -13,7 +13,7 @@ extension Store {
 
 	/// Saves the search text and the filter bar under `name` as the last entry of "Searches".
 	public func appendSavedSearch(name: String, period: PeriodChoice, filter: TransactionFilter) throws -> SavedSearch {
-		try queue.write { db in
+		try write { db in
 			let last = try Int.fetchOne(db, sql: "SELECT MAX(position) FROM savedSearch")
 			let search = SavedSearch(name: name, position: last.map { $0 + 1 } ?? 0, period: period, filter: filter)
 			try Self.insert(search, into: db)
@@ -23,11 +23,11 @@ extension Store {
 
 	/// Changes only the name, so a filter bar that this version cannot read stays as it is.
 	public func renameSavedSearch(_ id: UUID, to name: String) throws {
-		try queue.write { db in try db.execute(sql: "UPDATE savedSearch SET name = ? WHERE id = ?", arguments: [name, id]) }
+		try write { db in try db.execute(sql: "UPDATE savedSearch SET name = ? WHERE id = ?", arguments: [name, id]) }
 	}
 
 	public func deleteSavedSearch(_ id: UUID) throws {
-		try queue.write { db in try db.execute(sql: "DELETE FROM savedSearch WHERE id = ?", arguments: [id]) }
+		try write { db in try db.execute(sql: "DELETE FROM savedSearch WHERE id = ?", arguments: [id]) }
 	}
 
 	static func savedSearch(_ row: Row) -> SavedSearch {

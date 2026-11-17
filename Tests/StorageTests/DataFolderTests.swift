@@ -49,4 +49,12 @@ struct DataFolderTests {
 		#expect(try read(folder.databaseFile) == "db")
 		#expect(folder.legacyKeychainAccount == current.appendingPathComponent("Database/MonetenMoneten.sqlite").standardizedFileURL.path)
 	}
+
+	@Test("A database file from the Finder is told apart from other files, whatever its name and case", arguments: [
+		("Moneten.sqlite", true), ("Moneten-Backup.SQLITE", true), ("Kopie von Moneten.sqlite", true),
+		("Umsaetze.csv", false), ("Moneten.sqlite-journal", false), ("Moneten", false),
+	])
+	func databaseFileFromFinder(name: String, isDatabase: Bool) {
+		#expect(DataFolder.isDatabaseFile(URL(fileURLWithPath: "/Users/beispiel/Downloads/\(name)")) == isDatabase)
+	}
 }

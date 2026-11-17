@@ -7,10 +7,10 @@ struct MenuBarIcon: View {
 	let model: AppModel
 
 	var body: some View {
-		Image(systemName: symbol)
+		Image(systemName: Self.symbol(of: model).description)
 	}
 
-	private var symbol: String {
+	static func symbol(of model: AppModel) -> StaticString {
 		guard model.phase == .unlocked else { return "banknote" }
 		if model.sync.isRefreshing { return "arrow.triangle.2.circlepath" }
 		if model.ledger.accounts.contains(where: { !$0.isClosed && $0.refreshError != nil }) { return "exclamationmark.triangle" }
@@ -67,8 +67,9 @@ struct MenuBarPopover: View {
 	}
 }
 
-/// One account in the popover: name, number of new transactions, and the balance, or the mark of a
-/// failed refresh or of one that waits for the user.
+/// One account in the popover: name, number of new transactions, the marker of a failed refresh or of one
+/// that waits for the user, and the balances of the sidebar row. Unlike the sidebar row, a failed refresh
+/// keeps the balances beside its marker, because the popover has no room for the error text.
 struct MenuBarAccountRow: View {
 	@Environment(AppModel.self) private var model
 	let account: Account
@@ -76,7 +77,7 @@ struct MenuBarAccountRow: View {
 	var body: some View {
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack(spacing: 6) {
-			Label { Text(account.name).lineLimit(1) } icon: { AccountIcon(account: account) }
+			Label { Text(account.name).lineLimit(1).atLeastEllipsisWide() } icon: { AccountIcon(account: account) }
 			if newCount > 0 {
 				Text("\(newCount)")
 					.font(.caption.weight(.semibold))
@@ -84,17 +85,18 @@ struct MenuBarAccountRow: View {
 					.padding(.horizontal, 6)
 					.background(Capsule().fill(.tint))
 					.foregroundStyle(.white)
+					.fixedSize()
 			}
 			Spacer(minLength: 8)
 			if model.sync.refreshingAccounts.contains(account.id) {
 				ProgressView().controlSize(.mini)
 			}
-			if let error = account.refreshError {
+			if let error = account.shownRefreshError {
 				Image(systemName: error.waitsForUser ? "person.crop.circle.badge.exclamationmark" : "exclamationmark.triangle.fill")
 					.foregroundStyle(error.waitsForUser ? Color.orange : Palette.red)
-					.help(error.message)
+					.help(error.shownMessage)
 			}
-			AmountText(money: model.ledger.balance(of: account)).fontWeight(.medium)
+			BalancesText(amounts: model.ledger.balances(of: account)).fontWeight(.medium)
 		}
 		.padding(.vertical, 3)
 		.padding(.horizontal, 4)

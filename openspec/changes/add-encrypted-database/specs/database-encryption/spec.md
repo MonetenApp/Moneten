@@ -96,6 +96,13 @@ The app SHALL offer "Set Database Password..." in the application menu and in th
 - **THEN** the app shows that the password has been set and names the path of the backup copy
 - **AND** the random key in the Keychain still opens the backup copy
 
+#### Scenario: The random key is gone from the Keychain
+
+- **GIVEN** a database without a password whose random key another program removed from the Keychain while the app runs
+- **WHEN** the user sets the password "korrekt-pferd-batterie"
+- **THEN** the app shows that the key of the database could not be read from the Keychain
+- **AND** the database keeps the random key and every later save opens with it
+
 ### Requirement: The new password is entered twice
 
 The app SHALL ask for a new password in the fields "New password" and "Repeat new password" and accept it only when both fields hold the same text. Any text that is not empty is a valid password.
@@ -221,6 +228,20 @@ The app SHALL keep the database readable with the earlier password when a passwo
 - **THEN** the app shows that it could not change the password
 - **AND** "alt-und-lang-genug" still opens the database with all data
 
+#### Scenario: Saving after a failed change
+
+- **GIVEN** a database with the password "alt-und-lang-genug" and a change to "neu-und-noch-laenger" that failed because the disk is full
+- **WHEN** the user adds the account "Tagesgeld"
+- **THEN** "alt-und-lang-genug" opens the database with the account "Tagesgeld"
+- **AND** "neu-und-noch-laenger" does not open the database
+
+#### Scenario: Another program reads during the change
+
+- **GIVEN** a database with the password "alt-und-lang-genug", "Unlock automatically at application start" on, and another program that reads the database
+- **WHEN** the user changes the password to "neu-und-noch-laenger"
+- **THEN** the app shows that it could not change the password
+- **AND** the Keychain still holds "alt-und-lang-genug", which opens the database
+
 ### Requirement: No way around the password
 
 The app SHALL NOT offer any way to open a database without its password. It has no password hint, no recovery key, and no reset that keeps the data. Wrong attempts neither erase data nor block later attempts.
@@ -292,6 +313,22 @@ The app SHALL, when an update of the app needs a new database layout, first save
 - **THEN** the app shows that it could not upgrade the database
 - **AND** the database of version 0.1 is unchanged
 
+### Requirement: Deleted data leaves no trace in the database file
+
+The app SHALL overwrite deleted data in the database file with zeros, also in pages that become free. A copy of the database, such as the automatic backup copy or a "Back Up", then holds no deleted data either.
+
+#### Scenario: Remove a saved PIN
+
+- **GIVEN** an access with the saved PIN "48151"
+- **WHEN** the user clicks "Remove saved PIN" and clicks "OK"
+- **THEN** no page of the database file holds "48151", also when a person decrypts every page with the database password
+
+#### Scenario: PIN removed before an update
+
+- **GIVEN** a database from version 0.1 in which the user removed the saved PIN "48151"
+- **WHEN** the user starts version 0.2, which upgrades the database, and then chooses "Back Up"
+- **THEN** no decrypted page of the database file, of the automatic backup copy, or of the backup holds "48151"
+
 ### Requirement: Refuse a database from a newer version
 
 The app SHALL refuse to open a database that a newer version of the app has upgraded. The message names the lowest version that can open the database and the version that is running. The app does not change the file.
@@ -320,6 +357,12 @@ The app SHALL refuse to open a database that another running copy of the app has
 - **WHEN** the user starts a second copy of the app from another folder
 - **THEN** the second copy shows that the database is in use by another application
 - **AND** the second copy writes nothing to the database
+
+#### Scenario: A copy that crashed
+
+- **GIVEN** a copy of the app that had the database open and then crashed
+- **WHEN** the user starts the app
+- **THEN** the app opens the database
 
 ### Requirement: Detect a change of the database on disk
 

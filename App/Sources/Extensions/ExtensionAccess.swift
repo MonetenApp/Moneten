@@ -86,7 +86,7 @@ extension AppModel {
 		}
 		let accounts = try storeExtensionAccess(new, state: setup.state, accounts: listed)
 		guard let store, !accounts.isEmpty else {
-			alert = AlertMessage(title: "\(access.bankName) added no account.", message: "Moneten has every account of this login already.")
+			alert = AlertMessage(title: String(localized: "\(access.bankName) added no account."), message: String(localized: "Moneten has every account of this login already."))
 			return
 		}
 		// The rows that the setup fetched are stored here, without a suspension after the checks of the job.

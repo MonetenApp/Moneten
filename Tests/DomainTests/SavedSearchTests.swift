@@ -19,12 +19,12 @@ struct SavedSearchTests {
 		])
 	}
 
-	func taxPayments(period: PeriodChoice = .all, category: UUID? = nil, account: UUID? = nil) -> SavedSearch {
+	func taxPayments(period: PeriodChoice = .all, category: UUID? = nil, account: TransactionFilter.AccountFilter? = nil) -> SavedSearch {
 		var f = TransactionFilter()
 		f.searchText = "Finanzamt"
 		f.amount = .withdrawals
 		f.categoryID = category
-		f.accountID = account
+		f.account = account
 		return SavedSearch(name: "Tax payments", position: 0, period: period, filter: f)
 	}
 
@@ -39,12 +39,12 @@ struct SavedSearchTests {
 	@Test("A saved search keeps its category and account filters, because its filter bar shows both menus")
 	func bothMenus() {
 		let l = ledger()
-		var f = taxPayments(category: taxes.id, account: giro.id).filter(in: l, today: today)
+		var f = taxPayments(category: taxes.id, account: .account(giro.id)).filter(in: l, today: today)
 		f.resetHidden(in: .all)
-		#expect(f.categoryID == taxes.id && f.accountID == giro.id)
+		#expect(f.categoryID == taxes.id && f.account == .account(giro.id))
 		#expect(l.rows(in: .all, filter: f).rows.map(\.purpose) == ["Einkommensteuer 2025"])
 		f.categoryID = nil
-		f.accountID = card.id
+		f.account = .account(card.id)
 		#expect(l.rows(in: .all, filter: f).rows.map(\.purpose) == ["Hundesteuer"])
 	}
 
@@ -66,6 +66,58 @@ struct SavedSearchTests {
 		#expect(f.categoryID == nil)
 		#expect(saved.filter(in: l, today: Day(year: 2026, month: 12, day: 1)).period.start == Day(year: 2026, month: 11, day: 2))
 		#expect(l.rows(in: .all, filter: f).rows.map(\.purpose) == ["Einkommensteuer 2025"])
+	}
+
+	@Test("A saved search with an account group shows the rows of every account in the group and its subgroups")
+	func accountGroup() {
+		let privat = AccountGroup(name: "Private", position: 0)
+		let cards = AccountGroup(name: "Cards", parentID: privat.id, position: 1)
+		let savings = Account(position: 2, name: "Savings", kind: .savings, source: .offline)
+		var giro = giro, card = card
+		giro.groupID = privat.id
+		card.groupID = cards.id
+		let base = ledger()
+		let l = Ledger(groups: [privat, cards], accounts: [giro, card, savings], categories: base.categories, transactions: base.transactions + [
+			Transaction(accountID: savings.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Finanzamt Musterstadt", purpose: "Zinsabschlag"),
+		])
+		let all = taxPayments(account: .group(privat.id)).filter(in: l, today: today)
+		#expect(all.account == .group(privat.id))
+		#expect(l.rows(in: .all, filter: all).rows.map(\.purpose) == ["Einkommensteuer 2025", "Hundesteuer"])
+		#expect(l.rows(in: .all, filter: taxPayments(account: .group(cards.id)).filter(in: l, today: today)).rows.map(\.purpose) == ["Hundesteuer"])
+		var inTaxes = all
+		inTaxes.searchText = ""
+		inTaxes.amount = .all
+		#expect(l.rows(in: .category(taxes.id), filter: inTaxes).rows.map(\.purpose) == ["Einkommensteuer 2025"])
+	}
+
+	@Test("A saved search whose account group was removed opens without the account filter")
+	func removedAccountGroup() {
+		let l = ledger()
+		let f = taxPayments(account: .group(UUID())).filter(in: l, today: today)
+		#expect(f.account == nil)
+		#expect(l.rows(in: .all, filter: f).rows.map(\.purpose) == ["Einkommensteuer 2025", "Hundesteuer"])
+	}
+
+	@Test("A filter bar saved with an account reads as before, and a group goes into its own key")
+	func accountAndGroupKeys() throws {
+		let group = AccountGroup(name: "Private", position: 0)
+		var giro = giro
+		giro.groupID = group.id
+		let l = Ledger(groups: [group], accounts: [giro, card])
+		let written = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"all":{}},"accountID":"\#(card.id.uuidString)"}"#
+		let old = try #require(SavedFilterBar(data: Data(written.utf8)))
+		#expect(old.filter(in: l, today: today).account == .account(card.id))
+		#expect(old.filter(in: l, today: today).status == .unchecked)
+
+		var f = TransactionFilter()
+		f.account = .account(card.id)
+		let account = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: f).data) as? [String: Any]
+		#expect(account?["accountID"] as? String == card.id.uuidString && account?["accountGroupID"] == nil)
+		f.account = .group(group.id)
+		let data = SavedFilterBar(period: .all, filter: f).data
+		let stored = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+		#expect(stored?["accountGroupID"] as? String == group.id.uuidString && stored?["accountID"] == nil)
+		#expect(try #require(SavedFilterBar(data: data)).filter(in: l, today: today).account == .group(group.id))
 	}
 
 	@Test("Saving needs a search text, a period, or a filter")

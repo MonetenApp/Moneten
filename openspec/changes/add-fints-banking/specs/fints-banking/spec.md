@@ -50,6 +50,38 @@ The app SHALL read from the bank all accounts that belong to a login, each with 
 - **WHEN** the app lists the accounts of the login
 - **THEN** it reports three accounts with the types "Giro account", "Savings account", and "Credit card"
 
+### Requirement: Correct a BIC that the bank no longer uses
+
+The app SHALL store the BIC `GENODEF1ETK` for an account of a login at the Bankleitzahl 83094495 when the bank sends the old BIC `GENODEF1ESN` for it. Any other BIC stays as the bank sends it.
+
+#### Scenario: Old BIC of the bank
+
+- **GIVEN** the bank with the Bankleitzahl 83094495 lists the account DE02120300000000202051 with the BIC `GENODEF1ESN`
+- **WHEN** the setup adds the account
+- **THEN** the account has the BIC `GENODEF1ETK`
+
+#### Scenario: Same BIC at another bank
+
+- **GIVEN** a bank with the Bankleitzahl 12030000 lists an account with the BIC `GENODEF1ESN`
+- **WHEN** the setup adds the account
+- **THEN** the account has the BIC `GENODEF1ESN`
+
+### Requirement: Accounts of the partners of a cooperative bank
+
+The app SHALL fetch the accounts of the partners that a cooperative bank on a host that ends in `.atruvia.de` or `.bankenit.de` lists for the login, such as a building savings contract of Bausparkasse Schwäbisch Hall or a fund depot of Union Investment, and offer them in the account selection with their balance or value.
+
+#### Scenario: Building savings contract
+
+- **GIVEN** a Volksbank lists a building savings contract of Bausparkasse Schwäbisch Hall with a balance of 4.250,00 € for the login
+- **WHEN** the user looks for new accounts
+- **THEN** the list offers "Bausparvertrag" with 4.250,00 €
+
+#### Scenario: Fund depot
+
+- **GIVEN** a Volksbank lists a fund depot of Union Investment with a value of 1.200,00 € for the login
+- **WHEN** a refresh of the depot ends
+- **THEN** the depot is a portfolio with the value 1.200,00 €
+
 ### Requirement: Use only what the bank allows
 
 The app SHALL read from the bank which operations the bank offers and which of them each account allows, and it SHALL not send an operation that is not allowed. When the user asks for such an operation, the app says which operation the FinTS server of the bank does not support for which account.
@@ -214,6 +246,21 @@ The app SHALL request the next part when a bank delivers a transaction list in s
 - **WHEN** the fetch ends
 - **THEN** the account has all 1,400 transactions
 
+### Requirement: Amount limit of a bank answer
+
+The app SHALL fail an account when the bank sends a balance, a value, or a transaction, or a position whose quantity times its price gives an amount, of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app stores nothing of that account from this refresh, and the other accounts of the login refresh as usual.
+
+#### Scenario: Absurd balance
+
+- **WHEN** the bank sends a balance of 50.000.000.000.000.000,00 € for the account "Giro"
+- **THEN** the account "Giro" shows that the bank sent an amount that is too large
+- **AND** the account "Tagesgeld" of the same login shows its new balance
+
+#### Scenario: Absurd position
+
+- **WHEN** the bank sends a position of 10.000.000.000 units at a price of 10.000.000.000,00 € without a market value for the portfolio "Depot"
+- **THEN** the portfolio "Depot" shows that the bank sent an amount that is too large
+
 ### Requirement: Mark pending transactions
 
 The app SHALL take over the transactions that a bank reports as not yet booked and mark each of them as pending.
@@ -223,6 +270,48 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **GIVEN** the bank reports a card payment of -23,80 € as pending
 - **WHEN** the refresh ends
 - **THEN** the list shows the payment as a pending transaction
+
+#### Scenario: Pending MT942 row of Commerzbank
+
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 14.11.2026, the entry date 15.11 as the expected booking day, the amount -42,00 €, and the name "Stadtwerke Musterstadt"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 15.11.2026, the value date 14.11.2026, and the name "Stadtwerke Musterstadt"
+
+#### Scenario: Expected booking day in the year before
+
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 02.01.2026 and the entry date 31.12
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 31.12.2025
+
+#### Scenario: Pending Postbank card payment without a name
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, the purpose "Kartenzahlung / Buchhandlung Beispiel", and the amount -23,80 €
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "Buchhandlung Beispiel", the text after the first " / " of the purpose
+- **AND** when the bank later books -23,80 € to "Buchhandlung Beispiel", the booked transaction replaces the pending one
+
+#### Scenario: Pending Postbank card payment of one word
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, and the purpose "PayPal"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "PayPal"
+- **AND** a purpose of several words without " / ", a booked row, a row with a counterparty, and a row of another bank keep the name that the bank sent
+
+### Requirement: Date a pending MT942 transaction of ING by its expected day
+
+The app SHALL give a pending transaction from an MT942 statement of the FinTS server of ING (`fints.ing.de`) the entry date of its ":61:" line as its date, because ING sends there the day on which it expects to book the transaction. A line without an entry date keeps its value date.
+
+#### Scenario: Pending ING row with an expected date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € to "Musterverlag" with the value date 14.11.2026 and the entry date 15.11.2026
+- **THEN** the pending transaction of -9,99 € has the date 15.11.2026 and the value date 14.11.2026
+
+#### Scenario: Pending row without an entry date
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank sends a pending MT942 row of -9,99 € with the value date 14.11.2026 and no entry date
+- **THEN** the pending transaction of -9,99 € has the date 14.11.2026
 
 ### Requirement: Store booking date and value date
 
@@ -283,6 +372,12 @@ The app SHALL store the original amount and currency of a transaction that the b
 - **WHEN** the user opens the transaction details
 - **THEN** the details show 50,00 US dollars as the original amount
 
+#### Scenario: Sign of the original amount of an MT942 row
+
+- **GIVEN** the bank reports a pending MT942 row of -10,00 € with the original amount 11,00 US dollars
+- **WHEN** the refresh ends
+- **THEN** the original amount is -11,00 US dollars
+
 #### Scenario: Payment through a payment service
 
 - **GIVEN** the bank reports the counterparty "Zahlungsdienst Muster GmbH" and the deviating recipient "Buchhandlung Beispiel"
@@ -298,6 +393,116 @@ The app SHALL list a credit card as an account of the type "Credit card" when th
 - **GIVEN** the bank reports a credit card for the login of the giro account
 - **WHEN** the user adds the card in the account selection
 - **THEN** the card appears as its own account with its transactions
+
+### Requirement: Ask for the name of the apoTAN device
+
+The app SHALL ask for the name of the apoTAN device in a text field that may stay empty when the FinTS server `fints.apobank.de` asks for a TAN medium and lists none. The hint under the field says that the user leaves it empty unless the bank reports an error in the next step, and then enters the name exactly as the apoTAN settings of the website of apoBank show it. The app remembers the answer for the access, also an empty one, and sends it again while the bank lists no TAN media.
+
+#### Scenario: Empty list of TAN media
+
+- **GIVEN** the user adds an account of apoBank, whose FinTS server is `fints.apobank.de`
+- **WHEN** the bank asks for a TAN medium and lists none
+- **THEN** the dialog shows an empty text field "apoTAN device name" with the hint
+- **AND** "Continue" is enabled
+
+#### Scenario: Next refresh
+
+- **GIVEN** the user left the field "apoTAN device name" empty in the setup
+- **WHEN** the next refresh of the access asks for a TAN medium and the bank lists none
+- **THEN** the app sends the empty name again and shows no dialog for it
+
+#### Scenario: Name needed after the setup
+
+- **WHEN** the dialog shows the field "apoTAN device name"
+- **THEN** the hint also says that the user enters the name with "Edit Login Data..." when a later refresh reports the error
+
+#### Scenario: Other bank without a list
+
+- **GIVEN** a bank on another FinTS server asks for a TAN medium and lists none
+- **WHEN** the dialog opens
+- **THEN** the dialog asks for the name of the TAN medium, and "Continue" stays disabled while the field is empty
+
+### Requirement: Fetch a credit card through its card statement
+
+The app SHALL fetch the transactions and the balance of a credit card from its card statement when the bank allows the card statement for the card and no transaction list.
+
+#### Scenario: Card with only the card statement
+
+- **GIVEN** the bank allows only the card statement for the credit card "Visa" with the card number 1234567890123456
+- **AND** the card statement reports the debit 19,90 with the mark "D", booked on 09.11.2026 with the value date 08.11.2026, for "Streaming Beispiel" in "Musterstadt"
+- **WHEN** the user refreshes "Visa" from 01.10.2026
+- **THEN** the app asks the bank for the card statement of the card number 1234567890123456 from 01.10.2026
+- **AND** the list shows -19,90 € with the name "Streaming Beispiel" and the purpose "Streaming Beispiel / Musterstadt", booked on 09.11.2026 with the value date 08.11.2026
+
+#### Scenario: Card with the balance and the card statement
+
+- **GIVEN** the bank allows the balance and the card statement for "Visa", and no transaction list
+- **WHEN** the user refreshes "Visa"
+- **THEN** the app fetches the card statement, which brings the balance and the transactions of "Visa"
+- **AND** the account view does not say that the bank provides no transactions for this account
+
+#### Scenario: Sign of a credit
+
+- **WHEN** the card statement reports the amount 25,00 with the mark "C"
+- **THEN** the list shows +25,00 €
+
+#### Scenario: Balance of the card
+
+- **WHEN** the card statement reports the balance 1.234,56 with the mark "D" on 12.11.2026
+- **THEN** "Visa" shows the balance -1.234,56 € on 12.11.2026, the amount that the user owes on the card
+
+#### Scenario: Balance in two parts of the answer
+
+- **WHEN** the first part of the card statement reports the balance -80,10 € and the second part -95,00 €
+- **THEN** "Visa" shows the balance -80,10 €
+
+#### Scenario: Repeated fetch
+
+- **GIVEN** "Visa" has the payment of -19,90 € from 09.11.2026 from the last refresh
+- **WHEN** the next refresh brings the same payment again
+- **THEN** the list shows the payment once
+
+#### Scenario: Payment that is not final
+
+- **GIVEN** the card statement reports a hotel reservation of -150,00 € as not final
+- **WHEN** the refresh ends
+- **THEN** the list shows the reservation as a pending transaction
+- **AND** when a later refresh no longer reports the reservation, the list no longer shows it
+
+#### Scenario: Reservation that gets booked
+
+- **GIVEN** "Visa" shows the pending reservation of -150,00 € for "Hotel Beispiel" from 10.11.2026, with the comment "Trip", the category "Travel", and a checkmark
+- **WHEN** the next refresh reports the same payment as final, booked on 12.11.2026
+- **THEN** the list shows one transaction of -150,00 € for "Hotel Beispiel", booked on 12.11.2026 and no longer pending
+- **AND** the transaction keeps the comment "Trip", the category "Travel", and the checkmark
+
+#### Scenario: Original amount with three decimals
+
+- **WHEN** the card statement reports a payment of -3,69 € with the original amount 1,234 Kuwaiti dinar
+- **THEN** the list shows the payment with -3,69 €
+
+#### Scenario: A row that does not read
+
+- **GIVEN** the login "erika77" has the giro account "Giro" and the credit card "Visa"
+- **WHEN** the card statement of "Visa" has a row without an amount
+- **THEN** "Visa" fails with "The bank sent a card transaction that does not read, so nothing of this card was stored." and keeps its transactions
+- **AND** "Giro" gets its balance and its transactions
+
+### Requirement: Name the DKB card that the bank offers no statement for
+
+The app SHALL name the card number, DKB, and the DKB support in the error of a DKB credit card whose account data allow no job that the app knows, so that the user can quote the error to the DKB support. A DKB access has the Bankleitzahl 12030000 or a FinTS address on a host that ends in ".dkb.de", and a DKB card has the 16 digit card number as its account number.
+
+#### Scenario: DKB card without a job that the app knows
+
+- **GIVEN** a DKB login whose account data list the card 1234567890123456 with no job that the app knows, neither the card statement nor the balance nor a transaction list
+- **WHEN** the refresh of the card ends
+- **THEN** the card fails with "The FinTS server of DKB offers neither the balance nor the transactions of the card 1234567890123456. Try again later, or contact the DKB support with this message."
+
+#### Scenario: Card of another bank without a job that the app knows
+
+- **GIVEN** a login at a bank other than DKB whose account data list the card 1234567890123456 with no job that the app knows
+- **WHEN** the refresh of the card ends
+- **THEN** the card fails with "The FinTS server of the bank offers neither the balance nor the transactions of this account."
 
 ### Requirement: Read the value of a securities account
 
@@ -353,6 +558,18 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **GIVEN** a login at Consorsbank, whose bank parameters say that no order needs a TAN
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: DAB BNP Paribas on the server of Consorsbank
+
+- **GIVEN** a login at DAB BNP Paribas, whose FinTS server is brokerage-hbci.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
+
+#### Scenario: Another server with a similar name
+
+- **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** every order goes with or without HKTAN as the bank parameters say
 
 ### Requirement: Recognize a securities account by its jobs
 
@@ -465,6 +682,55 @@ The app SHALL show the text and the return code that the bank sends when the ban
 - **THEN** the transactions are stored
 - **AND** the log contains the warning
 
+### Requirement: Send a request to comdirect again when comdirect asks for it
+
+The app SHALL send a request of a refresh to the FinTS server `fints.comdirect.de` a second time, once, in a dialog of its own, when comdirect answers it with a text that contains "Bitte senden Sie die Anfrage erneut" and the request needs no TAN. A request needs no TAN when the PIN/TAN parameters of the bank mark it so and it asks for no full history. Any other request, and a second answer with that text in an error, fails its account with the text of the bank.
+
+#### Scenario: Second answer succeeds
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends the request a second time
+- **AND** the transactions of the second answer are stored, and the account shows no error
+
+#### Scenario: Second answer is the same
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
+- **WHEN** comdirect answers the transaction request twice with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no third request
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: TAN for the login of the second dialog
+
+- **GIVEN** the first refresh of the comdirect accounts "Girokonto" and "Tagesgeld" asks for the full history of "Girokonto", and comdirect asked to send the transaction request of "Tagesgeld" again
+- **WHEN** comdirect asks for a photoTAN for the login of the second dialog
+- **THEN** the dialog says that the TAN allows the login, and it does not offer to skip older transactions
+- **AND** a cancel of the dialog ends the refresh of the access and starts no new one
+
+#### Scenario: Request that needs a TAN
+
+- **GIVEN** the first refresh of a comdirect account at `fints.comdirect.de`, which asks for the full history
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request and asks for no second TAN
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: Another bank
+
+- **GIVEN** a refresh at the FinTS server of "Musterbank"
+- **WHEN** the bank answers the transaction request with the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request, and the account fails with that text
+
+### Requirement: Keep the other accounts when the second request to comdirect fails
+
+The app SHALL fail only the accounts with a request in the second dialog with comdirect when that dialog fails, and keep the answers of the first dialog for the other accounts of the refresh.
+
+#### Scenario: Second dialog fails
+
+- **GIVEN** a refresh of the comdirect accounts "Girokonto" and "Tagesgeld", in which comdirect asked to send the transaction request of "Girokonto" again
+- **WHEN** the second dialog fails with the code 9800 and the text "Dialog abgebrochen"
+- **THEN** "Girokonto" fails with "Dialog abgebrochen"
+- **AND** "Tagesgeld" keeps the transactions of the first answer
+
 ### Requirement: Handle a PIN change that the bank requires
 
 The app SHALL stop the dialog when the bank reports that the PIN must be changed, tell the user so, and name the ways to change it, which are the website of the bank and the PIN change assistant when the app has one.
@@ -545,6 +811,105 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 - **WHEN** the bank answers the login with the code 9931 and the text "Zugang ist gesperrt und wird erst nach Freischaltung wieder nutzbar."
 - **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
 - **AND** the app asks for no new PIN
+
+### Requirement: Say how to unblock the app at a savings bank
+
+The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app ("Kundenprodukt" or "Kontozugriff" with "vom Benutzer deaktiviert"), and tell the user to unblock it under "Kontozugriffe" in the online banking. A bank is on these servers when its host label before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN and asks for no new PIN until a refresh by hand.
+
+#### Scenario: App deactivated in the online banking
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9800 "Dialog abgebrochen" and the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows that Moneten is blocked in the online banking of the Sparkasse, the text "Kundenprodukt wurde vom Benutzer deaktiviert" with the code 9010, and "Unblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account."
+- **AND** the app asks for no new PIN
+- **AND** the automatic refresh skips this access until the user starts a refresh
+
+#### Scenario: App deactivated during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** the assistant lists no accounts and says where the user unblocks Moneten
+
+#### Scenario: Card or TAN method blocked by the user
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch" and the code 9010 "pushTAN wurde vom Kunden deaktiviert"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no "Kontozugriffe"
+
+#### Scenario: Same text from another bank
+
+- **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
+
+### Requirement: Say how to unlock the FinTS login of ING
+
+The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the login with the code 9942 and "Bitte erneuern Sie ihre Authentifizierung", show the text and code of the bank, and add that the user logs in once at https://www.ing.de/ with the user name and the password, not with the QR code, and that the login works again after about 24 hours. The app keeps the PIN and opens no PIN sheet.
+
+#### Scenario: Login locked until a login on the website
+
+- **GIVEN** the app has the PIN of the ING access saved, and a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9800 "Der Dialog wurde abgebrochen." and the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** "Giro" shows that ING asks for a login on its website first, the text "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." with the code 9942, and "Log in once at https://www.ing.de/ with the user name and the password, not with the QR code. About 24 hours later, the login of Moneten works again."
+- **AND** the app opens no PIN sheet and keeps the saved PIN
+- **AND** the next automatic refresh logs in to ING again
+
+#### Scenario: Login locked during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **THEN** the assistant lists no accounts and says that the user logs in once at https://www.ing.de/ with the user name and the password
+
+#### Scenario: Wrong PIN at ING
+
+- **GIVEN** a refresh of "Giro" at ING with the FinTS address "https://fints.ing.de/fints/"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no https://www.ing.de/
+
+#### Scenario: Same sentence with another code or from another bank
+
+- **WHEN** ING answers with the code 9010 "Bitte erneuern Sie ihre Authentifizierung.", or "Musterbank" with the FinTS address "https://fints.musterbank.example/fints" answers with the code 9942 and the same sentence
+- **THEN** the app shows the text of the bank with its code as for any other answer with that code, and names no https://www.ing.de/
+
+### Requirement: Pause the automatic refresh while the FinTS login of ING stays locked
+
+The app SHALL pause the automatic refresh of an ING access after 2 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. The count belongs to the access and stays when the user closes, reopens, or deletes its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
+
+#### Scenario: Second locked login in a row
+
+- **GIVEN** an ING access with the accounts "Giro", refreshed every two hours, and "Visa", refreshed once a day, the saved PIN, and the last automatic refresh of "Giro" ended with the code 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen."
+- **WHEN** the next automatic refresh of "Giro" ends with the same answer
+- **THEN** "Giro" and "Visa" show the text of the bank with the code 9942, the hint about https://www.ing.de/, and "The automatic refresh paused after 2 attempts. After the login on the website, refresh the account by hand."
+- **AND** the automatic refresh skips "Giro" and "Visa" until the user starts a refresh
+- **AND** an automatic refresh of "Visa" that waited for the end of the second refresh does not start
+- **AND** the PIN stays saved
+
+#### Scenario: Account closed or deleted during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins of "Giro"
+- **WHEN** the user closes or deletes "Giro"
+- **THEN** the automatic refresh still skips "Visa"
+
+#### Scenario: Account closed and reopened during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins
+- **WHEN** the user closes "Giro", reopens "Giro", and then closes "Visa"
+- **THEN** "Giro" shows the lock with the pause, and the automatic refresh still skips "Giro"
+
+#### Scenario: Refresh by hand during the pause
+
+- **GIVEN** the automatic refresh of the ING access paused after 2 locked logins
+- **WHEN** the user chooses "Refresh Account" and the login ends with the same answer
+- **THEN** "Giro" shows the text of the bank and the hint without the pause
+- **AND** the automatic refresh logs in again, at most 2 times in a row
+
+#### Scenario: Successful login ends the count
+
+- **GIVEN** the last automatic refresh of the ING access ended because ING waits for a login on its website
+- **WHEN** the next automatic refresh succeeds
+- **THEN** the lock goes from every account of the access, and 1 later locked login does not pause the automatic refresh
 
 ### Requirement: Cancel and interruption
 

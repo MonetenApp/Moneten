@@ -88,7 +88,7 @@ struct MigrationSheet: View {
 					LabeledContent("Categories", value: plan.categories.count.formatted())
 					LabeledContent("Transactions", value: plan.transactions.count.formatted())
 					if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-						LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
+						LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 					}
 				}
 				Section {
@@ -146,7 +146,7 @@ struct MigrationSheet: View {
 			Text(saveError ?? "")
 		}
 		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
-			defaultFilename: "MoneyMoney migration \(Day.today()).txt") { result in
+			defaultFilename: String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")) { result in
 			if case let .failure(error) = result { saveError = error.localizedDescription }
 		}
 	}
@@ -167,7 +167,7 @@ struct MigrationSheet: View {
 		}
 	}
 
-	private var confirmTitle: String? {
+	private var confirmTitle: LocalizedStringKey? {
 		switch step {
 		case .intro: "Start"
 		case .fileAccount: model.ledger.accounts.isEmpty ? nil : "Import File..."
@@ -184,7 +184,7 @@ struct MigrationSheet: View {
 		return true
 	}
 
-	private var cancelTitle: String? {
+	private var cancelTitle: LocalizedStringKey? {
 		switch step {
 		case .done: nil
 		case let .working(progress) where progress.step == .finishing: nil
@@ -226,7 +226,7 @@ struct MigrationSheet: View {
 			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 			LabeledContent("Transactions", value: plan.transactions.count.formatted())
 			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
-				LabeledContent("Updated", value: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count.formatted()) transactions, \(plan.updatedCategories.count) category colors")
+				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 			}
 		} header: {
 			Text("This will be imported")
@@ -315,7 +315,7 @@ struct MigrationSheet: View {
 				step = .done(imported, report)
 			} catch is CancellationError {
 			} catch {
-				step = .failed("The migration could not finish. \(error)")
+				step = .failed(String(localized: "The migration could not finish. \(String(describing: error))"))
 			}
 		}
 	}

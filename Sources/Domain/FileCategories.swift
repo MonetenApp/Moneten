@@ -14,7 +14,9 @@ public struct FileCategories: Sendable {
 	public private(set) var unplaced: [String] = []
 
 	public static let creationLimit = 1_000
-	public static let limitMessage = "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules."
+	public static var limitMessage: String {
+		String(localized: "Auto-create categories is limited to 1,000 new categories per file. Remaining unknown categories were left to the rules.")
+	}
 	public private(set) var limitReached = false
 
 	public init(_ names: [String], in categories: [Category], creating: Bool) {

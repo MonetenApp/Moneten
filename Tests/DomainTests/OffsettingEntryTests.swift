@@ -41,6 +41,8 @@ struct OffsettingEntryTests {
 		#expect(entry.bookingText == nil)
 		#expect(!entry.isChecked && !entry.isNew && !entry.isFetched && !entry.isPending)
 		#expect(entry.sourceID == nil)
+		// A manual transaction that no source matched, so no refresh of the target account pairs it.
+		#expect(entry.isManual && entry.isOnlyManual)
 		#expect(l.transaction(source.id) == source)
 	}
 

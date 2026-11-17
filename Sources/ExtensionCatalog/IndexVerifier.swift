@@ -22,7 +22,7 @@ public struct CatalogKeys: Sendable {
 		let body = pem.split(whereSeparator: \.isNewline).filter { !$0.hasPrefix("-----") }.joined()
 		guard let der = Data(base64Encoded: body), der.count == 44, der.prefix(12) == prefix,
 			let key = try? Curve25519.Signing.PublicKey(rawRepresentation: der.suffix(32)) else {
-			throw .unreadable("A catalog key is not an Ed25519 public key.")
+			throw .unreadable(String(localized: "A catalog key is not an Ed25519 public key."))
 		}
 		return key
 	}

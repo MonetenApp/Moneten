@@ -67,7 +67,7 @@ struct ExtensionsWindow: View {
 	}
 
 	@ViewBuilder
-	private func section(_ title: String, _ kind: ExtensionLibrary.Item.Section) -> some View {
+	private func section(_ title: LocalizedStringKey, _ kind: ExtensionLibrary.Item.Section) -> some View {
 		let rows = shown.filter { $0.section == kind }
 		Section(title) {
 			if rows.isEmpty {
@@ -105,7 +105,7 @@ struct ExtensionsWindow: View {
 		panel.canChooseDirectories = true
 		panel.allowsMultipleSelection = false
 		panel.allowedContentTypes = [UTType(filenameExtension: "lua") ?? .plainText, .folder]
-		panel.message = "Choose a .lua file or a folder with a manifest."
+		panel.message = String(localized: "Choose a .lua file or a folder with a manifest.")
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		library.pickFile(url)
 	}

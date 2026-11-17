@@ -95,7 +95,7 @@ extension Ledger {
 				case let .group(g): walk(g.id)
 				case let .account(a):
 					markers.newTransactions += newTransactionCounts[a.id] ?? 0
-					if a.refreshError != nil { markers.failedAccounts.append(a) }
+					if a.shownRefreshError != nil { markers.failedAccounts.append(a) }
 				}
 			}
 		}
@@ -121,6 +121,21 @@ extension AccountTreeItem {
 		switch self {
 		case let .group(g): g.parentID
 		case let .account(a): a.groupID
+		}
+	}
+
+	public var name: String {
+		switch self {
+		case let .group(g): g.name
+		case let .account(a): a.name
+		}
+	}
+
+	/// The entry of the "Account" menu of the filter bar that the row stands for.
+	public var accountFilter: TransactionFilter.AccountFilter {
+		switch self {
+		case let .group(g): .group(g.id)
+		case let .account(a): .account(a.id)
 		}
 	}
 }

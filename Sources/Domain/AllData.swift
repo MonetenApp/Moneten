@@ -45,11 +45,11 @@ public struct AllData: Sendable, Equatable {
 
 		public var description: String {
 			switch self {
-			case .notAnExport: "The file is not a complete export of Moneten."
+			case .notAnExport: String(localized: "The file is not a complete export of Moneten.")
 			case let .newerVersion(v):
-				"The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it."
-			case let .damaged(place): "The file is damaged or incomplete: \(place)."
-			case let .unreadableDatabase(place): "The database contains unreadable data: \(place)."
+				String(localized: "The file has format version \(v), and this version of Moneten reads up to version \(AllData.formatVersion). Install a newer version of Moneten to import it.")
+			case let .damaged(place): String(localized: "The file is damaged or incomplete: \(place).")
+			case let .unreadableDatabase(place): String(localized: "The database contains unreadable data: \(place).")
 			}
 		}
 	}
@@ -83,9 +83,19 @@ public struct AllData: Sendable, Equatable {
 		guard version <= Self.formatVersion else { throw .newerVersion(version) }
 		do {
 			self = try decoder.decode(File.self, from: data).allData()
+			dropForeignClearingMarks()
 			try validateParentLinks()
 			try validateSplitParts()
 		} catch let error as ReadError { throw error } catch { throw Self.readError(error, in: data) }
+	}
+
+	/// A file can give an account the mark of a clearing entry that names a row of another account. Reopening would then
+	/// remove a row that the account never had, so the mark goes. A mark whose row is missing names nothing and stays.
+	mutating func dropForeignClearingMarks() {
+		let owners = Dictionary(transactions.map { ($0.id, $0.accountID) }, uniquingKeysWith: { first, _ in first })
+		for i in accounts.indices {
+			if let id = accounts[i].clearingEntry?.transactionID, let owner = owners[id], owner != accounts[i].id { accounts[i].clearingEntry = nil }
+		}
 	}
 
 	public func validateParentLinks() throws {
@@ -276,18 +286,10 @@ enum AmountText {
 	static func minorUnits(_ text: String, _ currency: String) throws -> Int64 {
 		let places = text.split(separator: ".", omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
 		let exponent = Currency.exponent(of: currency)
-		guard let d = try? decimal(text), places <= exponent, case let scaled = d * pow(10, exponent), scaled <= Decimal(Int64.max), scaled >= Decimal(Int64.min) else {
+		guard let d = try? decimal(text), places <= exponent, case let scaled = d * pow(10, exponent), scaled.magnitude <= Decimal(Int64.max) else {
 			throw AllData.ReadError.damaged("the amount \"\(text)\" is not a decimal number with the decimal places of \(currency)")
 		}
 		return Money(d, currency: currency).minorUnits
-	}
-
-	/// The amount of a transaction, which every import refuses at `Int64.min`, because that amount has no magnitude
-	/// for the amount field of the transaction.
-	static func transactionMinorUnits(_ text: String, _ currency: String) throws -> Int64 {
-		let minorUnits = try minorUnits(text, currency)
-		guard minorUnits != .min else { throw AllData.ReadError.damaged("the amount \"\(text)\" is too large for a transaction") }
-		return minorUnits
 	}
 
 	/// Only the plain form `-1234.56`: `Decimal(string:)` alone reads "1-2" as 1.
@@ -338,9 +340,15 @@ private struct AccountEntry: Codable {
 	var owner: String?
 	var bankBalance: String?
 	var bankBalanceDate: Date?
+	var otherBankBalances: [AmountEntry]?
+	var bonusPoints: Int64?
 	var initialBalance: String
 	var initialBalanceIsSet: Bool
+	/// Written only when true, so a reader before it reads the file, and the format version stays.
+	var initialBalanceIsDerived: Bool?
 	var isClosed: Bool
+	/// Written only for a closed account with a clearing entry, so a reader before it reads the file.
+	var clearingEntry: ClearingEntryEntry?
 	var comment: String?
 	var sourceID: String?
 	var color: String?
@@ -368,9 +376,13 @@ private struct AccountEntry: Codable {
 		owner = a.owner
 		bankBalance = a.bankBalanceMinor.map { AmountText.text($0, a.currency) }
 		bankBalanceDate = a.bankBalanceDate
+		otherBankBalances = a.otherBankBalances.isEmpty ? nil : a.otherBankBalances.map(AmountEntry.init)
+		bonusPoints = a.bonusPoints
 		initialBalance = AmountText.text(a.initialBalanceMinor, a.currency)
 		initialBalanceIsSet = a.initialBalanceIsSet
+		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
+		clearingEntry = a.clearingEntry.map { ClearingEntryEntry($0, currency: a.currency) }
 		comment = a.comment
 		sourceID = a.sourceID
 		color = a.color
@@ -384,12 +396,44 @@ private struct AccountEntry: Codable {
 
 	func account() throws -> Account {
 		try currencyCode(currency)
+		let others = try (otherBankBalances ?? []).map { try $0.money() }
+		// A balance in the account currency would count twice in the sum of a group, and a repeated currency would show twice.
+		guard Set(others.map(\.currency) + [currency]).count == others.count + 1 else {
+			throw AllData.ReadError.damaged("the other balances of an account repeat a currency or hold the currency of the account")
+		}
 		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
-			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet, isClosed: isClosed,
+			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
+			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
-			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false)
+			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
+			otherBankBalances: others, bonusPoints: bonusPoints, clearingEntry: try clearingEntry?.mark(currency: currency))
+	}
+}
+
+/// The clearing entry of a closed account with the values that the app gave it, so that reopening after an import
+/// removes it the same way. The amount is in the currency of the account.
+private struct ClearingEntryEntry: Codable {
+	var transactionID: UUID
+	var bookingDate: String
+	var valueDate: String?
+	var amount: String
+	var name: String
+	var purpose: String
+
+	init(_ m: ClearingEntryMark, currency: String) {
+		transactionID = m.transactionID
+		bookingDate = m.values.bookingDate.description
+		valueDate = m.values.valueDate?.description
+		amount = AmountText.text(m.values.amountMinor, currency)
+		name = m.values.name
+		purpose = m.values.purpose
+	}
+
+	func mark(currency: String) throws -> ClearingEntryMark {
+		ClearingEntryMark(transactionID: transactionID, values: OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+			amountMinor: try AmountText.minorUnits(amount, currency), name: name, purpose: purpose))
 	}
 }
 
@@ -437,6 +481,8 @@ private struct TransactionEntry: Codable {
 	var sourceID: String?
 	var fileIdentity: String?
 	var createdAt: Date
+	/// Written only for a manual row. A missing key means a row that a source delivered.
+	var isManual: Bool?
 	var original: OriginalEntry?
 
 	init(_ t: Transaction) {
@@ -467,6 +513,7 @@ private struct TransactionEntry: Codable {
 		sourceID = t.sourceID
 		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
+		isManual = t.isManual ? true : nil
 		original = t.original.map { OriginalEntry($0, currency: t.currency) }
 	}
 
@@ -474,11 +521,11 @@ private struct TransactionEntry: Codable {
 		try currencyCode(currency)
 		if version == 1 && needsReview == nil { throw AllData.ReadError.damaged("the key \"needsReview\" is missing") }
 		var t = Transaction(id: id, accountID: accountID, bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
-			amountMinor: try AmountText.transactionMinorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
+			amountMinor: try AmountText.minorUnits(amount, currency), currency: currency, name: name, purpose: purpose,
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
 		return t
 	}
@@ -501,7 +548,7 @@ private struct OriginalEntry: Codable {
 	}
 
 	func values(currency: String) throws -> OriginalValues {
-		OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day), amountMinor: try AmountText.transactionMinorUnits(amount, currency),
+		OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day), amountMinor: try AmountText.minorUnits(amount, currency),
 			name: name, purpose: purpose)
 	}
 }
@@ -603,7 +650,10 @@ private struct AmountEntry: Codable {
 		currency = m.currency
 	}
 
-	func money() throws -> Money { Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency) }
+	func money() throws -> Money {
+		try currencyCode(currency)
+		return Money(minorUnits: try AmountText.minorUnits(amount, currency), currency: currency)
+	}
 }
 
 private struct QuoteEntry: Codable {
@@ -700,6 +750,7 @@ private struct SavedSearchEntry: Codable {
 	var amount: Amount
 	var categoryID: UUID?
 	var accountID: UUID?
+	var accountGroupID: UUID?
 
 	init(_ s: SavedSearch) {
 		id = s.id
@@ -729,6 +780,7 @@ private struct SavedSearchEntry: Codable {
 		}
 		categoryID = s.bar.categoryID
 		accountID = s.bar.accountID
+		accountGroupID = s.bar.accountGroupID
 	}
 
 	func savedSearch() throws -> SavedSearch {
@@ -753,7 +805,12 @@ private struct SavedSearchEntry: Codable {
 		default: throw AllData.ReadError.damaged("\"\(amount.kind)\" is not an amount filter")
 		}
 		f.categoryID = categoryID
-		f.accountID = accountID
+		switch (accountID, accountGroupID) {
+		case let (id?, nil): f.account = .account(id)
+		case let (nil, id?): f.account = .group(id)
+		case (nil, nil): break
+		case (.some, .some): throw AllData.ReadError.damaged("the saved search has both an account and an account group")
+		}
 		return SavedSearch(id: id, name: name, position: position, period: try choice(), filter: f)
 	}
 

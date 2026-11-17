@@ -210,6 +210,23 @@ struct BankAccessTests {
 		#expect(!broker.isSameLogin(as: Access(source: .extension(id: "demo-json-oauth"), bankName: "Demo Broker", loginName: "")))
 	}
 
+	@Test("A VR-Kennung in another case or with spaces is the same login on a server of a cooperative bank, and on another server it is not")
+	func sameVRKennung() {
+		let atruvia = URL(string: "https://fints2.atruvia.de/cgi-bin/hbciservlet")!
+		let stored = Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "vrk12345678")
+		#expect(stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK12345678")))
+		#expect(stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK 1234 5678")))
+		#expect(!stored.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRK12345679")))
+		let alias = Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "vrkonto1")
+		#expect(!alias.isSameLogin(as: Access(source: .fints(bankCode: "51090000", url: atruvia), bankName: "Wiesbadener Volksbank", loginName: "VRKONTO1")))
+		let other = URL(string: "https://fints.musterbank.example/fints")!
+		#expect(!Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "vrk12345678")
+			.isSameLogin(as: Access(source: .fints(bankCode: "12030000", url: other), bankName: "Musterbank", loginName: "VRK12345678")))
+		let apoBank = URL(string: "https://fints.apobank.de/FinTs30PinTanHttpGate")!
+		#expect(Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "vrk12345678")
+			.isSameLogin(as: Access(source: .fints(bankCode: "30060601", url: apoBank), bankName: "apoBank", loginName: "VRK12345678")))
+	}
+
 	@Test("Refresh All Accounts fetches every account with an access that is not closed, one request per access")
 	func refreshAll() {
 		let offline = Account(position: 0, name: "Cash", kind: .cash, source: .offline)
@@ -334,6 +351,48 @@ struct BankAccessTests {
 		#expect(current.bankBalanceDate == Self.noon)
 		#expect(current.refreshedAt == Self.noon)
 		#expect(current.refreshError == nil)
+	}
+
+	@Test("An initial balance that the user enters in the account settings ends the derived value, so no manual row moves it")
+	func enteredInitialBalanceIsNotDerived() {
+		var opened = Self.bankAccount("Giro")
+		opened.initialBalanceMinor = 250_000
+		opened.initialBalanceIsSet = true
+		opened.initialBalanceIsDerived = true
+		var renamed = opened
+		renamed.name = "Haushalt"
+		var kept = opened
+		kept.takeSettings(from: renamed, opened: opened)
+		#expect(kept.initialBalanceIsDerived)
+		var typed = opened
+		typed.initialBalanceMinor = 300_000
+		var current = opened
+		current.takeSettings(from: typed, opened: opened)
+		#expect(current.initialBalanceMinor == 300_000 && current.initialBalanceIsSet && !current.initialBalanceIsDerived)
+		var calibrated = opened
+		calibrated.enterInitialBalance(260_000)
+		#expect(calibrated.initialBalanceMinor == 260_000 && calibrated.initialBalanceIsSet && !calibrated.initialBalanceIsDerived)
+	}
+
+	@Test("Saving the account settings keeps a derived initial balance that a refresh set while they were open, when the user did not change the field")
+	func settingsKeepDerivedValueOfRefresh() {
+		var opened = Self.bankAccount("Giro")
+		opened.initialBalanceMinor = 10_000
+		opened.initialBalanceIsSet = true
+		opened.initialBalanceIsDerived = true
+		// A refresh past a manual row set the derived value to 15.000 while the settings showed 10.000.
+		var current = opened
+		current.initialBalanceMinor = 15_000
+		var renamed = opened
+		renamed.name = "Haushalt"
+		current.takeSettings(from: renamed, opened: opened)
+		#expect(current.name == "Haushalt")
+		#expect(current.initialBalanceMinor == 15_000 && current.initialBalanceIsDerived)
+		// A value that the user typed still wins over the one of the refresh.
+		var typed = opened
+		typed.initialBalanceMinor = 30_000
+		current.takeSettings(from: typed, opened: opened)
+		#expect(current.initialBalanceMinor == 30_000 && !current.initialBalanceIsDerived)
 	}
 
 	@Test("Saving the account settings keeps the portfolio type that a refresh set while they were open, also when the user chose another type")
