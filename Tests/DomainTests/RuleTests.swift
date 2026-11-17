@@ -588,7 +588,10 @@ struct CategorizerTests {
 		let mixed = run(slow + [traders, rest])
 		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
 		print("twelve stopping rules over 2,004 rows: \(milliseconds) ms")
-		#expect(milliseconds < 2_500)
+		// A Mac takes about 2 s; before round 3 of #351 the batch took over 10 s. A GitHub-hosted runner is slower for
+		// every test at once, so it gets 1.5 times as long, as the budgets of PerformanceTests do.
+		let limit: UInt64 = ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? 3_750 : 2_500
+		#expect(milliseconds < limit)
 		let expected = alone.rows.map(\.categoryID)
 		#expect(expected.count(where: { $0 == traders.id }) == 319)
 		#expect(mixed.rows.map(\.categoryID) == expected)
