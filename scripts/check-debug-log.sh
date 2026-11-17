@@ -252,7 +252,9 @@ for header in "" "Date;Name;Amount"; do
 	poll "^csv state .*date=monthDayYear .*count=2 canImport=true" csv state
 	send csvhandoff confirm
 	poll "^importanswer .*otherPosition=[0-9]" importanswer
+	start=$(lines)
 	send importanswer named
+	from=$start
 	poll "^importfile done" state
 	poll "^alert " alert
 	poll "^csvhandoff accounts=1 count=2 amounts=ok days=ok$" csvhandoff "state 3579 40520810"
@@ -263,12 +265,16 @@ poll "^csv state .*canImport=true" csv state
 poll "^menucommands enabled=true transferring=true migration=false$" menucommands
 poll "^csv rows" csv rows
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
+start=$(lines)
 send key return
+from=$start
 poll "^importfile done" state
 poll "^alert " alert
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
+start=$(lines)
 send key return
+from=$start
 poll "^importfile done" state
 poll "^alert " alert
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
@@ -287,7 +293,9 @@ send select Tagesgeld
 poll "^phase=" state
 send importfile "$WORK/Erika Mustermann.xml"
 poll "^importanswer .*other" importanswer
+start=$(lines)
 send importanswer selected
+from=$start
 poll "^importfile done" state
 poll "^alert " alert
 send select Girokonto
@@ -312,7 +320,9 @@ send importanswer named
 poll "^importanswer .*fileIndex=1 " importanswer
 send importanswer named
 poll "^importanswer .*fileIndex=3 " importanswer
+start=$(lines)
 send importanswer selected
+from=$start
 poll "^importfile done" state
 poll "^alert " alert
 # A preview whose rows hold names and purposes, and whose problem names a cell of the file.
@@ -321,7 +331,9 @@ printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tanks
 send importfile "$WORK/Kontoauszug.csv"
 poll "^csv state .*problem=line line=3 " csv state
 poll "^csv rows" csv rows
+start=$(lines)
 send key escape
+from=$start
 poll "^importfile done" state
 poll "^alert " alert
 send selectRows 1
@@ -380,8 +392,11 @@ poll "^mainkey rejected$" mainkey "Erika Mustermann"
 poll "^filterbar rejected$" filterbar "Mustermann Erika"
 send sheet ""
 send alert
+# The seed stores its accounts and rows in a task, which takes longer than any fixed wait on a loaded Mac.
+start=$(lines)
 send seed
-sleep 2
+from=$start
+poll "^seed done$" state
 send select Girokonto
 send search Stadtwerke
 poll "^phase=.*visible=[1-9][0-9]* " state

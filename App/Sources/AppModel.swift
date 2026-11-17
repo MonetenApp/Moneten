@@ -1598,12 +1598,11 @@ final class AppModel {
 		return try await sync.withRefreshesPaused {
 			while !self.extensions.working.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
 			try Task.checkCancellation()
-			guard self.store === store else { throw CancellationError() }
+			// Another store, such as after a lock and an unlock during the wait, is not the one the plan was read against.
+			guard self.store === store else { throw MigrationRefused(description: String(localized: "The database is not open.")) }
 			let starters = replaceableStarterCategories.map(\.id)
-			let imported = try await withTaskCancellationHandler {
-				try Task.checkCancellation()
-				return try await store.importMigration(plan, replacing: starters, cancel: cancel, progress: progress)
-			} onCancel: { cancel.cancel() }
+			// A cancel of this task reaches the cancel token through importMigration.
+			let imported = try await store.importMigration(plan, replacing: starters, cancel: cancel, progress: progress)
 			progress(.init(step: .finishing))
 			try await reloadAfterImport()
 			return imported

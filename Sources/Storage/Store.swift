@@ -33,7 +33,9 @@ public final class Store: SavedPINStore {
 	/// The transaction of `write`. A failed write rolls back to a savepoint and commits the transaction, which then holds no
 	/// change. A rollback of the whole transaction moved `PRAGMA data_version` after SQLite had spilled pages of a large write
 	/// into the file, such as a canceled migration of thousands of rows, and the store then counted its own file as changed on
-	/// disk. A commit of the store never moves it, and the write lock stays held from the check to the end.
+	/// disk. A commit of the store never moves it, and the write lock stays held from the check to the end. A GRDB task cancel
+	/// or a SQLite error that ends the transaction by itself, such as a full disk, still rolls back the whole transaction, so a
+	/// large write must stop through a token that it checks, as the migration and the file import do.
 	private static func transaction<T>(_ db: Database, _ diskWatch: DiskWatch, _ updates: (Database) throws -> T) throws -> T {
 		var result: T?
 		var failure: (any Error)?

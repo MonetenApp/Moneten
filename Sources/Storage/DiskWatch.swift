@@ -8,8 +8,9 @@ import Synchronization
 ///
 /// Two signs count. The file at the path is another file than the one the store opened, which shows a
 /// replacement. Or `PRAGMA data_version` moved, which SQLite does only for a commit of another connection, also
-/// one in another process, and for an older copy written over the file in place. Commits and rollbacks of the
-/// store itself leave it as it is.
+/// one in another process, and for an older copy written over the file in place. Commits of the store itself
+/// leave it as it is. A rollback of a large write can move it too, after SQLite spilled pages into the file, so
+/// `Store.write` ends a failed write with a rollback to a savepoint and a commit instead.
 ///
 /// `Store.write` checks at the start of each transaction, after SQLite took the write lock, so no other program
 /// can commit between the check and the commit. The commit hook checks the file once more, without SQL, which
