@@ -503,7 +503,7 @@ struct AccountSetupSheet: View {
 					} icon: {
 						Image(systemName: "building.columns")
 					}
-					if let note = bank.mergerNote {
+					ForEach([bank.mergerNote, setup.lookup.note].compactMap(\.self), id: \.self) { note in
 						Label(note, systemImage: "info.circle")
 							.foregroundStyle(.secondary)
 							.fixedSize(horizontal: false, vertical: true)
@@ -588,6 +588,12 @@ struct AccountSetupSheet: View {
 						Text(Self.place(of: bank)).font(.callout)
 					}
 				}
+			}
+		}
+		if let note = setup.loginHint?.note {
+			Section {
+				Label(note, systemImage: "info.circle")
+					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
 		Section {

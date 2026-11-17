@@ -68,3 +68,5 @@ None.
 - An account is the same account only in the same currency, and two subaccounts of one account number are two accounts. A closed account without a bank access is left as it is, and the setup adds the account of the bank as a new one. The matching rule of the third step was not observed.
 - When the access method changes, the app matches accounts by IBAN, or by account number and Bankleitzahl. The matching rule was not observed.
 - The subscription appears as an access method only when the change `add-aggregator-subscription` is built.
+- A login name of exactly 17 digits for a bank on the FinTS servers of the savings banks is sent and stored as its first 16 digits. MoneyMoney's handling was not observed.
+- The note that a customer of 1822direkt enters the Bankleitzahl 50050222 shows only for an IBAN with the Bankleitzahl 50050201, not for a Bankleitzahl that the user enters or chooses. MoneyMoney's condition was not observed.
