@@ -39,6 +39,8 @@ jobs:
 
   test:
     runs-on: macos-15
+    # A green run takes about 30 minutes. A hung test then ends the job instead of holding a runner for six hours.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
