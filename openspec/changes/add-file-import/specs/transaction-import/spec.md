@@ -949,7 +949,7 @@ The app SHALL not add a transaction again that the user deleted, when a later fi
 
 #### Scenario: Other bookings still arrive
 
-- **GIVEN** the user deleted one imported card payment of -3,20 € to "Café Beispiel" on 9 November 2026 with the IBAN DE02120300000000202051
+- **GIVEN** the user deleted one imported card payment of -3,20 € to "Café Beispiel" with the purpose "Kartenzahlung" on 9 November 2026 with the IBAN DE02120300000000202051
 - **WHEN** a file brings that payment twice, the same payment with the purpose "Kartenzahlung 2", the same payment with another IBAN, and the same payment on 10 November 2026
 - **THEN** the app skips one payment and adds the other four
 
@@ -967,6 +967,7 @@ The app SHALL not add a transaction again that the user deleted, when a later fi
 - **WHEN** the same file arrives again
 - **THEN** the rent is not added
 - **AND** a pending rent of -800,00 € to "Vermieter A" with the purpose "Miete Garage Dezember" on 4 December 2026 is added
+- **AND** the same holds when both rents carry the end-to-end reference "RECURRING-RENT"
 
 #### Scenario: A refresh after the delete
 

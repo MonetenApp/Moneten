@@ -809,6 +809,22 @@ struct ReconcileTests {
 		#expect(other.skipped == 0)
 	}
 
+	@Test("A shared recurring reference does not let a deleted pending file row without a file identity keep out another rent")
+	func deletedLegacyPendingFileRowSharedReference() {
+		func rent(_ d: Int, _ purpose: String) -> Transaction {
+			row(d, -80_000, "Vermieter A", purpose, month: 12, pending: true, iban: "DE02120300000000202051", e2e: "RECURRING-RENT")
+		}
+		let december = rent(1, "Miete Dezember")
+		let deleted = [DeletedTransaction(december, deletedAt: now)]
+		#expect(deleted[0].fileIdentity == nil && !deleted[0].wasFetched)
+		let garage = merge(.file([rent(4, "Miete Garage Dezember")]), deleted: deleted, at: noon(20, month: 11))
+		#expect(garage.added.map(\.purpose) == ["Miete Garage Dezember"])
+		#expect(garage.skipped == 0)
+		let same = merge(.file([fresh(december)]), deleted: deleted, at: noon(20, month: 11))
+		#expect(same.added == [])
+		#expect(same.skipped == 1)
+	}
+
 	@Test("A refresh does not bring back a row that the user deleted after a file import")
 	func refreshAfterDeletedFileRow() {
 		let power = row(3, -8_900, "Stadtwerke", "Abschlag November", iban: "DE02120300000000202051")

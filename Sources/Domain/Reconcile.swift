@@ -29,7 +29,8 @@ public struct DeletedTransaction: Hashable, Sendable, Codable {
 	public var counterpartyIBAN: String?
 	public var endToEndReference: String?
 	/// A refresh had delivered the row. It tells records apart that are otherwise equal, so the choice between them does not
-	/// depend on the order of the database.
+	/// depend on the order of the database. A record without it and without a file identity, from before file identities were
+	/// stored, keeps a file row out only by its fingerprint, so a shared reference or a nearby rent of the same amount cannot match it.
 	public var wasFetched: Bool
 	public var deletedAt: Date
 
@@ -526,6 +527,10 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			if let fileID = incoming[i].fileIdentity, let storedID = identity.fileIdentity, fileID != storedID,
 				!(t.isPending && !identity.isPending && sameReference),
 				!(!t.isPending && !identity.isPending && step != nil) { continue }
+			// A deleted file row without a file identity, from before they were stored, keeps a file row out only by its
+			// fingerprint. Without the identity, neither a shared reference, such as one of a recurring rent, nor the nearby
+			// rule could tell another rent of the same amount from it.
+			if step == nil, case .file = delivery, case let .deleted(k) = slot, !deleted[k].wasFetched, deleted[k].fileIdentity == nil { continue }
 			if step != nil && !identity.isPending {
 				candidates.append(Candidate(delivered: i, slot: slot, priority: .bookedFingerprint, historical: historical,
 					identityTombstone: 0, fit: rankedFit, distance: distance, evidence: .fingerprint))
@@ -539,9 +544,6 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			guard t.isPending, identity.isPending else { continue }
 			let pendingFits = !delivery.isMigration && matches[i].fits(match)
 			guard step != nil || pendingFits else { continue }
-			// A deleted file row without a file identity, from before they were stored, keeps a file row out only by its
-			// fingerprint. Without the identity, the nearby rule could not tell another rent of the same amount from it.
-			if step == nil, case .file = delivery, case let .deleted(k) = slot, !deleted[k].wasFetched, deleted[k].fileIdentity == nil { continue }
 			guard step != nil || !delivery.isFetched || fetched || future else { continue }
 			let priority: Priority = fetched && (delivery.isFetched || sameDay) ? .fetchedPending : .filePending
 			let evidence: Partner.Evidence = step != nil ? .fingerprint : (delivery.isFetched ? .pending : .relaxedFile)
