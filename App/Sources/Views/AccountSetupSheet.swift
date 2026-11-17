@@ -106,7 +106,7 @@ final class AccountSetup {
 		case let .editLogin(access):
 			fixedBank = BankDirectory.Entry(access: access)
 			step = .login
-			loginName = access.loginName
+			loginName = access.shownLoginName
 			savePIN = model.sync.broker.savedPINs.contains(access.id)
 			Task { await lookUpBank(of: access) }
 		}
