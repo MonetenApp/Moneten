@@ -237,7 +237,7 @@ Moneten does not copy these parts of MoneyMoney.
 
 | Part of MoneyMoney | Why it has no spec |
 |---|---|
-| License keys, the trial period, in-app purchases, and the Mac App Store edition | Moneten is free software ([ADR 0006](../decisions/0006-license-gpl-3.md)) |
+| License keys, the trial period, in-app purchases, and the Mac App Store edition | Moneten is free software ([ADR 0020](../decisions/0020-license-gpl-3-with-hbci4java.md)) |
 | The PSD2 online service of MRH applications GmbH | The optional finAPI subscription takes its place ([ADR 0007](../decisions/0007-optional-finapi-subscription.md)) |
 | "Encrypt File for Sending" for the vendor's support | The spec for the log window defines a redacted export for public bug reports instead |
 | Built-in, encrypted bank scripts that the vendor updates from its server | Banks without FinTS come through open extensions and the signed catalog |
