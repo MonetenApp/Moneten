@@ -6217,12 +6217,12 @@
         }
       }
     },
-    "Moneten is in these folders:\n%@\n\nDelete the copies that you do not use, so that you always start the newest version." : {
+    "Moneten is in these places:\n%@\n\nDelete the copies that you do not use, so that you always start the newest version." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Moneten liegt in diesen Ordnern:\n%@\n\nLöschen Sie die Kopien, die Sie nicht verwenden, damit Sie immer die neueste Version starten."
+            "value" : "Moneten liegt an diesen Orten:\n%@\n\nLöschen Sie die Kopien, die Sie nicht verwenden, damit Sie immer die neueste Version starten."
           }
         }
       }

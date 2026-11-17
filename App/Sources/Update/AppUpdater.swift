@@ -77,6 +77,10 @@ final class AppUpdater: NSObject {
 	/// launch also when the automatic check is off (spec: "Warn on an untested macOS").
 	func start(untestedMacOS: Bool) {
 		guard updater == nil, Self.hasUpdateKey else { return }
+		// UpdateFailure in Domain copies these codes of SUErrors.h, because Domain cannot import Sparkle.
+		assert(UpdateFailure.Code.runningFromDiskImage == SUError.runningFromDiskImageError.rawValue
+			&& UpdateFailure.Code.runningTranslocated == SUError.runningTranslocated.rawValue
+			&& UpdateFailure.Code.installationCanceled == SUError.installationCanceledError.rawValue)
 		#if DEBUG
 		guard Self.debugFeed != nil else { return }
 		#endif
@@ -143,10 +147,14 @@ final class AppUpdater: NSObject {
 extension AppUpdater: SPUUpdaterDelegate {
 	func feedURLString(for updater: SPUUpdater) -> String? { Self.debugFeed }
 
+	/// `scripts/release-notes.py appcast` puts a pre-release into the channel `beta`, and a stable
+	/// version into no channel, which every installation reads. Sparkle never offers a build below the
+	/// installed one, so turning the setting off keeps an installed pre-release until a newer stable
+	/// version is published (spec: "Pre-release versions on request").
 	func allowedChannels(for updater: SPUUpdater) -> Set<String> {
-		let channels = UpdateChannel.allowed(preReleases: Self.offersPreReleases)
-		UpdateLog.write("update channels", ("beta", .flag(channels.contains(UpdateChannel.beta))))
-		return channels
+		let beta = Self.offersPreReleases
+		UpdateLog.write("update channels", ("beta", .flag(beta)))
+		return beta ? ["beta"] : []
 	}
 
 	/// Sparkle ends a canceled request for the password of an administrator without a message.

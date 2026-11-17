@@ -60,9 +60,7 @@ extension DebugHarness {
 		case "move": driver.show(.failed(.moveToApplications))
 		case "notice":
 			// The texts of LaunchChecks.run, so a screenshot shows the language of the app.
-			let list = "/Applications\n/Users/erika/Downloads"
-			driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
-				message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
+			driver.show(LaunchChecks.severalCopiesNotice(["/Applications", "/Users/erika/Downloads"]))
 		default: log("update unknown stage")
 		}
 	}

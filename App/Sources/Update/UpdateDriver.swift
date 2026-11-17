@@ -177,10 +177,12 @@ extension UpdateDriver: SPUUserDriver {
 		show(.failed(stageFailure(failure, reason: Self.reason(of: error))), acknowledgement: acknowledgement)
 	}
 
-	/// An update that Sparkle ended without a message, which `UpdateFailure.isSilentInSparkle` names:
-	/// the user canceled the request for the password of an administrator, so the update cannot replace the app.
+	/// Sparkle ends the update without a message of its own when the user cancels the request for the
+	/// password of an administrator, which it needs for a folder that the user must not write to. The
+	/// app then reports the failed installation itself (spec: "Report a failed installation"). Every
+	/// other error reaches `showUpdaterError`.
 	func showSilentAbort(code: Int) {
-		guard UpdateFailure.isSilentInSparkle(code: code),
+		guard code == UpdateFailure.Code.installationCanceled,
 		      let failure = UpdateFailure.of(code: code, installing: installing, userInitiated: userInitiated) else { return }
 		installing = false
 		show(.failed(stageFailure(failure, reason: String(localized: "Moneten needs the permission of an administrator to replace the app in its folder."))))
@@ -248,6 +250,8 @@ extension UpdateDriver: SPUUserDriver {
 	func showUpdateInFocus() { window?.makeKeyAndOrderFront(nil) }
 
 	func dismissUpdateInstallation() {
+		// Keep `installing`: Sparkle calls this right before `updater(_:didAbortWithError:)` with a
+		// canceled password request, and `showSilentAbort` needs it to report the failed installation.
 		userInitiated = false
 		// A final message stays until the user closes it.
 		switch stage {

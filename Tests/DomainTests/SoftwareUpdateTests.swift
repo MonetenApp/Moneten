@@ -1,19 +1,6 @@
 import Domain
 import Testing
 
-@Suite("The update channel")
-struct UpdateChannelTests {
-	@Test("Without pre-release versions, only the items without a channel count")
-	func stableOnly() {
-		#expect(UpdateChannel.allowed(preReleases: false) == [])
-	}
-
-	@Test("With pre-release versions, the channel beta counts as well")
-	func beta() {
-		#expect(UpdateChannel.allowed(preReleases: true) == ["beta"])
-	}
-}
-
 @Suite("The message of a failed update")
 struct UpdateFailureTests {
 	/// Codes of `SUErrors.h` of Sparkle 2 that the decision does not name.
@@ -60,66 +47,73 @@ struct UpdateFailureTests {
 	func canceledBeforeInstall() {
 		#expect(UpdateFailure.of(code: UpdateFailure.Code.installationCanceled, installing: false, userInitiated: true) == nil)
 	}
-
-	@Test("Sparkle reports only a canceled installation without a message of its own")
-	func silentAbort() {
-		#expect(UpdateFailure.isSilentInSparkle(code: UpdateFailure.Code.installationCanceled))
-		#expect(!UpdateFailure.isSilentInSparkle(code: installationError))
-		#expect(!UpdateFailure.isSilentInSparkle(code: appcastError))
-	}
 }
 
 @Suite("Several copies of the app")
 struct AppCopiesTests {
 	@Test("An old copy in Downloads makes two folders, sorted")
 	func copyInDownloads() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies.reversed()) == ["/Applications", "/Users/erika/Downloads"])
 	}
 
 	@Test("A mounted disk image does not count")
 	func diskImage() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Volumes/Moneten/Moneten.app", isOnReadOnlyVolume: true)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Volumes/Moneten/Moneten.app", isOnReadOnlyVolume: true, isOnDiskImage: true)]
+		#expect(AppCopies.folders(of: copies) == nil)
+	}
+
+	@Test("A mounted writable disk image does not count")
+	func writableDiskImage() {
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Volumes/Moneten/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: true)]
+		#expect(AppCopies.folders(of: copies) == nil)
+	}
+
+	@Test("A copy on another read-only volume does not count")
+	func readOnlyVolume() {
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Volumes/Archive/Moneten.app", isOnReadOnlyVolume: true, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies) == nil)
 	}
 
 	@Test("A copy in the Trash does not count, also in the Trash of another volume")
 	func trash() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Users/erika/.Trash/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Users/erika/.Trash/Moneten 10.42.07.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Volumes/Archive/.Trashes/501/Moneten.app", isOnReadOnlyVolume: false)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Users/erika/.Trash/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Users/erika/.Trash/Moneten 10.42.07.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Volumes/Archive/.Trashes/501/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies) == nil)
 	}
 
 	/// Two copies in one folder would give the same folder twice, so the warning names the copies there.
 	@Test("Two copies in one folder count, and the warning names each copy there")
 	func twoCopiesInOneFolder() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Applications/Moneten 2.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Applications/Moneten 2.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Users/erika/Downloads/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies) == ["/Applications/Moneten 2.app", "/Applications/Moneten.app", "/Users/erika/Downloads"])
 	}
 
 	@Test("The same copy twice counts once")
 	func sameCopyTwice() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies) == nil)
 	}
 
 	@Test("One copy needs no warning")
 	func oneCopy() {
-		#expect(AppCopies.folders(of: [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false)]) == nil)
+		#expect(AppCopies.folders(of: [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]) == nil)
 		#expect(AppCopies.folders(of: []) == nil)
 	}
 
 	@Test("A copy in a folder named like the Trash but deeper still counts")
 	func folderNamedTrash() {
-		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false),
-			AppCopy(path: "/Users/erika/Projects/Trash/Moneten.app", isOnReadOnlyVolume: false)]
+		let copies = [AppCopy(path: "/Applications/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false),
+			AppCopy(path: "/Users/erika/Projects/Trash/Moneten.app", isOnReadOnlyVolume: false, isOnDiskImage: false)]
 		#expect(AppCopies.folders(of: copies) == ["/Applications", "/Users/erika/Projects/Trash"])
 	}
 }

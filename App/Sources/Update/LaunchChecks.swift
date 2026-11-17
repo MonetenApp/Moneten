@@ -1,4 +1,5 @@
 import AppKit
+import DiskArbitration
 import Domain
 import FinTS
 
@@ -42,10 +43,15 @@ enum LaunchChecks {
 	@discardableResult
 	static func warnAboutCopies(driver: UpdateDriver) -> [String] {
 		guard let places = severalCopies() else { return [] }
-		let list = places.joined(separator: "\n")
-		driver.show(.notice(title: String(localized: "Several copies of Moneten are installed."),
-			message: String(localized: "Moneten is in these folders:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version.")))
+		driver.show(severalCopiesNotice(places))
 		return places
+	}
+
+	/// The warning that names `places`, a folder or an application file each.
+	static func severalCopiesNotice(_ places: [String]) -> UpdateStage {
+		let list = places.joined(separator: "\n")
+		return .notice(title: String(localized: "Several copies of Moneten are installed."),
+			message: String(localized: "Moneten is in these places:\n\(list)\n\nDelete the copies that you do not use, so that you always start the newest version."))
 	}
 
 	/// The places of the copies of the app when more than one counts (`AppCopies`). Launch Services
@@ -53,12 +59,22 @@ enum LaunchChecks {
 	private static func severalCopies() -> [String]? {
 		guard let id = Bundle.main.bundleIdentifier else { return nil }
 		let urls = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: id) + [Bundle.main.bundleURL]
+		let session = DASessionCreate(kCFAllocatorDefault)
 		let copies = urls.compactMap { url -> AppCopy? in
 			let copy = url.resolvingSymlinksInPath()
 			guard FileManager.default.fileExists(atPath: copy.path) else { return nil }
-			let volume = try? copy.resourceValues(forKeys: [.volumeIsReadOnlyKey])
-			return AppCopy(path: copy.path, isOnReadOnlyVolume: volume?.volumeIsReadOnly == true)
+			let volume = try? copy.resourceValues(forKeys: [.volumeIsReadOnlyKey, .volumeURLKey])
+			return AppCopy(path: copy.path, isOnReadOnlyVolume: volume?.volumeIsReadOnly == true,
+				isOnDiskImage: volume?.volume.map { isDiskImage($0, session: session) } ?? false)
 		}
 		return AppCopies.folders(of: copies)
+	}
+
+	/// Whether the volume lies on a mounted disk image, read-only or writable. Disk Arbitration names
+	/// the model of the device of every disk image "Disk Image", for HFS+ and APFS alike.
+	private static func isDiskImage(_ volume: URL, session: DASession?) -> Bool {
+		guard let session, let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, volume as CFURL),
+		      let description = DADiskCopyDescription(disk) as? [CFString: Any] else { return false }
+		return description[kDADiskDescriptionDeviceModelKey] as? String == "Disk Image"
 	}
 }

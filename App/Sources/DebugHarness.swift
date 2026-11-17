@@ -1290,6 +1290,7 @@ final class DebugHarness {
 			// The switches of the "General" tab in their order, as the defaults of the app store them, or "-" for none. A switch that
 			// differs from its stored value shows a value that macOS does not use, such as one that a launch argument overrides.
 			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey,
+				// SUEnableAutomaticChecksKey of Sparkle, whose header SUConstants.h is not public.
 				"SUEnableAutomaticChecks", AppUpdater.betaKey]
 			let id = Bundle.main.bundleIdentifier ?? ""
 			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }

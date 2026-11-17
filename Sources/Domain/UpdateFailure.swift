@@ -27,16 +27,10 @@ public enum UpdateFailure: Sendable, Equatable {
 		guard userInitiated else { return nil }
 		switch code {
 		case Code.runningTranslocated, Code.runningFromDiskImage: return .moveToApplications
-		// A cancel before "Install" is the user closing the window of the check.
+		// A guard that should never run: Sparkle cancels only the request for the password of an
+		// administrator, which comes after "Install".
 		case Code.installationCanceled: return nil
 		default: return .check
 		}
-	}
-
-	/// Sparkle closes the update without a message of its own when the user cancels the request for
-	/// the password of an administrator, which it needs for a folder that the user must not write to.
-	/// The app then reports the failed installation itself (spec: "Report a failed installation").
-	public static func isSilentInSparkle(code: Int) -> Bool {
-		code == Code.installationCanceled
 	}
 }
