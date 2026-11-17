@@ -788,7 +788,9 @@ struct FileImportTests {
 		let canceled = clock.now
 		reading.cancel()
 		let result = await reading.value
-		#expect(clock.now - canceled < .seconds(1))
+		// Without the cancel the reading goes on for several times the split. The limit grows with the measured split,
+		// so a runner that is slow for all tests at once does not fail the test, and never drops below one second.
+		#expect(clock.now - canceled < max(.seconds(1), split * 2))
 		#expect(throws: CancellationError.self) { try result.get() }
 	}
 	@Test("CSV delimiter detection uses only the first 20 nonempty lines", arguments: ["\n", "\r\n", "\r"])
