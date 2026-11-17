@@ -267,6 +267,7 @@ extension Ledger {
 	/// holds the time at which the user canceled the refresh of an account.
 	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
 		refreshAccounts(.all, calendar: calendar)
+			.filter { !pausesAutomaticRefresh(of: $0.key) }
 			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
 			.filter { !$0.value.isEmpty }
 	}
@@ -301,18 +302,29 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	/// the error popover names "Edit Login Data..." (`SyncFailure.mayAskForNewSetup`). The failure can come
 	/// at the login or after it, so the command is a suggestion.
 	public var suggestsEditLoginData: Bool
+	/// Set only when ING refused the login until a login on its website (`SyncFailure.websiteLoginNeeded`): the
+	/// automatic refreshes of the access in a row since the last refresh by hand that ended with it. At
+	/// `lockedLoginLimit` the automatic refresh pauses (`Ledger.recorded`).
+	public var lockedLogins: Int?
+
+	/// The automatic refreshes in a row that may end with the lock of ING before the automatic refresh pauses. 9942
+	/// means a wrong PIN, and the bank test of issue #11 has not shown yet whether ING counts these logins toward
+	/// the block of the PIN. ING may block it at 3, and its count does not start again with a refresh by hand, so the
+	/// app stops at 2.
+	public static let lockedLoginLimit = 2
 
 	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
-		suggestsEditLoginData: Bool = false) {
+		suggestsEditLoginData: Bool = false, lockedLogins: Int? = nil) {
 		self.message = message
 		self.code = code
 		self.date = date
 		self.notices = notices
 		self.waitsForUser = waitsForUser
 		self.suggestsEditLoginData = suggestsEditLoginData
+		self.lockedLogins = lockedLogins
 	}
 
-	/// An error stored before `waitsForUser` or `suggestsEditLoginData` existed has no such key.
+	/// An error stored before `waitsForUser`, `suggestsEditLoginData`, or `lockedLogins` existed has no such key.
 	public init(from decoder: Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
 		message = try c.decode(String.self, forKey: .message)
@@ -321,6 +333,7 @@ public struct RefreshError: Codable, Hashable, Sendable {
 		notices = try c.decode([String].self, forKey: .notices)
 		waitsForUser = try c.decodeIfPresent(Bool.self, forKey: .waitsForUser) ?? false
 		suggestsEditLoginData = try c.decodeIfPresent(Bool.self, forKey: .suggestsEditLoginData) ?? false
+		lockedLogins = try c.decodeIfPresent(Int.self, forKey: .lockedLogins)
 	}
 }
 
@@ -328,6 +341,81 @@ public struct RefreshError: Codable, Hashable, Sendable {
 public enum AccountRefresh: Sendable, Equatable {
 	case refreshed(Date)
 	case failed(RefreshError)
+}
+
+extension Ledger {
+	/// Whether the automatic refresh of `access` paused, because ING kept its FinTS login locked for
+	/// `RefreshError.lockedLoginLimit` automatic refreshes in a row. The pause holds for every account of the access,
+	/// also one that the user added or reopened later. A closed account keeps the lock of its access, so closing or
+	/// reopening accounts never ends the pause.
+	public func pausesAutomaticRefresh(of access: UUID) -> Bool {
+		accounts.contains { $0.accessID == access && $0.refreshError?.pausesForLockedLogin == true }
+	}
+
+	/// The lock of ING that the accounts of `access` carry, open or closed, with the highest count, or nil.
+	public func lockedLogin(of access: UUID) -> RefreshError? {
+		accounts.compactMap { $0.accessID == access ? $0.refreshError : nil }.filter { $0.lockedLogins != nil }
+			.max { ($0.lockedLogins ?? 0) < ($1.lockedLogins ?? 0) }
+	}
+
+	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them, and the
+	/// other accounts of the access whose lock of ING the refresh changed. A failure because ING waits for a login on
+	/// its website counts the automatic refreshes in a row that ended with it. The count belongs to the access, because
+	/// each of its accounts logs in with the same PIN, so every open account of the access that the refresh did not
+	/// fetch takes the error with the count, also one that the refresh did not ask for, and a closed account that
+	/// carries the lock takes the new count. So the count stays when the user closes, reopens, or deletes accounts.
+	/// A refresh by hand starts the count again. A refresh without the lock ends it, and the copies of the lock go.
+	/// At `RefreshError.lockedLoginLimit` the automatic refresh pauses for the access until a refresh by hand.
+	public func recorded(_ results: [UUID: AccountRefresh], of access: UUID, attended: Bool) -> [Account] {
+		let lock = results.values.lazy.compactMap { result -> RefreshError? in
+			if case let .failed(error) = result, error.lockedLogins != nil { error } else { nil }
+		}.first
+		let count = attended ? 0 : (lockedLogin(of: access)?.lockedLogins ?? 0) + 1
+		var changed: [Account] = []
+		for var account in accounts where account.accessID == access {
+			let result = results[account.id]
+			if let result { account.record(result) }
+			let carries = account.refreshError?.lockedLogins != nil
+			if let lock {
+				// An account that the same refresh fetched keeps its success.
+				if case .refreshed = result {
+					changed.append(account)
+					continue
+				}
+				guard !account.isClosed || carries else { continue }
+				var error = carries ? account.refreshError ?? lock : lock
+				error.lockedLogins = count
+				error.waitsForUser = count >= RefreshError.lockedLoginLimit
+				account.refreshError = error
+				changed.append(account)
+			} else if result != nil {
+				changed.append(account)
+			} else if !results.isEmpty, carries {
+				// The login of this refresh went through, or failed for another reason, so the copy of the lock goes.
+				account.refreshError = nil
+				changed.append(account)
+			}
+		}
+		return changed
+	}
+}
+
+extension Account {
+	/// The error of the last refresh that the app shows. A closed account shows none: it keeps only the lock of ING
+	/// of its access (`Ledger.closing`), which no refresh of it can end.
+	public var shownRefreshError: RefreshError? { isClosed ? nil : refreshError }
+}
+
+extension RefreshError {
+	/// The automatic refresh paused for the lock of ING.
+	public var pausesForLockedLogin: Bool { waitsForUser && lockedLogins != nil }
+
+	/// The text that the app shows. While the automatic refresh pauses for the lock of ING, it adds why, in the language
+	/// of the app at the time it shows it.
+	public var shownMessage: String {
+		guard pausesForLockedLogin else { return message }
+		return message + "\n" + String(localized: "The automatic refresh paused after \(Self.lockedLoginLimit) attempts. After the login on the website, refresh the account by hand.")
+	}
 }
 
 extension Account {
@@ -370,7 +458,8 @@ extension SyncState {
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
 		func error(_ failure: SyncFailure, at date: Date, ofAccess: Bool = false) -> AccountRefresh {
 			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),
-				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup))
+				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup,
+				lockedLogins: failure.isWebsiteLoginNeeded ? 0 : nil))
 		}
 		switch self {
 		case let .finished(summary):

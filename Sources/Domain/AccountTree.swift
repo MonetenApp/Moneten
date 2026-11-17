@@ -95,7 +95,7 @@ extension Ledger {
 				case let .group(g): walk(g.id)
 				case let .account(a):
 					markers.newTransactions += newTransactionCounts[a.id] ?? 0
-					if a.refreshError != nil { markers.failedAccounts.append(a) }
+					if a.shownRefreshError != nil { markers.failedAccounts.append(a) }
 				}
 			}
 		}
