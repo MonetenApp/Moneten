@@ -276,6 +276,232 @@ struct ReconcileTests {
 		#expect(rows.map(\.id) == first.added.map(\.id))
 	}
 
+	@Test("A refresh keeps a row that the user added by hand in an account with bank access")
+	func keepsManualRow() {
+		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
+		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: 1_000_000, name: "Anlage", isManual: true)
+		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR")), into: bank, stored: [manual])
+		#expect(r.dropped == [])
+		#expect(r.updated == [])
+		#expect(r.account?.bankBalanceMinor == 1_000_000)
+	}
+
+	@Test("A refresh adds a delivered row with the day and the amount of a manual row and leaves the manual row alone")
+	func manualRowIsNoPartner() {
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+		let manual = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: -1_200, name: "Kiosk", purpose: "Kartenzahlung", isManual: true)
+		let delivered = Transaction(accountID: bank.id, bookingDate: day(3), amountMinor: -1_200, name: "KIOSK", purpose: "KARTENZAHLUNG", sourceID: "TX-7")
+		let r = merge(refresh([delivered]), into: bank, stored: [manual])
+		#expect(r.added.map(\.sourceID) == ["TX-7"])
+		#expect(r.added.first?.isManual == false)
+		#expect(r.updated == [] && r.booked == [] && r.skipped == 0)
+		var ledger = Ledger(accounts: [bank], transactions: [manual])
+		ledger.apply(r)
+		#expect(ledger.transactions(ofAccount: bank.id).count == 2)
+		#expect(ledger.transaction(manual.id) == manual)
+		// The same delivery again pairs with the stored bank row, not with the manual one.
+		let again = merge(refresh([delivered]), into: bank, stored: ledger.transactions(ofAccount: bank.id))
+		#expect(again.added == [] && again.skipped == 1)
+	}
+
+	@Test("A refresh that moves the day of the bank balance past a manual row computes the derived initial balance again, so a later delete keeps the balance")
+	func refreshPassesManualRow() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [bank], transactions: [planned])
+		#expect(try ledger.followingBankBalance(saving: [planned], calendar: calendar) == [])
+		// The bank books the hotel on 05.11 and reports the balance of 10.11.
+		let booked = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [planned], at: day(10).date(in: calendar))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 15_000)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		// Deleting the manual copy keeps the computed balance at the bank balance.
+		let moved = try #require(try ledger.followingBankBalance(saving: [], deleting: [planned.id], calendar: calendar).first)
+		#expect(moved.initialBalanceMinor == 10_000)
+		ledger.upsert(moved)
+		ledger.remove(transactionIDs: [planned.id])
+		#expect(ledger.computedBalance(of: moved, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
+	@Test("A manual row that a file matched is a booking of the file: the refresh pairs it, and a delete keeps the computed balance at the bank balance")
+	func fileMatchedManualRowKeepsBankBalance() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", purpose: "Kartenzahlung", isManual: true)
+		let file = merge(.file([row(5, -5_000, "HOTEL BEISPIEL", "Kartenzahlung")]), into: bank, stored: [planned])
+		let matched = try #require(file.updated.first)
+		#expect(file.added.isEmpty && matched.id == planned.id && matched.fileIdentity != nil && !matched.isOnlyManual)
+		var ledger = Ledger(accounts: [bank], transactions: [matched])
+		let booked = row(5, -5_000, "HOTEL BEISPIEL", "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [matched], at: day(10).date(in: calendar))
+		#expect(r.added.isEmpty)
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 10_000)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		let deleted = try #require(try ledger.followingBankBalance(saving: [], deleting: [matched.id], calendar: calendar).first)
+		ledger.upsert(deleted)
+		ledger.remove(transactionIDs: [matched.id])
+		#expect(ledger.computedBalance(of: deleted, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
+	/// A credit card whose first refresh derived the initial balance from the bank balance of 100,00 € on 01.11.2026.
+	var derivedCard: Account {
+		Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000, bankBalanceDate: day(1).date(in: .current),
+			initialBalanceMinor: 10_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+	}
+
+	@Test("A bank that reports only a balance: a refresh past a planned manual row without a booking keeps the computed balance at the bank balance")
+	func balanceOnlyRefreshPassesManualRow() throws {
+		let card = derivedCard
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		let r = merge(refresh([], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
+			into: card, stored: [planned], at: day(10).date(in: .current))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 10_000)
+		var ledger = Ledger(accounts: [card], transactions: [planned])
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
+	@Test("A refresh whose transactions failed does not use up the crossing of a manual row, so the retry with the booking meets the bank balance")
+	func failedRefreshKeepsCrossingOfManualRow() throws {
+		let card = derivedCard
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [card], transactions: [planned])
+		let failed = merge(.refresh(RefreshResult(balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current), transactions: nil,
+			transactionFailure: .notFetched)), into: card, stored: [planned], at: day(10).date(in: .current))
+		ledger.apply(failed)
+		let kept = try #require(ledger.account(card.id))
+		// The balance waits for its rows, so the next refresh still passes the manual row.
+		#expect(kept.bankBalanceMinor == 10_000 && kept.bankBalanceDate == card.bankBalanceDate && kept.initialBalanceMinor == 10_000)
+		let booked = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let retry = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(11).date(in: .current)),
+			into: kept, stored: ledger.transactions(ofAccount: card.id), at: day(11).date(in: .current))
+		ledger.apply(retry)
+		let account = try #require(ledger.account(card.id))
+		#expect(account.initialBalanceMinor == 15_000)
+		#expect(ledger.computedBalance(of: account, through: day(11)) == Money(minorUnits: 5_000, currency: "EUR"))
+	}
+
+	@Test("A bank that reports only a balance leaves an initial balance that the user entered")
+	func balanceOnlyRefreshWithEnteredValue() throws {
+		var card = derivedCard
+		card.enterInitialBalance(300_000)
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		let r = merge(refresh([], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
+			into: card, stored: [planned], at: day(10).date(in: .current))
+		#expect(try #require(r.account).initialBalanceMinor == 300_000)
+	}
+
+	@Test("A later refresh with an older booked row keeps a derived initial balance, and the app proposes a calibration")
+	func laterRefreshComputesDerivedValue() throws {
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank, bankBalanceMinor: 120_000, bankBalanceDate: day(1).date(in: .current),
+			initialBalanceMinor: 255_000, initialBalanceIsSet: true, initialBalanceIsDerived: true)
+		let first = row(1, -135_000, "Card", sourceID: "TX-1")
+		let delivered = [row(10, -40_000, "Card", sourceID: "TX-2"), row(1, -7_000, "Old fee", month: 8, sourceID: "TX-3")]
+			.map { var t = $0; t.accountID = bank.id; return t }
+		var stored = first
+		stored.accountID = bank.id
+		let r = merge(refresh(delivered, from: day(1, month: 8), balance: Money(minorUnits: 80_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
+			into: bank, stored: [stored], at: day(10).date(in: .current))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 255_000)
+		var ledger = Ledger(accounts: [bank], transactions: [stored])
+		ledger.apply(r)
+		#expect(ledger.proposedCalibration(of: account, today: day(10), refresh: .idle)?.difference == Money(minorUnits: 7_000, currency: "EUR"))
+	}
+
+	@Test("A refresh whose transactions failed leaves a derived initial balance, because the rows of the bank balance are missing")
+	func failedRefreshLeavesDerivedValue() throws {
+		let card = derivedCard
+		let r = merge(.refresh(RefreshResult(balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current), transactions: nil,
+			transactionFailure: .notFetched)), into: card, at: day(10).date(in: .current))
+		let account = try #require(r.account)
+		#expect(account.bankBalanceMinor == 5_000 && account.initialBalanceMinor == 10_000)
+	}
+
+	@Test("A file of older rows leaves a derived initial balance for the calibration proposal")
+	func fileImportLeavesDerivedValue() {
+		let fee = Transaction(accountID: derivedCard.id, bookingDate: day(1, month: 10), amountMinor: -700, name: "Old fee", fileIdentity: "csv:1")
+		#expect(merge(.file([fee]), into: derivedCard).account == nil)
+	}
+
+	@Test("A file that matches a manual row moves a derived initial balance only by the row's own change, so an older difference stays")
+	func fileMatchingManualRowKeepsDifference() throws {
+		let card = derivedCard
+		// The initial balance of 100,00 € misses the manual row of -12,00 € on 01.10, so the header proposes a calibration.
+		let kiosk = Transaction(accountID: card.id, bookingDate: day(1, month: 10), amountMinor: -1_200, name: "Kiosk", purpose: "Kartenzahlung", isManual: true)
+		let file = Transaction(accountID: card.id, bookingDate: kiosk.bookingDate, amountMinor: -1_200, name: "KIOSK", purpose: "Kartenzahlung", fileIdentity: "csv:1")
+		let r = merge(.file([file]), into: card, stored: [kiosk])
+		let matched = try #require(r.updated.first)
+		#expect(matched.id == kiosk.id && matched.isManual && !matched.isOnlyManual)
+		#expect(r.account == nil)
+		var ledger = Ledger(accounts: [card], transactions: [kiosk])
+		ledger.apply(r)
+		#expect(ledger.proposedCalibration(of: card, today: day(10), refresh: .idle)?.difference == Money(minorUnits: 1_200, currency: "EUR"))
+	}
+
+	@Test("A refresh whose new day passes a manual row sets a derived initial balance by the rule, which takes in an older difference")
+	func refreshPassingManualRowTakesInOlderDifference() throws {
+		let card = derivedCard
+		// An older bank row of -7,00 € that a later refresh brought left a calibration difference of 7,00 €.
+		let older = Transaction(accountID: card.id, bookingDate: day(20, month: 10), amountMinor: -700, name: "Fee", isFetched: true, sourceID: "TX-3")
+		let planned = Transaction(accountID: card.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		var ledger = Ledger(accounts: [card], transactions: [older, planned])
+		#expect(ledger.proposedCalibration(of: card, today: day(1), refresh: .idle)?.difference == Money(minorUnits: 700, currency: "EUR"))
+		let r = merge(refresh([], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: .current)),
+			into: card, stored: [older, planned], at: day(10).date(in: .current))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 10_700)
+		ledger.apply(r)
+		#expect(ledger.computedBalance(of: account, through: day(10)) == Money(minorUnits: 5_000, currency: "EUR"))
+		#expect(ledger.proposedCalibration(of: account, today: day(10), refresh: .idle) == nil)
+	}
+
+	@Test("A refresh that moves the day of the bank balance past a manual row leaves an initial balance that the user entered")
+	func refreshPassesManualRowWithEnteredValue() throws {
+		let calendar = Calendar.current
+		let bank = Account(position: 0, name: "Kreditkarte", kind: .creditCard, source: .bank, bankBalanceMinor: 10_000,
+			bankBalanceDate: day(1).date(in: calendar), initialBalanceMinor: 300_000, initialBalanceIsSet: true)
+		let planned = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "Hotel Beispiel", isManual: true)
+		let booked = Transaction(accountID: bank.id, bookingDate: day(5), amountMinor: -5_000, name: "HOTEL BEISPIEL", purpose: "Kartenzahlung", sourceID: "TX-9")
+		let r = merge(refresh([booked], balance: Money(minorUnits: 5_000, currency: "EUR"), balanceDate: day(10).date(in: calendar)),
+			into: bank, stored: [planned], at: day(10).date(in: calendar))
+		let account = try #require(r.account)
+		#expect(account.initialBalanceMinor == 300_000)
+		#expect(!account.initialBalanceIsDerived)
+	}
+
+	@Test("A file row whose name the user changed still pairs with the booking of the next refresh, with or without an IBAN")
+	func renamedFileRowPairs() {
+		let bank = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+		for iban in [nil, "DE02120300000000202051"] {
+			var renamed = merge(.file([row(3, -1_200, "KIOSK", "Kartenzahlung", iban: iban)]), into: bank).added[0]
+			renamed.name = "Groceries"
+			let r = merge(refresh([row(3, -1_200, "KIOSK", "Kartenzahlung", sourceID: "TX-7", iban: iban)]), into: bank, stored: [renamed])
+			#expect(r.added.isEmpty)
+			#expect(r.updated.map(\.id) == [renamed.id])
+		}
+	}
+
+	@Test("The first refresh derives the initial balance with the manual rows, so the computed balance meets the bank balance")
+	func firstRefreshCountsManualRows() {
+		let bank = Account(position: 0, name: "Festgeld", kind: .fixedTermDeposit, source: .bank)
+		let deposit = Transaction(accountID: bank.id, bookingDate: day(1, month: 3), amountMinor: 400_000, name: "Anlage", isManual: true)
+		let r = merge(refresh([], balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: now), into: bank, stored: [deposit])
+		#expect(r.account?.initialBalanceMinor == 600_000)
+		#expect(r.account?.initialBalanceIsSet == true)
+		#expect(r.account?.initialBalanceIsDerived == true)
+	}
+
 	@Test("A booked row with a return reason books a pending row and keeps the reason")
 	func bookedReturnReason() {
 		let pending = row(5, 8_900, "Stadtwerke Musterstadt", "Rücklastschrift", pending: true)

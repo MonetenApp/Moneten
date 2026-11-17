@@ -68,8 +68,10 @@ public final class Store: SavedPINStore {
 	}
 	public func save(_ category: Domain.Category) throws { try write { db in try category.save(db) } }
 
-	public func save(_ transactions: [Transaction], parts: [SplitPart] = []) throws {
+	/// `accounts` are accounts whose initial balance the rows move, written in the same transaction.
+	public func save(_ transactions: [Transaction], parts: [SplitPart] = [], accounts: [Account] = []) throws {
 		try write { db in
+			for a in accounts { try a.save(db) }
 			for t in transactions { try t.save(db) }
 			for part in parts { try part.update(db, columns: ["categoryID", "comment"]) }
 		}
@@ -226,11 +228,16 @@ public final class Store: SavedPINStore {
 	}
 
 	/// Deletes transactions and keeps what identifies them, so that no later refresh adds them again.
-	/// The bank balance stays as it is.
-	public func deleteTransactions(_ ids: [UUID]) throws {
+	/// The bank balance stays as it is. `accounts` are accounts whose initial balance the deletion moves.
+	public func deleteTransactions(_ ids: [UUID], accounts: [Account] = []) throws {
 		try write { db in
 			let now = Date()
-			for t in try Transaction.fetchAll(db, keys: ids) { try DeletedTransaction(t, deletedAt: now).insert(db) }
+			for a in accounts { try a.save(db) }
+			// No source delivers a manual row, so its record could only keep out another booking. A manual row that
+			// a file or a migration matched carries what the source gave it, and keeps its record.
+			for t in try Transaction.fetchAll(db, keys: ids) where !t.isOnlyManual {
+				try DeletedTransaction(t, deletedAt: now).insert(db)
+			}
 			_ = try Transaction.deleteAll(db, keys: ids)
 		}
 	}

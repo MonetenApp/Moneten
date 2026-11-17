@@ -290,6 +290,8 @@ final class DebugHarness {
 				if !handled, argument == "tab" { sheet.sendEvent(event) }
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
+		// Moves the focus to the next field of the sheet on top, as the Tab key does.
+		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
@@ -533,6 +535,11 @@ final class DebugHarness {
 		// save the settings under that name, "delete" to delete the applied profile, "state", which logs the settings and
 		// counts of the preview, or "rows", which logs the count and the days of its first rows.
 		case "csv": csvPreview(argument)
+		// "<kind> <name>": an empty offline account in euros, such as "loan Darlehen".
+		case "offline":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let kind = AccountKind(rawValue: parts[0]) else { return log("offline error=argument") }
+			Task { await model.addOfflineAccount(name: parts[1], kind: kind, currency: "EUR", groupID: nil); log("offline done") }
 		// "[<currency>]": the credit card in US dollars, or in another currency such as JPY.
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
@@ -600,6 +607,13 @@ final class DebugHarness {
 				var a = Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Depot", kind: .portfolio, source: .offline, currency: currency)
 				a.bankBalanceMinor = euros * 100
 				model.save(account: a)
+			}
+		case "wallet":
+			// "<group> <euros> <US dollars>" adds a wallet of a bank that reports a balance in euros and one in US dollars.
+			let parts = argument.split(separator: " ")
+			if parts.count == 3, let euros = Int64(parts[1]), let dollars = Int64(parts[2]), let group = model.ledger.groups.first(where: { $0.name == String(parts[0]) }) {
+				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Reisekasse", kind: .other,
+					source: .bank, bankBalanceMinor: euros * 100, otherBankBalances: [Money(minorUnits: dollars * 100, currency: "USD")]))
 			}
 		case "portfoliovalue":
 			// "<account> <days ago> <euros>" records the value of a portfolio on a past day.
@@ -805,16 +819,39 @@ final class DebugHarness {
 				if let rate = Preference.rates.first(where: { $0.text == argument }) {
 					saved = await model.splitVAT(row: row.id, rate: rate)
 				} else if let amount = Split.amount(from: argument, on: row.amount, decimalMark: .comma) {
-					saved = await model.split(row: row.id, off: [amount])
+					saved = await model.split(row: row.id, off: [amount]) == .done
 				} else { return log("split refused") }
 				let count = saved ? model.ledger.parts(of: originalID).count : 0
-				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))			}
+				log("split", ("saved", .flag(saved)), ("parts", .count(count)), ("transactions", .count(model.ledger.transactions.count)))
+			}
 		case "undosplit":
 			if let row = model.visibleTransactions.first { model.askUndoSplit(row: row.id) }
 			log("undosplit", ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "deleteparts":
 			model.delete(transactions: model.visibleSelection)
 			log("deleteparts", ("refused", .flag(model.alert != nil)), ("selected", .count(model.visibleSelection.count)))
+		// What a cancel right after the confirm of the split window does, before the window shows its disabled
+		// "Cancel": the split must store nothing. Logs the parts of the row after the drawing wait.
+		case "splitcancel":
+			guard case let .split(row) = model.sheet, let sheet = topSheet else { return log("splitcancel refused") }
+			let originalID = model.ledger.part(row.id)?.transactionID ?? row.id
+			for (key, code) in [("\r", 36), ("\u{1b}", 53)] {
+				if let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber,
+					context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: UInt16(code)) {
+					_ = sheet.performKeyEquivalent(with: event)
+				}
+			}
+			Task {
+				try? await Task.sleep(for: .seconds(2))
+				log("splitcancel", ("parts", .count(model.ledger.parts(of: originalID).count)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+			}
+		// "<currency>": what a refresh that corrects the currency does to the transaction of the open split window.
+		case "splitcurrency":
+			guard case let .split(row) = model.sheet,
+				var t = model.ledger.transaction(model.ledger.part(row.id)?.transactionID ?? row.id) else { return log("splitcurrency refused") }
+			t.currency = argument
+			model.save(transaction: t, adding: false)
+			log("splitcurrency", ("currency", .flag(model.ledger.transaction(t.id)?.currency == argument)))
 		case "splitnext":
 			let control = sheetAccessibility().first { ($0 as AnyObject).accessibilityIdentifier?() == "next-split" }
 			log("splitnext", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
@@ -825,6 +862,8 @@ final class DebugHarness {
 			log("splitui", ("amountLabel", .flag(amount.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextLabel", .flag(next.map { !(($0 as AnyObject).accessibilityLabel?() ?? "").isEmpty } ?? false)),
 				("nextEnabled", .flag(next.map { ($0 as AnyObject).isAccessibilityEnabled?() ?? false } ?? false)),
+				("changed", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-changed" })),
+				("currencyChanged", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "split-currency-changed" })),
 				("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "splitmenusnapshot":
 			guard let row = model.visibleTransactions.first else { return }
@@ -1140,6 +1179,9 @@ final class DebugHarness {
 
 	/// The tables of positions in all windows.
 	func holdingsTables() -> [NSTableView] { tables(withColumn: String(localized: "Quantity")) }
+
+	/// The text of the field that has the focus in the sheet on top, for a check that typing reached it.
+	func focusedSheetText() -> String? { (topSheet?.firstResponder as? NSTextView)?.string }
 
 	private func tables(withColumn title: String) -> [NSTableView] {
 		func tables(in view: NSView) -> [NSTableView] {

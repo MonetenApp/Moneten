@@ -177,7 +177,7 @@ struct AppCommands: Commands {
 			Divider()
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
-				.disabled(!unlocked || model.selectedOfflineAccount == nil)
+				.disabled(!unlocked || model.selectedManualAccount == nil)
 			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
 			Button("Assign Category...") { model.openCategoryPicker() }
 				.keyboardShortcut("k")

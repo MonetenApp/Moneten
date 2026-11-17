@@ -21,6 +21,50 @@ The app SHALL open a split window with "Split Transaction" and then "Split Amoun
 - **WHEN** the user cancels the split window
 - **THEN** the transaction is unchanged
 
+### Requirement: A split follows the current transaction
+
+The app SHALL split only the amount, the category, and the comment that the user saw. When one of them changes before the split is stored, the app stores no part. The split window stays open, says "The transaction changed. Try again.", and takes the current values. When the transaction no longer exists, the window closes without a split. A VAT entry that meets a changed transaction says the same in a message.
+
+#### Scenario: A rule moves the transaction while the window is open
+
+- **GIVEN** the split window is open for a booked transaction of -80,00 € in "Groceries"
+- **WHEN** a rule moves the transaction to "Household", and the user enters 25,00 and confirms
+- **THEN** the window stays open and says "The transaction changed. Try again."
+- **AND** the list shows one transaction of -80,00 € in "Household"
+- **WHEN** the user confirms again
+- **THEN** the list shows parts of -25,00 € and -55,00 €, both in "Household"
+
+#### Scenario: The comment changes while the split waits
+
+- **GIVEN** a booked transaction of -80,00 € with the comment "Weekly shop"
+- **WHEN** the user splits off 25,00, and the comment changes to "Party" before the parts are stored
+- **THEN** the app stores no part, and the transaction keeps the comment "Party"
+
+#### Scenario: A refresh removes the transaction
+
+- **GIVEN** the split window is open for a part of -55,00 €
+- **WHEN** a refresh removes the part and the user confirms
+- **THEN** the window closes without a split
+
+### Requirement: The split window waits for the split
+
+The app SHALL disable "Cancel", the amount field, and "Next Split" of the split window while the split is being stored. A window that closes before the split is stored stores nothing. When the currency of the transaction changed, the window removes the kept splits and says so.
+
+#### Scenario: The currency changes after a kept split
+
+- **GIVEN** the split window is open for a booked transaction of -80,00 €, and the user entered 25,00 and clicked "Next Split"
+- **WHEN** a refresh corrects the currency of the transaction to USD, and the user confirms
+- **THEN** the window stays open with the amount -80,00 USD and no kept split
+- **AND** it says "The currency of the transaction changed, so the kept splits were removed. Enter them again."
+- **WHEN** the user enters 25,00 and confirms
+- **THEN** the list shows parts of -25,00 USD and -55,00 USD
+
+#### Scenario: Cancel right after the confirm
+
+- **GIVEN** the split window is open for a booked transaction of -80,00 € with the amount 10,00
+- **WHEN** the user confirms and cancels before the split is stored
+- **THEN** the window closes, and the list shows one transaction of -80,00 €
+
 ### Requirement: The parts add up to the original amount
 
 The app SHALL compute the remainder so that all parts of a split add up to the amount of the original transaction. The split window shows the resulting remainder before the user confirms. The app refuses an amount of zero, text that is not a number, and an amount of more than 10.000.000.000.000,00 € or the same digits in another currency.
@@ -210,7 +254,7 @@ The app SHALL offer one entry "Split" with the rate and "VAT" for each rate in t
 
 ### Requirement: The list of VAT rates can be changed
 
-The app SHALL start with the rates 19 and 7 percent and let the user add, change, and remove rates in the settings. The context menu shows one entry for each rate in the list.
+The app SHALL start with the rates 19 and 7 percent and let the user add, change, and remove rates in the settings. A rate is above zero, at most 100 percent, and has up to two decimal places. The list holds each rate once. The context menu shows one entry for each rate in the list.
 
 #### Scenario: Add a rate
 
@@ -233,8 +277,33 @@ The app SHALL start with the rates 19 and 7 percent and let the user add, change
 
 - **GIVEN** the list contains 19 and 7 percent
 - **WHEN** the user enters "7,125" and saves the rate
-- **THEN** the settings say "Enter a rate above zero with up to two decimal places."
+- **THEN** the settings say "Enter a rate from 0.01 to 100 with up to two decimal places."
 - **AND** the list stays at 19 and 7 percent
+
+#### Scenario: Refuse a rate above 100 percent
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "190" and saves the rate
+- **THEN** the settings say "Enter a rate from 0.01 to 100 with up to two decimal places."
+- **AND** the list stays at 19 and 7 percent
+
+#### Scenario: Accept a rate of 100 percent
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user enters "100" and saves the rate
+- **THEN** the list contains 19, 7, and 100 percent
+
+#### Scenario: Add a rate that is in the list
+
+- **GIVEN** the list contains 19 and 7 percent
+- **WHEN** the user adds the rate "19,00"
+- **THEN** the list stays at 19 and 7 percent, and the submenu shows "Split 19% VAT" once
+
+#### Scenario: Change a rate to one that is in the list
+
+- **GIVEN** the list contains 19, 7, and 20 percent in that order
+- **WHEN** the user changes 20 to 7
+- **THEN** the list contains 19 and 7 percent in that order
 
 ### Requirement: Only booked transactions can be split
 

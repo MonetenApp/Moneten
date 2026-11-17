@@ -8,6 +8,7 @@ struct AmountParserTests {
 		("1.250,00", "1250"), ("1,250.00", "1250"), ("-89,00", "-89"), ("1250.00", "1250"), ("89", "89"),
 		("€1,234.56", "1234.56"), ("1\u{202F}234,56", "1234.56"), ("1.250.000", "1250000"), ("1,234,567", "1234567"),
 		("1.234,5", "1234.5"), ("12,3", "12.3"), ("1234,567", "1234.567"), ("+5", "5"), ("\u{2212}7,50", "-7.5"),
+		("0,007", "0.007"), ("-0.500", "-0.5"),
 	])
 	func unambiguous(text: String, value: String) {
 		#expect(AmountParser.decimal(from: text) == Decimal(string: value))
@@ -38,18 +39,20 @@ struct AmountParserTests {
 
 	@Test("Names the decimal mark that a text shows without doubt", arguments: [
 		("-89,00", DecimalMark?.some(.comma)), ("1.250.000", .comma), ("4.50", .point), ("1,250.00", .point),
-		("89", nil), ("1,234", nil), ("1.23,45", nil),
+		("89", nil), ("1,234", nil), ("1.23,45", nil), ("0,500", .comma),
 	])
 	func shownMark(text: String, mark: DecimalMark?) {
 		#expect(AmountParser.decimalMark(of: text) == mark)
 	}
 
-	@Test("Writes an amount for a text field that it reads back unchanged", arguments: [
-		(Money(minorUnits: 123_456, currency: "EUR"), "1234.56"), (Money(minorUnits: -150, currency: "EUR"), "-1.5"),
-		(Money(minorUnits: 1_234, currency: "KWD"), "1.2340"), (Money(minorUnits: 1_234, currency: "JPY"), "1234"),
+	@Test("Writes an amount for a text field with every decimal place of its currency, and reads it back unchanged", arguments: [
+		(Money(minorUnits: 123_456, currency: "EUR"), DecimalMark.point, "1234.56"), (Money(minorUnits: -150, currency: "EUR"), .point, "-1.50"),
+		(Money(minorUnits: 1_234, currency: "KWD"), .point, "1.2340"), (Money(minorUnits: 1_234, currency: "JPY"), .point, "1234"),
+		(Money(minorUnits: -1_200, currency: "EUR"), .comma, "-12,00"), (Money(minorUnits: -5, currency: "EUR"), .comma, "-0,05"),
+		(Money(minorUnits: -1_234, currency: "KWD"), .comma, "-1,2340"), (Money(minorUnits: 7, currency: "KWD"), .comma, "0,007"),
 	])
-	func editableText(money: Money, text: String) {
-		#expect(AmountParser.editableText(money) == text)
+	func editableText(money: Money, mark: DecimalMark, text: String) {
+		#expect(AmountParser.editableText(money, decimalMark: mark) == text)
 		#expect(AmountParser.decimal(from: text) == money.decimal)
 	}
 }

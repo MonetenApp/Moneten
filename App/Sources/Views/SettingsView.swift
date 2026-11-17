@@ -390,7 +390,7 @@ struct VATRateSettings: View {
 			}
 		}
 		if invalid {
-			Text("Enter a rate above zero with up to two decimal places.")
+			Text("Enter a rate from 0.01 to 100 with up to two decimal places.")
 				.foregroundStyle(Palette.red)
 				.accessibilityIdentifier("vat-error")
 		}
@@ -398,7 +398,7 @@ struct VATRateSettings: View {
 
 	private func save() {
 		guard let rate = VATRate(text: text) else { invalid = true; return }
-		if let editing { rates[editing] = rate } else { rates.append(rate) }
+		rates = VATRate.setting(rate, at: editing, in: rates)
 		persist()
 		reset()
 	}

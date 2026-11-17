@@ -215,7 +215,7 @@ struct AccountRow: View {
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: account.groupID) }
 			Button("Add Account Group") { model.sheet = .newGroup }
-			if account.isOffline {
+			if account.takesManualTransactions {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
 			Divider()
