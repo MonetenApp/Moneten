@@ -178,17 +178,24 @@ def check(path: pathlib.Path, shown: pathlib.Path) -> list[str]:
 	lines = code_lines(source)
 	times = set(DECLARED_TIME.findall("\n".join(lines)))
 	found: dict[int, list[str]] = {}
+	exempt = lambda n: n < len(original) and "// time-ok: " in original[n]
+	# An assertion over several lines counts as one: a time-ok on any of its lines exempts all of it. Otherwise it is
+	# reported on the line that holds a whole comparison, or once on its first line when a comparison spans lines.
+	spanned: set[int] = set()
+	for first, last, argument in assertions(lines):
+		spanned.update(range(first, last + 1))
+		if any(exempt(n) for n in range(first, last + 1)):
+			continue
+		within = {n: limits for n in range(first, last + 1) if n < len(lines) and (limits := raw_limits(lines[n], times))}
+		if within:
+			found.update(within)
+		elif limits := raw_limits(argument, times):
+			found[first] = limits
 	for n, code in enumerate(lines):
-		if n < len(original) and "// time-ok: " in original[n]:
+		if n in spanned or exempt(n):
 			continue
 		if limits := raw_limits(code, times):
 			found[n] = limits
-	for first, last, argument in assertions(lines):
-		# One report for each assertion, and none for one that a line of it already gave.
-		if any(n in found for n in range(first, last + 1)) or any("// time-ok: " in original[n] for n in range(first, min(last + 1, len(original)))):
-			continue
-		if limits := raw_limits(argument, times):
-			found[first] = limits
 	return [f"{shown}:{n + 1}: {limit}" for n in sorted(found) for limit in found[n]]
 
 

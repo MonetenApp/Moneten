@@ -70,6 +70,10 @@ let text = "elapsed < .seconds(1)" // probe: pass
 /*
 #expect(elapsed < .seconds(1)) probe: pass
 */
+#expect( // time-ok: a time-ok on the first line exempts the whole assertion probe: pass
+	elapsed < .seconds(120)
+)
+#expect(elapsed < .seconds(1) && spent < .seconds(2)) // probe: raw
 // A limit in a variable is a known gap of the check: review catches it.
 #expect(elapsed < limit) // probe: pass
 let script = """
