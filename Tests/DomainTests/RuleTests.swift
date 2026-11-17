@@ -578,18 +578,27 @@ struct CategorizerTests {
 			let amount: Int64 = -10_000 - Int64(i)
 			rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: amount, name: "Kiosk", purpose: slowPurpose))
 		}
-		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer) {
+		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer, passes: Int) {
 			let rules = Categorizer(ledger: ledger(categories))
-			return (rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }, rules)
+			var passes = 0
+			let sorted = rules.allOrNothing {
+				passes += 1
+				return rows.map { var t = $0; rules.categorize(&t); return t }
+			}
+			return (sorted, rules, passes)
 		}
 		_ = run([traders, rest])
 		let alone = run([traders, rest])
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let mixed = run(slow + [traders, rest])
 		let elapsed = Duration.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start)
-		print("twelve stopping rules over 2,004 rows: \(elapsed)")
-		// A Mac takes about 2 s; before round 3 of #351 the batch took over 10 s.
-		#expect(elapsed < budget(.milliseconds(2_500)))
+		print("twelve stopping rules over 2,004 rows: \(elapsed) in \(mixed.passes) passes")
+		// The six rules that hang stop on the first row and the six slow ones on the last rows. Every row already passed a
+		// stopped rule before its match, so no stop changes a category that the batch used, and the batch runs once.
+		#expect(mixed.passes == 1)
+		// A Mac takes about 1.15 s in a debug build, of which about 0.9 s is the twelve rules until they stop. Before issue
+		// #361 it took about 2 s, and before round 3 of #351 over 10 s.
+		#expect(elapsed < budget(.milliseconds(2_000)))
 		let expected = alone.rows.map(\.categoryID)
 		#expect(expected.count(where: { $0 == traders.id }) == 319)
 		#expect(mixed.rows.map(\.categoryID) == expected)
@@ -618,6 +627,45 @@ struct CategorizerTests {
 		#expect(sorted.filter { $0.categoryID == cafe.id }.map { Array($0.purpose.unicodeScalars) } == [Array(precomposed.purpose.unicodeScalars)])
 	}
 
+	@Test("A stop gives the same categories in every order of the rows, also to rows with the same texts", .timeLimit(.minutes(1)))
+	func stopInEveryOrder() {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let bank = Domain.Category(position: 1, name: "Bank", restrictedToID: business.id, rule: "/Telekom/")
+		let traders = Domain.Category(position: 2, name: "Haendler", rule: "/Haendler1/")
+		let other = Domain.Category(position: 3, name: "Other", rule: "true")
+		let day = Day(year: 2026, month: 11, day: 3)
+		// "Phone" matches the first row until a later row stops it. The second row has the same texts, the third is in the
+		// account of "Bank", and the last came from "Phone" before and stays there, because "Phone" could have matched it.
+		let telekom = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telekom", purpose: "ok")
+		let again = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telekom", purpose: "ok")
+		let inBusiness = Transaction(accountID: business.id, bookingDate: day, amountMinor: -1_000, name: "Telekom", purpose: "ok")
+		let trader = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -2_000, name: "Haendler12", purpose: "ok")
+		let slow = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Kiosk", purpose: Self.slowText)
+		let sorted = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -4_000, name: "Haendler12", purpose: "Rechnung",
+			categoryID: phone.id, categorizedBy: .rule)
+		let expected: [UUID: UUID] = [telekom.id: other.id, again.id: other.id, inBusiness.id: bank.id, trader.id: traders.id, slow.id: other.id,
+			sorted.id: phone.id]
+		let rows = [telekom, again, inBusiness, trader, slow, sorted]
+		var orders: [[Transaction]] = []
+		for k in rows.indices {
+			let rotated = Array(rows[k...] + rows[..<k])
+			orders.append(rotated)
+			orders.append(rotated.reversed())
+		}
+		for order in orders {
+			let rules = Categorizer(ledger: ledger([phone, bank, traders, other]))
+			var passes = 0
+			let result = rules.allOrNothing {
+				passes += 1
+				return order.map { var t = $0; rules.categorize(&t); return t }
+			}
+			let categories = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0.categoryID) })
+			#expect(categories == expected, "\(order.map(\.name))")
+			#expect(result.allSatisfy { $0.categorizedBy == .rule })
+			#expect(passes <= 2)
+		}
+	}
+
 	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
 	func batchLimit() {
 		// Forty rules that each hang for about 100 ms before they stop.
@@ -639,7 +687,11 @@ struct CategorizerTests {
 		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
 		let l = ledger([phone], rows)
 		let rule = try Rule(parsing: phone.rule)
-		let task = Task.detached { RuleApplier.matchCount(category: phone, rule: rule, ledger: l) }
+		// The count starts only after the cancel, which the detached task might otherwise miss by starting first.
+		let task = Task.detached { () -> Int in
+			while !Task.isCancelled { await Task.yield() }
+			return RuleApplier.matchCount(category: phone, rule: rule, ledger: l)
+		}
 		task.cancel()
 		#expect(await task.value == 0)
 		#expect(rule.regexSpent == 0)

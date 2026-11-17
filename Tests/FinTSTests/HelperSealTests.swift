@@ -37,34 +37,34 @@ struct HelperSealTests {
 	}
 
 	@Test("An unchanged bundle passes")
-	func intact() throws {
+	func intact() async throws {
 		defer { try? FileManager.default.removeItem(at: folder) }
-		try sealedApp().check()
+		try await sealedApp().check()
 	}
 
 	@Test("A changed jar fails")
-	func changedJar() throws {
+	func changedJar() async throws {
 		defer { try? FileManager.default.removeItem(at: folder) }
 		let seal = try sealedApp()
 		try Data("hbci4k".utf8).write(to: lib.appending(path: "hbci4j-core.jar"))
-		#expect(throws: HelperFailure.damaged) { try seal.check() }
+		await #expect(throws: HelperFailure.damaged) { try await seal.check() }
 	}
 
 	@Test("An added jar fails")
-	func addedJar() throws {
+	func addedJar() async throws {
 		defer { try? FileManager.default.removeItem(at: folder) }
 		let seal = try sealedApp()
 		try Data("extra".utf8).write(to: lib.appending(path: "extra.jar"))
-		#expect(throws: HelperFailure.damaged) { try seal.check() }
+		await #expect(throws: HelperFailure.damaged) { try await seal.check() }
 	}
 
 	@Test("A bundle signed again after a change fails the requirement of the running app")
-	func signedAgain() throws {
+	func signedAgain() async throws {
 		defer { try? FileManager.default.removeItem(at: folder) }
 		let seal = try sealedApp()
 		try Data("hbci4k".utf8).write(to: lib.appending(path: "hbci4j-core.jar"))
 		try sign()
-		#expect(throws: HelperFailure.damaged) { try seal.check() }
+		await #expect(throws: HelperFailure.damaged) { try await seal.check() }
 	}
 
 	@Test("The connector does not start a helper whose seal fails")
@@ -78,6 +78,20 @@ struct HelperSealTests {
 		let connector = FinTSConnector(helper: helper, productID: "TESTPRODUCT", version: "0.0.1")
 		await #expect(throws: HelperFailure.damaged) { _ = try await connector.bankDirectory() }
 		#expect(!FileManager.default.fileExists(atPath: marker.path))
+	}
+
+	/// The Security framework waits for threads of its own during a check. Checks that block more
+	/// threads of the Swift concurrency pool than the Mac has cores never ended on a CI runner.
+	@Test("More checks at once than the Mac has cores all end")
+	func manyChecksAtOnce() async throws {
+		defer { try? FileManager.default.removeItem(at: folder) }
+		let seal = try sealedApp()
+		try await withThrowingTaskGroup(of: Void.self) { group in
+			for _ in 0..<(ProcessInfo.processInfo.activeProcessorCount * 2) {
+				group.addTask { try await seal.check() }
+			}
+			try await group.waitForAll()
+		}
 	}
 
 	@Test("The bundled helper is sealed by the app that runs")

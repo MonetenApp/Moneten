@@ -1289,10 +1289,11 @@ public class FinTSHelper {
 		return "FinTSHelper: account without jobs: type=" + (present(k.acctype) ? k.acctype.trim() : "none") + " allowed=" + allowed;
 	}
 
-	/// The failure of an account that allows none of the jobs.
+	/// The failure of an account that allows none of the jobs. The kind "noJobs" lets the app name a DKB card and its card
+	/// number in the error (`DKB` in Sources/FinTS); every other account shows the text.
 	static Map<String, Object> nothingAllowed(String id, Konto k) {
-		return message("accountFailed", "account", id, "kind", "unsupported", "text", securities(k) ? "Moneten can't read this securities account at this bank yet."
-			: "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
+		if (securities(k)) return message("accountFailed", "account", id, "kind", "unsupported", "text", "Moneten can't read this securities account at this bank yet.");
+		return message("accountFailed", "account", id, "kind", "noJobs", "text", "The FinTS server of the bank offers neither the balance nor the transactions of this account.");
 	}
 
 	/// The jobs of one account: the balance and the transactions, the card statement, or the holdings of a

@@ -8595,6 +8595,17 @@
       },
       "extractionState" : "manual"
     },
+    "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie zuerst auf der Website der DKB die DKB-App als Freigabeverfahren ein und wählen Sie dann „Zugangsdaten bearbeiten...“."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Setting up Accounts..." : {
       "localizations" : {
         "de" : {
@@ -11042,6 +11053,17 @@
           }
         }
       }
+    },
+    "The FinTS server of DKB offers neither the balance nor the transactions of the card %@. Try again later, or contact the DKB support with this message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der FinTS-Server der DKB bietet weder den Kontostand noch die Umsätze der Karte %@ an. Versuchen Sie es später noch einmal, oder wenden Sie sich mit dieser Meldung an den Support der DKB."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The FinTS server of the bank accepts no alias longer than %lld characters. Change the alias in the online banking of the bank first." : {
       "localizations" : {

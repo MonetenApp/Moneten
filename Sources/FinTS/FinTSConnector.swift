@@ -183,14 +183,15 @@ public struct FinTSConnector: BankConnector {
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
 					let (outcome, errors) = try result.get().outcome(of: account)
-					outcomes[account.accountID] = outcome
+					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
 					notices += errors
 				} catch {
 					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
 				}
 			case let .accountFailed(remoteID, error):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
-				outcomes[account.accountID] = .failed(error.failure)
+				outcomes[account.accountID] = .failed(DKB.failure(of: error, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+					?? error.failure)
 			case let .state(data): state = AccessState(data)
 			case let .failed(error): throw error.failure
 			default: throw HelperFailure.unreadable
@@ -229,7 +230,7 @@ public struct FinTSConnector: BankConnector {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
 		let rejections = Rejections(session: session)
-		try helper.seal?.check()
+		try await helper.seal?.check()
 		let process = try HelperProcess(executable: helper.executable, arguments: helper.arguments, grace: grace, killAfter: killAfter, onLine: { line in
 			watchdog.received()
 			rejections.read(line)
@@ -320,7 +321,9 @@ public struct FinTSConnector: BankConnector {
 		// A helper that ends in the middle of a line, killed or crashed, leaves a cut-off line that does
 		// not read. How it stopped says more, unless the app ended it.
 		if let stopped, process.firstFailure as? SyncFailure == HelperFailure.unreadable, !process.wasSignaled { throw stopped }
-		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) { throw error }
+		if let error = process.firstFailure ?? stopped ?? (helperLeft ? HelperFailure.noAnswer : nil) {
+			throw DKB.failure(error, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+		}
 	}
 }
 
