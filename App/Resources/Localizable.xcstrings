@@ -3603,6 +3603,7 @@
       }
     },
     "Creditor ID" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4223,6 +4224,7 @@
       }
     },
     "End-to-end reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5847,6 +5849,7 @@
       }
     },
     "Mandate reference" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8052,6 +8055,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beschränken auf"
+          }
+        }
+      }
+    },
+    "Return reason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rückgabegrund"
           }
         }
       }
@@ -12066,6 +12080,7 @@
       }
     },
     "Transaction type" : {
+      "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
