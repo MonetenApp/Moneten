@@ -963,7 +963,7 @@ final class DebugHarness {
 		// and "cmd+k" go to the main window or its sheet as the keyboard sends them. Then it logs where the focus is,
 		// and for each selected row the position of its category in sidebar order from 0, or "default".
 		case "mainkey": mainKey(argument)
-		// Copy with ⌘C while the table has the focus: "copyrows <n>" selects the first n rows and sends copy:.
+		// Copy with ⌘C while the table has the focus: "copyrows <n>" selects the first n rows and sends the action of Edit > Copy.
 		case "copyrows": copyRows(Int(argument) ?? 1)
 		// A double click on the name of the first row, Copy, and the context menu of the selected word.
 		case "textmenu": textMenu()
@@ -1309,11 +1309,13 @@ final class DebugHarness {
 		guard let model, let table = transactionTables().first, let window = table.window else { return log("copyrows no table") }
 		let rows = Array(model.visibleTransactions.prefix(count))
 		model.selectedTransactions = Set(rows.map(\.id))
+		// SwiftUI offers the copy of the table only after it has seen the focus, as after a click before ⌘C.
+		window.makeFirstResponder(table)
 		Task { @MainActor in
 			try? await Task.sleep(for: .milliseconds(300))
-			window.makeFirstResponder(table)
 			NSPasteboard.general.clearContents()
-			let handled = table.tryToPerform(#selector(NSText.copy(_:)), with: nil)
+			let copy = self.copyMenuItem()
+			let handled = copy?.action.map { table.tryToPerform($0, with: copy) } ?? false
 			let text = NSPasteboard.general.string(forType: .string) ?? ""
 			let lines = text.isEmpty ? [] : text.components(separatedBy: "\n")
 			self.log("copyrows", ("handled", .flag(handled)), ("lines", .count(lines.count)),
@@ -1347,6 +1349,11 @@ final class DebugHarness {
 		}
 	}
 
+	/// The item of the Edit menu with ⌘C, whose action the key sends along the responder chain.
+	private func copyMenuItem() -> NSMenuItem? {
+		NSApp.mainMenu?.items.lazy.compactMap(\.submenu).flatMap(\.items).first { $0.keyEquivalent == "c" && $0.keyEquivalentModifierMask == .command }
+	}
+
 	/// What a double click on the name of the first row selects, what Copy then copies, and the menu that a right
 	/// click on the selected word opens. The menu is read when it starts tracking and closed at once.
 	private func textMenu() {
@@ -1366,7 +1373,7 @@ final class DebugHarness {
 		guard let editor = window.firstResponder as? NSTextView else { return log("textmenu", ("editor", .flag(false))) }
 		let selected = (editor.string as NSString).substring(with: editor.selectedRange())
 		NSPasteboard.general.clearContents()
-		editor.tryToPerform(#selector(NSText.copy(_:)), with: nil)
+		editor.copy(nil)
 		let copied = NSPasteboard.general.string(forType: .string)
 		let services = NSApp.mainMenu?.items.first?.submenu?.items.first { $0.submenu != nil && $0.submenu === NSApp.servicesMenu }?.title
 		var token: NSObjectProtocol?
