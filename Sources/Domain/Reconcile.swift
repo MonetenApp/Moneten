@@ -179,6 +179,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
 					next.sourceID = Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending)
 				}
+				// A row that an earlier version stored lacks these, and the source reports them now. The row keeps its other fields.
+				if next.originalAmount == nil { next.originalAmount = delivered.originalAmount }
+				if next.deviatingParty == nil { next.deviatingParty = delivered.deviatingParty }
 			}
 			if fetched { next.isFetched = true }
 			// A manual row that a file matched is a booking of that file from now on, so its deletion keeps a record.

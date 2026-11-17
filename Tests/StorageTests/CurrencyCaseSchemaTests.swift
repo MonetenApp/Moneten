@@ -59,7 +59,10 @@ extension SchemaTests {
 		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 12))!
 		// An earlier version kept the code of the file as it came, also inside the file identity of the row.
 		let earlier = try TransactionFileImporter.parse(Data(camt.utf8), currency: "EUR").transactions.map { var t = $0; t.currency = "eur"; return t }
-		#expect(try store.merge(.file(earlier), into: account.id, now: now).added.count == 1)
+		// The rows as that version merged and stored them, with only the columns that its table had.
+		let merged = reconcile(.file(earlier), into: account, stored: [], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [account])), now: now)
+		#expect(merged.added.count == 1)
+		try queue.write { db in for t in merged.added { try t.insertOld(db) } }
 		let identity = try #require(try store.loadLedger().transactions.first?.fileIdentity)
 		#expect(identity.contains("3:eur"))
 		try Schema.migrator.migrate(queue)

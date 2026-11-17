@@ -146,6 +146,24 @@ struct ReconcileTests {
 		#expect(r.added.map(\.deviatingParty) == ["Buchhandlung Beispiel"])
 	}
 
+	@Test("A stored row that the bank reports again gains the original amount and the deviating party it lacks, keeps those it has, and keeps its purpose")
+	func originalAmountAndDeviatingPartyOfStoredRows() {
+		let card = stored(row(9, -4_612, "Coffee Shop", "Kartenzahlung New York"))
+		var book = stored(row(10, -1_990, "Zahlungsdienst Muster GmbH", "Buch 4711"))
+		book.deviatingParty = "Buchhandlung Beispiel"
+		var again = row(9, -4_612, "Coffee Shop", "Kartenzahlung  New York")
+		again.originalAmount = Money(minorUnits: -5_000, currency: "USD")
+		var bookAgain = row(10, -1_990, "Zahlungsdienst Muster GmbH", "Buch 4711")
+		bookAgain.deviatingParty = "Buchhandlung Muster"
+		let r = merge(refresh([again, bookAgain]), stored: [card, book])
+		#expect(r.added == [])
+		#expect(r.updated.map(\.id) == [card.id])
+		#expect(r.updated.map(\.originalAmount) == [Money(minorUnits: -5_000, currency: "USD")])
+		#expect(r.updated.map(\.purpose) == ["Kartenzahlung New York"])
+		let file = merge(.file([again, bookAgain]), stored: [card, book])
+		#expect(file.updated.map(\.id) == [card.id])
+	}
+
 	@Test("An original amount in the currency of the booked amount is dropped, and a positive one of a debit takes the minus")
 	func originalAmountRule() {
 		let euros = Money(minorUnits: -4_612, currency: "EUR")

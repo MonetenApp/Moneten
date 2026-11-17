@@ -54,7 +54,7 @@ Both edges read these fields: the helper for FinTS, and `TransactionFileImporter
 
 `Transaction.original(_:booked:)` makes the last decision at every edge: an original amount in the currency of the booked amount is dropped, and a positive original amount of a debit takes the minus. A file or a bank that reports an original amount with a minus keeps it. Charges, the exchange rate, `OAMT+`, and `COAM+` are not stored.
 
-The identity of a transaction folds the purpose without white space, so a purpose that the new rule joins with other spaces than an earlier version is the same transaction. A refresh therefore adds no copy of a row that an earlier version stored, and the stored row keeps its text.
+The identity of a transaction folds the purpose without white space, so a purpose that the new rule joins with other spaces than an earlier version is the same transaction. A refresh therefore adds no copy of a row that an earlier version stored, and the stored row keeps its text. It gains the original amount and the deviating party when the bank or a file reports them and the row has none.
 
 ### The history of an account
 
