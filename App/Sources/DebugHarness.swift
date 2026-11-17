@@ -1327,9 +1327,9 @@ final class DebugHarness {
 	/// before it types, because the sheet sets the focus a moment after it shows, later still on a loaded Mac.
 	private func splitFocus(_ amount: NSObject?) -> LogValue {
 		guard let field = (topSheet?.firstResponder as? NSTextView)?.delegate as? NSTextField else { return .word("none") }
-		// SwiftUI keeps the identifier on an accessibility child of the AppKit field, not on the field.
+		// SwiftUI on macOS 26 keeps the identifier on an accessibility child of the AppKit field. Another version may put it on the field itself.
 		let children = field.accessibilityChildren() ?? []
-		return amount != nil && children.contains { ($0 as AnyObject) === amount } ? .word("amount") : .word("other")
+		return amount != nil && (amount === field || children.contains { ($0 as AnyObject) === amount }) ? .word("amount") : .word("other")
 	}
 
 	private func tables(withColumn title: String) -> [NSTableView] {
