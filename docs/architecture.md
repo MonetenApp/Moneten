@@ -45,7 +45,7 @@ The libraries are one Swift package at the root of the repository. The app targe
 | `ExtensionConnector` | `ExtensionConnector`, which logs in, calls the entry points in the order of the API, turns each challenge table into a request to the user, and maps the account and result tables to `Domain` types. It keeps `LocalStorage` and the account tables in the `AccessState` of the access, and lists the accounts again when a refresh asks for one without a table. The app stores extension accesses in the table `access` like FinTS accesses. | `Domain`, `ExtensionHost` |
 | `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain`, `ExtensionHost`, `Storage` |
 | `ext` | A command line tool in `Tools/ext` that runs, records, and tests an extension without the app | `Domain`, `ExtensionHost`, `ExtensionConnector` |
-| `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
+| `App` | SwiftUI views, the `AppModel`, window and menu wiring | The libraries above |
 
 This module is planned:
 
