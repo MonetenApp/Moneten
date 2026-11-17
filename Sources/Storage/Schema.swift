@@ -421,6 +421,17 @@ enum Schema {
 		m.registerMigration("v28") { db in
 			try db.alter(table: "account") { t in t.add(column: "clearingEntry", .text) }
 		}
+		// The moment from which a pending MT942 row of most banks takes its value date in place of its entry date
+		// (add-fints-banking, #374). A pending row or a deletion record from before it may carry the entry date, so a
+		// refresh also finds it on its value date (`reconcile(entryDatedBefore:)`). A new database gets the moment of its
+		// creation, so no row of it takes part. It comes after v28, and after v29 of #378 once that lands.
+		m.registerMigration("v30") { db in
+			try db.create(table: "pendingDateChange") { t in
+				t.column("id", .integer).primaryKey().check { $0 == 1 }
+				t.column("since", .datetime).notNull()
+			}
+			try db.execute(sql: "INSERT INTO pendingDateChange (id, since) VALUES (1, ?)", arguments: [Date()])
+		}
 		return m
 	}
 

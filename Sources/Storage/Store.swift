@@ -133,8 +133,10 @@ public final class Store: SavedPINStore {
 			SELECT DISTINCT splitPart.transactionID FROM splitPart
 			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
 			""", arguments: [accountID]))
+		let entryDatedBefore = try Date.fetchOne(db, sql: "SELECT since FROM pendingDateChange WHERE id = 1")
 		let r = rules.allOrNothing {
-			reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+			reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now,
+				entryDatedBefore: entryDatedBefore)
 		}
 		if let refusal = r.refusal { throw refusal }
 		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)

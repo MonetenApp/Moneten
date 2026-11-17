@@ -114,7 +114,7 @@ public struct Reconciliation: Sendable, Equatable {
 /// its deleted rows, and `holdings` all its stored positions. Delivered rows are read for their bank fields
 /// and, from a file, the comment and a category set by hand.
 public func reconcile(_ delivery: Delivery, into account: Account, stored all: [Transaction], deleted: [DeletedTransaction],
-	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation {
+	holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date, entryDatedBefore: Date? = nil) -> Reconciliation {
 	// A closed account is left out of every refresh. A refresh that was already running when the user closed the account
 	// still delivers, and its rows, its balance, and its pending rows must not undo the clearing entry. The check runs in the
 	// write of the merge, so no delivery passes it after the close was stored.
@@ -129,8 +129,9 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 	let honored = deleted.filter(delivery.honors)
 	let today = Day(now)
 	// A source that moves bookings pairs on a fixed order of the rows, so that no order decides a move (`MovedBookings`).
-	let partners = delivery.maxBookingShift > 0 ? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
-		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today)
+	let partners = delivery.maxBookingShift > 0
+		? canonicalPartners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, entryDatedBefore: entryDatedBefore)
+		: partners(of: rows, stored: stored, deleted: honored, delivery: delivery, today: today, entryDatedBefore: entryDatedBefore)
 	let taken = Set(partners.compactMap { partner -> Int? in
 		if case let .live(j) = partner?.slot { j } else { nil }
 	})
@@ -393,7 +394,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 	return result
 }
 
-func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day) -> [Partner?] {
+func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTransaction], delivery: Delivery, today: Day,
+	entryDatedBefore: Date? = nil) -> [Partner?] {
 	let days = Set(rows.flatMap { t in
 		let day = t.bookingDate.daysSince1970
 		return (-PendingMatch.maxDaysApart...PendingMatch.maxDaysApart).map { day + $0 }
@@ -457,19 +459,25 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 		if let id = d.sourceID { byID[Transaction.matchingID(id), default: []].append(.deleted(k)) }
 	}
 	var candidates: [Candidate] = []
-	/// The day on which a fetched pending row that an earlier version dated by its entry date meets the pending row `t`,
-	/// which the bank now delivers on its value date (#374), or nil. A stored row meets it on its own value date. A
-	/// deletion record keeps no value date, so it meets a row dated by its value date up to 7 days before the record, the
-	/// way an entry date follows the value date. A later row is another one, such as a second equal card payment.
-	func entryDated(_ slot: Slot, delivered t: Transaction) -> Day? {
+	/// The day on which a pending row that an earlier version dated by the entry date of its ":61:" line meets the pending
+	/// row `t` of a refresh, which the bank now dates by its value date (#374), or nil. Only a row or a deletion record from
+	/// before the change (`entryDatedBefore`) and a delivered row whose day is its value date take part. Such a stored row
+	/// meets the delivered rows only on its value date, which its next delivery carries, and never on its entry date, so two
+	/// such rows of neighboring days each meet their own delivery. A row whose two dates are the same day needs no change.
+	/// A deletion record keeps no value date, so it meets a row up to 7 days before the record, the way an entry date
+	/// follows the value date. A later row is another one, such as a second equal card payment.
+	func valueDay(_ slot: Slot, for t: Transaction) -> Day? {
+		guard let before = entryDatedBefore, delivery.isFetched, t.isPending, t.valueDate == t.bookingDate else { return nil }
 		switch slot {
 		case let .live(j):
-			guard stored[j].isFetched, let value = stored[j].original?.valueDate ?? stored[j].valueDate, value == t.bookingDate else { return nil }
+			let s = stored[j]
+			guard s.isPending, s.isFetched, s.createdAt < before, let value = s.original.map(\.valueDate) ?? s.valueDate,
+				value != s.sourceBookingDate else { return nil }
 			return value
 		case let .deleted(k):
 			let d = deleted[k]
-			let before = d.bookingDate.daysSince1970 - t.bookingDate.daysSince1970
-			guard d.isPending, d.wasFetched, t.valueDate == t.bookingDate, before > 0, before <= PendingMatch.maxDaysApart else { return nil }
+			let days = d.bookingDate.daysSince1970 - t.bookingDate.daysSince1970
+			guard d.isPending, d.wasFetched, d.deletedAt < before, days > 0, days <= PendingMatch.maxDaysApart else { return nil }
 			return t.bookingDate
 		}
 	}
@@ -486,8 +494,8 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			}
 		}
 		for slot in slots {
-			let identity: Identity
-			let match: PendingMatch
+			var identity: Identity
+			var match: PendingMatch
 			let fetched: Bool
 			let future: Bool
 			switch slot {
@@ -502,6 +510,13 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 				match = deadMatches[k]!
 				fetched = true
 				future = false
+			}
+			// A stored row that an earlier version dated by its entry date counts on its value date here, for the fingerprint
+			// and the distance. A deletion record keeps its day for the distance, so a stored row comes first.
+			let valueDay = valueDay(slot, for: t)
+			if let valueDay {
+				identity = identity.on(valueDay)
+				if case .live = slot { match = match.on(valueDay) }
 			}
 			let distance = abs(matches[i].day - match.day)
 			if !t.isPending && !identity.isPending && identity.fileIdentity == nil {
@@ -541,17 +556,9 @@ func partners(of rows: [Transaction], stored: [Transaction], deleted: [DeletedTr
 			if t.isPending && !identity.isPending && t.bookingDate > identity.key.day { continue }
 			guard matches[i].amount == match.amount else { continue }
 			let sameReference = incoming[i].endToEnd != nil && incoming[i].endToEnd == identity.endToEnd
-			var step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
-			// An earlier version dated a pending MT942 row by the entry date of its ":61:" line, and the bank now delivers
-			// it on its value date (#374). A refresh finds such a stored row also by its value date, so a row without a name,
-			// an IBAN, or a reference stays one row, and takes the delivered day as any pending row of a refresh does. The
-			// row of the delivered day itself comes first, by its distance.
-			var byValueDate = false
-			if step == nil, t.isPending, identity.isPending, delivery.isFetched, let day = entryDated(slot, delivered: t), day != identity.key.day {
-				let byValue = identity.on(day)
-				step = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], byValue) }
-				byValueDate = step != nil
-			}
+			let step: Int? = Identity.steps.firstIndex { (step: Identity.Step) -> Bool in step.accepts(incoming[i], identity) }
+			// A row found on its value date takes the delivered day, as any pending row of a refresh does.
+			let byValueDate = valueDay != nil
 			if (t.isPending || identity.isPending || step == nil) && matches[i].counterpartyConflicts(with: match) { continue }
 			let fit = step.map { $0 % 2 } ?? 2
 			let rankedFit = t.isPending && matches[i].nameConflicts(with: match) ? 3 : fit
@@ -838,10 +845,10 @@ struct PendingMatch {
 	static let maxDaysApart = 7
 
 	let amount: Money
-	let day: Int
+	private(set) var day: Int
 	let iban: String?
 	let words: [Substring]
-	let identity: Identity
+	private(set) var identity: Identity
 
 	init(_ t: Transaction) {
 		let delivered = t.sourceValues
@@ -868,6 +875,14 @@ struct PendingMatch {
 
 	func nameConflicts(with other: PendingMatch) -> Bool {
 		!words.isEmpty && !other.words.isEmpty && !words.starts(with: other.words) && !other.words.starts(with: words)
+	}
+
+	/// The same row on another day.
+	func on(_ day: Day) -> PendingMatch {
+		var moved = self
+		moved.day = day.daysSince1970
+		moved.identity = identity.on(day)
+		return moved
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {
