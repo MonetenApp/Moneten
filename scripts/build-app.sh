@@ -5,6 +5,8 @@
 #   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
 #                                        Application certificate in the Keychain, with the hardened
 #                                        runtime and a secure timestamp, for notarization (ADR 0016)
+# A Release build also writes dist/Moneten.dSYMs with the dSYMs of the binaries in the app, which
+# scripts/release.sh zips and checks against the app.
 # Without a team in App/Local.xcconfig, Xcode signs to run locally. App/Signing.xcconfig explains it.
 # The Developer ID build takes the team from MONETEN_TEAM_ID or else from App/Local.xcconfig, and
 # needs the certificate with its private key in the Keychain. docs/releasing.md explains both.
@@ -146,12 +148,32 @@ check_hardened() {
 	return 0
 }
 
+# Copies each dSYM in the folder $1 that belongs to a binary of the app dist/Moneten.app to
+# dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
+# before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
+# scripts/release.sh checks that every other binary has one.
+copy_symbols() {
+	mkdir dist/Moneten.dSYMs
+	UUIDS=$(mktemp)
+	find dist/Moneten.app/Contents -type f | while read -r f; do
+		file -b "$f" | grep -q '^Mach-O' && dwarfdump --uuid "$f"
+	done | awk '{ print $2 }' > "$UUIDS"
+	for dsym in "$1"/*.dSYM; do
+		[ -d "$dsym" ] || continue
+		dwarfdump --uuid "$dsym" | awk '{ print $2 }' | grep -qxFf "$UUIDS" && ditto "$dsym" "dist/Moneten.dSYMs/${dsym##*/}"
+	done
+	rm "$UUIDS"
+	[ -d dist/Moneten.dSYMs/Moneten.app.dSYM ] \
+		|| { echo "The build wrote no dSYM of the app. App/project.yml must keep DWARF with dSYM File for Release." >&2; exit 1; }
+}
+
 scripts/generate-project.sh
 # SWIFT_EMIT_LOC_STRINGS also for the libraries, so that scripts/check-localization.py can read their texts.
 XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet SWIFT_EMIT_LOC_STRINGS=YES"
 if [ -z "$ARCHIVE" ]; then
 	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"
+	SYMBOLS=".build/xcode/Build/Products/$CONFIG"
 else
 	TEAM="$MONETEN_TEAM_ID"
 	[ -n "$TEAM" ] || TEAM=$(sed -n 's/^DEVELOPMENT_TEAM *= *\([A-Z0-9]*\).*/\1/p' App/Local.xcconfig 2>/dev/null | tail -1)
@@ -177,11 +199,13 @@ else
 	xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist .build/xcode/ExportOptions.plist \
 		-exportPath .build/xcode/export >/dev/null
 	PRODUCT=.build/xcode/export/Moneten.app
+	SYMBOLS="$ARCHIVE/dSYMs"
 fi
 
-rm -rf dist/Moneten.app
+rm -rf dist/Moneten.app dist/Moneten.dSYMs
 mkdir -p dist
 cp -R "$PRODUCT" dist/
+[ "$CONFIG" = Debug ] || copy_symbols "$SYMBOLS"
 embed_fints_helper dist/Moneten.app
 check_fints_helper dist/Moneten.app
 check_extension_host dist/Moneten.app
