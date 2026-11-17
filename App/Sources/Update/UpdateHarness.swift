@@ -27,11 +27,8 @@ extension DebugHarness {
 		case "automatic": model.updater.checksAutomatically = parts.last == "on"
 		case "beta": log("update beta", ("stored", .flag(Preference.store(parts.last == "on", forKey: AppUpdater.betaKey))))
 		case "copies":
-			// The warning of a release build, which a Debug build skips at launch.
-			Task {
-				let places = await LaunchChecks.warnAboutCopies(driver: driver)
-				log("update copies", ("places", .count(places.count)), ("untested", .position(LaunchChecks.untestedMacOS)))
-			}
+			// The check of a release build, which a Debug build skips at launch, with the rest of the checks.
+			LaunchChecks.checkCopies(updater: model.updater)
 		case "signature":
 			// The signature of the application file at the path, as the warning about copies reads it.
 			let url = URL(fileURLWithPath: parts.count > 1 ? parts[1] : Bundle.main.bundlePath)
