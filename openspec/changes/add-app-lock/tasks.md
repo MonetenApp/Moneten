@@ -25,7 +25,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.19 A locked app does no work with the data. Verified by AutoRefreshTests "A locked app runs nothing, and the unlock runs the accounts that became due meanwhile". The lock cancels refreshes, a rule run, a file import, and an export, and closes the database. Statements and automation requests do not exist yet (#269).
 - [x] 1.20 Help for a forgotten password. Verified by "Forgot your password?" on the lock screen.
 - [x] 1.21 Lock needs a database password. Verified by lock command and button are disabled without a password.
-- [ ] 1.22 A secret goes only into a Keychain entry of the app (#399).
+- [x] 1.22 A secret goes only into a Keychain entry of the app (#399). Verified by KeychainTests "A write never puts the value into an entry that another program created, so the access list of that entry is gone", against a keychain file that the test creates, which failed before the fix. Verified in a debug build with a throwaway data folder: entries for automatic unlock and Touch ID planted with an access list for every app named only Moneten after the "security" harness command turned each setting on, the next launch unlocked without a prompt, and turning both off left no entry. The case where the Keychain refuses the add after the delete is built (the error is reported and `AppModel` reads the entries again) but was not caused in a test.
 
 ## 2. Integration
 
