@@ -1,6 +1,6 @@
 # 0010. Build the app as a Swift package and require macOS 15
 
-Status: Accepted
+Status: Partly superseded by [ADR 0011](0011-app-target-in-an-xcode-project.md)
 
 ## Context
 

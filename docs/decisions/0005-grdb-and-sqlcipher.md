@@ -1,6 +1,6 @@
 # 0005. Store data in SQLite with GRDB and SQLCipher
 
-Status: Accepted
+Status: Partly superseded by [ADR 0011](0011-app-target-in-an-xcode-project.md)
 
 ## Context
 
