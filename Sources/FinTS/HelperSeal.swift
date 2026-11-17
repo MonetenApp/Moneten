@@ -13,10 +13,21 @@ struct HelperSeal: @unchecked Sendable {
 	/// SecRequirement is immutable.
 	let requirement: SecRequirement?
 
+	/// The Security framework checks the files on threads of its own and waits for them. A thread of
+	/// the Swift concurrency pool that waits there can take the last free thread from that work, and
+	/// on a Mac with few cores the check then never ends. So it runs on a queue of its own.
+	private static let queue = DispatchQueue(label: "io.github.moneten.helper-seal")
+
 	/// Throws `HelperFailure.damaged` when a sealed file was changed, added, or removed, or when the
 	/// bundle does not satisfy the requirement. The main executable is skipped: it runs, and macOS
 	/// checks its pages as it loads them.
-	func check() throws {
+	func check() async throws {
+		try await withCheckedThrowingContinuation { (done: CheckedContinuation<Void, any Error>) in
+			Self.queue.async { done.resume(with: Result { try checkHere() }) }
+		}
+	}
+
+	private func checkHere() throws {
 		guard let requirement = requirement ?? Self.runningApp() else { throw HelperFailure.damaged }
 		var code: SecStaticCode?
 		guard SecStaticCodeCreateWithPath(bundle as CFURL, [], &code) == errSecSuccess, let code else { throw HelperFailure.damaged }
@@ -52,8 +63,6 @@ public enum AppSeal {
 
 	/// Checks the seal now, away from the caller's actor.
 	public static func check() async -> Bool {
-		await Task.detached(priority: .userInitiated) {
-			(try? HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil).check()) != nil
-		}.value
+		(try? await HelperSeal(bundle: Bundle.main.bundleURL, requirement: nil).check()) != nil
 	}
 }
