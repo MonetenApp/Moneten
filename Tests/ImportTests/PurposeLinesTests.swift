@@ -45,6 +45,8 @@ struct PurposeLinesTests {
 		(["Rechnung vom Elektromeister", "Musterstadt Nr 17"], "Rechnung vom Elektromeister Musterstadt Nr 17"),
 		(["Rechnung 1001 vom 12.11.202", "6 Kunde 77"], "Rechnung 1001 vom 12.11.2026 Kunde 77"),
 		(["Miete November ", "Wohnung 3"], "Miete November Wohnung 3"),
+		(["Miete November", "   ", "Wohnung 3"], "Miete November Wohnung 3"),
+		(["Miete\u{00A0}November\u{00A0}", "Wohnung 3"], "Miete\u{00A0}November\u{00A0}Wohnung 3"),
 	])
 	func mt940Lines(lines: [String], purpose: String) throws {
 		let fields = lines.enumerated().map { "?\(20 + $0.offset)\($0.element)" }.joined()

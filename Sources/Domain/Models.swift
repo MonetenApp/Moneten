@@ -440,7 +440,7 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	/// The original amount that a bank or a file reports, as the app stores it. An amount in the currency of the booked amount
-	/// is no conversion and is dropped, and so is one whose currency is no ISO 4217 code or that is beyond
+	/// is no conversion and is dropped, and so is one whose currency is not three capital letters or that is beyond
 	/// `Money.maxMinorUnits`, which a complete export could not hold. The bank reports the original amount of a debit mostly
 	/// without a sign, so a positive one takes the minus of the booked amount, and one that the bank sends with a minus keeps it.
 	public static func original(_ reported: Money?, booked: Money) -> Money? {

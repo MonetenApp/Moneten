@@ -2,6 +2,7 @@ import Domain
 import Foundation
 import Import
 import Testing
+import TestSupport
 
 @Suite("Performance of the file import")
 struct ImportPerformanceTests {
@@ -33,10 +34,5 @@ struct ImportPerformanceTests {
 		// expression on every purpose line took 13 s, and a search of the whole text joined so far for every line 6.8 s.
 		#expect(read < budget(.seconds(3)))
 		#endif
-	}
-
-	/// The budget on a Mac, or 1.5 times as much on a runner that GitHub hosts, as in PerformanceTests.
-	private func budget(_ onAMac: Duration) -> Duration {
-		ProcessInfo.processInfo.environment["RUNNER_ENVIRONMENT"] == "github-hosted" ? onAMac * 1.5 : onAMac
 	}
 }

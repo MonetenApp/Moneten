@@ -71,12 +71,13 @@ final class SelfTest {
 		List<String> joined = new ArrayList<>();
 		for (List<String> lines : List.of(List.of("Abschlagszahlung Strom Kund", "ennummer 4711"), List.of("Abschlagszahlung Strom Kundennummer", "4711"),
 			List.of("Miete November", "Wohnung 3"), List.of("Abschlagszahlung Strom Kundenn", "ummer 4711"), List.of("Rechnung vom Elektromeister", "Musterstadt Nr 17"),
-			List.of("Miete November ", "", "Wohnung 3"))) {
+			List.of("Miete November ", "", "Wohnung 3"), List.of("Miete November", "\u00A0 ", "Wohnung 3"), List.of("Miete\u00A0November\u00A0", "Wohnung 3"))) {
 			joined.add(FinTSHelper.joinMt940(lines));
 		}
 		expect("MT940 purpose lines: a full line of 27 or 35 characters joins without a space, other lines and a new word with one",
 			String.join(" | ", joined), "Abschlagszahlung Strom Kundennummer 4711 | Abschlagszahlung Strom Kundennummer4711 | Miete November Wohnung 3"
-				+ " | Abschlagszahlung Strom Kundenn ummer 4711 | Rechnung vom Elektromeister Musterstadt Nr 17 | Miete November Wohnung 3");
+				+ " | Abschlagszahlung Strom Kundenn ummer 4711 | Rechnung vom Elektromeister Musterstadt Nr 17 | Miete November Wohnung 3"
+				+ " | Miete November Wohnung 3 | Miete\u00A0November\u00A0Wohnung 3");
 		List<String> tagged = new ArrayList<>();
 		for (List<String> lines : List.of(List.of("EREF+RE-2026-1001", "SVWZ+Abschlag Strom Kundenn", "ummer 4711"), List.of("EREF+RE-2026-10", "01", "SVWZ+Abschlag", "November"),
 			List.of("SVWZ", "+Miete November"))) {
@@ -89,17 +90,19 @@ final class SelfTest {
 		String full = "x".repeat(133) + "Kundenn";
 		expect("CAMT purpose lines: outer and repeated spaces go, and only a line of 140 characters joins without a space",
 			FinTSHelper.joinCamt(List.of(" Miete  November ", "", "Wohnung 3")) + " | " + FinTSHelper.joinCamt(List.of(full, "ummer 4711"))
-				+ " | " + FinTSHelper.joinCamt(List.of("Abschlag Strom Kund", "ennummer 4711")) + " | " + FinTSHelper.joinCamt(List.of(" " + full + " ", " ummer 4711 ")),
-			"Miete November Wohnung 3 | " + "x".repeat(133) + "Kundennummer 4711 | Abschlag Strom Kund ennummer 4711 | " + "x".repeat(133) + "Kundennummer 4711");
+				+ " | " + FinTSHelper.joinCamt(List.of("Abschlag Strom Kund", "ennummer 4711")) + " | " + FinTSHelper.joinCamt(List.of(" " + full + " ", " ummer 4711 "))
+				+ " | " + FinTSHelper.joinCamt(List.of("Miete\u00A0\u00A0November\u00A0", "Wohnung 3")),
+			"Miete November Wohnung 3 | " + "x".repeat(133) + "Kundennummer 4711 | Abschlag Strom Kund ennummer 4711 | " + "x".repeat(133) + "Kundennummer 4711"
+				+ " | Miete November Wohnung 3");
 
 		UmsLine abroad = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00/");
 		UmsLine both = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00//CHGS/EUR1,50/");
-		both.orig_value = new Value(new BigDecimal("51.00"), "USD");
 		UmsLine kuwait = line("2026-11-09", "2026-11-09", "-3.69", "Laden Kuwait", "/OCMT/KWD1,234/");
 		UmsLine extra = line("2026-11-09", "2026-11-09", "-46.00", "Laden", "/OCMT/USD50,00/ extra");
 		List<String> originals = new ArrayList<>();
 		for (UmsLine l : List.of(abroad, both, kuwait, extra)) {
-			Map<String, Object> row = FinTSHelper.row(l, false);
+			// The original amount of :61: in its raw supplementary details wins over the one of the purpose.
+			Map<String, Object> row = FinTSHelper.row(l, false, l == both ? new String[] { "51", "USD" } : null);
 			originals.add(row.get("originalAmount") + " " + row.get("originalCurrency") + " " + row.get("purpose"));
 		}
 		List<String> unreadable = new ArrayList<>();
@@ -112,6 +115,8 @@ final class SelfTest {
 		expect("original amount of a line of slash tags, which stays in the purpose, of :61:, which wins, with three decimals, and in a line with more text",
 			String.join(" | ", originals), "50.00 USD Coffee Shop New York /OCMT/USD50,00/ | 51 USD Coffee Shop New York /OCMT/USD50,00//CHGS/EUR1,50/"
 				+ " | 1.234 KWD Laden Kuwait /OCMT/KWD1,234/ | null null Laden /OCMT/USD50,00/ extra");
+
+		statementOriginals();
 
 		UmsLine debit = line("2026-11-03", "2026-11-03", "-19.90", "SVWZ+Buch 4711", "ABWA+Max Beispiel", "ABWE+Buchhandlung Beisp", "iel");
 		UmsLine credit = line("2026-11-03", "2026-11-03", "25.00", "SVWZ+Geschenk", "ABWA+Erika Mustermann", "ABWE+Max Beispiel");
@@ -126,6 +131,69 @@ final class SelfTest {
 		}
 		expect("deviating party: ABWE+ of a debit, ABWA+ of a credit, the ultimate party of CAMT, and none", String.join(" | ", parties),
 			"Buchhandlung Beispiel / Buch 4711 | Erika Mustermann / Geschenk | Erika Mustermann / Geschenk | null / Kiosk");
+	}
+
+	/// The original amounts of the raw statements, through the real jobs: the supplementary details of :61: in MT940, also
+	/// after a bank reference, and the instructed amounts of CAMT, which hbci4java reads only for a return.
+	static void statementOriginals() {
+		GVRKUms mt940 = statements(String.join("\r\n",
+			":20:STARTUMS", ":25:12030000/0000202051", ":28C:00000/001", ":60F:C261101EUR1000,00",
+			":61:2611021102D46,12NMSCNONREF//BANKREF", "/OCMT/USD50,00/", ":86:106?00KARTENZAHLUNG?20Coffee Shop New York?32Coffee Shop",
+			":61:2611021102D46,12NMSCNONREF", "/OCMT/USD50.99/", ":86:106?00KARTENZAHLUNG?20Laden?32Laden",
+			":61:2611021102D46,12NMSCNONREF", ":86:106?00KARTENZAHLUNG?20Laden?21/OCMT/USD49,00/?32Laden",
+			":61:2611021102D46,12NMSCNONREF", "/OCMT/USD51,00/", ":86:106?00KARTENZAHLUNG?20Laden?21/OCMT/USD49,00/?32Laden",
+			":61:2611021102D3,69NMSCNONREF", ":86:106?00KARTENZAHLUNG?20Laden Kuwait?21/OCMT/KWD1,234/?32Laden",
+			":62F:C261102EUR800,00", "-") + "\r\n");
+		expect("original amount of :61: from the raw text through the real MT940 job: after a bank reference, not from a token that reads in part, "
+			+ "of the purpose without one, of :61: before the purpose, and with three decimals in the purpose, which hbci4java does not parse", originals(mt940), "50.00 USD | null | 49.00 USD | 51.00 USD | 1.234 KWD");
+
+		String usd50 = "<AmtDtls><InstdAmt><Amt Ccy=\"USD\">50.00</Amt></InstdAmt></AmtDtls>";
+		GVRKUms camt = camtStatements(List.of(camtReport(
+			camtEntry("70.00", "<AmtDtls><InstdAmt><Amt Ccy=\"USD\">77.00</Amt></InstdAmt></AmtDtls>", "<TxDtls>" + usd50 + "</TxDtls>"),
+			camtEntry("46.12", "", "<TxDtls>" + usd50 + "</TxDtls>"),
+			camtEntry("92.24", "", "<TxDtls>" + usd50 + "</TxDtls><TxDtls>" + usd50 + "</TxDtls>"),
+			camtEntry("10.00", "", ""),
+			camtEntry("46.12", "", "<TxDtls><AmtDtls><InstdAmt><Amt Ccy=\"USD\">50.00oops</Amt></InstdAmt></AmtDtls></TxDtls>"),
+			camtEntry("92.24", "", "<TxDtls>" + usd50 + "</TxDtls><TxDtls><AmtDtls><InstdAmt><Amt Ccy=\"CHF\">50.00</Amt></InstdAmt></AmtDtls></TxDtls>"),
+			camtEntry("46.12", "", "<TxDtls><AmtDtls><InstdAmt><Amt Ccy=\"US1\">50.00</Amt></InstdAmt></AmtDtls></TxDtls>"),
+			camtEntry("46.12", "", "<TxDtls>" + usd50 + "</TxDtls><TxDtls></TxDtls>"))), null);
+		expect("original amount of CAMT through the real job: of the entry, of one detail, the sum of two, an entry without transactions that makes no row, "
+			+ "not one that reads in part, not one of two currencies, not a currency that is no code, not when a detail lacks one",
+			originals(camt), "77.00 USD | 50.00 USD | 100.00 USD | null | null | null | null");
+		expect("a CAMT document that does not read gives no original amounts", FinTSHelper.camtOriginals(List.of("<Document")) == null, true);
+	}
+
+	static String camtReport(String... entries) {
+		return """
+			<?xml version="1.0" encoding="UTF-8"?>
+			<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.052.001.08">
+			<BkToCstmrAcctRpt>
+			<GrpHdr><MsgId>M1</MsgId><CreDtTm>2026-11-09T10:00:00</CreDtTm></GrpHdr>
+			<Rpt>
+			<Id>R1</Id>
+			<Acct><Id><IBAN>DE02120300000000202051</IBAN></Id><Ccy>EUR</Ccy></Acct>
+			<Bal><Tp><CdOrPrtry><Cd>PRCD</Cd></CdOrPrtry></Tp><Amt Ccy="EUR">500.00</Amt><CdtDbtInd>CRDT</CdtDbtInd><Dt><Dt>2026-11-08</Dt></Dt></Bal>
+			%s
+			</Rpt>
+			</BkToCstmrAcctRpt>
+			</Document>
+			""".formatted(String.join("\n", entries));
+	}
+
+	/// A debit of `amount` euros with an `AmtDtls` of the entry and the transactions `details`, or with no details at all.
+	static String camtEntry(String amount, String own, String details) {
+		return "<Ntry><Amt Ccy=\"EUR\">" + amount + "</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-09</Dt></BookgDt>"
+			+ "<ValDt><Dt>2026-11-09</Dt></ValDt>" + own + "<NtryDtls>" + details + "</NtryDtls></Ntry>";
+	}
+
+	/// The original amounts of the rows of `result`, as the helper sends them.
+	static String originals(GVRKUms result) {
+		List<String> all = new ArrayList<>();
+		for (Object o : (List<?>) ((Map<?, ?>) FinTSHelper.result("1", null, null, result, false).get("transactions")).get("rows")) {
+			Map<?, ?> row = (Map<?, ?>) o;
+			all.add(row.get("originalAmount") == null ? "null" : row.get("originalAmount") + " " + row.get("originalCurrency"));
+		}
+		return String.join(" | ", all);
 	}
 
 	/// How the helper before the joining rule read the purpose lines: the tags from the lines joined without a character, the
@@ -436,9 +504,7 @@ final class SelfTest {
 
 	/// A statement of two days with made-up data, as hbci4java parses it from MT940.
 	static GVRKUms mt940() {
-		GVRKUms result = new GVRKUms();
-		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
-		result.appendMT940Data(String.join("\r\n",
+		return statements(String.join("\r\n",
 			":20:STARTUMS",
 			":25:12030000/0000202051",
 			":28C:00000/001",
@@ -465,21 +531,59 @@ final class SelfTest {
 			":86:106?00KARTENZAHLUNG?20EREF+K-1?21SVWZ+Buchladen New York Kin?22dle?23ABWE+Buchhandlung Beispiel?32Zahlungsdienst Muster GmbH",
 			":62F:C261104EUR1086,20",
 			"-") + "\r\n");
-		return result;
+	}
+
+	/// The result of a real MT940 job of the helper, `StatementJob`, that hbci4java fills from an answer with `raw` as
+	/// its booked transactions, as in a dialog.
+	static GVRKUms statements(String raw) {
+		FinTSHelper.Passport passport = passport();
+		passport.getBPD().setProperty("Params_3.KUmsZeitPar7.SegHead.code", "HKKAZ");
+		org.kapott.hbci.manager.HBCIHandler handle = new org.kapott.hbci.manager.HBCIHandler("300", passport, true);
+		FinTSHelper.StatementJob job = new FinTSHelper.StatementJob(handle);
+		job.setIdx(3);
+		HBCIMsgStatus answer = answer(3);
+		answer.getData().setProperty("GVRes_1.KUmsZeitRes7.SegHead.ref", "3");
+		answer.getData().setProperty("GVRes_1.KUmsZeitRes7.booked", raw);
+		job.fillJobResult(answer, 0);
+		return (GVRKUms) job.getJobResult();
+	}
+
+	/// The result of a real CAMT job of hbci4java, filled from an answer with the camt.052 documents `booked`, as in a dialog.
+	static GVRKUms camtStatements(List<String> booked, String notBooked) {
+		FinTSHelper.Passport passport = passport();
+		passport.getBPD().setProperty("Params_3.KUmsZeitCamtPar1.SegHead.code", "HKCAZ");
+		passport.getBPD().setProperty("Params_3.KUmsZeitCamtPar1.ParKUmsZeitCamt.SupportedFormats.format", "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08");
+		org.kapott.hbci.manager.HBCIHandler handle = new org.kapott.hbci.manager.HBCIHandler("300", passport, true);
+		org.kapott.hbci.GV.HBCIJobImpl<?> job = (org.kapott.hbci.GV.HBCIJobImpl<?>) handle.newJob("KUmsAllCamt");
+		job.setIdx(3);
+		HBCIMsgStatus answer = answer(3);
+		Properties data = answer.getData();
+		data.setProperty("GVRes_1.KUmsZeitCamtRes1.SegHead.ref", "3");
+		data.setProperty("GVRes_1.KUmsZeitCamtRes1.format", "urn:iso:std:iso:20022:tech:xsd:camt.052.001.08");
+		// The answer holds the bytes of each document as characters of the encoding of hbci4java, as a dialog reads them.
+		for (int i = 0; i < booked.size(); i++) data.setProperty("GVRes_1.KUmsZeitCamtRes1.booked." + org.kapott.hbci.manager.HBCIUtilsInternal.withCounter("message", i), wire(booked.get(i)));
+		if (notBooked != null) data.setProperty("GVRes_1.KUmsZeitCamtRes1.notbooked", wire(notBooked));
+		job.fillJobResult(answer, 0);
+		return (GVRKUms) job.getJobResult();
+	}
+
+	static String wire(String xml) {
+		return new String(xml.getBytes(StandardCharsets.UTF_8), java.nio.charset.Charset.forName(org.kapott.hbci.comm.Comm.ENCODING));
+	}
+
+	/// An answer in which the bank executed the job of the segment `ref`.
+	static HBCIMsgStatus answer(int ref) {
+		HBCIMsgStatus answer = new HBCIMsgStatus();
+		answer.globStatus.addRetVal(new HBCIRetVal(null, null, null, "0010", "Nachricht entgegengenommen", null));
+		answer.segStatus.addRetVal(new HBCIRetVal(String.valueOf(ref), null, null, "0020", "Auftrag ausgeführt", null));
+		return answer;
 	}
 
 	/// A camt.052 report with one booked and one pending entry and made-up data, as hbci4java
 	/// parses it.
 	static GVRKUms camt() {
-		GVRKUms result = new GVRKUms();
-		result.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "ok", null));
-		try {
-			parseCamt(report("BOOK", "2026-11-09", "46.12", "DBIT", "Coffee Shop", "SW-778899", "Kartenzahlung"), result.getDataPerDay());
-			parseCamt(report("PDNG", "2026-11-10", "8.50", "DBIT", "Bäckerei Muster", "NOTPROVIDED", "Kartenzahlung Bäckerei"), result.getDataPerDayUnbooked());
-		} catch (Exception e) {
-			failures.add("camt: " + e);
-		}
-		return result;
+		return camtStatements(List.of(report("BOOK", "2026-11-09", "46.12", "DBIT", "Coffee Shop", "SW-778899", "Kartenzahlung")),
+			report("PDNG", "2026-11-10", "8.50", "DBIT", "Bäckerei Muster", "NOTPROVIDED", "Kartenzahlung Bäckerei"));
 	}
 
 	@SuppressWarnings("unchecked")

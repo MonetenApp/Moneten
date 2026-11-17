@@ -380,7 +380,7 @@ The app SHALL show the end-to-end reference as the purpose of a transaction when
 
 ### Requirement: Keep the original amount and the deviating party
 
-The app SHALL store the original amount and currency of a transaction that the bank converted, and the deviating party, the deviating originator of a credit or the deviating recipient of a debit, and show both in the transaction details. A positive original amount of a debit takes the minus of the booked amount. An original amount in the booked currency, one that does not read in full, or one whose currency is no ISO 4217 code is not stored.
+The app SHALL store the original amount and currency of a transaction that the bank converted, and the deviating party, the deviating originator of a credit or the deviating recipient of a debit, and show both in the transaction details. A positive original amount of a debit takes the minus of the booked amount. An original amount in the booked currency, one that does not read in full, or one whose currency is not three capital letters is not stored.
 
 #### Scenario: Card payment abroad
 
@@ -421,7 +421,13 @@ The app SHALL store the original amount and currency of a transaction that the b
 
 ### Requirement: Original amount of a CAMT batch
 
-The app SHALL give a CAMT entry with several transaction details the sum of their original amounts when each detail has one in the same currency, and no original amount otherwise.
+The app SHALL give a CAMT entry the instructed amount of the entry as its original amount. Without one, an entry with several transaction details gets the sum of their original amounts when each detail has one in the same currency, and no original amount otherwise.
+
+#### Scenario: Amount of the entry
+
+- **GIVEN** a CAMT entry of -70,00 € with the instructed amount 77,00 US dollars and one transaction detail of 50,00 US dollars
+- **WHEN** the user opens the transaction details
+- **THEN** the details show -77,00 US dollars as the original amount
 
 #### Scenario: Batch of converted payments
 

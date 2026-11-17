@@ -303,37 +303,45 @@ struct PurposeLines {
 	let scalars: [Unicode.Scalar]
 	/// The positions in `scalars` before which the purpose shows a space.
 	let spaces: Set<Int>
+	/// The scalars of lines of white space only, which count for the tags, as before, and not for the purpose.
+	let hidden: IndexSet
+	/// A line that starts with one of these joins the line before with a space.
+	private static let tags = (SEPAPurpose.keys + ["IBAN+", "BIC+"]).map { Array($0.unicodeScalars) }
 
 	/// A line of 27 or 35 characters is full, so the bank cut the text there, also inside a word: it joins the next line
 	/// without a character. A shorter line ended where the text did, and joins with a space. So does a full line that ends
 	/// with a lowercase letter before a line that starts with an uppercase letter, or before a line that starts with a tag.
 	/// Empty lines are left out of the rule.
 	init(mt940 lines: [String]) {
-		let tags = (SEPAPurpose.keys + ["IBAN+", "BIC+"]).map { Array($0.unicodeScalars) }
 		var scalars: [Unicode.Scalar] = []
 		var spaces: Set<Int> = []
+		var hidden = IndexSet()
 		var previous: [Unicode.Scalar]?
 		for text in lines {
 			let line = Array(text.unicodeScalars)
 			defer { scalars += line }
-			guard let first = line.first, !line.allSatisfy(\.properties.isWhitespace) else { continue }
+			guard let first = line.first, !line.allSatisfy(\.properties.isWhitespace) else {
+				hidden.insert(integersIn: scalars.count..<scalars.count + line.count)
+				continue
+			}
 			if let previous, let last = previous.last {
 				let full = previous.count == 27 || previous.count == 35
 				let newWord = last.properties.isLowercase && first.properties.isUppercase
-				let tag = tags.contains { line.starts(with: $0) }
+				let tag = Self.tags.contains { line.starts(with: $0) }
 				if !full || newWord || tag, !last.properties.isWhitespace, !first.properties.isWhitespace { spaces.insert(scalars.count) }
 			}
 			previous = line
 		}
 		self.scalars = scalars
 		self.spaces = spaces
+		self.hidden = hidden
 	}
 
 	/// The text of `range` with its spaces, without white space at both ends.
 	func shown(_ range: Range<Int>) -> String {
 		var view = String.UnicodeScalarView()
-		for i in range {
-			if i > range.lowerBound, spaces.contains(i) { view.append(" ") }
+		for i in range where !hidden.contains(i) {
+			if !view.isEmpty, spaces.contains(i) { view.append(" ") }
 			view.append(scalars[i])
 		}
 		return String(view).trimmingCharacters(in: .whitespaces)
