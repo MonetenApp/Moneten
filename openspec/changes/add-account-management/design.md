@@ -27,6 +27,18 @@ An empty `balances` array counts as a missing one, so `balance` is read then. Th
 
 `RefreshResult` combines what a connector hands it: a repeated currency adds up into one entry, a part in the currency of the balance goes to the balance, and a zero is left out. So every connector stores one entry per currency. The import of the complete export refuses other balances in the account currency or with a repeated currency, because the sum of a group would count them twice.
 
+### Closing and reopening an account
+
+`Ledger.closing(_:today:)` in `Sources/Domain/ClosedAccount.swift` (module `Domain`) returns the closed account and the clearing entry, or no entry when the computed balance at the end of the day is zero or the account is a portfolio. The amount is the opposite of `Ledger.computedBalance(of:through:)`, so it counts the initial balance and every row in the account currency up to that day, pending rows included, and leaves out rows after that day. The bank balance plays no part: a closed account shows its computed balance (`Account.reportedBalance` is nil for it), and only that balance must end at zero. A sum beyond `Money.maxMinorUnits` has no opposite that the app can store, so the close fails and nothing is written.
+
+The entry is a manual, booked row with the name and purpose in the language of the app, without category and counterparty, and marked as new. Rules do not run on it, so it stays in the default category until the user or "Apply Rules" moves it. Closing also clears the error of the last refresh, because no refresh of a closed account clears it.
+
+`Account.clearingEntry` keeps a `ClearingEntryMark`: the ID of the row and the values that the app gave it. The migration `v28` stores the mark as JSON in the column `clearingEntry` of `account`, and the complete export writes it. `Ledger.reopening(_:)` removes the row when it still has these values, no comment, no category chosen by hand, and no parts. A checkmark, the mark "new", and a category from a rule leave it unchanged. Reopening always clears the mark, so a kept row becomes an ordinary manual row, and a later close inserts a new entry for the balance that is left.
+
+`AppModel.save(account:)` compares the closed flag with the stored account. It writes the account and the entry, or the account and the removal of the entry, in one write. While an account is closed, `Account.followsBankBalance` is false, so neither the clearing entry nor an edit of a row in a closed account moves a derived initial balance. Reopening deletes the entry with the account still marked as closed in the same write, so the initial balance stays as it was before the close, and the account meets the bank balance again.
+
+The bar chart of a selected closed account still draws its history. The chart of a group leaves closed accounts out, as the sum of the group does.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

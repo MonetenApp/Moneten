@@ -398,6 +398,11 @@ enum Schema {
 			// The database does not tell a derived value from one that the user entered, so every stored value stays as it is.
 			try db.alter(table: "account") { t in t.add(column: "initialBalanceIsDerived", .boolean).notNull().defaults(to: false) }
 		}
+		// The clearing entry of a closed account, as JSON, so that reopening removes the entry while the user has not
+		// changed it (add-account-management, tasks 1.13 and 1.14). No stored account has one. It comes after v23.
+		m.registerMigration("v28") { db in
+			try db.alter(table: "account") { t in t.add(column: "clearingEntry", .text) }
+		}
 		return m
 	}
 

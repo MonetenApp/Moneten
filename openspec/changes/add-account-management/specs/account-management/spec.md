@@ -299,6 +299,7 @@ The app SHALL offer the option "The account has been closed" in the account sett
 - **THEN** the account stays in the sidebar with all its transactions and without its balance
 - **AND** the sum of its group no longer contains its balance
 - **AND** "Refresh All Accounts" does not contact the bank for this account
+- **AND** the sidebar shows no error of an earlier refresh for it
 
 #### Scenario: Offline account
 
@@ -307,13 +308,15 @@ The app SHALL offer the option "The account has been closed" in the account sett
 
 ### Requirement: Clearing entry for a closed account
 
-The app SHALL insert a transaction named "Clearing entry" when an account with a balance other than zero is marked as closed. The entry has the date of that day and the amount that brings the balance to zero. Its text says that the app inserted it because the account was closed. The user can edit it like a manual transaction.
+The app SHALL insert one transaction named "Clearing entry" when the user marks an account as closed, clicks "OK", and the computed balance at the end of that day is not zero. That balance is the initial balance plus the transactions up to that day in the account currency, pending ones included. The entry is booked, dated that day, and has the opposite amount in the account currency. A portfolio gets no entry.
 
 #### Scenario: Balance left on the account
 
-- **GIVEN** an account with a balance of 12,34 €
-- **WHEN** the user marks it as closed
-- **THEN** the list shows a new transaction "Clearing entry" of -12,34 €
+- **GIVEN** an offline account with a balance of 12,34 € on 2026-11-17
+- **WHEN** the user marks it as closed on that day and clicks "OK"
+- **THEN** the list shows a new transaction "Clearing entry" of -12,34 € with the booking date and the value date 2026-11-17
+- **AND** its purpose says that the app inserted it because the account was closed
+- **AND** it has no category and no counterparty, is marked as new, and is not checked
 - **AND** the account shows a balance of 0,00 €
 
 #### Scenario: Balance already zero
@@ -322,9 +325,68 @@ The app SHALL insert a transaction named "Clearing entry" when an account with a
 - **WHEN** the user marks it as closed
 - **THEN** the app inserts no transaction
 
+#### Scenario: Turned on and off before OK
+
+- **WHEN** the user turns on "The account has been closed", turns it off again, and clicks "OK"
+- **THEN** the app inserts no transaction
+
+#### Scenario: Account of a bank access
+
+- **GIVEN** the bank reported 500,00 € for "Giro", and its initial balance and transactions add up to 480,00 € at the end of 2026-11-17
+- **WHEN** the user marks "Giro" as closed on 2026-11-17
+- **THEN** the clearing entry is -480,00 €
+
+#### Scenario: Transaction after that day
+
+- **GIVEN** an offline account with 250,00 € at the end of 2026-11-17 and a booked transaction of 80,00 € on 2026-11-18
+- **WHEN** the user marks it as closed on 2026-11-17
+- **THEN** the clearing entry is -250,00 €
+- **AND** the transaction of 2026-11-18 stays, and the account shows 80,00 €
+
+#### Scenario: Pending transaction
+
+- **GIVEN** an account with 100,00 € at the end of 2026-11-17, a pending transaction of -20,00 € on 2026-11-16 among them
+- **WHEN** the user marks it as closed on 2026-11-17
+- **THEN** the clearing entry is -100,00 €
+- **AND** the transaction of -20,00 € stays pending
+
+#### Scenario: Balances in several currencies
+
+- **GIVEN** a wallet in EUR whose source reported 120,00 € and 35,00 US$, and whose transactions add up to 120,00 €
+- **WHEN** the user marks it as closed
+- **THEN** the app inserts one clearing entry of -120,00 € and no entry in US$
+
+#### Scenario: Portfolio
+
+- **WHEN** the user marks a portfolio worth 1.000,00 € as closed
+- **THEN** the app inserts no transaction
+
+### Requirement: Balance of a closed account
+
+The app SHALL show the computed balance of a closed account in the header, the initial balance plus its transactions in the account currency, also when a bank reported a balance. It shows no balance in another currency and no bonus points for it. The bar chart of the closed account itself still shows its history. A closed portfolio keeps its value. The sum of a group leaves the closed account out.
+
+#### Scenario: Header after the clearing entry
+
+- **GIVEN** the bank reported 500,00 € and 35,00 US$ for "Giro"
+- **WHEN** the user marks "Giro" as closed and the app inserts the clearing entry
+- **THEN** the header of "Giro" shows 0,00 € and no amount in US$
+- **AND** the header shows no "Balance as of" line and no calibration proposal
+
+#### Scenario: Bar chart of the closed account
+
+- **GIVEN** the closed account "Giro" with a clearing entry on 2026-11-17
+- **WHEN** the user selects "Giro" and shows the bar chart
+- **THEN** the chart shows the balance of each day before and 0,00 € from 2026-11-17
+
+#### Scenario: Group with a closed account
+
+- **GIVEN** the group "Private" with "Giro" at 300,00 € and the closed account "Old Savings", whose edited clearing entry leaves 50,00 €
+- **WHEN** the user selects "Private"
+- **THEN** the header of the group shows 300,00 €
+
 ### Requirement: Reopen a closed account
 
-The app SHALL reopen an account when the user turns off "The account has been closed". The app then removes the clearing entry that it inserted, unless the user changed that entry, and includes the account in refreshes again.
+The app SHALL reopen an account when the user turns off "The account has been closed" and clicks "OK". The app removes the clearing entry of the last close unless the user changed its date, value date, amount, name, purpose, comment, or category, or split it. A checkmark, the mark "new", and a category from a rule do not count as a change. The account is refreshed again and shows the balance of the bank again.
 
 #### Scenario: Unchanged clearing entry
 
@@ -332,11 +394,24 @@ The app SHALL reopen an account when the user turns off "The account has been cl
 - **WHEN** the user turns off the option and clicks "OK"
 - **THEN** the clearing entry is gone and the balance is 12,34 € again
 
+#### Scenario: Checked clearing entry
+
+- **GIVEN** the user marked the clearing entry of -12,34 € as checked
+- **WHEN** the user reopens the account
+- **THEN** the clearing entry is gone
+
 #### Scenario: Edited clearing entry
 
 - **GIVEN** the user changed the purpose of the clearing entry
 - **WHEN** the user reopens the account
-- **THEN** the entry stays in the list
+- **THEN** the entry stays in the list as an ordinary manual transaction
+- **AND** a later close inserts a new clearing entry only for the balance that is then left
+
+#### Scenario: Account of a bank access
+
+- **GIVEN** the closed account "Giro", for which the bank reported 500,00 € and 35,00 US$, with an unchanged clearing entry of -480,00 €
+- **WHEN** the user reopens "Giro"
+- **THEN** the clearing entry is gone and the header shows 500,00 € and 35,00 US$ again
 
 ### Requirement: Create and rename account groups
 

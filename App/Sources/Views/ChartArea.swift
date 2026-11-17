@@ -25,7 +25,8 @@ struct ChartArea: View {
 					.foregroundStyle(Palette.bandLabel)
 					.frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
-				BalanceChart(accountIDs: ids)
+				// A closed account is left out of the chart of its group, as it is out of the sum of the group.
+				BalanceChart(accountIDs: ids.filter { model.ledger.account($0)?.isClosed == false })
 			}
 		default:
 			EmptyView()
@@ -41,7 +42,8 @@ struct BalanceChart: View {
 
 	var body: some View {
 		@Bindable var model = model
-		let accounts = accountIDs.compactMap { model.ledger.account($0) }.filter { !$0.isClosed }
+		// The chart of a selected closed account shows its history, which ends at zero from its clearing entry on.
+		let accounts = accountIDs.compactMap { model.ledger.account($0) }
 		let currencies = ChartCurrency.ranked(accounts.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
 		let shown = accounts.filter { $0.currency == currency }

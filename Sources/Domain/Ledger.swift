@@ -417,7 +417,7 @@ public struct Ledger: Sendable {
 	}
 
 	/// The computed balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
-	private func exactBalance(of account: Account, through day: Day?) -> Int128 {
+	func exactBalance(of account: Account, through day: Day?) -> Int128 {
 		var sum = Int128(account.initialBalanceMinor)
 		for t in transactions where t.accountID == account.id && account.isInBalance(t) {
 			if let day, t.bookingDate > day { continue }
@@ -436,7 +436,7 @@ public struct Ledger: Sendable {
 		// tells it only once the app recorded the end, so the state of the refresh covers the time before. The rows
 		// are read in place, because copying the rows of an account on each drawing of the header cost most of a
 		// frame with 50,000 rows.
-		guard account.source == .bank, account.kind != .portfolio, account.initialBalanceIsSet, account.refreshError == nil,
+		guard account.source == .bank, account.kind != .portfolio, !account.isClosed, account.initialBalanceIsSet, account.refreshError == nil,
 			!refresh.mayLackRows(of: account.id),
 			let meeting = account.exactInitialBalanceMeetingBankBalance(of: transactions.lazy.filter { $0.accountID == account.id }, calendar: calendar),
 			meeting != Int128(account.initialBalanceMinor) else { return nil }

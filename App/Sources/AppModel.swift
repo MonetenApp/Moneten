@@ -1083,12 +1083,35 @@ final class AppModel {
 
 	// MARK: Accounts and groups
 
+	/// Saves the account. Marking it as closed also stores its clearing entry, and reopening it removes the entry that
+	/// the user did not change, each in one write with the account.
 	func save(account: Account) {
 		guard let store else { return }
+		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
-			try store.save(account)
-			ledger.upsert(account)
-			if let value = account.portfolioValue() { ledger.record(value) }
+			var saved = account
+			var entry: Transaction?
+			var removed: UUID?
+			if account.isClosed, wasClosed == false {
+				(saved, entry) = try ledger.closing(account, today: .today())
+			} else if !account.isClosed, wasClosed == true {
+				(saved, removed) = ledger.reopening(account)
+			}
+			if let entry {
+				try store.save([entry], accounts: [saved])
+			} else if let removed {
+				try store.deleteTransactions([removed], accounts: [saved])
+			} else {
+				try store.save(saved)
+			}
+			ledgerChange = "account closed=\(saved.isClosed) entry=\(entry != nil) removed=\(removed != nil)"
+			ledger.upsert(saved)
+			if let value = saved.portfolioValue() { ledger.record(value) }
+			if let entry { ledger.update([entry]) }
+			if let removed {
+				ledger.remove(transactionIDs: [removed])
+				selectedTransactions.remove(removed)
+			}
 			ledger.replace()
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the account."), message: String(describing: error))

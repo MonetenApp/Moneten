@@ -337,6 +337,8 @@ private struct AccountEntry: Codable {
 	/// Written only when true, so a reader before it reads the file, and the format version stays.
 	var initialBalanceIsDerived: Bool?
 	var isClosed: Bool
+	/// Written only for a closed account with a clearing entry, so a reader before it reads the file.
+	var clearingEntry: ClearingEntryEntry?
 	var comment: String?
 	var sourceID: String?
 	var color: String?
@@ -370,6 +372,7 @@ private struct AccountEntry: Codable {
 		initialBalanceIsSet = a.initialBalanceIsSet
 		initialBalanceIsDerived = a.initialBalanceIsDerived ? true : nil
 		isClosed = a.isClosed
+		clearingEntry = a.clearingEntry.map(ClearingEntryEntry.init)
 		comment = a.comment
 		sourceID = a.sourceID
 		color = a.color
@@ -395,7 +398,35 @@ private struct AccountEntry: Codable {
 			initialBalanceIsDerived: initialBalanceIsDerived == true, isClosed: isClosed,
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
 			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
-			otherBankBalances: others, bonusPoints: bonusPoints)
+			otherBankBalances: others, bonusPoints: bonusPoints, clearingEntry: try clearingEntry?.mark())
+	}
+}
+
+/// The clearing entry of a closed account with the values that the app gave it, so that reopening after an import
+/// removes it the same way.
+private struct ClearingEntryEntry: Codable {
+	var transactionID: UUID
+	var bookingDate: String
+	var valueDate: String?
+	var amount: String
+	var currency: String
+	var name: String
+	var purpose: String
+
+	init(_ m: ClearingEntryMark) {
+		transactionID = m.transactionID
+		bookingDate = m.values.bookingDate.description
+		valueDate = m.values.valueDate?.description
+		amount = AmountText.text(m.values.amountMinor, m.currency)
+		currency = m.currency
+		name = m.values.name
+		purpose = m.values.purpose
+	}
+
+	func mark() throws -> ClearingEntryMark {
+		try currencyCode(currency)
+		return ClearingEntryMark(transactionID: transactionID, values: OriginalValues(bookingDate: try day(bookingDate), valueDate: try valueDate.map(day),
+			amountMinor: try AmountText.minorUnits(amount, currency), name: name, purpose: purpose), currency: currency)
 	}
 }
 
