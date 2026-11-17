@@ -99,6 +99,21 @@ struct LockedLoginTests {
 		#expect(Self.due(ledger, at: 100).isEmpty)
 	}
 
+	@Test("An account of the access that never met the lock pauses too")
+	func pausesUntouchedAccount() {
+		var card = Self.account("Card")
+		card.refreshInterval = .onceADay
+		var other = Self.account("Other")
+		other.accessID = UUID()
+		var ledger = Ledger(accounts: [Self.account("Giro"), card, other])
+		for hour in [2.0, 4, 6] { ledger = Self.refresh(ledger, .failed(Self.locked), at: hour, only: ["Giro"]) }
+		#expect(ledger.accounts[1].refreshError == nil)
+		#expect(Self.due(ledger, at: 100).isEmpty)
+		#expect(ledger.dueAccounts(at: Self.hours(100))[other.accessID!]?.map(\.name) == ["Other"])
+		ledger = Self.refresh(ledger, .failed(Self.locked), at: 101, attended: true, only: ["Giro"])
+		#expect(Self.due(ledger, at: 103) == ["Giro", "Card"])
+	}
+
 	@Test("A refresh by hand or a success of one account frees every account of the access")
 	func resetPerAccess() {
 		var ledger = Ledger(accounts: [Self.account("Giro"), Self.account("Card")])

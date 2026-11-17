@@ -266,7 +266,10 @@ extension Ledger {
 	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
 	/// holds the time at which the user canceled the refresh of an account.
 	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
-		refreshAccounts(.all, calendar: calendar)
+		// The pause for the lock of ING holds for the whole access, also for an account that has not met the lock yet.
+		let paused = Set(accounts.filter { !$0.isClosed && $0.refreshError?.waitsForUser == true && $0.refreshError?.lockedLogins != nil }.compactMap(\.accessID))
+		return refreshAccounts(.all, calendar: calendar)
+			.filter { !paused.contains($0.key) }
 			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
 			.filter { !$0.value.isEmpty }
 	}
