@@ -91,7 +91,7 @@ struct MenuBarAccountRow: View {
 			if model.sync.refreshingAccounts.contains(account.id) {
 				ProgressView().controlSize(.mini)
 			}
-			if let error = account.refreshError {
+			if let error = account.shownRefreshError {
 				Image(systemName: error.waitsForUser ? "person.crop.circle.badge.exclamationmark" : "exclamationmark.triangle.fill")
 					.foregroundStyle(error.waitsForUser ? Color.orange : Palette.red)
 					.help(error.shownMessage)

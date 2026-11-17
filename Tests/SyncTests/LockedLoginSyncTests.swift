@@ -68,4 +68,32 @@ struct LockedLoginSyncTests {
 		await untilIdle()
 		#expect(ends() == [[Self.giro.accountID]])
 	}
+
+	@Test("A run whose report mixes a fetched account with the lock drops the automatic refresh that waits for it")
+	func mixedReportDropsWaitingAutomaticRefresh() async {
+		let ends = logEnds()
+		refresh([.wait(.milliseconds(100)), .fetched(Self.card.accountID), .failAccount(Self.giro.accountID, Self.locked)], [Self.giro, Self.card], attended: false)
+		refresh([.fetched(Self.giro.accountID)], [Self.giro], attended: false)
+		await untilIdle()
+		#expect(ends().count == 1)
+	}
+
+	@Test("Until the app recorded a run that ended with the lock, an automatic refresh of the access does not start, whatever the ledger says")
+	func waitsForTheRecordOfTheLock() async {
+		let ends = logEnds()
+		// The app has not recorded the run yet, so its ledger does not pause the access.
+		coordinator.pausesUnattended = { _ in false }
+		refresh([.fetched(Self.card.accountID), .failAccount(Self.giro.accountID, Self.locked)], [Self.giro, Self.card], attended: false)
+		await untilIdle()
+		refresh([.fetched(Self.giro.accountID)], [Self.giro], attended: false)
+		await untilIdle()
+		#expect(ends().count == 1)
+		refresh([.fetched(Self.giro.accountID)], [Self.giro], attended: true)
+		await untilIdle()
+		#expect(ends().count == 2)
+		coordinator.recordedRefresh(of: Self.ing.id)
+		refresh([.fetched(Self.giro.accountID)], [Self.giro], attended: false)
+		await untilIdle()
+		#expect(ends().count == 3)
+	}
 }

@@ -21,7 +21,7 @@ struct RefreshErrorButton: View {
 			VStack(alignment: .leading, spacing: 0) {
 				ForEach(Array(accounts.enumerated()), id: \.element.id) { i, account in
 					if i > 0 { Divider() }
-					if let error = account.refreshError {
+					if let error = account.shownRefreshError {
 						RefreshErrorPopover(account: account, error: error, editLoginData: error.suggestsEditLoginData && model.fintsAccess(of: account.id) != nil ? {
 							shown = false
 							model.editLoginData(account: account.id)
@@ -79,7 +79,7 @@ struct AccountRefreshLine: View {
 		let refreshing = model.sync.refreshingAccounts.contains(account.id)
 		HStack(spacing: 6) {
 			// An account that never refreshed says why, in place of "Not refreshed yet".
-			Text(account.refreshedAt.map { String(localized: "Last updated: \(Format.dayAndTime($0))") } ?? account.refreshError?.shownMessage ?? String(localized: "Not refreshed yet"))
+			Text(account.refreshedAt.map { String(localized: "Last updated: \(Format.dayAndTime($0))") } ?? account.shownRefreshError?.shownMessage ?? String(localized: "Not refreshed yet"))
 				.lineLimit(1)
 			if refreshing {
 				ProgressView().controlSize(.mini)
@@ -90,7 +90,7 @@ struct AccountRefreshLine: View {
 					.accessibilityLabel("Refresh Account")
 					.disabled(!model.canRefresh(.account(account.id)))
 			}
-			if account.refreshError != nil {
+			if account.shownRefreshError != nil {
 				RefreshErrorButton(accounts: [account])
 			}
 		}

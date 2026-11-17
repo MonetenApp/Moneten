@@ -204,7 +204,7 @@ struct AccountRow: View {
 				ProgressView().controlSize(.small)
 			}
 			// The error of the last refresh takes the place of the balance until a refresh succeeds.
-			if let error = account.refreshError {
+			if let error = account.shownRefreshError {
 				Text(error.shownMessage)
 					.lineLimit(1)
 					.foregroundStyle(.secondary)

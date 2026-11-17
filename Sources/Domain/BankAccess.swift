@@ -346,55 +346,64 @@ public enum AccountRefresh: Sendable, Equatable {
 extension Ledger {
 	/// Whether the automatic refresh of `access` paused, because ING kept its FinTS login locked for
 	/// `RefreshError.lockedLoginLimit` automatic refreshes in a row. The pause holds for every account of the access,
-	/// also one that the user added later.
+	/// also one that the user added or reopened later. A closed account keeps the lock of its access, so closing or
+	/// reopening accounts never ends the pause.
 	public func pausesAutomaticRefresh(of access: UUID) -> Bool {
-		accounts.contains { $0.accessID == access && !$0.isClosed && $0.refreshError?.pausesForLockedLogin == true }
+		accounts.contains { $0.accessID == access && $0.refreshError?.pausesForLockedLogin == true }
+	}
+
+	/// The lock of ING that the accounts of `access` carry, open or closed, with the highest count, or nil.
+	public func lockedLogin(of access: UUID) -> RefreshError? {
+		accounts.compactMap { $0.accessID == access ? $0.refreshError : nil }.filter { $0.lockedLogins != nil }
+			.max { ($0.lockedLogins ?? 0) < ($1.lockedLogins ?? 0) }
 	}
 
 	/// The accounts of `access` after a refresh that ended with `results`, as `Account.record` records them, and the
 	/// other accounts of the access whose lock of ING the refresh changed. A failure because ING waits for a login on
 	/// its website counts the automatic refreshes in a row that ended with it. The count belongs to the access, because
-	/// each of its accounts logs in with the same PIN, so every open account of the access takes the error with the
-	/// count, also one that the refresh did not fetch. So the count stays when the user closes or deletes one of them.
-	/// A refresh by hand starts the count again. A success of the access ends the lock, and another failure ends the
-	/// count. At `RefreshError.lockedLoginLimit` the automatic refresh pauses for the access until a refresh by hand.
+	/// each of its accounts logs in with the same PIN, so every open account of the access that the refresh did not
+	/// fetch takes the error with the count, also one that the refresh did not ask for, and a closed account that
+	/// carries the lock takes the new count. So the count stays when the user closes, reopens, or deletes accounts.
+	/// A refresh by hand starts the count again. A refresh without the lock ends it, and the copies of the lock go.
+	/// At `RefreshError.lockedLoginLimit` the automatic refresh pauses for the access until a refresh by hand.
 	public func recorded(_ results: [UUID: AccountRefresh], of access: UUID, attended: Bool) -> [Account] {
 		let lock = results.values.lazy.compactMap { result -> RefreshError? in
 			if case let .failed(error) = result, error.lockedLogins != nil { error } else { nil }
 		}.first
-		let fetched = results.values.contains { if case .refreshed = $0 { true } else { false } }
-		let before = accounts.filter { $0.accessID == access && !$0.isClosed }.compactMap { $0.refreshError?.lockedLogins }.max() ?? 0
+		let count = attended ? 0 : (lockedLogin(of: access)?.lockedLogins ?? 0) + 1
 		var changed: [Account] = []
 		for var account in accounts where account.accessID == access {
 			let result = results[account.id]
 			if let result { account.record(result) }
-			if account.isClosed {
-				if result != nil { changed.append(account) }
-				continue
-			}
+			let carries = account.refreshError?.lockedLogins != nil
 			if let lock {
-				let count = attended ? 0 : before + 1
-				var error = account.refreshError.flatMap { $0.lockedLogins != nil ? $0 : nil } ?? lock
+				// An account that the same refresh fetched keeps its success.
+				if case .refreshed = result {
+					changed.append(account)
+					continue
+				}
+				guard !account.isClosed || carries else { continue }
+				var error = carries ? account.refreshError ?? lock : lock
 				error.lockedLogins = count
 				error.waitsForUser = count >= RefreshError.lockedLoginLimit
 				account.refreshError = error
 				changed.append(account)
 			} else if result != nil {
 				changed.append(account)
-			} else if !results.isEmpty, var error = account.refreshError, error.lockedLogins != nil {
-				// The login of this refresh went through, or failed for another reason, so the row of locks ended.
-				if fetched {
-					account.refreshError = nil
-				} else {
-					error.lockedLogins = 0
-					error.waitsForUser = false
-					account.refreshError = error
-				}
+			} else if !results.isEmpty, carries {
+				// The login of this refresh went through, or failed for another reason, so the copy of the lock goes.
+				account.refreshError = nil
 				changed.append(account)
 			}
 		}
 		return changed
 	}
+}
+
+extension Account {
+	/// The error of the last refresh that the app shows. A closed account shows none: it keeps only the lock of ING
+	/// of its access (`Ledger.closing`), which no refresh of it can end.
+	public var shownRefreshError: RefreshError? { isClosed ? nil : refreshError }
 }
 
 extension RefreshError {

@@ -390,9 +390,11 @@ final class AppModel {
 				Task {
 					while self.tableUndrawn { await self.drawn() }
 					self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+					self.sync.recordedRefresh(of: access)
 				}
 			} else {
 				self.recordRefresh(of: access, state: nil, accounts: accounts, attended: attended)
+				self.sync.recordedRefresh(of: access)
 			}
 			self.extensions.sessionEnded()
 			if attended { self.showNotices() }

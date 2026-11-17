@@ -845,7 +845,7 @@ The app SHALL stop when the FinTS server of ING (`fints.ing.de`) answers the log
 
 ### Requirement: Pause the automatic refresh while the FinTS login of ING stays locked
 
-The app SHALL pause the automatic refresh of an ING access after 2 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. The count belongs to the access and stays when the user closes or deletes one of its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
+The app SHALL pause the automatic refresh of an ING access after 2 automatic refreshes in a row that end because ING waits for a login on its website, and say so on its accounts. The count belongs to the access and stays when the user closes, reopens, or deletes its accounts. A refresh by hand always runs and starts the count again, a successful refresh or another failure ends it, and the PIN stays saved.
 
 #### Scenario: Second locked login in a row
 
@@ -861,6 +861,12 @@ The app SHALL pause the automatic refresh of an ING access after 2 automatic ref
 - **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins of "Giro"
 - **WHEN** the user closes or deletes "Giro"
 - **THEN** the automatic refresh still skips "Visa"
+
+#### Scenario: Account closed and reopened during the pause
+
+- **GIVEN** the automatic refresh of the ING access with "Giro" and "Visa" paused after 2 locked logins
+- **WHEN** the user closes "Giro", reopens "Giro", and then closes "Visa"
+- **THEN** "Giro" shows the lock with the pause, and the automatic refresh still skips "Giro"
 
 #### Scenario: Refresh by hand during the pause
 

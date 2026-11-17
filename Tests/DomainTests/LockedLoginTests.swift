@@ -124,8 +124,76 @@ struct LockedLoginTests {
 		var ledger = Self.locks(Ledger(accounts: [Self.account("Giro"), Self.account("Card", .onceADay)]), at: [2, 4], only: ["Giro"])
 		let closed = try ledger.closing(ledger.accounts[0], today: Day(Self.hours(5)))
 		ledger.upsert(closed.account)
-		#expect(ledger.accounts[0].refreshError == nil)
+		#expect(ledger.accounts[0].shownRefreshError == nil)
+		#expect(ledger.accounts[0].refreshError?.lockedLogins == 2)
 		#expect(Self.due(ledger, at: 100).isEmpty)
+	}
+
+	static func close(_ ledger: inout Ledger, _ name: String) throws {
+		let account = try #require(ledger.accounts.first { $0.name == name })
+		ledger.upsert(try ledger.closing(account, today: Day(hours(5))).account)
+	}
+
+	static func reopen(_ ledger: inout Ledger, _ name: String) throws {
+		let account = try #require(ledger.accounts.first { $0.name == name })
+		ledger.upsert(try ledger.reopening(account).account)
+	}
+
+	@Test("Pause both, close Giro, reopen Giro, close Card: Giro stays paused")
+	func reopenDuringPause() throws {
+		var ledger = Self.locks(Ledger(accounts: [Self.account("Giro"), Self.account("Card", .onceADay)]), at: [2, 4])
+		try Self.close(&ledger, "Giro")
+		try Self.reopen(&ledger, "Giro")
+		try Self.close(&ledger, "Card")
+		#expect(ledger.accounts.first { $0.name == "Giro" }?.shownRefreshError?.pausesForLockedLogin == true)
+		#expect(Self.due(ledger, at: 100).isEmpty)
+	}
+
+	@Test("Closing and reopening the only account of a paused access keeps the pause, and an account reopened after the pause began takes the lock")
+	func reopenOnlyAccount() throws {
+		var ledger = Self.locks(Ledger(accounts: [Self.account("Giro")]), at: [2, 4])
+		try Self.close(&ledger, "Giro")
+		try Self.reopen(&ledger, "Giro")
+		#expect(Self.due(ledger, at: 100).isEmpty)
+
+		var card = Self.account("Card")
+		card.isClosed = true
+		ledger = Self.locks(Ledger(accounts: [Self.account("Giro"), card]), at: [2, 4], only: ["Giro"])
+		try Self.reopen(&ledger, "Card")
+		try Self.close(&ledger, "Giro")
+		#expect(ledger.accounts.first { $0.name == "Card" }?.refreshError?.pausesForLockedLogin == true)
+		#expect(Self.due(ledger, at: 100).isEmpty)
+	}
+
+	@Test("A refresh by hand frees a closed account that carries the lock too")
+	func manualRefreshFreesClosedCarrier() throws {
+		var ledger = Self.locks(Ledger(accounts: [Self.account("Giro"), Self.account("Card")]), at: [2, 4])
+		try Self.close(&ledger, "Card")
+		ledger = Self.refresh(ledger, .failed(Self.locked), at: 5, attended: true, only: ["Giro"])
+		#expect(!ledger.pausesAutomaticRefresh(of: Self.access))
+		#expect(Self.due(ledger, at: 7) == ["Giro"])
+	}
+
+	@Test("A report that mixes a fetched account with the lock counts the lock and keeps the success")
+	func mixedReport() {
+		var ledger = Ledger(accounts: [Self.account("Giro"), Self.account("Card")])
+		let giro = ledger.accounts[0].id, card = ledger.accounts[1].id
+		let mixed = SyncState.finished(SyncSummary(finishedAt: Self.hours(2), fetched: [card], failures: [giro: Self.locked]))
+		ledger = Self.refresh(ledger, mixed, at: 2)
+		#expect(ledger.accounts.map { $0.refreshError?.lockedLogins } == [1, nil])
+		ledger = Self.refresh(ledger, mixed, at: 4)
+		#expect(ledger.accounts[0].refreshError?.pausesForLockedLogin == true)
+		#expect(ledger.accounts[1].refreshError == nil)
+		#expect(Self.due(ledger, at: 100).isEmpty)
+	}
+
+	@Test("Another failure removes the copy of the lock from an account that the refresh did not fetch")
+	func otherFailureRemovesCopy() {
+		var ledger = Self.locks(Ledger(accounts: [Self.account("Giro"), Self.account("Card", .onceADay)]), at: [2], only: ["Giro"])
+		#expect(ledger.accounts[1].refreshError?.lockedLogins == 1)
+		ledger = Self.refresh(ledger, .failed(.bank(BankMessage(code: "9800", text: "Dialog abgebrochen"))), at: 4, only: ["Giro"])
+		#expect(ledger.accounts[0].refreshError?.code == "9800")
+		#expect(ledger.accounts[1].refreshError == nil)
 	}
 
 	@Test("The pause stays when the user deletes the account that met the lock")
