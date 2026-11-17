@@ -164,7 +164,7 @@ struct Ask: Decodable {
 			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
 			switch rejected.failure {
-			case .accessBlocked, .appBlocked: throw rejected.failure
+			case .accessBlocked, .appBlocked, .loginReplaced: throw rejected.failure
 			default: break
 			}
 			return .pin(PINRequest(rejected: rejected.message, rules: rules))
@@ -183,7 +183,10 @@ struct Ask: Decodable {
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
 			}
-			return secondFactor(challenge, methods: offered, field: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server))
+			// The Deutsche Bank group takes a typed TAN in capitals (#231).
+			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
+				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
+			return secondFactor(challenge, methods: offered, field: field)
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
@@ -197,8 +200,9 @@ struct Ask: Decodable {
 }
 
 /// An error of the bank, or of the helper with `kind` "network", "certificate", "unsupported", "invalidChallenge",
-/// "noTANMethod", "approvalDeclined", or "appBlocked". The helper sends "appBlocked" for the answer of a savings bank
-/// that the user blocked the app in its online banking, which it knows by the host of the bank and the text.
+/// "noTANMethod", "approvalDeclined", "appBlocked", or "loginReplaced". The helper sends "appBlocked" for the answer of a savings bank
+/// that the user blocked the app in its online banking, which it knows by the host of the bank and the text, and
+/// "loginReplaced" for the answer of the Deutsche Bank group that a new login replaced the login of the access.
 /// "noJobs" marks an account that allows no job that the helper knows, so that `DKB` can name a card in its error.
 ///
 /// The codes are those of the FinTS return codes of the Deutsche Kreditwirtschaft
@@ -260,6 +264,7 @@ struct HelperError: Decodable, Equatable {
 		case ("noTANMethod", _): .noTANMethod(message)
 		case ("approvalDeclined", _): .approvalDeclined(message)
 		case ("appBlocked", _): .appBlocked(message)
+		case ("loginReplaced", _): .loginReplaced(message)
 		case (_, "9078"): .notRegistered
 		case (_, "9931"): Self.reportsBlock(text) ? .accessBlocked(message) : .pinRejected(message)
 		case (_, "9942"), (_, "9340"): .pinRejected(message)

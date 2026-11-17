@@ -75,9 +75,10 @@ final class CommerzbankGroup {
 	/// The second dialog starts as a new one: its challenges before its orders are for the login, and none is for the
 	/// full history, because no job of it asks for one. So a cancel of the challenge for older transactions cannot
 	/// come from it, and if it comes anyway, it counts as a failure of the second dialog and never restarts the run. A
-	/// cancel and a change of the TAN method end or restart the run, as in the first dialog. Another bank, and a dialog
-	/// in which comdirect asked nothing again, keep `all` as it is. A refresh sends no transfer, so no transfer takes
-	/// this path.
+	/// cancel of the approval of the first dialog for older transactions that arrives only now belongs to the first
+	/// dialog, which the bank answered, so the second dialog ignores it. A cancel and a change of the TAN method end or
+	/// restart the run, as in the first dialog. Another bank, and a dialog in which comdirect asked nothing again, keep
+	/// `all` as it is. A refresh sends no transfer, so no transfer takes this path.
 	static List<FinTSHelper.Jobs> again(FinTSHelper.Orders handle, HBCIPassport passport, Konto[] accounts, List<FinTSHelper.Jobs> all,
 		FinTSHelper.Callback callback) {
 		if (!comdirect(FinTSHelper.Callback.server)) return all;
@@ -107,6 +108,7 @@ final class CommerzbankGroup {
 		FinTSHelper.diagnostic("FinTSHelper: comdirect asked to send the request again");
 		if (passport instanceof FinTSHelper.Passport p) p.jobsSent = false;
 		callback.fullHistory = false;
+		callback.lastApproval = null;
 		try {
 			HBCIExecStatus status = handle.execute();
 			callback.withdrawApproval();

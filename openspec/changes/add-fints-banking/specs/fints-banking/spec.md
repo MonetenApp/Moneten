@@ -283,6 +283,20 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the pending transaction has the booking date 31.12.2025
 
+#### Scenario: Pending Postbank card payment without a name
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, the purpose "Kartenzahlung / Buchhandlung Beispiel", and the amount -23,80 €
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "Buchhandlung Beispiel", the text after the first " / " of the purpose
+- **AND** when the bank later books -23,80 € to "Buchhandlung Beispiel", the booked transaction replaces the pending one
+
+#### Scenario: Pending Postbank card payment of one word
+
+- **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, and the purpose "PayPal"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the name "PayPal"
+- **AND** a purpose of several words without " / ", a booked row, a row with a counterparty, and a row of another bank keep the name that the bank sent
+
 ### Requirement: Store booking date and value date
 
 The app SHALL store for each transaction the booking date and the value date that the bank reports.

@@ -25,6 +25,20 @@ extension ReconcileTests {
 		}
 	}
 
+	@Test("A pending card payment that took its name from the purpose is replaced by its booking, and one without a name is not (#231)")
+	func pendingCardPaymentNamedFromPurpose() {
+		let named = stored(row(9, -2_380, "Buchhandlung Beispiel", "Kartenzahlung / Buchhandlung Beispiel", pending: true))
+		let booked = row(11, -2_380, "Buchhandlung Beispiel", "Buchhandlung Beispiel Musterstadt")
+		let r = merge(refresh([booked]), stored: [named], at: noon(11, month: 11))
+		#expect(r.booked.map(\.id) == [named.id])
+		#expect(r.added.isEmpty && r.dropped.isEmpty)
+
+		let unnamed = stored(row(9, -2_380, "", "Kartenzahlung / Buchhandlung Beispiel", pending: true))
+		let alone = merge(refresh([booked]), stored: [unnamed], at: noon(11, month: 11))
+		#expect(alone.booked.isEmpty)
+		#expect(alone.added.map(\.amountMinor) == [-2_380])
+	}
+
 	@Test("A recurring reference cannot hide a later pending file rent", arguments: [false, true], [false, true])
 	func gate5LaterRecurringRent(tombstone: Bool, nextMonth: Bool) {
 		var booked = stored(rent(7, purpose: "BOOKED RENT", pending: false))

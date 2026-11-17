@@ -5,7 +5,8 @@ import Synchronization
 import Testing
 @testable import Import
 
-@Suite("Migration source lifecycle")
+/// The suite launches a real app process, so its tests run one after another.
+@Suite("Migration source lifecycle", .serialized)
 struct MoneyMoneyExporterTests {
 	@Test("Export addresses a renamed running source by PID and never sends after it quits")
 	func lifecycle() async throws {
@@ -39,6 +40,24 @@ struct MoneyMoneyExporterTests {
 			reply.setParam(NSAppleEventDescriptor(string: replyText), forKeyword: keyDirectObject)
 			return reply
 		}
+		// On a loaded Mac, Launch Services leaves a running app out of about one lookup in a thousand, for a few
+		// milliseconds. The exporter then fails with notRunning before it sends. An export that must reach the
+		// running source tries again only after such a miss, so the test still fails if the source is never found.
+		func exportReachingSource(_ command: MoneyMoneyExporter.Command,
+			send: @escaping @Sendable (NSAppleEventDescriptor) throws -> NSAppleEventDescriptor) async throws -> Data {
+			let deadline = ContinuousClock.now + .seconds(60)
+			while true {
+				let sent = Atomic(false)
+				do {
+					return try await MoneyMoneyExporter.run(command, bundleIdentifier: identifier, applicationURL: app) { event in
+						sent.store(true, ordering: .sequentiallyConsistent)
+						return try send(event)
+					}
+				} catch MoneyMoneyExporter.Failure.notRunning where !sent.load(ordering: .sequentiallyConsistent) && .now < deadline {
+					try await Task.sleep(for: .milliseconds(20))
+				}
+			}
+		}
 		do {
 			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app, send: send)
 			Issue.record("A stopped source exported accounts")
@@ -52,15 +71,12 @@ struct MoneyMoneyExporterTests {
 		defer {
 			if process.isRunning { process.terminate(); process.waitUntilExit() }
 		}
-		let deadline = ContinuousClock.now + .seconds(10)
-		while NSRunningApplication.runningApplications(withBundleIdentifier: identifier).isEmpty && .now < deadline {
-			try await Task.sleep(for: .milliseconds(20))
-		}
-		let running = try #require(NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first)
-		#expect(running.processIdentifier == process.processIdentifier)
 		let pid = process.processIdentifier
+		let running = try #require(await eventually {
+			NSRunningApplication.runningApplications(withBundleIdentifier: identifier).first { $0.processIdentifier == pid }
+		})
 		for command in [MoneyMoneyExporter.Command.accounts, .categories, .transactions] {
-			let data = try await MoneyMoneyExporter.run(command, bundleIdentifier: identifier, applicationURL: app) { event in
+			let data = try await exportReachingSource(command) { event in
 				#expect(event.eventClass == 0x4d4f4e59)
 				#expect(event.attributeDescriptor(forKeyword: keyAddressAttr)?.descriptorType == typeKernelProcessID)
 				#expect(event.attributeDescriptor(forKeyword: keyAddressAttr)?.data == withUnsafeBytes(of: pid) { Data($0) })
@@ -74,7 +90,7 @@ struct MoneyMoneyExporterTests {
 		}
 		#expect(calls.withLock { $0 } == [0x65787061, 0x65787063, 0x65787074])
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app) { _ in
+			_ = try await exportReachingSource(.accounts) { _ in
 				let reply = NSAppleEventDescriptor.record()
 				reply.setParam(NSAppleEventDescriptor(int32: -1743), forKeyword: 0x6572726e)
 				return reply
@@ -84,7 +100,7 @@ struct MoneyMoneyExporterTests {
 			#expect(error as? MoneyMoneyExporter.Failure == .notAllowed)
 		}
 		do {
-			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app) { event in
+			_ = try await exportReachingSource(.accounts) { event in
 				process.terminate()
 				process.waitUntilExit()
 				return try event.sendEvent(options: .waitForReply, timeout: 2)
@@ -93,10 +109,9 @@ struct MoneyMoneyExporterTests {
 		} catch {
 			#expect(error as? MoneyMoneyExporter.Failure == .notRunning)
 		}
-		let stoppedDeadline = ContinuousClock.now + .seconds(10)
-		while NSRunningApplication.runningApplications(withBundleIdentifier: identifier).contains(where: { !$0.isTerminated }) && .now < stoppedDeadline {
-			try await Task.sleep(for: .milliseconds(20))
-		}
+		#expect(!process.isRunning)
+		// Wait until AppKit marks the instance found at launch as ended, so the next lookup reflects the quit.
+		#expect(try await eventually { running.isTerminated ? true : nil } == true)
 		do {
 			_ = try await MoneyMoneyExporter.run(.accounts, bundleIdentifier: identifier, applicationURL: app, send: send)
 			Issue.record("The source was exported after it quit")
@@ -105,5 +120,16 @@ struct MoneyMoneyExporterTests {
 		}
 		#expect(calls.withLock { $0 } == [0x65787061, 0x65787063, 0x65787074])
 		#expect(NSRunningApplication.runningApplications(withBundleIdentifier: identifier).allSatisfy { $0.isTerminated })
+	}
+}
+
+/// Returns the first value that `probe` finds, or nil when a deadline that holds on a loaded Mac passes first.
+/// The probe runs on the main actor because AppKit refreshes an `NSRunningApplication` only on the main thread.
+private func eventually<Value: Sendable>(_ probe: @MainActor () -> Value?) async throws -> Value? {
+	let deadline = ContinuousClock.now + .seconds(60)
+	while true {
+		if let value = await probe() { return value }
+		guard .now < deadline else { return nil }
+		try await Task.sleep(for: .milliseconds(20))
 	}
 }
