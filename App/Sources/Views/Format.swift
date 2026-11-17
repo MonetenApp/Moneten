@@ -125,7 +125,6 @@ struct BalancesText: View {
 							AmountText(money: first)
 							Text("+ \(amounts.count - 1) more")
 								.foregroundStyle(Palette.detail)
-								.help(amounts.dropFirst().map { Format.money($0) }.formatted(.list(type: .and)))
 						}
 						.fixedSize()
 						// The shortest form still says how many balances it leaves out.
@@ -134,15 +133,22 @@ struct BalancesText: View {
 							Text(verbatim: "+\(amounts.count - 1)").foregroundStyle(Palette.detail).fixedSize()
 						}
 					}
+					// Every form gives the tooltip and VoiceOver all balances, also the ones that the row leaves out.
+					.help(allAmounts)
+					.accessibilityElement(children: .ignore)
+					.accessibilityLabel(allAmounts)
 				} else {
-					ViewThatFits(in: .horizontal) {
-						all
-						shortened(first)
-					}
+					// A single balance in one line is whole when it fits and ends with an ellipsis when it does not.
+					shortened(first)
 				}
 			}
 		}
 		.layoutPriority(1)
+	}
+
+	/// Every balance, for the tooltip and for VoiceOver.
+	private var allAmounts: String {
+		amounts.map { Format.money($0) }.formatted(.list(type: .and))
 	}
 
 	private var all: some View {
