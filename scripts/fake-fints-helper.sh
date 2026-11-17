@@ -38,6 +38,9 @@
 # 50050201 shows the note about 1822direkt. The made-up Sparkassen are on a made-up server of the savings banks.
 # The made-up Volksbank Musterstadt (99090000) has a FinTS address on a server of Atruvia, so the setup
 # shows the hint of the cooperative banks and sends a VR-Kennung in capitals.
+# Commerzbank (50040000) and comdirect (20041111) have their real FinTS addresses, so the setup shows their hints and sends
+# a login name of 8 digits to Commerzbank with 00 in front. Their login asks for a photoTAN of method 900 with 10 characters
+# in the bank parameters, or of method 902.
 # Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
 # shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB. The login of every
@@ -73,7 +76,9 @@ case "$cmd" in
 '{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
 '{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
-'{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"}]}'
+'{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
+'{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
+'{"code":"20041111","name":"comdirect bank AG","city":"Quickborn, Kr Pinneberg","bic":"COBADEHDXXX","url":"https://fints.comdirect.de/fints"}]}'
 	;;
 *'"type":"accounts"'*)
 	echo "$pin"
@@ -96,7 +101,12 @@ case "$cmd" in
 		echo '{"type":"failed","code":"9800","text":"Dialog abgebrochen"}'
 		exit 0
 	;; esac
-	echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}'
+	photoTAN='{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte scannen Sie die Grafik mit Ihrer photoTAN-App.","maxLength":10,"current":'
+	case "$cmd" in
+	*'"bankCode":"50040000"'*) echo "$photoTAN"'"900"}' ;;
+	*'"bankCode":"20041111"'*) echo "$photoTAN"'"902"}' ;;
+	*) echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}' ;;
+	esac
 	answer
 	if [ "$method" = 901 ]; then
 		sleep 2

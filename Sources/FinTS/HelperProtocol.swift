@@ -124,6 +124,8 @@ struct Ask: Decodable {
 	let image: Data?
 	/// The flicker code as hbci4java renders it from the HHDuc of the bank.
 	let flicker: String?
+	/// The longest TAN that the bank parameters announce for the method of a typed TAN.
+	let maxLength: Int?
 	/// The challenge comes while the refresh asks for the full history of an account, so the bank may ask
 	/// for it because of transactions older than 90 days.
 	let history: Bool?
@@ -181,13 +183,16 @@ struct Ask: Decodable {
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
 			}
+			// The Deutsche Bank group takes a typed TAN in capitals (#231).
+			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
+				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
+			return secondFactor(challenge, methods: offered, field: field)
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return secondFactor(challenge, methods: offered, field: TANField(isUppercase: FinTSServer.isDeutscheBankGroup(server)))
+		return secondFactor(challenge, methods: offered)
 	}
 
-	/// `field` is the TAN field of a typed TAN. The Deutsche Bank group takes a TAN in capitals (#231).
 	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
 			method: current, field: field, olderTransactions: history == true))

@@ -271,6 +271,18 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the list shows the payment as a pending transaction
 
+#### Scenario: Pending MT942 row of Commerzbank
+
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 14.11.2026, the entry date 15.11 as the expected booking day, the amount -42,00 €, and the name "Stadtwerke Musterstadt"
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 15.11.2026, the value date 14.11.2026, and the name "Stadtwerke Musterstadt"
+
+#### Scenario: Expected booking day in the year before
+
+- **GIVEN** the FinTS server `fints.commerzbank.de` sends a pending MT942 row whose `:61:` line has the value date 02.01.2026 and the entry date 31.12
+- **WHEN** the refresh ends
+- **THEN** the pending transaction has the booking date 31.12.2025
+
 #### Scenario: Pending Postbank card payment without a name
 
 - **GIVEN** the bank on the host `hbci.postbank.de` reports a pending row with the booking text "Kartenzahlung", no counterparty, the purpose "Kartenzahlung / Buchhandlung Beispiel", and the amount -23,80 €
@@ -343,6 +355,12 @@ The app SHALL store the original amount and currency of a transaction that the b
 - **GIVEN** the bank reports a card payment of -46,12 € with the original amount 50,00 US dollars
 - **WHEN** the user opens the transaction details
 - **THEN** the details show 50,00 US dollars as the original amount
+
+#### Scenario: Sign of the original amount of an MT942 row
+
+- **GIVEN** the bank reports a pending MT942 row of -10,00 € with the original amount 11,00 US dollars
+- **WHEN** the refresh ends
+- **THEN** the original amount is -11,00 US dollars
 
 #### Scenario: Payment through a payment service
 
@@ -631,6 +649,55 @@ The app SHALL show the text and the return code that the bank sends when the ban
 - **WHEN** the bank delivers the transactions together with a warning text
 - **THEN** the transactions are stored
 - **AND** the log contains the warning
+
+### Requirement: Send a request to comdirect again when comdirect asks for it
+
+The app SHALL send a request of a refresh to the FinTS server `fints.comdirect.de` a second time, once, in a dialog of its own, when comdirect answers it with a text that contains "Bitte senden Sie die Anfrage erneut" and the request needs no TAN. A request needs no TAN when the PIN/TAN parameters of the bank mark it so and it asks for no full history. Any other request, and a second answer with that text in an error, fails its account with the text of the bank.
+
+#### Scenario: Second answer succeeds
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends the request a second time
+- **AND** the transactions of the second answer are stored, and the account shows no error
+
+#### Scenario: Second answer is the same
+
+- **GIVEN** a refresh of a comdirect account at `fints.comdirect.de`, whose bank parameters mark the transaction request as one without a TAN
+- **WHEN** comdirect answers the transaction request twice with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no third request
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: TAN for the login of the second dialog
+
+- **GIVEN** the first refresh of the comdirect accounts "Girokonto" and "Tagesgeld" asks for the full history of "Girokonto", and comdirect asked to send the transaction request of "Tagesgeld" again
+- **WHEN** comdirect asks for a photoTAN for the login of the second dialog
+- **THEN** the dialog says that the TAN allows the login, and it does not offer to skip older transactions
+- **AND** a cancel of the dialog ends the refresh of the access and starts no new one
+
+#### Scenario: Request that needs a TAN
+
+- **GIVEN** the first refresh of a comdirect account at `fints.comdirect.de`, which asks for the full history
+- **WHEN** comdirect answers the transaction request with the code 9010 and the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request and asks for no second TAN
+- **AND** the account fails with "Bitte senden Sie die Anfrage erneut." and the code 9010
+
+#### Scenario: Another bank
+
+- **GIVEN** a refresh at the FinTS server of "Musterbank"
+- **WHEN** the bank answers the transaction request with the text "Bitte senden Sie die Anfrage erneut."
+- **THEN** the app sends no second request, and the account fails with that text
+
+### Requirement: Keep the other accounts when the second request to comdirect fails
+
+The app SHALL fail only the accounts with a request in the second dialog with comdirect when that dialog fails, and keep the answers of the first dialog for the other accounts of the refresh.
+
+#### Scenario: Second dialog fails
+
+- **GIVEN** a refresh of the comdirect accounts "Girokonto" and "Tagesgeld", in which comdirect asked to send the transaction request of "Girokonto" again
+- **WHEN** the second dialog fails with the code 9800 and the text "Dialog abgebrochen"
+- **THEN** "Girokonto" fails with "Dialog abgebrochen"
+- **AND** "Tagesgeld" keeps the transactions of the first answer
 
 ### Requirement: Handle a PIN change that the bank requires
 

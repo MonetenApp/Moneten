@@ -160,6 +160,40 @@ The app SHALL offer a field for the TAN when the method needs a typed TAN. The b
 - **WHEN** the TAN field is empty
 - **THEN** the user cannot continue
 
+### Requirement: TAN length of Commerzbank and comdirect
+
+The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank and comdirect: at least 7 digits for the method 900 on `fints.commerzbank.de` or `hbci.commerzbank.de`, up to the announced length between 7 and 15, and 6 or 7 digits for the method 902 on `fints.comdirect.de`. The field drops blanks and other characters and stops at the upper length. Other methods keep a field without a length.
+
+#### Scenario: Commerzbank photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" stays disabled
+- **WHEN** the user types "1234567"
+- **THEN** "Continue" is enabled
+- **WHEN** the user types "12345678901"
+- **THEN** the field holds "1234567890"
+
+#### Scenario: comdirect photoTAN
+
+- **GIVEN** a TAN request of comdirect for the method 902
+- **WHEN** the user types "12345678"
+- **THEN** the field holds "1234567" and "Continue" is enabled
+
+#### Scenario: Blanks in a photoTAN
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types seven blanks
+- **THEN** the field stays empty and "Continue" stays disabled
+- **WHEN** the user types "123 456 7"
+- **THEN** the field holds "1234567"
+
+#### Scenario: Another bank with the same method code
+
+- **GIVEN** a TAN request of "Musterbank" for the method 900, whose bank parameters announce 6 characters
+- **WHEN** the user types "123456"
+- **THEN** "Continue" is enabled
+
 ### Requirement: Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals
 
 The app SHALL turn the letters of a typed TAN into capitals as the user types, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. A TAN typed in lower case then does not count as a wrong TAN at the bank. The TAN of any other bank stays as the user types it.

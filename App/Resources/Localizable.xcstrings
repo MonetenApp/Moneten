@@ -2377,6 +2377,17 @@
         }
       }
     },
+    "Before the first login, set up a TAN method such as photoTAN on the website of comdirect. comdirect needs about two business days before its FinTS server accepts it. If the login fails until then, try again later with “Edit Login Data...”." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie vor der ersten Anmeldung ein TAN-Verfahren wie photoTAN auf der Website der comdirect ein. Die comdirect braucht etwa zwei Werktage, bis ihr FinTS-Server es annimmt. Schlägt die Anmeldung bis dahin fehl, versuchen Sie es später mit „Zugangsdaten bearbeiten...“ erneut."
+          }
+        }
+      }
+    },
     "BIC" : {
       "localizations" : {
         "de" : {
@@ -2989,6 +3000,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kommentar: %@"
+          }
+        }
+      }
+    },
+    "Commerzbank expects the 10-digit participant number. If the login fails, check that Commerzbank switched on “FinTS/HBCI with photoTAN” for you." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Commerzbank erwartet die 10-stellige Teilnehmernummer. Schlägt die Anmeldung fehl, prüfen Sie, ob die Commerzbank „FinTS/HBCI mit photoTAN“ für Sie freigeschaltet hat."
           }
         }
       }
@@ -4851,6 +4873,17 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Help page of Commerzbank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der Commerzbank"
+          }
+        }
+      }
     },
     "Help page of Consorsbank" : {
       "localizations" : {
@@ -7192,6 +7225,17 @@
         }
       }
     },
+    "Participant number" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Teilnehmernummer"
+          }
+        }
+      }
+    },
     "Password" : {
       "localizations" : {
         "de" : {
@@ -7897,6 +7941,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Auf GitHub melden..."
+          }
+        }
+      }
+    },
+    "Request the access at www.commerzbank.de/hbci before the first login. Commerzbank must switch on the method “FinTS/HBCI with photoTAN” for you, also when you already use photoTAN on the website." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beantragen Sie den Zugang vor der ersten Anmeldung unter www.commerzbank.de/hbci. Die Commerzbank muss das Verfahren „FinTS/HBCI mit photoTAN“ für Sie freischalten, auch wenn Sie photoTAN auf der Website schon nutzen."
           }
         }
       }
