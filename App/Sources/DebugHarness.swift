@@ -1987,7 +1987,6 @@ extension NSApplication {
 /// The custom period and a field that expects a future date, for the checks of the date field in the debug harness.
 /// No window of the app has a field that expects a future date yet, so the harness shows one with an English label.
 private struct DateFieldHarnessView: View {
-	// periphery:ignore - read only through the binding of the field, whose date the harness reads from the text.
 	@State private var scheduled: Day? = .today()
 	private let label = "Scheduled date"
 
@@ -1997,6 +1996,9 @@ private struct DateFieldHarnessView: View {
 				Section {
 					DateField(title: LocalizedStringKey(label), day: $scheduled, expectsFuture: true, identifier: "scheduled")
 				}
+				// The bound day, read here as well, so that the check for unused code sees the same use with every
+				// toolchain, whether or not it counts a read through the binding of the field.
+				.accessibilityValue(scheduled.map { String($0.rawValue) } ?? "")
 			}
 			CustomPeriodView()
 		}
