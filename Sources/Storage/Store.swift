@@ -5,13 +5,35 @@ import GRDB
 /// The open database. Every change goes through one of these methods.
 public final class Store: SavedPINStore {
 	let queue: DatabaseQueue
+	/// Refuses every write once the file changed outside the app.
+	let diskWatch: DiskWatch
 
 	init(queue: DatabaseQueue) {
 		self.queue = queue
+		diskWatch = DiskWatch(queue: queue)
 	}
 
-	func write<T: Sendable>(_ updates: @Sendable (Database) throws -> T) throws -> T {
-		try queue.write(updates)
+	/// True once the database file was replaced or changed outside the app. From then on every write throws
+	/// `DatabaseChangedOnDisk`, and only a new store, which loads the file again, writes.
+	public func isChangedOnDisk() -> Bool {
+		diskWatch.check(queue)
+	}
+
+	/// The only write path of the store. Each transaction first checks that the file did not change on disk, with
+	/// the write lock already held, so no other program can commit between the check and the commit.
+	func write<T>(_ updates: (Database) throws -> T) throws -> T {
+		try queue.write { db in
+			try diskWatch.checkBeforeWrite(db)
+			return try updates(db)
+		}
+	}
+
+	func write<T: Sendable>(_ updates: @escaping @Sendable (Database) throws -> T) async throws -> T {
+		let diskWatch = diskWatch
+		return try await queue.write { db in
+			try diskWatch.checkBeforeWrite(db)
+			return try updates(db)
+		}
 	}
 
 	/// Reads everything into memory. A portfolio whose value of its balance day is missing or
@@ -28,7 +50,7 @@ public final class Store: SavedPINStore {
 		}
 		let missing = ledger.missingPortfolioValues
 		if !missing.isEmpty {
-			try queue.write { db in
+			try write { db in
 				for v in missing { try v.save(db) }
 			}
 			for v in missing { ledger.record(v) }
@@ -36,19 +58,19 @@ public final class Store: SavedPINStore {
 		return ledger
 	}
 
-	public func save(_ group: AccountGroup) throws { try queue.write { db in try group.save(db) } }
+	public func save(_ group: AccountGroup) throws { try write { db in try group.save(db) } }
 	/// Saves a portfolio together with the value of its balance day, so its history cannot miss it.
 	public func save(_ account: Account) throws {
-		try queue.write { db in
+		try write { db in
 			try account.save(db)
 			try account.portfolioValue()?.save(db)
 		}
 	}
-	public func save(_ category: Domain.Category) throws { try queue.write { db in try category.save(db) } }
+	public func save(_ category: Domain.Category) throws { try write { db in try category.save(db) } }
 
 	/// `accounts` are accounts whose initial balance the rows move, written in the same transaction.
 	public func save(_ transactions: [Transaction], parts: [SplitPart] = [], accounts: [Account] = []) throws {
-		try queue.write { db in
+		try write { db in
 			for a in accounts { try a.save(db) }
 			for t in transactions { try t.save(db) }
 			for part in parts { try part.update(db, columns: ["categoryID", "comment"]) }
@@ -59,7 +81,7 @@ public final class Store: SavedPINStore {
 	/// row with the same fields. Two such rows keep out the same rows, so it does not matter which one changes.
 	public func save(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Domain.Category] = [], transactions: [Transaction] = [],
 		relinking relinks: [DeletedTransaction.Relink] = []) throws {
-		try queue.write { db in
+		try write { db in
 			for g in groups { try g.save(db) }
 			for a in accounts {
 				try a.save(db)
@@ -82,7 +104,7 @@ public final class Store: SavedPINStore {
 	/// Clears the "new" mark of every transaction of an account in one statement. Saving each
 	/// transaction took seconds on the main thread after an import of thousands of rows.
 	public func markSeen(account id: UUID) throws {
-		_ = try queue.write { db in
+		_ = try write { db in
 			try Transaction.filter(Column("accountID") == id && Column("isNew") == true).updateAll(db, Column("isNew").set(to: false))
 		}
 	}
@@ -93,7 +115,7 @@ public final class Store: SavedPINStore {
 	/// transaction, so the result is exactly what was written, and `Ledger.apply` can take it over. An
 	/// account that no longer exists, such as one removed during its refresh, gets nothing.
 	public func merge(_ delivery: Delivery, into accountID: UUID, now: Date = Date()) throws -> Reconciliation {
-		try queue.write { db in try merge(delivery, into: accountID, now: now, in: db) }
+		try write { db in try merge(delivery, into: accountID, now: now, in: db) }
 	}
 
 	func merge(_ delivery: Delivery, into accountID: UUID, now: Date, in db: Database) throws -> Reconciliation {
@@ -147,7 +169,7 @@ public final class Store: SavedPINStore {
 	/// the state of the setup would roll it back. Returns the stored access and accounts.
 	@discardableResult
 	public func add(_ access: Access, state: AccessState?, accounts: [Account]) throws -> (access: Access, accounts: [Account]) {
-		try queue.write { db in
+		try write { db in
 			let known = try AccessRecord.fetchAll(db).first { $0.access.isSameLogin(as: access) }
 			let record = AccessRecord(id: known?.id ?? access.id, source: access.source, bankName: access.bankName, loginName: access.loginName,
 				state: known?.state ?? state?.data)
@@ -163,7 +185,7 @@ public final class Store: SavedPINStore {
 	/// so the database never keeps the old PIN with the new login. The accounts stay linked to the access, so
 	/// the next refresh of each of them uses the new login.
 	public func updateLogin(of access: UUID, loginName: String, state: AccessState?, savedPIN: Secret?) throws {
-		try queue.write { db in
+		try write { db in
 			try AccessRecord.filter(key: access).updateAll(db, Column("loginName").set(to: loginName), Column("state").set(to: state?.data))
 			if let savedPIN {
 				try SavedPINRecord(accessID: access, pin: savedPIN.value).save(db)
@@ -176,7 +198,7 @@ public final class Store: SavedPINStore {
 	/// Stores the end of a refresh of an access: the status of its accounts, and the new state when the
 	/// connector returned one. Without one the last state stays, so the next refresh starts from it.
 	public func recordRefresh(of access: UUID, state: AccessState?, accounts: [Account]) throws {
-		try queue.write { db in
+		try write { db in
 			if let state { try AccessRecord.filter(key: access).updateAll(db, Column("state").set(to: state.data)) }
 			for a in accounts { try a.update(db) }
 		}
@@ -191,13 +213,13 @@ public final class Store: SavedPINStore {
 
 	/// Saves the PIN of an access, after the bank accepted it. It replaces a PIN saved before.
 	public func savePIN(_ pin: Secret, for access: UUID) throws {
-		try queue.write { db in try SavedPINRecord(accessID: access, pin: pin.value).save(db) }
+		try write { db in try SavedPINRecord(accessID: access, pin: pin.value).save(db) }
 	}
 
 	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts.
 	@discardableResult
 	public func removeSavedPIN(of access: UUID) throws -> Bool {
-		try queue.write { db in try SavedPINRecord.deleteOne(db, key: access) }
+		try write { db in try SavedPINRecord.deleteOne(db, key: access) }
 	}
 
 	/// What identifies every deleted transaction, so that a migration does not add them again.
@@ -208,7 +230,7 @@ public final class Store: SavedPINStore {
 	/// Deletes transactions and keeps what identifies them, so that no later refresh adds them again.
 	/// The bank balance stays as it is. `accounts` are accounts whose initial balance the deletion moves.
 	public func deleteTransactions(_ ids: [UUID], accounts: [Account] = []) throws {
-		try queue.write { db in
+		try write { db in
 			let now = Date()
 			for a in accounts { try a.save(db) }
 			// No source delivers a manual row, so its record could only keep out another booking. A manual row that
@@ -229,7 +251,7 @@ public final class Store: SavedPINStore {
 	}
 
 	public func save(_ decision: HostDecision, host: String, of extensionID: String) throws {
-		try queue.write { db in
+		try write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO extensionHostDecision (extensionID, host, decision) VALUES (?, ?, ?)",
 				arguments: [extensionID, host, decision.rawValue])
 		}
@@ -245,7 +267,7 @@ public final class Store: SavedPINStore {
 	}
 
 	public func saveCatalog(_ catalog: StoredCatalog) throws {
-		try queue.write { db in
+		try write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO extensionCatalog (id, \"index\", signature, floors) VALUES (1, ?, ?, ?)",
 				arguments: [catalog.index, catalog.signature, catalog.floors])
 		}
@@ -260,7 +282,7 @@ public final class Store: SavedPINStore {
 	}
 
 	public func saveLockSettings(_ settings: LockSettings) throws {
-		try queue.write { db in
+		try write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO lockSetting (id, lockOnClose, lockAfterMinutes) VALUES (1, ?, ?)",
 				arguments: [settings.lockOnClose, settings.lockAfterMinutes])
 		}
@@ -276,14 +298,14 @@ public final class Store: SavedPINStore {
 	}
 
 	public func saveInstalledExtension(_ installed: InstalledExtension) throws {
-		try queue.write { db in
+		try write { db in
 			try db.execute(sql: "INSERT OR REPLACE INTO installedExtension (id, origin, record) VALUES (?, ?, ?)",
 				arguments: [installed.id, installed.origin.rawValue, installed.record])
 		}
 	}
 
 	public func removeInstalledExtension(_ id: String) throws {
-		try queue.write { db in
+		try write { db in
 			try db.execute(sql: "DELETE FROM installedExtension WHERE id = ?", arguments: [id])
 		}
 	}
@@ -292,7 +314,7 @@ public final class Store: SavedPINStore {
 	/// ID of that access.
 	@discardableResult
 	public func deleteAccount(_ id: UUID) throws -> UUID? {
-		try queue.write { db in
+		try write { db in
 			let access = try Account.fetchOne(db, key: id)?.accessID
 			_ = try Account.deleteOne(db, key: id)
 			guard let access, try Account.filter(Column("accessID") == access).fetchCount(db) == 0 else { return nil }
@@ -302,12 +324,12 @@ public final class Store: SavedPINStore {
 	}
 
 	public func deleteGroup(_ id: UUID) throws {
-		_ = try queue.write { db in try AccountGroup.deleteOne(db, key: id) }
+		_ = try write { db in try AccountGroup.deleteOne(db, key: id) }
 	}
 
 	/// Removes a category and its subcategories. Their transactions become uncategorized.
 	public func deleteCategory(_ id: UUID) throws {
-		try queue.write { db in
+		try write { db in
 			_ = try Domain.Category.deleteOne(db, key: id)
 			try db.execute(sql: "UPDATE bankTransaction SET categorizedBy = 'none' WHERE categoryID IS NULL AND categorizedBy != 'none'")
 		}

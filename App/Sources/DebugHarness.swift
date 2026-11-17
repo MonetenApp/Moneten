@@ -29,6 +29,8 @@ final class DebugHarness {
 	/// replaces the table. The address of a table is no help, because a new table can get the address of the old one.
 	private let tableNumbers = NSMapTable<NSTableView, NSNumber>.weakToStrongObjects()
 	private var nextTableNumber = 1
+	/// Whether the popover of the custom period that "datefield popover" shows is open.
+	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 
@@ -125,7 +127,7 @@ final class DebugHarness {
 			log("crash inject", ("frames", .count(diagnostic.frames.count)), ("pending", .flag(model.crashes.pending != nil)), ("timeMatches", .flag(model.crashes.pending?.date == date)))
 		#if DEBUG || PERF_HARNESS
 		case "crashstatus":
-			log("crash status", ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
+			log("crash status", ("started", .flag(model.crashes.started)), ("pending", .flag(model.crashes.pending != nil)), ("fallback", .flag(model.crashes.pending?.fallback != nil)), ("received", .count(model.crashes.receivedCount)), ("failures", .count(model.crashes.failureCount)))
 		#endif
 		case "crashdecision":
 			guard let pending = model.crashes.pending else { return log("crash decision", ("pending", .flag(false))) }
@@ -158,6 +160,22 @@ final class DebugHarness {
 		case "lock": model.lock()
 		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
 		case "update": update(argument, model: model)
+		// "Try Again" of the window that shows why the database did not open.
+		case "tryagain":
+			log("tryagain", ("phase", .state(model.phase)))
+			model.start()
+		// Closes the open database as a password change does that left the connection unable to write, for the
+		// snapshots of that window. OpeningTests drive the real cause, which needs the random key in the Keychain.
+		case "passwordunfinished":
+			guard model.phase == .unlocked else { return }
+			model.closeDatabase(then: .passwordChangeUnfinished)
+			log("passwordunfinished", ("phase", .state(model.phase)))
+		// "Load Database Again" of the window that a change of the database file on disk shows.
+		case "loadagain":
+			log("loadagain", ("phase", .state(model.phase)))
+			model.loadDatabaseAgain()
+		// Whether the window says that a database file from the Finder is not opened, and the open store.
+		case "openedfile": log("openedfile", ("alert", .flag(model.openedDatabaseFile)), ("phase", .state(model.phase)))
 		case "appearance": NSApp.appearance = NSAppearance(named: argument == "dark" ? .darkAqua : .aqua)
 		// Sets the width of the sidebar to a number of points, as a drag of the divider does, and logs the width and
 		// the frame of the main window.
@@ -205,6 +223,13 @@ final class DebugHarness {
 				("error", .flag(controls.contains { ($0 as AnyObject).accessibilityIdentifier?() == "vat-error" })))
 		case "vatclose":
 			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// "open" shows the custom period and a field that expects a future date in a sheet, and "popover" shows the
+		// custom period in its popover. "focus <n>", "type <text>", and "tab" edit a field there, "calendar
+		// <from|to|scheduled>" opens the calendar of a field, "pick <yyyymmdd>" clicks that day in the open calendar,
+		// and "state" logs the date that each field reads, whether it has the focus, and the open popovers.
+		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
+		// "calendarsnapshot <name>" draws the calendar alone.
+		case "datefield": dateField(argument)
 		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
 			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -1094,6 +1119,90 @@ final class DebugHarness {
 		}
 	}
 
+	private func dateField(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ").map(String.init)
+		func fields(in view: NSView) -> [NSTextField] {
+			if let field = view as? NSTextField, field.isEditable { return [field] }
+			return view.subviews.flatMap(fields)
+		}
+		func calendars() -> [NSDatePicker] {
+			func pickers(in view: NSView) -> [NSDatePicker] { (view as? NSDatePicker).map { [$0] } ?? view.subviews.flatMap(pickers) }
+			return NSApp.windows.filter(\.isVisible).compactMap(\.contentView).flatMap(pickers).filter { $0.datePickerStyle == .clockAndCalendar }
+		}
+		// The custom period in its popover, the visible popover with text fields, or else the sheet of "open".
+		let popoverWindow = NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") && !($0.contentView.map(fields) ?? []).isEmpty }
+		let window = popoverWindow ?? topSheet
+		switch parts.first ?? "" {
+		case "open":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
+			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
+			let sheet = NSWindow(contentRect: NSRect(origin: .zero, size: host.fittingSize), styleMask: [.titled], backing: .buffered, defer: false)
+			sheet.contentView = host
+			main.beginSheet(sheet)
+			log("datefield opened")
+		// What "Custom..." in the period menu of the filter bar does: a SwiftUI popover with `CustomPeriodView`, here on
+		// an anchor at the top of the main window.
+		case "popover":
+			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), let view = main.contentView else { return }
+			if !datePopover.isAnchored {
+				let anchor = NSHostingView(rootView: DateFieldPopoverAnchor(state: datePopover).environment(model))
+				anchor.frame = NSRect(x: view.bounds.midX, y: view.bounds.maxY - 80, width: 1, height: 1)
+				view.addSubview(anchor)
+				datePopover.isAnchored = true
+			}
+			datePopover.isShown = true
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield popover", ("shown", .flag(shown)))
+			}
+		// "<position>" puts the focus into that field of the popover or the sheet, "type <text>" types there, and "tab"
+		// sends the Tab key, as the general commands do for a sheet.
+		case "focus" where parts.count == 2:
+			guard let window, let position = Int(parts[1]), let view = window.contentView, fields(in: view).indices.contains(position) else { return log("datefield focus", ("", .flag(false))) }
+			window.makeFirstResponder(fields(in: view)[position])
+			fields(in: view)[position].selectText(nil)
+			log("datefield focus", ("", .flag(window.firstResponder is NSTextView)))
+		case "type" where parts.count == 2:
+			(window?.firstResponder as? NSTextView)?.insertText(parts[1], replacementRange: NSRange(location: NSNotFound, length: 0))
+		case "tab":
+			guard let window, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+				context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48) else { return }
+			window.sendEvent(event)
+		case "calendar" where parts.count == 2:
+			let control = (window.map(accessibility) ?? []).first { ($0 as AnyObject).accessibilityIdentifier?() == "\(parts[1])-calendar" }
+			log("datefield calendar", ("handled", .flag(control.map { ($0 as AnyObject).accessibilityPerformPress?() ?? false } ?? false)))
+		case "pick" where parts.count == 2:
+			guard let picker = calendars().first, let raw = Int(parts[1]) else { return log("datefield pick", ("picker", .flag(false))) }
+			// What a click on a day does: the picker takes the date and sends its action.
+			picker.dateValue = Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100).noon
+			picker.sendAction(picker.action, to: picker.target)
+			log("datefield pick", ("picker", .flag(true)))
+		// What a click outside does: SwiftUI sets the binding of the popover to false.
+		case "closepopover":
+			datePopover.isShown = false
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+				let shown = NSApp.windows.contains { $0.isVisible && $0.className.contains("Popover") }
+				self.log("datefield closepopover", ("shown", .flag(shown)), ("calendars", .count(calendars().count)))
+			}
+		case "state":
+			let editable = window?.contentView.map(fields) ?? []
+			let editor = window?.firstResponder as? NSTextView
+			for (i, field) in editable.enumerated() {
+				let read = Day(typed: field.stringValue, today: .today(), order: DateOrder(locale: .current))
+				log("datefield state", ("", .position(i)), ("day", .day(read)), ("focused", .flag(editor?.delegate === field)),
+					("popover", .flag(window === popoverWindow)), ("calendars", .count(calendars().count)))
+			}
+		case "close":
+			if let sheet = topSheet { sheet.sheetParent?.endSheet(sheet); sheet.orderOut(nil) }
+		// The calendar at 15 December 2026, drawn outside a popover, whose glass a snapshot does not draw.
+		case "calendarsnapshot" where parts.count == 2:
+			let name = parts[1]
+			offscreenSnapshot(DateFieldCalendar(title: LocalizedStringKey(name), shown: Day(year: 2026, month: 12, day: 15)) { _, _ in }, width: 200, name: name, kind: "calendar")
+		default: log("datefield rejected")
+		}
+	}
+
 	private func settings(_ argument: String) {
 		guard let model else { return }
 		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -1934,3 +2043,39 @@ extension NSApplication {
 	}
 }
 #endif
+
+/// The custom period and a field that expects a future date, for the checks of the date field in the debug harness.
+/// No window of the app has a field that expects a future date yet, so the harness shows one with an English label.
+private struct DateFieldHarnessView: View {
+	@State private var scheduled: Day? = .today()
+	private let label = "Scheduled date"
+
+	var body: some View {
+		VStack(spacing: 0) {
+			SheetForm {
+				Section {
+					DateField(title: LocalizedStringKey(label), day: $scheduled, expectsFuture: true, identifier: "scheduled")
+				}
+				// The bound day, read here as well, so that the check for unused code sees the same use with every
+				// toolchain, whether or not it counts a read through the binding of the field.
+				.accessibilityValue(scheduled.map { String($0.rawValue) } ?? "")
+			}
+			CustomPeriodView()
+		}
+	}
+}
+
+@MainActor @Observable
+private final class DateFieldPopoverState {
+	var isShown = false
+	var isAnchored = false
+}
+
+/// The anchor of the popover of the custom period in the debug harness, as the filter bar has it.
+private struct DateFieldPopoverAnchor: View {
+	@Bindable var state: DateFieldPopoverState
+
+	var body: some View {
+		Color.clear.frame(width: 1, height: 1).popover(isPresented: $state.isShown) { CustomPeriodView() }
+	}
+}

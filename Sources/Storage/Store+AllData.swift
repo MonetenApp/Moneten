@@ -76,7 +76,7 @@ extension Store {
 	}
 
 	private func write(_ data: AllData, replacing starters: [UUID]) throws {
-		try queue.write { db in
+		try write { db in
 			let others = try Domain.Category.filter(!starters.contains(Column("id"))).fetchCount(db)
 			guard try Account.fetchCount(db) == 0, try Transaction.fetchCount(db) == 0, others == 0,
 				try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM csvProfile") == 0,

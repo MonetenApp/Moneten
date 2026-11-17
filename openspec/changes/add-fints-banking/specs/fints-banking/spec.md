@@ -699,6 +699,37 @@ The app SHALL stop when the bank reports that the PIN or the access is blocked, 
 - **THEN** the accounts of the access show that the bank blocked the access and "Ask the bank to unblock it."
 - **AND** the app asks for no new PIN
 
+### Requirement: Say how to unblock the app at a savings bank
+
+The app SHALL stop when a bank on the FinTS servers of the savings banks answers that the user deactivated the app ("Kundenprodukt" or "Kontozugriff" with "vom Benutzer deaktiviert"), and tell the user to unblock it under "Kontozugriffe" in the online banking. A bank is on these servers when its host label before ".de" starts with "s-fints-pt-" or is "s-hbci". The app forgets the PIN and asks for no new PIN until a refresh by hand.
+
+#### Scenario: App deactivated in the online banking
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9800 "Dialog abgebrochen" and the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows that Moneten is blocked in the online banking of the Sparkasse, the text "Kundenprodukt wurde vom Benutzer deaktiviert" with the code 9010, and "Unblock Moneten there under “Service > Persönliche Einstellungen > Kontozugriffe”, then refresh the account."
+- **AND** the app asks for no new PIN
+- **AND** the automatic refresh skips this access until the user starts a refresh
+
+#### Scenario: App deactivated during the setup
+
+- **GIVEN** the assistant "Add Account" logs in to a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** the assistant lists no accounts and says where the user unblocks Moneten
+
+#### Scenario: Card or TAN method blocked by the user
+
+- **GIVEN** a refresh of "Giro" at a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the bank answers the login with the code 9942 "PIN falsch" and the code 9010 "pushTAN wurde vom Kunden deaktiviert"
+- **THEN** the PIN sheet opens again with "PIN falsch"
+- **AND** the app names no "Kontozugriffe"
+
+#### Scenario: Same text from another bank
+
+- **GIVEN** a refresh of "Giro" at "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the bank answers the login with the code 9010 "Kundenprodukt wurde vom Benutzer deaktiviert"
+- **THEN** "Giro" shows the text of the bank with the code 9010 and no hint about "Kontozugriffe"
+
 ### Requirement: Cancel and interruption
 
 The app SHALL end the FinTS dialog with the bank when the user cancels a refresh, and it SHALL store nothing for an account whose fetch was canceled, timed out, or lost its connection. Accounts that were complete before stay stored.

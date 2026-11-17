@@ -130,6 +130,22 @@ The app SHALL check an IBAN for its country code, its length for that country, a
 - **WHEN** the user enters an IBAN that starts with "XX"
 - **THEN** the app says that the IBAN starts with an unexpected country code
 
+### Requirement: Point customers of 1822direkt to its Bankleitzahl
+
+The app SHALL tell the user in the first step that a customer of 1822direkt enters the Bankleitzahl 50050222 in place of the IBAN, when the entered IBAN carries the Bankleitzahl 50050201. 1822direkt gives its customers IBANs with the Bankleitzahl of Frankfurter Sparkasse, and its FinTS server has the Bankleitzahl 50050222. A Bankleitzahl that the user enters or chooses gets no such note.
+
+#### Scenario: IBAN with the Bankleitzahl of Frankfurter Sparkasse
+
+- **GIVEN** the bank directory lists 50050201 as "Frankfurter Sparkasse" and 50050222 as "1822direkt (PIN/TAN)"
+- **WHEN** the user enters "DE24500502010000202051"
+- **THEN** the app shows "Frankfurter Sparkasse"
+- **AND** the app says that a customer of 1822direkt enters the Bankleitzahl 50050222 in place of the IBAN
+
+#### Scenario: Bankleitzahl of Frankfurter Sparkasse
+
+- **WHEN** the user enters "50050201"
+- **THEN** the app shows "Frankfurter Sparkasse" without that note
+
 ### Requirement: Check the Bankleitzahl
 
 The app SHALL reject a Bankleitzahl that is not in the bank directory, also when it is part of an IBAN, and SHALL never say that a Bankleitzahl in the bank directory is outdated.
@@ -274,6 +290,35 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the user fills in "User ID" and "PIN" and leaves the customer ID empty
 - **THEN** "Next" is enabled
 
+### Requirement: Send a login name of 17 digits to a savings bank as 16 digits
+
+The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it.
+
+#### Scenario: Login name of 17 digits
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "12345678901234567" and clicks "Next"
+- **THEN** the app sends the login name "1234567890123456"
+- **AND** the access stores the login name "1234567890123456"
+
+#### Scenario: Login name of 17 characters with a letter
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "1234567890123456A" and clicks "Next"
+- **THEN** the app sends and stores "1234567890123456A"
+
+#### Scenario: Login name of 17 digits at another bank
+
+- **GIVEN** the user chose "Musterbank" with the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** the user enters the login name "12345678901234567" and clicks "Next"
+- **THEN** the app sends and stores "12345678901234567"
+
+#### Scenario: New login name of 17 digits in "Edit Login Data..."
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the user enters the login name "12345678901234567" in "Edit Login Data..." and clicks "Next"
+- **THEN** the app sends and stores "1234567890123456"
+
 ### Requirement: Check the format of login fields
 
 The app SHALL check each login field against the format that the bank directory or the extension declares for it, before it contacts the bank, and name the field and the broken rule. Formats cover digits only, a minimum and a maximum length, an exact length, characters that are not allowed, an email address, a date, and a phone number with or without a country code.
@@ -342,13 +387,20 @@ The app SHALL send and store a VR-Kennung in capitals and without spaces when th
 
 ### Requirement: Show what the bank requires before the first login
 
-The app SHALL show a hint in the second step when the bank directory or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
+The app SHALL show a hint in the second step when the app, the bank directory, or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
 
 #### Scenario: Access must be requested
 
 - **GIVEN** the note for "Musterbank" says that the FinTS access must be requested from the bank
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows that note above the fields
+
+#### Scenario: Savings bank
+
+- **GIVEN** the user chose a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user logs in with the login name and the PIN of the online banking of the Sparkasse
+- **AND** the app says that the user sets up a TAN method such as pushTAN or chipTAN in the online banking before the first login
 
 #### Scenario: Credit card
 

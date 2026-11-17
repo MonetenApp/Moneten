@@ -35,7 +35,7 @@ extension Store {
 
 	public func saveCSVProfile(_ profile: CSVProfile, replacing old: String?) throws {
 		let encoded = try JSONEncoder().encode(profile)
-		try queue.write { db in
+		try write { db in
 			if let taken = try Row.fetchOne(db, sql: "SELECT version, payload FROM csvProfile WHERE name = ?", arguments: [profile.name]),
 				Self.readableProfile(taken) == nil {
 				throw CSVProfileNameTaken(name: profile.name)
@@ -67,6 +67,6 @@ extension Store {
 	}
 
 	public func deleteCSVProfile(named name: String) throws {
-		_ = try queue.write { db in try db.execute(sql: "DELETE FROM csvProfile WHERE name = ?", arguments: [name]) }
+		_ = try write { db in try db.execute(sql: "DELETE FROM csvProfile WHERE name = ?", arguments: [name]) }
 	}
 }

@@ -112,10 +112,16 @@ final class AppModel {
 		case locked
 		case unlocked
 		case failed(String)
+		/// The database file changed outside the app while it was open. The store is closed, and the window
+		/// offers to load the database again.
+		case changedOnDisk
+		/// A password change left the open connection unable to write safely. The store is closed, and the window
+		/// offers to load the database again.
+		case passwordChangeUnfinished
 	}
 
 	let vault = Vault(folder: .current)
-	let crashes = CrashReportController(folder: .current)
+	let crashes: CrashReportController
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
@@ -355,6 +361,12 @@ final class AppModel {
 	private var idleTimer: Timer?
 
 	init() {
+		// The lock of the data folder comes before every service that writes into it, such as the crash reports, so a
+		// second running copy changes no file there.
+		let lock = try? DataFolderLock(folder: .current)
+		crashes = CrashReportController(folder: .current)
+		if lock != nil { crashes.start() }
+		folderLock = lock
 		Preference.registerDefaults()
 		autoRefresh = AutoRefresh(settings: refreshSettings, now: Self.refreshClock)
 		announcer = NewTransactionsAnnouncer(settings: refreshSettings, center: notices)
@@ -418,6 +430,14 @@ final class AppModel {
 	/// What the window shows while the database opens: "Opening database..." or "Upgrading database...".
 	/// Nil while nothing opens.
 	private(set) var opening: String?
+	/// Held while the app runs, so that no second running copy opens the same data folder.
+	private var folderLock: DataFolderLock?
+	/// Reports each change of the entries in the database folder, such as a backup put in place of the file.
+	var diskSource: DispatchSourceFileSystemObject?
+	/// True while a check of the database file runs away from the main thread.
+	var checksDisk = false
+	/// True while the window says that a database file from the Finder is not opened.
+	var openedDatabaseFile = false
 	/// Why the lock screen asks for the password although an unlock setting is on, such as a Keychain error
 	/// or a password in the Keychain that does not open a database restored from a backup.
 	private(set) var lockNotice: String?
@@ -436,6 +456,15 @@ final class AppModel {
 	private func startOpening() async {
 		guard opening == nil else { return }
 		phase = .starting
+		// A second running copy of the app, such as one in the Downloads folder, opens nothing in this data folder.
+		if folderLock == nil {
+			do { folderLock = try DataFolderLock(folder: vault.folder) } catch {
+				phase = .failed(String(describing: error))
+				return
+			}
+			// A copy that got the lock only now, through "Try Again", starts its crash reports now.
+			crashes.start()
+		}
 		do {
 			switch try vault.state() {
 			case .empty:
@@ -519,6 +548,8 @@ final class AppModel {
 	}
 
 	func createDatabase(password: String?) {
+		// Only the copy that holds the lock of the data folder creates a database. The vault itself refuses a folder with files.
+		guard folderLock != nil else { return }
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
 			// `create` removed the entries of a database that was here before, so every unlock setting is off.
@@ -601,6 +632,7 @@ final class AppModel {
 		}
 		lastActivity = Date()
 		phase = .unlocked
+		watchDisk()
 		extensions.open(store)
 		announcer.unlock()
 		if let notified = notifiedAccounts {
@@ -612,6 +644,12 @@ final class AppModel {
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
+		closeDatabase(then: .locked)
+	}
+
+	/// Closes the store and forgets everything that came from it, for the lock and after a change on disk.
+	func closeDatabase(then next: Phase) {
+		stopWatchingDisk()
 		// A locked app refreshes nothing and forgets every PIN in memory. The saved ones come back from the database at the next unlock.
 		// The announcer locks first, because the cancel below can end the run at once.
 		announcer.lock(keeping: ledger)
@@ -633,12 +671,12 @@ final class AppModel {
 		bankNotices = BankNotices()
 		bankHistories = [:]
 		sheet = nil
-		phase = .locked
+		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
 		// table never goes in the drawing that changes its rows (issue #151).
 		afterDraw { [weak self] in
 			Task { @MainActor in
-				guard let self, self.phase == .locked else { return }
+				guard let self, self.phase == next else { return }
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
 				self.savedSearches = []
@@ -658,6 +696,7 @@ final class AppModel {
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not change password of database."), message: String(describing: error))
+			closeIfPasswordChangeLeftNoWrites(error)
 		}
 	}
 
@@ -674,6 +713,9 @@ final class AppModel {
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {
+			closeIfPasswordChangeLeftNoWrites(error)
+			if case .passwordNotChanged? = error as? Vault.Failure { return String(describing: error) }
+			if error is DatabaseChangedOnDisk { return String(describing: error) }
 			return String(localized: "Could not change password of database. \(String(describing: error))")
 		}
 	}
@@ -686,7 +728,13 @@ final class AppModel {
 			return event
 		}
 		idleTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { [weak self] _ in
-			MainActor.assumeIsolated { self?.checkIdle() }
+			MainActor.assumeIsolated {
+				self?.checkIdle()
+				self?.checkDisk()
+			}
+		}
+		NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+			MainActor.assumeIsolated { self?.checkDisk() }
 		}
 		NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
 			MainActor.assumeIsolated { self?.checkIdle() }
