@@ -22,10 +22,11 @@ extension FinTSServer {
 	}
 
 	/// Whether the host of `server` is a subdomain of `domain`. The host counts in lower case and without one trailing
-	/// dot, as `DeutscheBankGroup.name` of the helper reads it.
+	/// dot, and a host with an empty label counts as none, as `SavingsBanks.name` of the helper reads it.
 	private static func host(of server: URL?, endsIn domain: String) -> Bool {
 		guard var host = server?.host()?.lowercased() else { return false }
 		if host.hasSuffix(".") { host.removeLast() }
+		guard !host.hasPrefix("."), !host.hasSuffix("."), !host.contains("..") else { return false }
 		return host.hasSuffix("." + domain)
 	}
 
@@ -39,7 +40,8 @@ extension FinTSServer {
 }
 
 extension Access {
-	/// The login name for the PIN dialog, the account settings, and the field of "Edit Login Data...".
+	/// The login name for the PIN dialog, the TAN dialog, the progress of a challenge, the account settings, and the
+	/// field of "Edit Login Data...".
 	public var shownLoginName: String {
 		guard case let .fints(_, url) = source else { return loginName }
 		return FinTSServer.shownLoginName(loginName, server: url)

@@ -40,6 +40,12 @@ final class DeutscheBankGroup {
 		return oneWord && !text.toLowerCase(Locale.ROOT).equals(CARD_PAYMENT) ? text : null;
 	}
 
+	/// The login name as the group expects it: without any Unicode white space, as Character.isWhitespace in
+	/// FinTSServer.loginName of the app removes it.
+	static String withoutSpaces(String name) {
+		return name.replaceAll("(?U)\\s", "");
+	}
+
 	/// The codes with which the group answers a login that a new login replaced, such as the old branch and account
 	/// number after the user chose a Deutsche Bank ID of their own.
 	static final Set<String> REPLACED_LOGIN_CODES = Set.of("9940", "3960");

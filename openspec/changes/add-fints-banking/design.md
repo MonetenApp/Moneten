@@ -108,6 +108,8 @@ The helper decides the rules of this group by the FinTS host of the dialog, in `
 
 The group answers a login that a new login replaced with 9940 or the warning 3960 and the request "Melden Sie sich im Online-Banking an oder kontaktieren den Support" (`DeutscheBankGroup.loginReplaced`). The helper marks such an answer `loginReplaced` and shows it before the urgent codes, as it does for the app blocked at a savings bank. The warning 3960 ends the dialog like the warning 3938, because no order works with the old login.
 
+The app sends the login name of the group without spaces, also for an access that stored it with spaces. The helper takes that login name over the user ID of the stored state, and a customer ID of the state follows it when it names the same login: on a host of the group, a customer ID that agrees with the user ID once every white space is removed (`DeutscheBankGroup.withoutSpaces`). A customer ID that differs in more than its spaces is one of its own and stays.
+
 ### Signing
 
 `scripts/build-app.sh` builds a runtime with jlink, puts the helper into `Contents/Resources/FinTSHelper`, and signs every Mach-O file of it with the identity of the app. Only the java of the helper gets the JIT entitlement. The build fails when a file cannot be signed or is not signed like the app. A Developer ID build signs it with the Developer ID certificate in the Keychain ([ADR 0016](../../../docs/decisions/0016-developer-id-certificate-in-ci.md)).

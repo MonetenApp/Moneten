@@ -408,9 +408,10 @@ public class FinTSHelper {
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
 		/// The login name of the command, which replaces the user ID of the state, so that a login name that
-		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, or the first 16 digits of a
-		/// login name of 17 digits that an older access of a savings bank stored. A customer ID that was the user
-		/// ID follows it.
+		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, the first 16 digits of a
+		/// login name of 17 digits that an older access of a savings bank stored, or a login name without the
+		/// spaces that an older access of the Deutsche Bank group stored. A customer ID that was the user ID
+		/// follows it.
 		static String user;
 
 		record State(PassportData data, String tanMedium) { }
@@ -444,14 +445,16 @@ public class FinTSHelper {
 			setCurrentTANMethod(d.tanMethod);
 		}
 
-		/// Whether the customer ID of a state names the login of its user ID: the same text, or on a server of
-		/// the cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals.
+		/// Whether the customer ID of a state names the login of its user ID: the same text, on a server of the
+		/// cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals, or on a
+		/// server of the Deutsche Bank group the same text without white space, which the app sends without spaces.
 		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart. A
 		/// savings bank needs no rule here: the state stores the 17 digits as both IDs, which are the same text,
 		/// and the customer ID follows the 16 digits of the command.
 		static boolean sameLogin(String customerId, String userId, String host) {
 			if (customerId == null || userId == null) return false;
 			if (customerId.equals(userId)) return true;
+			if (DeutscheBankGroup.group(host) && DeutscheBankGroup.withoutSpaces(customerId).equals(DeutscheBankGroup.withoutSpaces(userId))) return true;
 			String vrk = vrKennung(customerId);
 			return cooperative(host) && vrk != null && vrk.equals(vrKennung(userId));
 		}
@@ -497,7 +500,8 @@ public class FinTSHelper {
 		/// challenge may still wait.
 		DialogContext open;
 
-		/// The warning 3938 of a dialog initialization, or the warning of a replaced login (`blocking`). hbci4java counts such an answer as a successful login and
+		/// The answer of a dialog initialization after which no order succeeds (`blocking`): the warning 3938, or the
+		/// answer of the Deutsche Bank group to a replaced login. hbci4java counts a warning as a successful login and
 		/// would send the orders and further dialogs, so every later message and order fails with it.
 		Failure block;
 
@@ -1016,7 +1020,8 @@ public class FinTSHelper {
 		return message("row",
 			"booked", day(l.bdate != null ? l.bdate : l.valuta), "value", day(l.valuta),
 			"amount", l.value.getBigDecimalValue().toPlainString(), "currency", text(l.value.getCurr()),
-			"name", DeutscheBankGroup.name(Callback.server, pending, other == null ? null : text(other.name), text(l.text), purpose), "iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
+			"name", DeutscheBankGroup.name(Callback.server, pending, other == null ? null : text(other.name), text(l.text), purpose),
+			"iban", other == null ? null : text(other.iban), "bic", other == null ? null : text(other.bic),
 			"purpose", purpose, "endToEnd", endToEnd, "mandate", text(present(l.mandateId) ? l.mandateId : tags.get("MREF")),
 			"creditor", text(other != null && present(other.creditorid) ? other.creditorid : tags.get("CRED")),
 			"bookingText", text(l.text), "pending", pending);
@@ -1064,7 +1069,8 @@ public class FinTSHelper {
 	}
 
 	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
-	/// savings bank, a login of the Deutsche Bank group that a new login replaced, or a refused TAN after an approval in the app, which means that the approval did not happen.
+	/// savings bank, a login of the Deutsche Bank group that a new login replaced, or a refused TAN after an approval
+	/// in the app, which means that the approval did not happen.
 	static String kind(String code, String text) {
 		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
 		if (DeutscheBankGroup.loginReplaced(Callback.server, code, text)) return "loginReplaced";
@@ -1084,15 +1090,15 @@ public class FinTSHelper {
 		}
 	}
 
-	/// The warning 3938 "Zugang vorläufig gesperrt" of an answer, after which no order succeeds, or null.
+	/// The return value of an answer after which no order succeeds (`blocking(HBCIRetVal)`), or null.
 	static HBCIRetVal blocking(HBCIMsgStatus status) {
 		if (status == null) return null;
 		for (HBCIRetVal r : errors(status.globStatus, status.segStatus)) if (blocking(r)) return r;
 		return null;
 	}
 
-	/// A warning after which no order succeeds: 3938, or the warning of the Deutsche Bank group that a new login replaced
-	/// the login of the access.
+	/// A return value after which no order succeeds: the warning 3938 "Zugang vorläufig gesperrt", or the answer of the
+	/// Deutsche Bank group that a new login replaced the login of the access, the error 9940 or the warning 3960.
 	static boolean blocking(HBCIRetVal r) {
 		return BLOCKING_WARNINGS.contains(r.code) || DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text);
 	}

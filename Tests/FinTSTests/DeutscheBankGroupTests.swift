@@ -32,6 +32,10 @@ struct DeutscheBankGroupTests {
 			("https://fints.deutsche-bank.de.example.com/", false),
 			("https://fints.my-postbank.de/", false),
 			("https://fints.musterbank.example/fints", false),
+			// A host with an empty label counts as none, as in the helper.
+			("https://fints..deutsche-bank.de/", false),
+			("https://fints.deutsche-bank.de../", false),
+			("https://.postbank.de/", false),
 		])
 	func host(url: String, expected: Bool) {
 		#expect(FinTSServer.isDeutscheBankGroup(URL(string: url)) == expected)

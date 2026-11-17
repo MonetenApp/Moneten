@@ -10,6 +10,22 @@ final class DeutscheBankGroupSelfTest {
 		hosts();
 		pendingCardPayment();
 		loginReplaced();
+		restoredLogin();
+	}
+
+	/// A state of the group whose IDs differ in their spaces only names one login, so the customer ID follows the login
+	/// name of the command, which the app sends without spaces.
+	static void restoredLogin() {
+		SelfTest.expect("a customer ID with spaces follows a user ID without", SelfTest.restoredLogin(DEUTSCHE_BANK, "1234567890", "123 4567890", "1234567890"),
+			"1234567890 1234567890");
+		SelfTest.expect("a customer ID without spaces follows a user ID with", SelfTest.restoredLogin(POSTBANK, "123 4567890", "1234567890", "1234567890"),
+			"1234567890 1234567890");
+		SelfTest.expect("other white space counts as a space", SelfTest.restoredLogin("fints.norisbank.de/", "123\u00A04567890", "123\u2003 4567890", "1234567890"),
+			"1234567890 1234567890");
+		SelfTest.expect("a customer ID of its own stays", SelfTest.restoredLogin(DEUTSCHE_BANK, "1234567890", "987 6543210", "1234567890"),
+			"1234567890 987 6543210");
+		SelfTest.expect("another bank keeps a customer ID that differs in spaces", SelfTest.restoredLogin(MUSTERBANK, "1234567890", "123 4567890", "1234567890"),
+			"1234567890 123 4567890");
 	}
 
 	static void hosts() {
