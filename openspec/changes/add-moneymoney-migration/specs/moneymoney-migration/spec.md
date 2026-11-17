@@ -423,6 +423,7 @@ The app SHALL show the current step, the current account when known, and complet
 - **WHEN** the user chooses "Cancel" before the transaction commits
 - **THEN** the transaction rolls back, including new accounts, categories, and replaced starter categories
 - **AND** no background result reopens the assistant
+- **AND** the database stays open, and the app does not report that the database file changed on disk
 
 #### Scenario: Cancel after the last write check
 
@@ -545,6 +546,14 @@ The app SHALL create portfolio accounts of the source as accounts and, when secu
 - **AND** the report names "Depot" and says its positions were not migrated because the portfolio export format is not verified
 - **AND** the report says to connect the portfolio to its bank to fetch positions
 - **AND** a repeated run keeps this note and any positions already fetched from the bank
+
+#### Scenario: Position keys are not verified for a connected portfolio
+
+- **GIVEN** "Depot" came over in an earlier run and is now connected to its bank, which fetched 12.5 units of "Example Fund"
+- **WHEN** the migration runs again
+- **THEN** the report names "Depot" and says its positions were not migrated because the portfolio export format is not verified
+- **AND** the report says that its bank access fetches them with each refresh, and does not ask to connect "Depot"
+- **AND** the 12.5 units of "Example Fund" stay
 
 ### Requirement: Report
 

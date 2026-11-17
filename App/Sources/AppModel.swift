@@ -168,9 +168,11 @@ final class AppModel {
 	@ObservationIgnored var ledgerChange = "edit"
 	@ObservationIgnored private(set) var ledgerRevision = 0
 	@ObservationIgnored var migrationTask: Task<Void, Never>?
-	private var migrationStoring = false
+	/// True while a migration holds the database writer. Commands that read or change the database wait for its end, because
+	/// a write on the main actor would block the window until the migration commits. A file import or an export does not set it.
+	private(set) var isStoringMigration = false
 	var exportTask: Task<Void, Never>?
-	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil || migrationStoring }
+	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil || isStoringMigration }
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
 	let refreshSettings = RefreshSettings(defaults: .standard)
@@ -667,7 +669,7 @@ final class AppModel {
 		setup = nil
 		ruleRun?.cancel()
 		extensions.close()
-		if migrationStoring, let store {
+		if isStoringMigration, let store {
 			Task.detached { try? store.close() }
 		} else {
 			try? store?.close()
@@ -829,7 +831,7 @@ final class AppModel {
 
 	/// New transactions count as seen when the user opens their account.
 	private func markSeen() {
-		guard !migrationStoring else { return }
+		guard !isStoringMigration else { return }
 		// The rows wait until SwiftUI drew a new table.
 		if tableUndrawn {
 			afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
@@ -1445,13 +1447,13 @@ final class AppModel {
 	}
 
 	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !migrationStoring && !ledger.refreshAccounts(scope).isEmpty
+		phase == .unlocked && !isStoringMigration && !ledger.refreshAccounts(scope).isEmpty
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
-		guard !migrationStoring, let store else { return }
+		guard !isStoringMigration, let store else { return }
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
@@ -1583,11 +1585,14 @@ final class AppModel {
 
 	func runMigration(plan: MoneyMoneyMigration.Plan, cancel: MigrationCancel,
 		progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
-		guard let store else { throw CancellationError() }
-		guard !isTransferringTransactions, !isApplyingRule else { throw CancellationError() }
-		migrationStoring = true
+		// The sheet swallows a CancellationError and keeps waiting, so a refusal must be an error that it shows.
+		guard let store else { throw MigrationRefused(description: String(localized: "The database is not open.")) }
+		guard !isTransferringTransactions, !isApplyingRule else {
+			throw MigrationRefused(description: String(localized: "Another import, an export, or a rule runs. Start this import again when that has ended."))
+		}
+		isStoringMigration = true
 		defer {
-			migrationStoring = false
+			isStoringMigration = false
 			Task { await extensions.applyUpdates() }
 		}
 		return try await sync.withRefreshesPaused {
@@ -1860,4 +1865,9 @@ enum SheetKind: Identifiable, Equatable {
 	case renameSearch(UUID)
 
 	var id: String { String(describing: self) }
+}
+
+/// Why a migration did not start. The sheet shows it, and nothing was stored.
+private struct MigrationRefused: Error, CustomStringConvertible {
+	let description: String
 }

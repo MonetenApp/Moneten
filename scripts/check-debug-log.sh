@@ -259,6 +259,8 @@ for header in "" "Date;Name;Amount"; do
 done
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
+# A file import holds back neither the commands nor the settings and extensions. Only a migration that stores does.
+poll "^menucommands enabled=true transferring=true migration=false$" menucommands
 poll "^csv rows" csv rows
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
 send key return

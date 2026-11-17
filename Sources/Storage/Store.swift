@@ -22,18 +22,29 @@ public final class Store: SavedPINStore {
 	/// The only write path of the store. Each transaction first checks that the file did not change on disk, with
 	/// the write lock already held, so no other program can commit between the check and the commit.
 	func write<T>(_ updates: (Database) throws -> T) throws -> T {
-		try queue.write { db in
-			try diskWatch.checkBeforeWrite(db)
-			return try updates(db)
-		}
+		try queue.writeWithoutTransaction { db in try Self.transaction(db, diskWatch, updates) }
 	}
 
 	func write<T: Sendable>(_ updates: @escaping @Sendable (Database) throws -> T) async throws -> T {
 		let diskWatch = diskWatch
-		return try await queue.write { db in
-			try diskWatch.checkBeforeWrite(db)
-			return try updates(db)
+		return try await queue.writeWithoutTransaction { db in try Self.transaction(db, diskWatch, updates) }
+	}
+
+	/// The transaction of `write`, as GRDB's `write` runs it. After a rollback the watch reads the version of the file again
+	/// before any other access to the queue.
+	private static func transaction<T>(_ db: Database, _ diskWatch: DiskWatch, _ updates: (Database) throws -> T) throws -> T {
+		var result: T?
+		do {
+			try db.inTransaction {
+				try diskWatch.checkBeforeWrite(db)
+				result = try updates(db)
+				return .commit
+			}
+		} catch {
+			diskWatch.writeRolledBack(db)
+			throw error
 		}
+		return result!
 	}
 
 	/// Reads everything into memory. A portfolio whose value of its balance day is missing or

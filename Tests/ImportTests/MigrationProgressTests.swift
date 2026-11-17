@@ -10,7 +10,9 @@ struct MigrationProgressTests {
 		let next = MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Giro")
 		#expect(!next.shouldPublish(after: previous, elapsed: .milliseconds(500)))
 		#expect(next.shouldPublish(after: previous, elapsed: .seconds(1)))
-		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 1234, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: .zero))
+		// Another account waits for the second like another count, so rows that alternate between accounts publish no more often.
+		#expect(!MoneyMoneyMigration.Progress(step: .transactions, completed: 1235, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: .zero))
+		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 1235, total: 5000, account: "Savings").shouldPublish(after: next, elapsed: .seconds(1)))
 		#expect(!previous.shouldPublish(after: next, elapsed: .seconds(2)))
 		#expect(next.text(locale: Locale(identifier: "en_US")) == "Transactions: 1,234 of 5,000")
 		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 5000, total: 5000).shouldPublish(after: next, elapsed: .milliseconds(100)))
@@ -18,6 +20,21 @@ struct MigrationProgressTests {
 		#expect(MoneyMoneyMigration.Progress(step: .transactions, completed: 0, total: 0).shouldPublish(after: nil, elapsed: .zero))
 		#expect(MoneyMoneyMigration.Progress(step: .waitingTransactions).text() == "Waiting for transactions...")
 		#expect(MoneyMoneyMigration.Progress(step: .preparing).text() == "Preparing import...")
+	}
+
+	@Test("Rows that alternate between two accounts publish at most once per second")
+	func alternatingAccounts() {
+		var published: [MoneyMoneyMigration.Progress] = []
+		var reporter = MigrationProgressReporter { published.append($0) }
+		let start = ContinuousClock.now
+		let total = 20_000
+		for i in 1...total {
+			reporter.send(.init(step: .transactions, completed: i, total: total, account: i.isMultiple(of: 2) ? "Giro" : "Savings"))
+		}
+		let seconds = Int(start.duration(to: .now).components.seconds)
+		// The first count, one for each full second, and the last count.
+		#expect(published.count <= seconds + 2)
+		#expect(published.last?.completed == total)
 	}
 
 	@Test("The planner publishes exact source counts, including skipped rows")

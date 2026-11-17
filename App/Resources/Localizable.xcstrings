@@ -2042,6 +2042,16 @@
       },
       "extractionState" : "manual"
     },
+    "Another import, an export, or a rule runs. Start this import again when that has ended." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Import, ein Export oder eine Regel läuft. Starten Sie diesen Import erneut, sobald der Vorgang beendet ist."
+          }
+        }
+      }
+    },
     "Another program has the database open." : {
       "localizations" : {
         "de" : {
@@ -10482,6 +10492,16 @@
         }
       }
     },
+    "The database is not open." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datenbank ist nicht geöffnet."
+          }
+        }
+      }
+    },
     "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
       "localizations" : {
         "de" : {
@@ -11616,6 +11636,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Positionen von „%@“ wurden nicht übernommen, weil das Exportformat von Depots nicht geprüft ist. Verbinden Sie das Depot mit seiner Bank, um seine Positionen abzurufen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The positions of \"%@\" were not migrated, because the portfolio export format is not verified. Its bank access fetches them with each refresh." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Positionen von „%@“ wurden nicht übernommen, weil das Exportformat von Depots nicht geprüft ist. Sein Bankzugang ruft sie bei jeder Aktualisierung ab."
           }
         }
       },

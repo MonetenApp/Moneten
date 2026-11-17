@@ -312,7 +312,7 @@ final class ExtensionLibrary {
 	}
 
 	private func download(_ entry: CatalogIndex.Entry) async {
-		guard let model, !model.isTransferringTransactions, let store = model.store else { return }
+		guard let model, !model.isStoringMigration, let store = model.store else { return }
 		let id = entry.id
 		let canceled = InstallCancellation()
 		downloads[id] = canceled
@@ -375,7 +375,7 @@ final class ExtensionLibrary {
 	/// Copies the extension into the folder after the user agreed to the warning, and marks it "Unverified".
 	/// An installed file of the same name stays until every file of the new one is in place.
 	func installFile(_ url: URL, name: String, shown: ExtensionPackage) {
-		guard model?.isTransferringTransactions != true else { return }
+		guard model?.isStoringMigration != true else { return }
 		guard !isCatalog(name) else {
 			failure = String(localized: "A catalog extension with the name \(name) is installed. Remove it first.")
 			return
@@ -392,7 +392,7 @@ final class ExtensionLibrary {
 	/// Records the bytes of the files that the user saw in the warning. A session runs only those bytes,
 	/// and a later change asks again.
 	func allow(_ name: String, shown: ExtensionPackage) {
-		guard model?.isTransferringTransactions != true, let store = model?.store else { return }
+		guard model?.isStoringMigration != true, let store = model?.store else { return }
 		guard !isCatalog(name) else {
 			failure = String(localized: "\(name) is a catalog extension. It runs only with the files of the catalog.")
 			return reload()
@@ -470,7 +470,7 @@ final class ExtensionLibrary {
 	/// Removes an extension. It waits for no install: an extension that is being installed or updated
 	/// cannot be removed until the install ends, also when the dialog opened before the install started.
 	func remove(_ id: String) {
-		guard model?.isTransferringTransactions != true, let store = model?.store else { return }
+		guard model?.isStoringMigration != true, let store = model?.store else { return }
 		guard !working.contains(id) else {
 			failure = String(localized: "\(id) is being installed. Remove it after the install.")
 			return reload()

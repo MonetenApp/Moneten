@@ -143,6 +143,21 @@ struct MoneyMoneyMigrationTests {
 		#expect(second.accounts.isEmpty)
 	}
 
+	@Test("A connected portfolio gets a note on its bank access instead of a request to connect it")
+	func connectedPortfolioNote() throws {
+		let first = try plan()
+		var accounts = first.accounts
+		let index = try #require(accounts.firstIndex { $0.kind == .portfolio })
+		accounts[index].source = .bank
+		accounts[index].accessID = UUID()
+		let ledger = Ledger(groups: first.groups, accounts: accounts, categories: first.categories, transactions: first.transactions)
+		let second = try plan(into: ledger)
+		let prefix = "The positions of \"Depot\" were not migrated, because the portfolio export format is not verified."
+		#expect(second.notes.contains("\(prefix) Its bank access fetches them with each refresh."))
+		#expect(!second.notes.contains { $0.contains("Connect the portfolio") })
+		#expect(second.portfolioAccounts == ["Depot"])
+	}
+
 	@Test("The computed balance ends at the balance of the source plus its pending rows")
 	func initialBalance() throws {
 		let p = try plan()

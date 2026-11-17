@@ -37,7 +37,9 @@ public struct MoneyMoneyMigration: Sendable {
 		/// Accounts and transactions that the ledger already holds, and transactions the user deleted.
 		public var skippedAccounts = 0
 		public var skippedTransactions = 0
-		public var portfolioAccounts: [String] = []
+		/// The portfolio accounts of the export by name, and whether each one has a bank access, which fetches its positions.
+		fileprivate var portfolios: [(name: String, connected: Bool)] = []
+		public var portfolioAccounts: [String] { portfolios.map(\.name) }
 		public var notes: [String] = []
 		/// Each account of the export, in its order, for the report.
 		public var sources: [SourceAccount] = []
@@ -226,8 +228,11 @@ public struct MoneyMoneyMigration: Sendable {
 			plan.notes += Self.ruleNotes(c, accountNumbers: accountNumbers)
 		}
 		plan.notes += try Self.groupSumNotes(rawAccounts)
-		for name in plan.portfolioAccounts {
-			plan.notes.append(String(localized: "The positions of \"\(name)\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions."))
+		for portfolio in plan.portfolios {
+			let name = portfolio.name
+			plan.notes.append(portfolio.connected
+				? String(localized: "The positions of \"\(name)\" were not migrated, because the portfolio export format is not verified. Its bank access fetches them with each refresh.")
+				: String(localized: "The positions of \"\(name)\" were not migrated, because the portfolio export format is not verified. Connect the portfolio to its bank to fetch its positions."))
 		}
 		plan.notes += Self.notMigratedNotes
 		let budgets = rawCategories.filter(Self.hasBudget).count
@@ -388,7 +393,7 @@ public struct MoneyMoneyMigration: Sendable {
 				continue
 			}
 			let isPortfolio = (item["portfolio"] as? Bool) == true || Self.kind(item["type"] as? String) == .portfolio
-			if isPortfolio { plan.portfolioAccounts.append(name) }
+			if isPortfolio { plan.portfolios.append((name, false)) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
 			let bankCode = Self.string(item["bankCode"])
@@ -414,6 +419,7 @@ public struct MoneyMoneyMigration: Sendable {
 			}) {
 				map[source] = existing.id
 				plan.skippedAccounts += 1
+				if isPortfolio, existing.accessID != nil { plan.portfolios[plan.portfolios.count - 1].connected = true }
 				var changed = false
 				if existing.source == .migrated, let balanceMinor, existing.bankBalanceMinor != balanceMinor || existing.bankBalanceDate != balanceDate {
 					existing.bankBalanceMinor = balanceMinor

@@ -148,6 +148,35 @@ struct MigrationStoreTests {
 		#expect(after.transactions.isEmpty)
 	}
 
+	@Test("A task cancel during the import rolls back and leaves the next read of the store working")
+	func taskCancel() async throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		defer { try? store.close() }
+		var amounts: [Double] = []
+		for i in 0..<20_000 { amounts.append(Double(i % 97 + 1) / 100) }
+		let plan = try sourcePlan(amounts: amounts)
+		let writing = DispatchSemaphore(value: 0)
+		let task = Task.detached {
+			try await store.importMigration(plan, progress: { update in
+				// The first count of the import comes at once, inside the write transaction.
+				guard update.step == .importing, update.completed == 0 else { return }
+				writing.signal()
+			})
+		}
+		await withCheckedContinuation { done in DispatchQueue.global().async { writing.wait(); done.resume() } }
+		// The read waits for the writer, as the check of the file does in the app, and the cancel comes while rows are written.
+		let read = Task.detached { store.isChangedOnDisk() }
+		try await Task.sleep(for: .milliseconds(100))
+		task.cancel()
+		await #expect(throws: CancellationError.self) { _ = try await task.value }
+		#expect(await read.value == false)
+		#expect(!store.isChangedOnDisk())
+		try store.save(Account(position: 0, name: "Synthetic giro", kind: .giro, source: .offline))
+		#expect(try store.loadLedger().transactions.isEmpty)
+	}
+
 	@Test("Import saves counts and portfolio history and preserves fetched holdings")
 	func complete() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))

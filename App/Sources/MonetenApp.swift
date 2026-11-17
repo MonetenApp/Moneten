@@ -31,7 +31,7 @@ struct MonetenApp: App {
 		Window("Extensions", id: "extensions") {
 			ExtensionsWindow()
 				.environment(model)
-				.disabled(model.isTransferringTransactions)
+				.disabled(model.isStoringMigration)
 		}
 		.defaultSize(width: 900, height: 600)
 		.commandsRemoved()
@@ -56,7 +56,7 @@ struct MonetenApp: App {
 		Settings {
 			SettingsView()
 				.environment(model)
-				.disabled(model.isTransferringTransactions)
+				.disabled(model.isStoringMigration)
 		}
 		// The settings open only while the app is unlocked, so they never come back with the launch.
 		.restorationBehavior(.disabled)
@@ -106,8 +106,9 @@ struct AppCommands: Commands {
 	let model: AppModel
 	@Environment(\.openWindow) private var openWindow
 
-	/// A rule run keeps the category settings open, so no command may open another sheet in its place.
-	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule && !model.isTransferringTransactions }
+	/// A rule run keeps the category settings open, so no command may open another sheet in its place. A migration that
+	/// stores holds the database, so no command may read or change it until the migration ends.
+	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule && !model.isStoringMigration }
 
 	var body: some Commands {
 		CommandGroup(replacing: .appInfo) {
@@ -133,7 +134,7 @@ struct AppCommands: Commands {
 		}
 		CommandGroup(replacing: .newItem) {
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
-				.disabled(!unlocked || model.isTransferringTransactions)
+				.disabled(!unlocked)
 			Button("Import All Data...") { Task { await model.importAllData() } }
 				.disabled(!unlocked)
 			Button("Export All Data...") { model.sheet = .exportAllData }

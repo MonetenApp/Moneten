@@ -31,8 +31,17 @@ public final class MigrationCancel: Sendable {
 }
 
 extension Store {
+	/// A cancel of the calling task only sets `cancel`, which the write checks before each row. A task cancel of the write
+	/// itself would interrupt the statement that runs, and the read that waits behind the write, such as the check of the
+	/// file, would then fail and count the file as changed on disk.
 	public func importMigration(_ preview: MoneyMoneyMigration.Plan, replacing starters: [UUID] = [],
 		cancel: MigrationCancel = MigrationCancel(), progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void = { _ in }) async throws -> MoneyMoneyMigration.Plan {
+		let work = Task.detached { try await self.store(preview, replacing: starters, cancel: cancel, progress: progress) }
+		return try await withTaskCancellationHandler { try await work.value } onCancel: { cancel.cancel() }
+	}
+
+	private func store(_ preview: MoneyMoneyMigration.Plan, replacing starters: [UUID], cancel: MigrationCancel,
+		progress: @escaping @Sendable (MoneyMoneyMigration.Progress) -> Void) async throws -> MoneyMoneyMigration.Plan {
 		try await write { db in
 			func check() throws { if cancel.isCanceled { throw CancellationError() } }
 			try check()
