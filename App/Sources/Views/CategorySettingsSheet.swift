@@ -1,6 +1,13 @@
 import Domain
 import SwiftUI
 
+/// The text for a rule whose regular expression ran too long (`Rule.stoppedRegexPosition`).
+enum RuleStop {
+	static func message(position: Int) -> String {
+		String(localized: "The regular expression at position \(position + 1) stopped because it is too slow.")
+	}
+}
+
 struct CategorySettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
@@ -11,6 +18,8 @@ struct CategorySettingsSheet: View {
 	@State private var ruleError: String?
 	@State private var askApply = false
 	@State private var showHelp = false
+	/// The last count of matches and the rule that it counted.
+	@State private var matches: (key: MatchKey, count: MatchCount)?
 
 	var body: some View {
 		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
@@ -75,16 +84,21 @@ struct CategorySettingsSheet: View {
 							.foregroundStyle(.secondary)
 						} else if let ruleError {
 							Text(ruleError).foregroundStyle(Palette.red)
-						} else if !c.rule.isEmpty {
-							let count = matchCount(c)
-							Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
-								.foregroundStyle(.secondary)
+						} else if !c.rule.isEmpty, let matches, matches.key == matchKey {
+							switch matches.count {
+							case let .stopped(position):
+								Text(RuleStop.message(position: position)).foregroundStyle(Palette.red)
+							case let .count(count):
+								Text(count == 1 ? "The rule matches 1 transaction." : "The rule matches \(count) transactions.")
+									.foregroundStyle(.secondary)
+							}
 						}
 					}
 				}
 			}
 		}
 		.interactiveDismissDisabled(isApplying)
+		.task(id: matchKey) { await countMatches(matchKey) }
 		.onAppear {
 			category = model.ledger.category(categoryID)
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
@@ -119,9 +133,43 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
-	private func matchCount(_ c: Domain.Category) -> Int {
-		guard let rule = try? Rule(parsing: c.rule) else { return 0 }
-		return RuleApplier.matchCount(category: c, rule: rule, ledger: model.ledger)
+	private enum MatchCount: Sendable {
+		case count(Int)
+		/// The position of the regular expression that ran too long, counted from 0.
+		case stopped(Int)
+	}
+
+	/// What the count of matches depends on.
+	private struct MatchKey: Hashable {
+		let rule: String
+		// The synthesized Hashable conformance reads these, which Periphery cannot see.
+		// periphery:ignore
+		let restriction: UUID?
+		/// A refresh while the sheet is open changes the ledger, and the count follows it.
+		// periphery:ignore
+		let ledgerRevision: Int
+	}
+
+	// The body reads the ledger for the pickers, so a change of the ledger evaluates this again.
+	private var matchKey: MatchKey? {
+		category.map { MatchKey(rule: $0.rule, restriction: $0.restrictedToID, ledgerRevision: model.ledgerRevision) }
+	}
+
+	/// Counts the matches away from the main actor, because a slow rule may take up to its limit of processor time.
+	/// Typing changes the rule on every key, so the count waits for a pause first.
+	private func countMatches(_ key: MatchKey?) async {
+		guard let key, let c = category, !key.rule.isEmpty, let rule = try? Rule(parsing: key.rule) else { return }
+		try? await Task.sleep(for: .milliseconds(250))
+		guard !Task.isCancelled else { return }
+		let ledger = model.ledger
+		let worker = Task.detached(priority: .userInitiated) {
+			let count = RuleApplier.matchCount(category: c, rule: rule, ledger: ledger)
+			return rule.stoppedRegexPosition.map(MatchCount.stopped) ?? .count(count)
+		}
+		// A new key cancels this task, and the count it no longer needs stops too.
+		let count = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+		guard !Task.isCancelled else { return }
+		matches = (key, count)
 	}
 
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.

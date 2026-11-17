@@ -133,7 +133,9 @@ public final class Store: SavedPINStore {
 			SELECT DISTINCT splitPart.transactionID FROM splitPart
 			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
 			""", arguments: [accountID]))
-		let r = reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		let r = rules.allOrNothing {
+			reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		}
 		if let refusal = r.refusal { throw refusal }
 		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)
 		for t in r.added { try t.insert(db) }

@@ -319,6 +319,70 @@ The app SHALL treat text between two slashes as a regular expression and match i
 - **WHEN** a transaction has the purpose "GA NR00012345 BLZ12030000"
 - **THEN** the rule matches
 
+### Requirement: A regular expression in a rule that does not end
+
+The app SHALL stop a rule when one of its regular expressions takes about 100 ms of processor time on one text, when its calls that took 1 ms or more each add up to 50 ms, or when its regular expressions take 1 second of processor time in all within one run. A run is the categorization of one account's refresh or one account's import, of one entry, or of one migration, one application of a rule to existing transactions, or one count of matches in the category settings.
+
+#### Scenario: Refresh with a rule that does not end
+
+- **GIVEN** the category "Phone" above "Other" in the sidebar, "Phone" with the rule `/^+?49/`, and "Other" with the rule `"Telefon"`
+- **WHEN** a refresh brings 1,000 transactions with the purpose "Telefon +49 170 1234567"
+- **THEN** the refresh ends within a few seconds
+- **AND** no transaction is in "Phone", and all 1,000 are in "Other"
+
+#### Scenario: Many texts that are each just under the limit
+
+- **GIVEN** the category "Phone" with the rule `purpose:/(a+)+$/`
+- **WHEN** the rule tests 200 transactions whose purpose is 18 times "a" and then "!"
+- **THEN** the rule stops after about 50 ms of processor time and matches none of them
+
+### Requirement: The rules of one run stop together after 3 seconds
+
+The app SHALL stop every rule with a regular expression when the regular expressions of all rules of one categorization run take 3 seconds of processor time together. A rule that does not stop runs its regular expressions on each text of the run once, also when the run repeats after another rule stopped.
+
+#### Scenario: Many slow rules above a normal one
+
+- **GIVEN** twelve categories whose rules stop, above "Traders" with the rule `/Haendler1/`
+- **WHEN** a migration categorizes 50,000 transactions, of which 7,865 have a name that starts with "Haendler1"
+- **THEN** the 7,865 transactions are in "Traders", and the categorization ends within a few seconds
+
+### Requirement: A stopped rule matches nothing in its run
+
+The app SHALL treat a stopped rule as matching no transaction of its run, also none that it tested before the stop, and SHALL still run the rules of the other categories.
+
+#### Scenario: The order of the rows does not matter
+
+- **GIVEN** the category "Phone" above "Other", "Phone" with the rule `purpose:/ok|(a+)+$/`, and "Other" with the rule `true`
+- **WHEN** a refresh brings one transaction with the purpose "ok" and one whose purpose is 32 times "a" and then "!", in either order
+- **THEN** both transactions are in "Other"
+
+### Requirement: A stopped rule never moves a transaction that a rule sorted
+
+The app SHALL keep the category of a transaction that a rule assigned when a stopped rule stands above every rule that matches it, because the stopped rule could have matched it first.
+
+#### Scenario: A pending transaction is booked during the stop
+
+- **GIVEN** the category "Phone" above "Other", "Phone" with the rule `purpose:/ok|(a+)+$/`, "Other" with the rule `true`, and a pending transaction with the purpose "ok" that the rule put into "Phone"
+- **WHEN** a refresh books it and brings a transaction whose purpose is 32 times "a" and then "!"
+- **THEN** the booked transaction stays in "Phone"
+- **AND** the new transaction is in "Other"
+
+### Requirement: A stopped rule is shown
+
+The app SHALL show "The regular expression at position N stopped because it is too slow." for a rule whose regular expression stopped, with N as the position of the regular expression in the rule, counted from 1. The category settings show it in place of the number of matches. An application of the stopped rule to existing transactions changes no transaction and shows it as well.
+
+#### Scenario: Category settings
+
+- **WHEN** the user enters the rule `name:"Telekom" OR /^+?49/` in the settings of "Phone"
+- **THEN** the settings show "The regular expression at position 19 stopped because it is too slow." in place of the number of matches
+
+#### Scenario: Apply to all transactions
+
+- **GIVEN** the category "Phone" contains 2 transactions
+- **WHEN** the user sets the rule of "Phone" to `/^+?49/` and chooses "Apply to all transactions."
+- **THEN** both transactions stay in "Phone"
+- **AND** the app shows "The regular expression at position 1 stopped because it is too slow."
+
 ### Requirement: Invalid rules are rejected
 
 The app SHALL refuse to store a rule that it cannot parse. It shows a message that names the position of the error and keeps the settings open with the text that the user entered.

@@ -237,6 +237,41 @@ struct RuleTests {
 		#expect(try !matches("/GA NR[0-9]{8}/", RuleSubject(purpose: "GA NR123")))
 	}
 
+	@Test("An IBAN written with a no-break or a narrow no-break space matches the plain IBAN", arguments: ["\u{00A0}", "\u{202F}"])
+	func ibanWithOtherSpaces(_ space: String) throws {
+		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
+		#expect(try matches("remote_account:DE02120300000000202051", RuleSubject(remoteAccounts: [iban])))
+		#expect(try matches("local_account:DE02120300000000202051", RuleSubject(localAccounts: [iban])))
+		#expect(try matches("local_account:\"\(iban)\"", RuleSubject(localAccounts: ["DE02120300000000202051"])))
+		// The IBAN reads as the plain IBAN: `?` needs one character, and the key has none between DE02 and 1203.
+		for value in [iban, "DE02 1203 0000 0000 2020 51", "DE02120300000000202051"] {
+			#expect(try !matches("local_account:DE02?1203*", RuleSubject(localAccounts: [value])), "\(value)")
+			#expect(try matches("local_account:DE0?1203*", RuleSubject(localAccounts: [value])), "\(value)")
+		}
+		#expect(try !matches("local_account:DE0?1203*", RuleSubject(localAccounts: ["DE89370400440532013000"])))
+		#expect(Format.iban(iban) == "DE02 1203 0000 0000 2020 51")
+	}
+
+	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))
+	func regexThatDoesNotEnd() throws {
+		let rule = try Rule(parsing: "/^+?49/")
+		let subject = RuleSubject(purpose: "Tel. +49 170 1234567")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect((0..<1_000).allSatisfy { _ in !rule.matches(subject) })
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(milliseconds < 1_000)
+		#expect(rule.stoppedRegexPosition == 0)
+		// The stop is no match of the rule, so NOT before it does not match every row.
+		let negated = try Rule(parsing: #"name:"Telekom" OR NOT /^+?49/"#)
+		#expect(!negated.matches(subject))
+		#expect(!negated.matches(RuleSubject(name: "Telekom")))
+		#expect(negated.stoppedRegexPosition == 22)
+		// A rule that ends keeps no stop.
+		let fast = try Rule(parsing: "/GA NR[0-9]{8}/")
+		#expect(fast.matches(RuleSubject(purpose: "GA NR00012345")))
+		#expect(fast.stoppedRegexPosition == nil)
+	}
+
 	@Test("Missing parenthesis is reported at the end")
 	func missingParenthesis() {
 		let rule = #"("Lohn" OR "Gehalt""#
@@ -409,6 +444,225 @@ struct CategorizerTests {
 		#expect(t.categoryID == gifts.id)
 	}
 
+	@Test("A rule that does not end leaves 1,000 rows to the next category", .timeLimit(.minutes(1)))
+	func ruleThatDoesNotEnd() {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "/^+?49/")
+		let other = Domain.Category(position: 1, name: "Other", rule: #""Telefon""#)
+		let c = Categorizer(ledger: ledger([phone, other]))
+		var rows: [Transaction] = []
+		for i in 0..<1_000 {
+			let amount: Int64 = -1_000 - Int64(i)
+			rows.append(Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: amount, name: "Mobilfunk", purpose: "Telefon +49 170 1234567"))
+		}
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		for i in rows.indices { c.categorize(&rows[i]) }
+		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000 < 1_000)
+		#expect(rows.allSatisfy { $0.categoryID == other.id && $0.categorizedBy == .rule })
+	}
+
+	@Test("Applying a rule that does not end changes no row", .timeLimit(.minutes(1)), arguments: [RuleApplication.all, .uncategorizedOnly])
+	func applyRuleThatDoesNotEnd(_ mode: RuleApplication) throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "/^+?49/")
+		let day = Day(year: 2026, month: 11, day: 2)
+		let inPhone = (0..<2).map { _ in
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: -2_000, name: "Telekom", purpose: "Rechnung", categoryID: phone.id, categorizedBy: .rule)
+		}
+		let open = (0..<1_000).map { _ in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telefon", purpose: "+49 170 1234567") }
+		let l = ledger([phone], inPhone + open)
+		let rule = try Rule(parsing: phone.rule)
+		#expect(RuleApplier.apply(category: phone, rule: rule, to: l.transactions, ledger: l, mode: mode) == [])
+		#expect(rule.stoppedRegexPosition == 0)
+		var current = l
+		current.update([Transaction(accountID: giro.id, bookingDate: day, amountMinor: -3_000, name: "Telefon", purpose: "+49 170 7654321")])
+		#expect(RuleApplier.rebase([], from: l, onto: current, category: phone, rule: rule, mode: mode) == [])
+		let counted = try Rule(parsing: phone.rule)
+		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: l) == 0)
+		#expect(counted.stoppedRegexPosition == 0)
+	}
+
+	/// The rule of "Phone" ends at once on "ok" and runs far past its limit on a long run of "a" without an end.
+	static let slowRule = "purpose:/ok|(a+)+$/"
+	static let slowText = String(repeating: "a", count: 32) + "!"
+
+	func refresh(_ rows: [Transaction]) -> Delivery {
+		.refresh(RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: Day(year: 2026, month: 11, day: 1))))
+	}
+
+	@Test("A rule that stops matches no row of the refresh, in either order of the rows", .timeLimit(.minutes(1)), arguments: [false, true])
+	func stoppedRuleIsAllOrNothing(okFirst: Bool) {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let other = Domain.Category(position: 1, name: "Other", rule: "true")
+		let l = ledger([phone, other])
+		let ok = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Telekom", purpose: "ok", sourceID: "TX-1")
+		let slow = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -2_000, name: "Kiosk", purpose: Self.slowText, sourceID: "TX-2")
+		let rows = okFirst ? [ok, slow] : [slow, ok]
+		let rules = Categorizer(ledger: l)
+		let r = rules.allOrNothing { reconcile(refresh(rows), into: giro, stored: [], deleted: [], rules: rules, now: Date()) }
+		#expect(Dictionary(uniqueKeysWithValues: r.added.map { ($0.sourceID!, $0.categoryID) }) == ["TX-1": other.id, "TX-2": other.id])
+		// The next refresh brings the same rows and changes nothing, although the rule then stops again.
+		var next = l
+		next.apply(r)
+		let again = Categorizer(ledger: next)
+		let second = again.allOrNothing { reconcile(refresh(rows), into: giro, stored: next.transactions(ofAccount: giro.id), deleted: [], rules: again, now: Date()) }
+		#expect(second.added == [] && second.updated == [] && second.booked == [] && second.skipped == 2)
+	}
+
+	@Test("A stopped rule never moves a row that a rule sorted, also when the bank books it", .timeLimit(.minutes(1)), arguments: [false, true])
+	func stoppedRuleKeepsRuleCategory(slowFirst: Bool) {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let other = Domain.Category(position: 1, name: "Other", rule: "true")
+		let pending = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Telekom", purpose: "ok",
+			isPending: true, categoryID: phone.id, categorizedBy: .rule, isFetched: true, sourceID: "TX-1")
+		var booked = pending
+		booked.isPending = false
+		booked.categoryID = nil
+		booked.categorizedBy = .none
+		let slow = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -2_000, name: "Kiosk", purpose: Self.slowText, sourceID: "TX-2")
+		let l = ledger([phone, other], [pending])
+		let rules = Categorizer(ledger: l)
+		let r = rules.allOrNothing { reconcile(refresh(slowFirst ? [slow, booked] : [booked, slow]), into: giro, stored: [pending], deleted: [], rules: rules, now: Date()) }
+		#expect(r.booked.map(\.id) == [pending.id])
+		#expect(r.booked.first?.isPending == false)
+		#expect(r.booked.first?.categoryID == phone.id && r.booked.first?.categorizedBy == .rule)
+		#expect(r.added.map(\.categoryID) == [other.id])
+	}
+
+	@Test("A rule stops when all its regex calls of one run add up to its limit", .timeLimit(.minutes(1)))
+	func cumulativeStop() throws {
+		// About 2^18 steps for each text: far below the limit of one call, and 200 texts took 6 seconds without a limit for the run.
+		let subject = RuleSubject(purpose: String(repeating: "a", count: 18) + "!")
+		let rule = try Rule(parsing: "purpose:/(a+)+$/")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect((0..<200).allSatisfy { _ in !rule.matches(subject) })
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(rule.stoppedRegexPosition == 8)
+		#expect(milliseconds < 1_600)
+		// The count of matches stops by the same limit.
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/(a+)+$/")
+		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1_000, name: "Kiosk", purpose: subject.purpose) }
+		let counted = try Rule(parsing: phone.rule)
+		let countStart = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		#expect(RuleApplier.matchCount(category: phone, rule: counted, ledger: ledger([phone], rows)) == 0)
+		#expect(counted.stoppedRegexPosition == 8)
+		#expect((clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - countStart) / 1_000_000 < 1_600)
+	}
+
+	/// Six rules that hang on every text, and six that are slow on texts of 18 "a", above a normal rule and a catch-all.
+	static func stoppingRules() -> [String] {
+		var rules: [String] = []
+		for k in 0..<6 { rules.append("purpose:/^+?4\(k)/") }
+		for k in 1...6 { rules.append("purpose:/(a+)+$|^z\(k)$/") }
+		return rules
+	}
+
+	@Test("Twelve rules that stop leave a normal regular expression its rows, which it tests once, and the batch stays bounded", .timeLimit(.minutes(1)))
+	func stoppingRulesKeepNormalRule() {
+		var slow: [Domain.Category] = []
+		for (k, rule) in Self.stoppingRules().enumerated() { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: rule)) }
+		let traders = Domain.Category(position: 20, name: "Haendler", rule: "/Haendler1/")
+		let rest = Domain.Category(position: 21, name: "Rest", rule: "true")
+		let day = Day(year: 2026, month: 11, day: 3)
+		// Long purposes, so the normal rule spends enough time to compare.
+		let filler = String(repeating: "Kundennummer 4711 Vertrag 0815 ", count: 20)
+		// Loops with typed values, because the type checker of the CI compiler gives up on such closures.
+		var rows: [Transaction] = []
+		for i in 0..<2_000 {
+			let amount: Int64 = -Int64(i)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) " + filler
+			rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose))
+		}
+		// Different amounts, so each row is a text of its own, which the results of the batch do not repeat.
+		let slowPurpose: String = String(repeating: "a", count: 18) + "!"
+		for i in 0..<4 {
+			let amount: Int64 = -10_000 - Int64(i)
+			rows.append(Transaction(accountID: giro.id, bookingDate: day, amountMinor: amount, name: "Kiosk", purpose: slowPurpose))
+		}
+		func run(_ categories: [Domain.Category]) -> (rows: [Transaction], rules: Categorizer) {
+			let rules = Categorizer(ledger: ledger(categories))
+			return (rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }, rules)
+		}
+		_ = run([traders, rest])
+		let alone = run([traders, rest])
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let mixed = run(slow + [traders, rest])
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		print("twelve stopping rules over 2,004 rows: \(milliseconds) ms")
+		#expect(milliseconds < 2_500)
+		let expected = alone.rows.map(\.categoryID)
+		#expect(expected.count(where: { $0 == traders.id }) == 319)
+		#expect(mixed.rows.map(\.categoryID) == expected)
+		let rules = Dictionary(uniqueKeysWithValues: mixed.rules.entries.map { ($0.categoryID, $0.rule) })
+		#expect(slow.allSatisfy { rules[$0.id]?.stoppedRegexPosition != nil })
+		#expect(rules[traders.id]?.stoppedRegexPosition == nil)
+		// The repeat after the stops reads the results of the normal rule, so it spends what it spends without the slow
+		// rules, and not twice that.
+		let aloneRules = Dictionary(uniqueKeysWithValues: alone.rules.entries.map { ($0.categoryID, $0.rule) })
+		let spent = Double(rules[traders.id]?.regexSpent ?? 0)
+		let spentAlone = Double(aloneRules[traders.id]?.regexSpent ?? 0)
+		print("normal rule: \(spent / 1e6) ms with the slow rules, \(spentAlone / 1e6) ms alone")
+		#expect(spent < spentAlone * 1.5)
+	}
+
+	@Test("A precomposed and a decomposed letter are two texts for a regular expression, in either order", arguments: [false, true])
+	func rawTextsInResults(precomposedFirst: Bool) {
+		let cafe = Domain.Category(position: 0, name: "Café", rule: "purpose:/^Caf\u{00E9}$/")
+		let rules = Categorizer(ledger: ledger([cafe]))
+		let day = Day(year: 2026, month: 11, day: 3)
+		let precomposed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kiosk", purpose: "Caf\u{00E9}")
+		let decomposed = Transaction(accountID: giro.id, bookingDate: day, amountMinor: -350, name: "Kiosk", purpose: "Cafe\u{0301}")
+		let rows = precomposedFirst ? [precomposed, decomposed] : [decomposed, precomposed]
+		let sorted = rules.allOrNothing { rows.map { var t = $0; rules.categorize(&t); return t } }
+		#expect(sorted.map { $0.purpose.unicodeScalars.count == 4 ? $0.categoryID : nil } == rows.map { $0.purpose.unicodeScalars.count == 4 ? cafe.id : nil })
+		#expect(sorted.filter { $0.categoryID == cafe.id }.map { Array($0.purpose.unicodeScalars) } == [Array(precomposed.purpose.unicodeScalars)])
+	}
+
+	@Test("The rules of one batch stop together when they spend 3 seconds in all", .timeLimit(.minutes(1)))
+	func batchLimit() {
+		// Forty rules that each hang for about 100 ms before they stop.
+		var slow: [Domain.Category] = []
+		for k in 0..<40 { slow.append(Domain.Category(position: k, name: "Slow \(k)", rule: "purpose:/^+?\(k % 10)\(k / 10)/")) }
+		let traders = Domain.Category(position: 50, name: "Haendler", rule: "/Haendler1/")
+		let rules = Categorizer(ledger: ledger(slow + [traders]))
+		let row = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Haendler1", purpose: "Rechnung 1")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let t = rules.allOrNothing { var t = row; rules.categorize(&t); return t }
+		let milliseconds = (clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) / 1_000_000
+		#expect(milliseconds < 3_600)
+		#expect(rules.entries.allSatisfy { $0.rule.stoppedRegexPosition != nil })
+		#expect(t.categoryID == nil)
+	}
+
+	@Test("A cancelled count of matches stops at once")
+	func cancelledCount() async throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: "purpose:/(a+)+$/")
+		let rows = (0..<200).map { _ in Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -1, name: "Kiosk", purpose: String(repeating: "a", count: 18) + "!") }
+		let l = ledger([phone], rows)
+		let rule = try Rule(parsing: phone.rule)
+		let task = Task.detached { RuleApplier.matchCount(category: phone, rule: rule, ledger: l) }
+		task.cancel()
+		#expect(await task.value == 0)
+		#expect(rule.regexSpent == 0)
+	}
+
+	@Test("A rule that a row changed during the run stops saves nothing", .timeLimit(.minutes(1)))
+	func rebaseOfStoppedRule() throws {
+		let phone = Domain.Category(position: 0, name: "Phone", rule: Self.slowRule)
+		let day = Day(year: 2026, month: 11, day: 3)
+		let ok = (0..<3).map { _ in Transaction(accountID: giro.id, bookingDate: day, amountMinor: -1_000, name: "Telekom", purpose: "ok") }
+		let snapshot = ledger([phone], ok)
+		let rule = try Rule(parsing: phone.rule)
+		let results = RuleApplier.apply(category: phone, rule: rule, to: snapshot.transactions, ledger: snapshot, mode: .all)
+		#expect(results.count == 3)
+		#expect(rule.stoppedRegexPosition == nil)
+		var current = snapshot
+		var changed = ok[0]
+		changed.purpose = Self.slowText
+		current.update([changed])
+		#expect(RuleApplier.rebase(results, from: snapshot, onto: current, category: phone, rule: rule, mode: .all) == [])
+		#expect(rule.stoppedRegexPosition == 8)
+	}
+
 	@Test("Apply only to uncategorized transactions, or to all")
 	func applyModes() throws {
 		let leisure = Domain.Category(position: 0, name: "Leisure")
@@ -501,5 +755,16 @@ struct CategorizerTests {
 		let categories = Dictionary(uniqueKeysWithValues: current.transactions.map { ($0.id, $0.categoryID) })
 		#expect(categories == [unchanged.id: streaming.id, rebooked.id: groceries.id, renamed.id: streaming.id, arrived.id: streaming.id])
 		#expect(current.transaction(renamed.id)?.name == "Netflix International")
+	}
+}
+
+extension Categorizer {
+	/// The category that `categorize` gives a row without a category of its own.
+	func category(for t: Transaction) -> UUID? {
+		var row = t
+		row.categoryID = nil
+		row.categorizedBy = .none
+		categorize(&row)
+		return row.categoryID
 	}
 }
