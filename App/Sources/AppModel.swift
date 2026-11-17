@@ -427,7 +427,7 @@ final class AppModel {
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
-		BankDataUpdates.start()
+		BankDataUpdates.start { [weak self] in self?.autoRefresh.isOnline ?? true }
 	}
 
 	// MARK: Opening and locking

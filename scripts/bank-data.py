@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Builds, signs, and checks the bank data files of the release bank-data (add-software-update, group 6).
 
-  bank-data.py build --out DIR [--jar FILE] [--lock FILE] [--corrections FILE]
+  bank-data.py build --out DIR [--jar FILE] [--lock FILE] [--corrections FILE] [--serial N]
                          write DIR/blz.properties: the bank list of the hbci4java jar that the lock pins,
-                         after the check of its SHA-256, with the corrections of the project applied
+                         after the check of its SHA-256, with the corrections of the project applied, and
+                         a header with the serial, the time in UTC as yyyymmddHHMMSS, and the version of
+                         the jar. The app installs a list only when its serial is above the installed one
+                         and its jar is not older than its own, so nobody can replay an older list.
   bank-data.py sign --key-file KEY [--sign-update TOOL] FILE
                          write FILE.sig, the Ed25519 signature of FILE in Base64, with the private key KEY
                          in the format of Sparkle, through the sign_update tool of Sparkle or else openssl
@@ -25,6 +28,7 @@ throwaway keys, in a file of a temporary folder that only the user can read, nev
 
 import argparse
 import base64
+import datetime
 import hashlib
 import io
 import os
@@ -45,6 +49,8 @@ FILES = [BANK_LIST]
 # The largest file the app accepts, BankDataUpdater.listLimit.
 LIMIT = 8 << 20
 ENTRY = re.compile(r"[0-9]{8}=[^|]*(\|[^|]*){7,}")
+SERIAL = re.compile(r"# ?serial=([0-9]{14})")
+VERSION = re.compile(r"# ?hbci4java=([0-9]+(?:\.[0-9]+)*)")
 ED25519_PUBLIC_PREFIX = bytes.fromhex("302a300506032b6570032100")
 ED25519_PRIVATE_PREFIX = bytes.fromhex("302e020100300506032b657004220420")
 
@@ -77,8 +83,13 @@ def check_bank_list(data, name):
 	if "\\" in text:
 		raise Failure("%s contains a backslash, which Java reads as an escape." % name)
 	entries = 0
+	serial = version = None
 	for number, line in enumerate(text.splitlines(), 1):
 		line = line.strip(" \t")
+		if entries == 0 and SERIAL.fullmatch(line):
+			serial = SERIAL.fullmatch(line).group(1)
+		if entries == 0 and VERSION.fullmatch(line):
+			version = VERSION.fullmatch(line).group(1)
 		if not line or line.startswith(("#", "!")):
 			continue
 		if not ENTRY.fullmatch(line):
@@ -86,6 +97,8 @@ def check_bank_list(data, name):
 		entries += 1
 	if entries == 0:
 		raise Failure("%s has no entry." % name)
+	if serial is None or version is None:
+		raise Failure("%s has no header with the serial and the version of hbci4java before its first entry." % name)
 	return entries
 
 
@@ -145,10 +158,15 @@ def apply_corrections(data, corrections):
 	return ("\r\n".join(out) + "\r\n").encode("utf-8")
 
 
-def build(out, jar=None, lock=LOCK, corrections=CORRECTIONS):
+def build(out, jar=None, lock=LOCK, corrections=CORRECTIONS, serial=None):
 	with zipfile.ZipFile(io.BytesIO(core_jar(lock, jar))) as archive:
 		data = archive.read(BANK_LIST)
 	data = apply_corrections(data, corrections)
+	serial = serial or datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+	if not re.fullmatch(r"[0-9]{14}", serial):
+		raise Failure("the serial %s is not yyyymmddHHMMSS." % serial)
+	header = "# Bank list of Moneten, signed with the update key.\r\n# serial=%s\r\n# hbci4java=%s\r\n" % (serial, lock_entry(lock)[0])
+	data = header.encode("utf-8") + data
 	entries = check_bank_list(data, BANK_LIST)
 	os.makedirs(out, exist_ok=True)
 	with open(os.path.join(out, BANK_LIST), "wb") as f:
@@ -266,6 +284,7 @@ def main(argv):
 	p.add_argument("--jar")
 	p.add_argument("--lock", default=LOCK)
 	p.add_argument("--corrections", default=CORRECTIONS)
+	p.add_argument("--serial")
 	p = commands.add_parser("sign")
 	p.add_argument("--key-file", required=True)
 	p.add_argument("--sign-update")
@@ -284,7 +303,7 @@ def main(argv):
 	args = parser.parse_args(argv)
 	try:
 		if args.command == "build":
-			build(args.out, args.jar, args.lock, args.corrections)
+			build(args.out, args.jar, args.lock, args.corrections, args.serial)
 		elif args.command == "sign":
 			sign(args.key_file, args.file, args.sign_update)
 		elif args.command == "verify":

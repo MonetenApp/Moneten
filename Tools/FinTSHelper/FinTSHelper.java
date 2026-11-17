@@ -1001,7 +1001,7 @@ public class FinTSHelper {
 		return uri;
 	}
 
-	/// The bank list of the command, once `useBankList` put it in place of the one in the jar of hbci4java.
+	/// The table of Bankleitzahlen of hbci4java, once `useBankList` filled it with the bank list of the command.
 	static Properties bankList;
 
 	/// Replaces the bank directory of hbci4java with the bank list of the command, which the app checked
@@ -1032,7 +1032,7 @@ public class FinTSHelper {
 			codes.putAll(list);
 			directory.clear();
 			directory.putAll(infos);
-			bankList = list;
+			bankList = codes;
 			diagnostic("FinTSHelper: using the bank list of the app with " + infos.size() + " banks");
 		} catch (IOException | ReflectiveOperationException | RuntimeException e) {
 			diagnostic("FinTSHelper: the bank list of the app was not used: " + e.getClass().getSimpleName());

@@ -120,7 +120,7 @@ To start over after a failed run, delete the draft and run the workflow again on
 
 The app downloads the bank list `blz.properties` and its signature `blz.properties.sig` from the release `bank-data` at most once a day, and uses the list only when the update key signed it. The list holds the name, the place, the BIC, and the FinTS address of each Bankleitzahl, so it is also the BIC directory of the app. The [design](../openspec/changes/add-software-update/design.md#bank-data-files-use-the-same-key) explains the checks.
 
-`scripts/bank-data.py build` takes the list from the hbci4java jar that `Tools/FinTSProbeJava/dependencies.lock` pins, and applies `BankData/corrections.properties`. To change the address of one bank before hbci4java does, add a line in the format of the list to that file in a pull request.
+`scripts/bank-data.py build` takes the list from the hbci4java jar that `Tools/FinTSProbeJava/dependencies.lock` pins, applies `BankData/corrections.properties`, and starts the list with two comment lines: `# serial=` with the time of the build in UTC, and `# hbci4java=` with the version of the jar. The app installs a list only when its serial is above the serial of its installed list, and its version of hbci4java is not below the one of the app. So a replay of an older signed list, or a list from an older jar, never replaces a newer one. To change the address of one bank before hbci4java does, add a line in the format of the list to that file in a pull request.
 
 ### One-time setup
 
@@ -133,7 +133,7 @@ The app downloads the bank list `blz.properties` and its signature `blz.properti
 2. Under Actions, "Bank data", "Run workflow" on `main`, check "publish".
 3. Approve the job `publish`. It fails at once without the secret, outside `main`, or while `App/project.yml` has no production update key. It builds the list, signs it with `sign_update` of Sparkle, checks the signature with the key of `App/project.yml`, and uploads both files. Then it downloads them again, checks them, checks that `bank-data` is not the latest release, and that the feed URL still answers.
 
-Publish the bank data after each change of hbci4java in `dependencies.lock` and after each change of `BankData/corrections.properties`, before the tag of the next version. A new build of the app ignores the files that an older build downloaded and fetches them again, so the published list must be at least as new as the list in the jar of that build.
+Publish the bank data after each change of hbci4java in `dependencies.lock` and after each change of `BankData/corrections.properties`, before the tag of the next version. A new build of the app with a newer jar refuses a list from an older jar, so until the bank data is published again, it uses the list of its own jar. When hbci4java changes in `dependencies.lock`, also change `BankData.bundledHBCI4Java` in `Sources/FinTS/BankData.swift`. A test fails while the two differ.
 
 During the upload, the old signature can be online next to the new list for a moment. An app that downloads then rejects the list, keeps its own, and tries again a day later.
 

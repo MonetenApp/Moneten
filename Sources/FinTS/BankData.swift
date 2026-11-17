@@ -11,6 +11,10 @@ enum BankData {
 	/// Every file of the release `bank-data`. Each has its signature beside it, under its name with ".sig".
 	static let files = [bankList]
 
+	/// The version of hbci4java whose jar the helper of this build carries, as
+	/// `Tools/FinTSProbeJava/dependencies.lock` pins it. A test fails when the two differ.
+	static let bundledHBCI4Java = "4.1.17"
+
 	/// Whether `publicKey`, the 32 bytes of an Ed25519 key, made `signature` for exactly the bytes of `file`.
 	static func verify(file: Data, signature: Data, publicKey: Data) -> Bool {
 		guard let key = try? Curve25519.Signing.PublicKey(rawRepresentation: publicKey) else { return false }
@@ -24,17 +28,58 @@ enum BankData {
 		return signature
 	}
 
+	/// The comment lines that `scripts/bank-data.py build` puts at the top of a published bank list, inside
+	/// the signed bytes: `# serial=20261117084700`, the time of the publication in UTC, which only grows, and
+	/// `# hbci4java=4.1.17`, the version of the jar that the list comes from.
+	struct Header: Equatable {
+		let serial: Int
+		let hbci4java: [Int]
+
+		/// The header of a list, from the comment lines before its first entry, or nil without both lines.
+		init?(_ data: Data) {
+			var serial: Int?, version: [Int]?
+			var start = data.startIndex
+			// Only the lines before the first entry, so the check before each start of the helper stays short.
+			while start < data.endIndex {
+				let end = data[start...].firstIndex(of: UInt8(ascii: "\n")) ?? data.endIndex
+				let text = String(decoding: data[start..<end], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+				start = end == data.endIndex ? end : data.index(after: end)
+				if text.isEmpty { continue }
+				guard text.hasPrefix("#") else { break }
+				if let value = text.wholeMatch(of: /# ?serial=([0-9]{14})/)?.1 { serial = Int(value) }
+				if let value = text.wholeMatch(of: /# ?hbci4java=([0-9.]+)/)?.1 { version = Header.version(String(value)) }
+			}
+			guard let serial, let version else { return nil }
+			self.serial = serial
+			hbci4java = version
+		}
+
+		/// "4.1.17" as [4, 1, 17], which compare in order, or nil for anything else.
+		static func version(_ text: String) -> [Int]? {
+			let parts = text.split(separator: ".", omittingEmptySubsequences: false).map { Int($0) }
+			guard !parts.isEmpty, parts.allSatisfy({ $0 != nil }) else { return nil }
+			return parts.compactMap { $0 }
+		}
+
+		/// Whether the list is at least as new as the list in a jar of hbci4java `version`.
+		func isAtLeast(_ version: [Int]) -> Bool {
+			!hbci4java.lexicographicallyPrecedes(version)
+		}
+	}
+
 	/// Whether a file is a bank list in the format of hbci4java: UTF-8, at least one entry, and every line
 	/// that is not empty or a comment a Bankleitzahl of eight digits, "=", and at least eight fields
 	/// separated by "|". A backslash, which the properties format of Java reads as an escape, makes it fail.
 	/// A signed file that fails this check was published by mistake, and the helper never gets it.
 	static func isReadableBankList(_ data: Data) -> Bool {
-		guard let text = String(data: data, encoding: .utf8), !text.contains("\\") else { return false }
+		guard String(data: data, encoding: .utf8) != nil, !data.contains(UInt8(ascii: "\\")) else { return false }
 		var entries = 0
-		for line in text.split(whereSeparator: \.isNewline) {
-			let line = line.trimmingCharacters(in: .whitespaces)
-			if line.isEmpty || line.hasPrefix("#") || line.hasPrefix("!") { continue }
-			guard line.wholeMatch(of: /[0-9]{8}=[^|]*(\|[^|]*){7,}/) != nil else { return false }
+		for line in data.split(whereSeparator: { $0 == UInt8(ascii: "\n") || $0 == UInt8(ascii: "\r") }) {
+			let line = line.drop { $0 == UInt8(ascii: " ") || $0 == UInt8(ascii: "\t") }
+			guard let first = line.first, first != UInt8(ascii: "#"), first != UInt8(ascii: "!") else { continue }
+			let code = line.prefix(9)
+			guard code.count == 9, code.prefix(8).allSatisfy({ (UInt8(ascii: "0")...UInt8(ascii: "9")).contains($0) }), code.last == UInt8(ascii: "="),
+				line.count { $0 == UInt8(ascii: "|") } >= 7 else { return false }
 			entries += 1
 		}
 		return entries > 0
@@ -42,12 +87,12 @@ enum BankData {
 }
 
 /// Looks for new bank data files at most once in 24 hours, and installs them only when the update key
-/// signed them and the bank list reads (spec: "Bank data files update between releases").
+/// signed them, the bank list reads, and it is newer than both the installed list and the list in the jar
+/// of hbci4java (spec: "Bank data files update between releases").
 ///
 /// The folder holds `check.json` with the time and the build of the last look, and the folder "Current"
-/// with the installed files, their signatures, and the build of the app that installed them. A new
-/// version replaces the whole folder "Current" in one rename, so a crash never leaves a file with the
-/// signature of another one.
+/// with the installed files and their signatures. A new version replaces the whole folder "Current" in one
+/// rename, so a crash never leaves a file with the signature of another one.
 public struct BankDataUpdater: Sendable {
 	public enum Outcome: Sendable, Equatable {
 		/// The last look was less than 24 hours ago.
@@ -65,6 +110,9 @@ public struct BankDataUpdater: Sendable {
 		case signature
 		case unreadable
 		case tooLarge
+		/// The serial is not above the serial of the installed list, or the list comes from an older jar of
+		/// hbci4java than the one of this build: a replay or a downgrade.
+		case older
 	}
 
 	/// The bank list of hbci4java has about 460 KB.
@@ -76,15 +124,22 @@ public struct BankDataUpdater: Sendable {
 	let source: URL
 	let publicKey: Data
 	let build: String
+	/// The version of the jar of hbci4java of this build. No list from an older jar is installed or used.
+	let bundled: [Int]
 	private let session: URLSession
 
 	/// `source` is the folder of the files, such as the downloads of the release `bank-data`, or a file URL
 	/// in a test. `publicKey` is the 32 bytes of the update key, and `build` the build number of the app.
 	public init(folder: URL, source: URL, publicKey: Data, build: String) {
+		self.init(folder: folder, source: source, publicKey: publicKey, build: build, bundled: BankData.bundledHBCI4Java)
+	}
+
+	init(folder: URL, source: URL, publicKey: Data, build: String, bundled: String, protocolClasses: [AnyClass]? = nil) {
 		self.folder = folder
 		self.source = source
 		self.publicKey = publicKey
 		self.build = build
+		self.bundled = BankData.Header.version(bundled) ?? []
 		let configuration = URLSessionConfiguration.ephemeral
 		configuration.httpCookieStorage = nil
 		configuration.httpShouldSetCookies = false
@@ -93,6 +148,7 @@ public struct BankDataUpdater: Sendable {
 		configuration.httpAdditionalHeaders = ["User-Agent": "Moneten"]
 		configuration.timeoutIntervalForRequest = 60
 		configuration.timeoutIntervalForResource = 120
+		if let protocolClasses { configuration.protocolClasses = protocolClasses }
 		session = URLSession(configuration: configuration)
 	}
 
@@ -106,15 +162,24 @@ public struct BankDataUpdater: Sendable {
 
 	// MARK: Using the files
 
-	/// The installed bank list, when the update key signed it and this build of the app installed it.
-	/// The connector reads it before each start of the helper, so a file that changed on disk is never used.
-	public func bankList() -> Data? {
-		guard (try? String(contentsOf: current.appending(path: "build"), encoding: .utf8)) == build,
-			let list = try? Data(contentsOf: current.appending(path: BankData.bankList)),
+	/// The installed list with a valid signature of the update key, and its header, whether or not it is
+	/// newer than the jar. Its serial is the floor of the next download.
+	private func installed() -> (list: Data, header: BankData.Header)? {
+		guard let list = try? Data(contentsOf: current.appending(path: BankData.bankList)),
 			let file = try? Data(contentsOf: current.appending(path: BankData.bankList + ".sig")),
 			let signature = BankData.signature(fromFile: file),
-			BankData.verify(file: list, signature: signature, publicKey: publicKey), BankData.isReadableBankList(list) else { return nil }
-		return list
+			BankData.verify(file: list, signature: signature, publicKey: publicKey),
+			let header = BankData.Header(list) else { return nil }
+		return (list, header)
+	}
+
+	/// The installed bank list, when the update key signed it and it comes from a jar of hbci4java at least
+	/// as new as the one of this build. The connector reads it before each start of the helper, so a file
+	/// that changed on disk is never used. The list was checked at the install, and the signature binds
+	/// these bytes to it, so this reads only the header.
+	public func bankList() -> Data? {
+		guard let installed = installed(), installed.header.isAtLeast(bundled) else { return nil }
+		return installed.list
 	}
 
 	// MARK: Looking for new files
@@ -148,10 +213,16 @@ public struct BankDataUpdater: Sendable {
 			}
 			downloaded.append((name, data, file))
 		}
-		guard let list = downloaded.first(where: { $0.name == BankData.bankList }), BankData.isReadableBankList(list.data) else {
+		guard let list = downloaded.first(where: { $0.name == BankData.bankList }), BankData.isReadableBankList(list.data),
+			let header = BankData.Header(list.data) else {
 			return .rejected(.unreadable)
 		}
-		if bankList() == list.data { return .unchanged }
+		let installed = installed()
+		if installed?.list == list.data { return .unchanged }
+		// A replay of an older list, the same serial with other bytes, or a list from an older jar than
+		// the one of this build. The floor stays across builds, because "Current" does.
+		if !header.isAtLeast(bundled) { return .rejected(.older) }
+		if let installed, header.serial <= installed.header.serial { return .rejected(.older) }
 		do {
 			try install(downloaded)
 			return .installed
@@ -160,9 +231,13 @@ public struct BankDataUpdater: Sendable {
 		}
 	}
 
-	/// Writes the files into a new folder and swaps it with "Current" in one rename.
+	/// Writes the files into a new folder and swaps it with "Current" in one rename. Staging folders that an
+	/// earlier install left behind, for example after a crash, go first.
 	private func install(_ files: [(name: String, data: Data, signature: Data)]) throws {
 		let fm = FileManager.default
+		for leftover in (try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] where leftover.lastPathComponent.hasPrefix("New-") {
+			try? fm.removeItem(at: leftover)
+		}
 		let staging = folder.appending(path: "New-\(UUID().uuidString)", directoryHint: .isDirectory)
 		try fm.createDirectory(at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
 		defer { try? fm.removeItem(at: staging) }
@@ -170,7 +245,6 @@ public struct BankDataUpdater: Sendable {
 			try file.data.write(to: staging.appending(path: file.name))
 			try file.signature.write(to: staging.appending(path: file.name + ".sig"))
 		}
-		try Data(build.utf8).write(to: staging.appending(path: "build"))
 		let swapped = staging.withUnsafeFileSystemRepresentation { from in
 			current.withUnsafeFileSystemRepresentation { to in
 				guard let from, let to else { return false }
