@@ -89,8 +89,8 @@ final class SelfTest {
 		String full = "x".repeat(133) + "Kundenn";
 		expect("CAMT purpose lines: outer and repeated spaces go, and only a line of 140 characters joins without a space",
 			FinTSHelper.joinCamt(List.of(" Miete  November ", "", "Wohnung 3")) + " | " + FinTSHelper.joinCamt(List.of(full, "ummer 4711"))
-				+ " | " + FinTSHelper.joinCamt(List.of("Abschlag Strom Kund", "ennummer 4711")),
-			"Miete November Wohnung 3 | " + "x".repeat(133) + "Kundennummer 4711 | Abschlag Strom Kund ennummer 4711");
+				+ " | " + FinTSHelper.joinCamt(List.of("Abschlag Strom Kund", "ennummer 4711")) + " | " + FinTSHelper.joinCamt(List.of(" " + full + " ", " ummer 4711 ")),
+			"Miete November Wohnung 3 | " + "x".repeat(133) + "Kundennummer 4711 | Abschlag Strom Kund ennummer 4711 | " + "x".repeat(133) + "Kundennummer 4711");
 
 		UmsLine abroad = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00/");
 		UmsLine both = line("2026-11-09", "2026-11-09", "-46.12", "Coffee Shop New York", "/OCMT/USD50,00//CHGS/EUR1,50/");

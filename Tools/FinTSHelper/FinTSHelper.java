@@ -1022,6 +1022,8 @@ public class FinTSHelper {
 		final boolean camt;
 		/// The positions in `joined` before which the purpose shows a space.
 		final java.util.Set<Integer> spaces = new java.util.HashSet<>();
+		/// Where each line starts in `joined`, and the end of the text last.
+		final List<Integer> starts = new ArrayList<>();
 
 		Purpose(List<String> lines, boolean camt) {
 			this.camt = camt;
@@ -1043,21 +1045,28 @@ public class FinTSHelper {
 					}
 					if (space) spaces.add(text.length());
 				}
+				starts.add(text.length());
 				text.append(line);
 				previous = line;
 			}
 			joined = text.toString();
+			starts.add(joined.length());
 		}
 
-		/// The text from `start` to `end` with its spaces, without white space at both ends.
+		/// The text from `start` to `end` with its spaces, without white space at both ends. A CAMT line also loses the white
+		/// space at its own ends, and white space in it folds into one space.
 		String shown(int start, int end) {
 			StringBuilder text = new StringBuilder();
-			for (int i = start; i < end; i++) {
-				if (i > start && spaces.contains(i)) text.append(' ');
-				text.append(joined.charAt(i));
+			for (int line = 0; line + 1 < starts.size(); line++) {
+				int from = Math.max(start, starts.get(line)), to = Math.min(end, starts.get(line + 1));
+				if (from >= to) continue;
+				String part = joined.substring(from, to);
+				if (camt) part = part.strip().replaceAll("\\s+", " ");
+				if (part.isEmpty()) continue;
+				if (text.length() > 0 && from == starts.get(line) && spaces.contains(from)) text.append(' ');
+				text.append(part);
 			}
-			String shown = text.toString().strip();
-			return camt ? shown.replaceAll("\\s+", " ") : shown;
+			return text.toString().strip();
 		}
 	}
 
