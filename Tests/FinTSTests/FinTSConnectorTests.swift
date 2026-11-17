@@ -466,7 +466,7 @@ struct FinTSConnectorTests {
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("A helper that closes its output but keeps running gets the cancel and ends")
@@ -503,7 +503,7 @@ struct FinTSConnectorTests {
 				""", inactivity: 1, grace: 1).listAccounts(of: Self.access, state: state, session: Session())
 		}
 		// The helper would end on its own after 60 seconds; termination ends it after about 2.
-		#expect(try #require(secondsToTermination(since: start)) < 30)
+		#expect(try #require(secondsToTermination(since: start)) < 30) // time-ok: about 2 s against the 60 s of the helper
 	}
 
 	@Test("Each line restarts the timeout, and a request for the user pauses it")
