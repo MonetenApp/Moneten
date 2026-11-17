@@ -39,6 +39,8 @@ final class UpdateDriver: NSObject {
 	@ObservationIgnored private var acknowledge: (() -> Void)?
 	/// Whether the user asked for this check. A failed automatic check shows nothing.
 	@ObservationIgnored private var userInitiated = false
+	/// Whether the user chose "Install" for the update of this session, so every failure is a failed installation.
+	@ObservationIgnored private var installing = false
 	@ObservationIgnored private var received: UInt64 = 0
 	@ObservationIgnored private var expected: UInt64 = 0
 	@ObservationIgnored private var cancelDownload: () -> Void = {}
@@ -92,6 +94,7 @@ final class UpdateDriver: NSObject {
 	func choose(_ choice: SPUUserUpdateChoice) {
 		guard case let .found(_, _, _, reply) = stage else { return }
 		hide()
+		installing = choice == .install
 		UpdateLog.write("update choice", ("", .word(choice == .install ? "install" : "later")))
 		reply(choice)
 	}
@@ -135,6 +138,7 @@ extension UpdateDriver: SPUUserDriver {
 
 	func showUserInitiatedUpdateCheck(cancellation: @escaping () -> Void) {
 		userInitiated = true
+		installing = false
 		show(.checking(cancel: cancellation))
 	}
 
@@ -142,7 +146,8 @@ extension UpdateDriver: SPUUserDriver {
 		userInitiated = state.userInitiated
 		guard let offered = ReleaseNoteItem(appcastItem) else { return reply(.dismiss) }
 		// A downloaded or installing update needs no second choice: the user chose "Install" already.
-		guard state.stage == .notDownloaded else { return reply(.install) }
+		installing = state.stage != .notDownloaded
+		guard !installing else { return reply(.install) }
 		show(.found(offered: offered, notes: notes(for: offered), installed: AppVersion.current.display, reply: reply))
 	}
 
@@ -163,24 +168,47 @@ extension UpdateDriver: SPUUserDriver {
 
 	func showUpdaterError(_ error: any Error, acknowledgement: @escaping () -> Void) {
 		let error = error as NSError
-		UpdateLog.write("update error", ("code", .count(error.code)))
-		let failure: UpdateStage.Failure = if [SUError.runningTranslocated, .runningFromDiskImageError].map({ Int($0.rawValue) }).contains(error.code) {
-			.moveToApplications
-		} else if stage.isChecking {
-			.check(reason: Self.reason(of: error))
-		} else {
-			.install(reason: Self.reason(of: error))
-		}
+		UpdateLog.write("update error", ("code", .count(error.code)), ("cause", .count(Self.cause(of: error).code)), ("installing", .flag(installing)),
+			("requested", .flag(userInitiated)))
 		// A failed automatic check stays silent and is tried again at the next launch.
-		if case .check = failure, !userInitiated { return acknowledgement() }
-		show(.failed(failure), acknowledgement: acknowledgement)
+		let failure = UpdateFailure.of(code: error.code, installing: installing, userInitiated: userInitiated)
+		installing = false
+		guard let failure else { return acknowledgement() }
+		show(.failed(stageFailure(failure, reason: Self.reason(of: error))), acknowledgement: acknowledgement)
 	}
 
-	/// The message of Sparkle and of the error under it, such as "The Internet connection appears to
-	/// be offline.", which names the cause.
+	/// Sparkle ends the update without a message of its own when the user cancels the request for the
+	/// password of an administrator, which it needs for a folder that the user must not write to. The
+	/// app then reports the failed installation itself (spec: "Report a failed installation"). Every
+	/// other error reaches `showUpdaterError`.
+	func showSilentAbort(code: Int) {
+		guard code == UpdateFailure.Code.installationCanceled,
+		      let failure = UpdateFailure.of(code: code, installing: installing, userInitiated: userInitiated) else { return }
+		installing = false
+		show(.failed(stageFailure(failure, reason: String(localized: "Moneten needs the permission of an administrator to replace the app in its folder."))))
+	}
+
+	private func stageFailure(_ failure: UpdateFailure, reason: String) -> UpdateStage.Failure {
+		switch failure {
+		case .check: .check(reason: reason)
+		case .install: .install(reason: reason)
+		case .moveToApplications: .moveToApplications
+		}
+	}
+
+	/// The message of Sparkle and the message of the first error under it that Sparkle did not make,
+	/// such as "The Internet connection appears to be offline.", which names the cause. Sparkle wraps
+	/// a failed request in two errors of its own. Under the error of the system there may be more
+	/// errors with only a code, so the search stops at the first one.
 	private static func reason(of error: NSError) -> String {
-		let cause = (error.userInfo[NSUnderlyingErrorKey] as? NSError)?.localizedDescription
-		return [error.localizedDescription, cause].compactMap { $0 }.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }.joined(separator: " ")
+		let cause = cause(of: error)
+		return cause === error ? error.localizedDescription : "\(error.localizedDescription) \(cause.localizedDescription)"
+	}
+
+	private static func cause(of error: NSError) -> NSError {
+		var cause = error
+		while cause.domain == SUSparkleErrorDomain, let under = cause.userInfo[NSUnderlyingErrorKey] as? NSError { cause = under }
+		return cause
 	}
 
 	func showDownloadInitiated(cancellation: @escaping () -> Void) {
@@ -222,6 +250,8 @@ extension UpdateDriver: SPUUserDriver {
 	func showUpdateInFocus() { window?.makeKeyAndOrderFront(nil) }
 
 	func dismissUpdateInstallation() {
+		// Keep `installing`: Sparkle calls this right before `updater(_:didAbortWithError:)` with a
+		// canceled password request, and `showSilentAbort` needs it to report the failed installation.
 		userInitiated = false
 		// A final message stays until the user closes it.
 		switch stage {
@@ -229,10 +259,6 @@ extension UpdateDriver: SPUUserDriver {
 		default: hide()
 		}
 	}
-}
-
-private extension Optional where Wrapped == UpdateStage {
-	var isChecking: Bool { if case .checking = self { true } else { false } }
 }
 
 extension UpdateStage {
