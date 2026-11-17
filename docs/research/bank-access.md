@@ -133,6 +133,7 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 - The code of a PIN change that the bank requires, if one comes. No source names it yet (task 1.23 of add-fints-banking).
 - What a login without a TAN method for FinTS shows. The app means to show "There are no available TAN methods.", so record the text that shows.
 - The account types of the login, and the error line of `send status` for each account that fails.
+- If the bank sends MT942, one pending row and its booked version: the value date and the entry date of the `:61:` line of the pending row, and the day on which the bank booked it. A pending row takes the value date, except at ING, Commerzbank, and HypoVereinsbank, which take the entry date (#374).
 
 ## What follows
 
