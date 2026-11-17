@@ -12,6 +12,8 @@ struct Command: Encodable {
 	/// The passport of hbci4java from the last state, in Base64.
 	var state: String?
 	var accounts: [Period]?
+	/// The text of a newer bank list than the one in the jar of hbci4java, which the update key signed.
+	var bankList: String?
 
 	/// One account of a refresh and the first day to fetch. No day asks for the full history.
 	struct Period: Encodable, Equatable {

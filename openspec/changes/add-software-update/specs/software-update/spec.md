@@ -320,6 +320,13 @@ The app SHALL update its list of banks with their server addresses and its BIC d
 - **THEN** the app keeps its current bank list
 - **AND** the log holds an entry about the rejected file
 
+#### Scenario: New version of the app
+
+- **GIVEN** the app version 0.1.2 downloaded a bank list
+- **WHEN** the user installs version 0.1.3 and starts it
+- **THEN** the app uses the bank list that version 0.1.3 brings
+- **AND** the app looks for a new bank list at this start
+
 ### Requirement: Mark pre-release versions
 
 The app SHALL show the build number next to the version number in "About Moneten", and it SHALL mark a pre-release version as a pre-release there.

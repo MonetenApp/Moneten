@@ -289,6 +289,7 @@ final class SelfTest {
 				Map.of("bankCode", "10010424", "url", "https://fints.musterbank.example/fints")).connect()), "unsupported: The bank offers no FinTS address.");
 			pinTan();
 			historyDialog();
+			bankListOfTheApp();
 		} finally {
 			HBCIUtils.done();
 		}
@@ -309,6 +310,23 @@ final class SelfTest {
 		} catch (IOException e) {
 			failures.add("fixture: " + e);
 		}
+	}
+
+	/// A bank list of the app replaces the directory of hbci4java for the search, the address of a dialog,
+	/// and the BIC. An empty list keeps the directory of the jar. It runs last, because it changes the directory.
+	static void bankListOfTheApp() {
+		FinTSHelper.useBankList("");
+		expect("empty bank list of the app ignored", ((List<?>) FinTSHelper.banks().get("banks")).size() > 4000, true);
+		FinTSHelper.useBankList("# made-up banks\r\n76030080=Beispielbank|Nürnberg|CSDBDE71XXX|00||https://fints.beispielbank.example/fints|300|300|\r\n"
+			+ "12030000=Musterbank|Berlin|BYLADEM1001|00||https://fints.musterbank.example/fints|300|300|\r\n");
+		expect("bank list of the app in the search", ((List<?>) FinTSHelper.banks().get("banks")).stream().map(FinTSHelper.Json::write).toList(), List.of(
+			"{\"code\":\"12030000\",\"name\":\"Musterbank\",\"city\":\"Berlin\",\"bic\":\"BYLADEM1001\",\"url\":\"https://fints.musterbank.example/fints\"}",
+			"{\"code\":\"76030080\",\"name\":\"Beispielbank\",\"city\":\"Nürnberg\",\"bic\":\"CSDBDE71XXX\",\"url\":\"https://fints.beispielbank.example/fints\"}"));
+		FinTSHelper.Callback moved = new FinTSHelper.Callback(Map.of("bankCode", "76030080", "url", "https://brokerage-hbci.consorsbank.de/hbci"));
+		moved.connect();
+		expect("address of the bank list of the app", moved.host + " " + moved.port, "fints.beispielbank.example/fints 443");
+		expect("BIC of the bank list of the app", HBCIUtils.getBICForBLZ("12030000"), "BYLADEM1001");
+		expect("bank that the list of the app leaves out", HBCIUtils.getBankInfo("10010424"), null);
 	}
 
 	static GVRSaldoReq balance(String amount, String day) {

@@ -427,6 +427,7 @@ final class AppModel {
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
+		BankDataUpdates.start()
 	}
 
 	// MARK: Opening and locking
@@ -1341,9 +1342,11 @@ final class AppModel {
 	/// so that the setup and the refresh run without a bank.
 	private static func makeFinTSConnector() -> FinTSConnector {
 		#if DEBUG
-		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty { return FinTSConnector(debugHelper: path) }
+		if let path = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"], !path.isEmpty {
+			return FinTSConnector(debugHelper: path, bankList: { BankDataUpdates.updater?.bankList() })
+		}
 		#endif
-		return FinTSConnector()
+		return FinTSConnector(bankList: { BankDataUpdates.updater?.bankList() })
 	}
 
 	/// "Refresh All Accounts", "Refresh Account", and "Refresh Accounts", and with `enforced` the commands
