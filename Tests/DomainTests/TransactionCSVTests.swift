@@ -113,6 +113,25 @@ struct TransactionCSVTests {
 		#expect(try lines([t], "de_DE")[1].hasPrefix("03.11.2026;04.11.2026;Uncategorized;"))
 	}
 
+	@Test("A split transaction is one line for each part, with the amount, the category, and the comment of the part")
+	func splitTransaction() throws {
+		let pets = Domain.Category(position: 2, name: "Pets")
+		let t = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -10_000, name: "Markt Beispiel",
+			purpose: "Einkauf", comment: "Wocheneinkauf", isChecked: true, categoryID: housing.id)
+		let parts = [SplitPart(transactionID: t.id, position: 0, amountMinor: -6_000, categoryID: foodID, comment: "=1+1"),
+			SplitPart(transactionID: t.id, position: 1, amountMinor: -4_000, categoryID: pets.id)]
+		let split = Ledger(accounts: [giro], categories: [household, food, housing, pets, uncategorized], transactions: [t], parts: parts)
+		let rows = split.rows(in: .account(giro.id)).rows
+		let text = try TransactionCSV.text(rows, ledger: split, locale: Locale(identifier: "de_DE"))
+		let lines = text.components(separatedBy: "\r\n")
+		#expect(lines.count == 4)
+		#expect(lines[1] == "03.11.2026;;Household - Food;Markt Beispiel;Einkauf;;;-60,00;EUR;DE02120300000000202051;;;;;'=1+1;X;")
+		#expect(lines[2] == "03.11.2026;;Pets;Markt Beispiel;Einkauf;;;-40,00;EUR;DE02120300000000202051;;;;;;X;")
+		// A selected part exports alone.
+		let selected = TransactionCSV.rows(visible: rows, selection: [parts[1].id])
+		#expect(try TransactionCSV.text(selected, ledger: split, locale: Locale(identifier: "de_DE")).components(separatedBy: "\r\n")[1] == lines[2])
+	}
+
 	@Test("Own account is the IBAN, else the account number, else the name of the account")
 	func ownAccount() throws {
 		let rows = [giro, savings, cash].map { Transaction(accountID: $0.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: 100, name: "Zinsen") }
