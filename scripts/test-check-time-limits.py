@@ -5,6 +5,9 @@ import importlib.util
 import pathlib
 import sys
 
+# Importing the check would otherwise write scripts/__pycache__ on every run.
+sys.dont_write_bytecode = True
+
 scripts = pathlib.Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("check_time_limits", scripts / "check-time-limits.py")
 check = importlib.util.module_from_spec(spec)

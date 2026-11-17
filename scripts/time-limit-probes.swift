@@ -21,6 +21,27 @@ try #require(elapsed / .milliseconds(1) < 5) // probe: raw
 #expect(rows.isEmpty && merge < .milliseconds(300)) // probe: raw
 let fast = elapsed < .milliseconds(5) // probe: raw
 #expect(elapsed < .seconds(1) + .milliseconds(500)) // probe: raw
+#expect(.nanoseconds(ticks) < .milliseconds(5)) // probe: raw
+#expect(.milliseconds(5) > Duration.nanoseconds(ticks)) // probe: raw
+let measured: TimeInterval = Date.now.timeIntervalSince(start)
+#expect(measured <= 0.05) // probe: raw
+let wait: Duration = clock.now - start
+#expect(wait < .milliseconds(5)) // probe: raw
+
+// Comparisons split over lines inside #expect and #require. The check reports the first line of each, or the line that holds the whole comparison.
+#expect(elapsed < // probe: raw
+	.seconds(2))
+#expect(elapsed // probe: raw
+	< .seconds(2))
+try #require(
+	5 > milliseconds, // probe: raw
+	"too slow"
+)
+#expect( // probe: pass
+	elapsed < budget(.seconds(2))
+)
+#expect(elapsed // time-ok: a grace of two minutes (probe: pass)
+	< .seconds(120))
 
 // Limits through budget(_:), and limits that say why they keep their value.
 #expect(elapsed < budget(.milliseconds(5))) // probe: pass
@@ -38,11 +59,19 @@ while !done, ContinuousClock.now - start < limit { // probe: pass
 #expect(.seconds(5) <= ContinuousClock.now - canceled) // probe: pass
 #expect(spent < spentAlone * 1.5) // probe: pass
 #expect(rows.count < 10) // probe: pass
+#expect(runtimeErrors < 3) // probe: pass
+#expect(times.count < 20) // probe: pass
 #expect(times.count == runs.count) // probe: pass
 try await Task.sleep(for: .milliseconds(100)) // probe: pass
 func slowest<T: Comparable>(_ values: [T]) -> T? { values.max() } // probe: pass
 let text = "elapsed < .seconds(1)" // probe: pass
 // #expect(elapsed < .seconds(1)) probe: pass
+/* #expect(elapsed < .seconds(1)) probe: pass */
+/*
+#expect(elapsed < .seconds(1)) probe: pass
+*/
+// A limit in a variable is a known gap of the check: review catches it.
+#expect(elapsed < limit) // probe: pass
 let script = """
 	local slept = MM.time() - start
 	return slept < 2 and elapsed < 5
