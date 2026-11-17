@@ -408,8 +408,9 @@ public class FinTSHelper {
 	static final class Passport extends HBCIPassportPinTan {
 		static PassportData loaded;
 		/// The login name of the command, which replaces the user ID of the state, so that a login name that
-		/// the app sends in another form, such as a VR-Kennung in capitals, reaches the bank. A customer ID
-		/// that was the user ID follows it.
+		/// the app sends in another form reaches the bank: a VR-Kennung in capitals, or the first 16 digits of a
+		/// login name of 17 digits that an older access of a savings bank stored. A customer ID that was the user
+		/// ID follows it.
 		static String user;
 
 		record State(PassportData data, String tanMedium) { }
@@ -445,7 +446,9 @@ public class FinTSHelper {
 
 		/// Whether the customer ID of a state names the login of its user ID: the same text, or on a server of
 		/// the cooperative banks the same VR-Kennung, which FinTSServer.loginName of the app sends in capitals.
-		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart.
+		/// A customer ID that differs in case only is one of its own, because a bank may tell them apart. A
+		/// savings bank needs no rule here: the state stores the 17 digits as both IDs, which are the same text,
+		/// and the customer ID follows the 16 digits of the command.
 		static boolean sameLogin(String customerId, String userId, String host) {
 			if (customerId == null || userId == null) return false;
 			if (customerId.equals(userId)) return true;

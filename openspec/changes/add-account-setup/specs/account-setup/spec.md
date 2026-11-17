@@ -292,7 +292,7 @@ The app SHALL ask for the login data in the second step with the field names tha
 
 ### Requirement: Send a login name of 17 digits to a savings bank as 16 digits
 
-The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it.
+The app SHALL send and store the first 16 digits of a login name that has exactly 17 digits, when the bank is on the FinTS servers of the savings banks. A bank is on these servers when the part of its FinTS host before ".de" starts with "s-fints-pt-" or is "s-hbci". Any other login name, and any login name at another bank, stays as the user typed it. Two login names that agree in this form are the same login.
 
 #### Scenario: Login name of 17 digits
 
@@ -318,6 +318,18 @@ The app SHALL send and store the first 16 digits of a login name that has exactl
 - **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30"
 - **WHEN** the user enters the login name "12345678901234567" in "Edit Login Data..." and clicks "Next"
 - **THEN** the app sends and stores "1234567890123456"
+
+#### Scenario: Access of 17 digits that the app stored before
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30" stores the login name "12345678901234567"
+- **WHEN** the app refreshes the access
+- **THEN** the app sends "1234567890123456" to the bank
+
+#### Scenario: Same login with 16 digits
+
+- **GIVEN** an access of a Sparkasse with the FinTS address "https://banking-hs6.s-fints-pt-hs.de/fints30" stores the login name "12345678901234567"
+- **WHEN** the user adds an account of the same bank with the login name "1234567890123456"
+- **THEN** the setup joins the access that the app has, and the app keeps one access with the login name "1234567890123456"
 
 ### Requirement: Check the format of login fields
 
