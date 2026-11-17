@@ -9,7 +9,7 @@ import Synchronization
 /// Two signs count. The file at the path is another file than the one the store opened, which shows a
 /// replacement. Or `PRAGMA data_version` moved, which SQLite does only for a commit of another connection, also
 /// one in another process, and for an older copy written over the file in place. Commits and rollbacks of the
-/// store itself leave it as it is, except that a rollback of a large write can move it, which `writeRolledBack(_:)` records.
+/// store itself leave it as it is.
 ///
 /// `Store.write` checks at the start of each transaction, after SQLite took the write lock, so no other program
 /// can commit between the check and the commit. The commit hook checks the file once more, without SQL, which
@@ -17,11 +17,9 @@ import Synchronization
 final class DiskWatch: TransactionObserver, Sendable {
 	private struct State {
 		var identity: FileIdentity?
-		/// `PRAGMA data_version` when the store opened, or after the last rollback of a checked write.
+		/// `PRAGMA data_version` when the store opened.
 		var otherCommits = 0
 		var changed = false
-		/// A write of `Store.write` runs, and its check found the file unchanged.
-		var inCheckedWrite = false
 	}
 
 	/// The device and the inode of the file at a path. A file put in its place has another inode.
@@ -67,7 +65,6 @@ final class DiskWatch: TransactionObserver, Sendable {
 	/// Throws `DatabaseChangedOnDisk` when the file changed. `Store.write` calls it first in each transaction.
 	func checkBeforeWrite(_ db: Database) throws {
 		if try isChanged(db) { throw DatabaseChangedOnDisk(path: path) }
-		state.withLock { $0.inCheckedWrite = true }
 	}
 
 	/// Refuses every write from now on, for a connection whose keys no longer match the file.
@@ -102,26 +99,8 @@ final class DiskWatch: TransactionObserver, Sendable {
 
 	func observes(eventsOfKind eventKind: DatabaseEventKind) -> Bool { false }
 	func databaseDidChange(with event: DatabaseEvent) {}
-	func databaseDidCommit(_ db: Database) {
-		state.withLock { $0.inCheckedWrite = false }
-	}
-
+	func databaseDidCommit(_ db: Database) {}
 	func databaseDidRollback(_ db: Database) {}
-
-	/// A rollback of a write of the store can move `PRAGMA data_version` too, as after a canceled migration of thousands of
-	/// rows. The check at the start of the write found the file unchanged, so the version after the rollback is the store's
-	/// own, and it becomes the new reference. `Store.write` calls this after the rollback, in the same access to the queue,
-	/// because SQL in `databaseDidRollback` fails while the transaction block still runs. A commit of another program in
-	/// the moment between the rollback and this read would go unnoticed, but a file put in place of the database still
-	/// shows by its identity.
-	func writeRolledBack(_ db: Database) {
-		let checked = state.withLock { s in
-			defer { s.inCheckedWrite = false }
-			return s.inCheckedWrite && !s.changed
-		}
-		guard checked, let version = try? Self.otherCommits(db) else { return }
-		state.withLock { $0.otherCommits = version }
-	}
 
 	/// A write that bypassed `Store.write`, such as one that a test makes, still lands in no other file.
 	func databaseWillCommit() throws {

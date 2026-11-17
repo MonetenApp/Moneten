@@ -30,20 +30,28 @@ public final class Store: SavedPINStore {
 		return try await queue.writeWithoutTransaction { db in try Self.transaction(db, diskWatch, updates) }
 	}
 
-	/// The transaction of `write`, as GRDB's `write` runs it. After a rollback the watch reads the version of the file again
-	/// before any other access to the queue.
+	/// The transaction of `write`. A failed write rolls back to a savepoint and commits the transaction, which then holds no
+	/// change. A rollback of the whole transaction moved `PRAGMA data_version` after SQLite had spilled pages of a large write
+	/// into the file, such as a canceled migration of thousands of rows, and the store then counted its own file as changed on
+	/// disk. A commit of the store never moves it, and the write lock stays held from the check to the end.
 	private static func transaction<T>(_ db: Database, _ diskWatch: DiskWatch, _ updates: (Database) throws -> T) throws -> T {
 		var result: T?
-		do {
-			try db.inTransaction {
-				try diskWatch.checkBeforeWrite(db)
-				result = try updates(db)
-				return .commit
+		var failure: (any Error)?
+		try db.inTransaction {
+			try diskWatch.checkBeforeWrite(db)
+			do {
+				try db.inSavepoint {
+					result = try updates(db)
+					return .commit
+				}
+			} catch {
+				failure = error
+				// SQLite itself ends the transaction after some errors, such as a full disk.
+				return db.isInsideTransaction ? .commit : .rollback
 			}
-		} catch {
-			diskWatch.writeRolledBack(db)
-			throw error
+			return .commit
 		}
+		if let failure { throw failure }
 		return result!
 	}
 
