@@ -151,7 +151,7 @@ struct PerformanceTests {
 		print("suggestions over 50,000 names: \(keystroke)")
 		#expect(found == 0)
 		#if !DEBUG
-		#expect(keystroke < .milliseconds(16))
+		#expect(keystroke < budget(.milliseconds(16)))
 		#endif
 	}
 
