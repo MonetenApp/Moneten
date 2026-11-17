@@ -82,6 +82,16 @@ The helper sends the passport of hbci4java as the new state after a successful r
 
 An automatic refresh opens no dialog ("An automatic refresh never asks the user" in add-account-refresh), and the window "Notice" counts as one. So a new notice waits, and the window comes forward only when the user is there: when the main window comes forward, which is the next change of focus, or at the end of the next refresh that the user starts. Each new notice brings the window forward once. A notice that only repeats one that waits does not bring it forward again. The window lists all waiting notices and scrolls when they are taller than 400 points, and OK or the close button dismisses them.
 
+### Rules of the savings banks
+
+The helper decides these rules by the FinTS host of the dialog, which comes from the bank directory, in `Tools/FinTSHelper/SavingsBanks.java`. Each bank group keeps its rules in a file of its own, so that the rules of another group change no line of it. A savings bank is a host whose label before ".de" starts with "s-fints-pt-" or is "s-hbci", the servers of Finanz Informatik.
+
+A Sparkasse lets the user block a software under "Service > Persönliche Einstellungen > Kontozugriffe" in its online banking, and then answers the login with "Kundenprodukt wurde vom Benutzer deaktiviert". The code of that answer is not known yet, so the text decides, and only the reported text counts: an error of a savings bank host in which "Kundenprodukt" or "Kontozugriff" comes before "vom Benutzer deaktiviert" in one sentence comes first among the errors of the answer, before the urgent codes, and the helper marks it `appBlocked`. A card, a TAN method, or an access that the user blocked, such as "Die Kreditkarte wurde vom Benutzer gesperrt" or "pushTAN wurde vom Kunden deaktiviert", is nothing that the user can unblock under "Kontozugriffe", so such a text keeps the meaning of its code, and 9930 or 9942 beside it still decides. The bank test of issue #11 may widen the text. The connector maps it to `SyncFailure.appBlocked`, which tells the user where to unblock Moneten. It acts like a blocked access: the PIN leaves the memory and the database, no PIN sheet opens, and the automatic refresh waits for a refresh by hand. The same text from another host keeps the failure of its code.
+
+A host counts in lower case, without its port and one trailing dot, in the helper and in the app alike.
+
+A repair of 1822direkt MT940 statements whose ":61:" or ":62F:" tags start inside a line is deferred until bank test #11 records such a statement. Issue #355 holds its design and the findings of its review.
+
 ### Cooperative banks and apoBank
 
 The rules of the cooperative banks are rules of their FinTS servers, so `Sources/FinTS/CooperativeBanks.swift` recognizes the group by the host of the FinTS address: a host that ends in `.atruvia.de` or `.bankenit.de` is a server of Atruvia, and `fints.apobank.de` is the server of apoBank. A few rules follow a Bankleitzahl instead, such as the BIC of EthikBank (83094495), which still sends `GENODEF1ESN` for some accounts. The setup stores `GENODEF1ETK` in its place (`FinTSAccount.account`). The other bank groups, such as the savings banks, keep their rules in entries and files of their own, so the groups change independently.

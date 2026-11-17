@@ -299,6 +299,8 @@ struct FinTSConnectorTests {
 		(#"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"100","currency":"EUR"},"errors":[{"code":"9942","text":"PIN falsch"}]}"#,
 			.pinRejected(BankMessage(code: "9942", text: "PIN falsch"))),
 		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"9930","text":"PIN gesperrt"}}"#, .accessBlocked(BankMessage(code: "9930", text: "PIN gesperrt"))),
+		(#"{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
 	])
 	func rejectionBeforeCancel(line: String, expected: SyncFailure) async throws {
 		let session = Session()
@@ -924,6 +926,12 @@ struct FinTSConnectorTests {
 		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"code":"3938","text":"Zugang vorläufig gesperrt"}}"#,
 			.accessBlocked(BankMessage(code: "3938", text: "Zugang vorläufig gesperrt"))),
 		(#"{"type":"failed","code":"3931","text":"TAN-Generator gesperrt"}"#, .bank(BankMessage(code: "3931", text: "TAN-Generator gesperrt"))),
+		(#"{"type":"failed","kind":"appBlocked","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"ask","id":1,"kind":"pin","rejected":{"kind":"appBlocked","code":"9931","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}}"#,
+			.appBlocked(BankMessage(code: "9931", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
+		(#"{"type":"failed","code":"9010","text":"Kundenprodukt wurde vom Benutzer deaktiviert"}"#,
+			.bank(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))),
 		(#"{"type":"failed","code":"9941","text":"TAN ungültig"}"#, .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		(#"{"type":"failed","code":"9943","text":"TAN bereits verbraucht"}"#, .tanRejected(BankMessage(code: "9943", text: "TAN bereits verbraucht"))),
 		(#"{"type":"failed","code":"9948","text":"TAN-Prüfung fehlgeschlagen"}"#, .tanRejected(BankMessage(code: "9948", text: "TAN-Prüfung fehlgeschlagen"))),
@@ -991,9 +999,11 @@ struct FinTSConnectorTests {
 		arguments: ["MONETEN_FAKE_APPROVAL_SECONDS=0", "/bin/sh", fakeHelper.path]), productID: "TESTPRODUCT", version: "0.0.1")
 
 	static let blocked = SyncFailure.accessBlocked(BankMessage(code: "3938", text: "Ihr Zugang ist vorläufig gesperrt - Bitte PIN-Sperre aufheben."))
+	static let deactivated = SyncFailure.appBlocked(BankMessage(code: "9010", text: "Kundenprodukt wurde vom Benutzer deaktiviert"))
 
 	@Test("The fake helper of a debug build fails the refresh of each login of an error with that error", arguments: [
 		("gesperrt", blocked),
+		("deaktiviert", deactivated),
 		("ohnetan", .noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
@@ -1005,10 +1015,11 @@ struct FinTSConnectorTests {
 		}
 	}
 
-	@Test("The fake helper of a debug build fails the setup login of a blocked access and lists no accounts")
-	func fakeHelperBlockedSetup() async throws {
-		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: "gesperrt")
-		await #expect(throws: Self.blocked) {
+	@Test("The fake helper of a debug build fails the setup login of a blocked access, or of an app that the user blocked, and lists no accounts",
+		arguments: [("gesperrt", blocked), ("deaktiviert", deactivated)])
+	func fakeHelperBlockedSetup(login: String, expected: SyncFailure) async throws {
+		let access = Access(source: Self.access.source, bankName: "Musterbank", loginName: login)
+		await #expect(throws: expected) {
 			_ = try await Self.fakeConnector.listAccounts(of: access, state: nil, session: Session())
 		}
 	}

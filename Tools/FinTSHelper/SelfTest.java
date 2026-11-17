@@ -128,6 +128,8 @@ final class SelfTest {
 		expect("address without host refused", refusal(() -> FinTSHelper.https("https:///fints")), "unsupported: The bank offers no encrypted FinTS address.");
 		expect("HTTPS accepted", FinTSHelper.https("https://bank.example/fints").getHost(), "bank.example");
 
+		SavingsBanksSelfTest.run();
+
 		Out.secret("geheim42");
 		expect("PIN masked", Out.bank("PIN geheim42 sent"), "PIN ••• sent");
 		expect("text of the bank left out", Out.bank("Fehler 9942:PIN falsch, Konto DE02120300000000202051"), "Fehler 9942 PIN wrong");
