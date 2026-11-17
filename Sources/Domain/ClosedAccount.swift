@@ -47,10 +47,12 @@ extension Ledger {
 	/// The entry is a manual, booked row that the user edits like any other, marked as new so that the user notices it.
 	/// No rule runs on it, so it stays without category. The account keeps a `ClearingEntryMark`, by which reopening
 	/// finds the entry. Closing also clears the error of the last refresh, because no refresh of a closed account clears it.
+	/// Only the lock of ING stays, because it belongs to the access: the automatic refresh of the other accounts stays
+	/// paused, and a refresh of the access updates or ends it (`Ledger.recorded`). The app does not show it on a closed account.
 	public func closing(_ account: Account, today: Day, now: Date = Date()) throws(ClearingEntryTooLarge) -> (account: Account, entry: Transaction?) {
 		var closed = account
 		closed.isClosed = true
-		closed.refreshError = nil
+		closed.refreshError = account.refreshError?.lockedLogins != nil ? account.refreshError : nil
 		closed.clearingEntry = nil
 		let balance = exactBalance(of: account, through: today)
 		guard account.kind != .portfolio, balance != 0 else { return (closed, nil) }
@@ -72,10 +74,14 @@ extension Ledger {
 	/// its bank balance moves it now, as if the user had added the entry to the open account, so the computed balance
 	/// meets the bank balance again and a later deletion of the entry moves the value back. A move beyond
 	/// `Money.maxMinorUnits` throws, so the app writes nothing.
+	///
+	/// The reopened account takes the lock of ING that its access carries (`lockedLogin(of:)`), so a paused automatic
+	/// refresh stays paused when the user closes the other accounts.
 	public func reopening(_ account: Account, calendar: Calendar = .current) throws(InitialBalanceTooLarge) -> (account: Account, removedEntry: UUID?) {
 		var open = account
 		open.isClosed = false
 		open.clearingEntry = nil
+		if let access = account.accessID, let lock = lockedLogin(of: access) { open.refreshError = lock }
 		guard let mark = account.clearingEntry, let t = transaction(mark.transactionID), t.accountID == account.id else { return (open, nil) }
 		if mark.isUnchanged(t, in: account), parts(of: t.id).isEmpty { return (open, t.id) }
 		if open.followsBankBalance, let date = open.bankBalanceDate {

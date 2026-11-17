@@ -159,6 +159,8 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
+		case "update": update(argument, model: model)
 		// "Try Again" of the window that shows why the database did not open.
 		case "tryagain":
 			log("tryagain", ("phase", .state(model.phase)))

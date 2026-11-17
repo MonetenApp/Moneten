@@ -381,6 +381,11 @@ struct PerfScenario {
 				await c.select("Account 2")
 			},
 			run: { await $0.select("Bulk") }),
+		// The seal check of the whole app, which the launch runs before it opens the database. It reads
+		// more than 100 MB with the Java runtime, so it must run away from the main thread.
+		PerfScenario(name: "seal-check-at-launch", budget: halfSecond,
+			setUp: { await $0.settle() },
+			run: { await checkSeal($0) }),
 		// Opens the Extensions window on a catalog of 200 packages, through the menu item.
 		PerfScenario(name: "open-extensions-window", budget: halfSecond,
 			setUp: { c in
@@ -516,6 +521,13 @@ struct PerfScenario {
 				if c.harness.focusedSheetText() != "Zahnarzt" { c.fail("the name field did not take the typed name") }
 			}),
 	]
+
+	/// Runs the seal check of the launch again and logs how long it took.
+	@MainActor static func checkSeal(_ c: PerfContext) async {
+		let start = ContinuousClock.now
+		if await !LaunchChecks.sealIsIntactNow() { c.fail("the seal check of the app failed") }
+		c.harness.log("perf seal", ("check_ms", .count(Int(((ContinuousClock.now - start) / .milliseconds(1)).rounded()))))
+	}
 
 	/// The setup of "type-name-over-50000-names": an offline account with 50,000 different names, and the window for a
 	/// new transaction open. It is a function of its own, because inside the list of scenarios the type checker of the

@@ -23,6 +23,8 @@ on:
       - scripts/release.sh
       - scripts/release-notes.py
       - scripts/sparkle-tools.sh
+      - scripts/generate-project.sh
+      - Fixtures/update/**
       - scripts/build-tools.sh
       - scripts/hbci4java-jars.sh
       - Tools/FinTSProbeJava/dependencies.lock

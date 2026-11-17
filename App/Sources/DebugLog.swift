@@ -118,6 +118,12 @@ struct LogValue: Sendable {
 		LogValue(String(describing: Swift.type(of: value)))
 	}
 
+	/// A version as the release workflow writes it, such as 0.2.0-beta.1, or "invalid". The update feed
+	/// comes from the network, so no other text of it reaches the log.
+	static func version(_ text: String) -> LogValue {
+		LogValue(text.wholeMatch(of: /[0-9]{1,4}\.[0-9]{1,4}\.[0-9]{1,4}(-beta\.[0-9]{1,4})?/) != nil ? text : "invalid")
+	}
+
 	/// Several values, separated by commas, or "-" for none.
 	static func list(_ values: [LogValue]) -> LogValue {
 		LogValue(values.isEmpty ? "-" : values.map(\.text).joined(separator: ","))

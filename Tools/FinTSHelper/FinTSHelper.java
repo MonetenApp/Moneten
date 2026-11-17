@@ -605,7 +605,9 @@ public class FinTSHelper {
 
 	/// Answers the callbacks of hbci4java through the app.
 	static class Callback extends AbstractHBCICallback {
-		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*)");
+		/// One message of the bank in a log line of hbci4java. A line can hold several, so the text of each ends where
+		/// the next message starts, and a rule that reads the text sees only its own message.
+		static final Pattern PIN_ERROR = Pattern.compile("Meldung der Bank: (\\d{4}): (.*?)(?=[;,]?\\s*Meldung der Bank: \\d{4}:|$)", Pattern.MULTILINE);
 		final Map<?, ?> command;
 		String host;
 		int port;
@@ -624,6 +626,9 @@ public class FinTSHelper {
 		Integer lastApproval;
 		Map<String, Object> rejectedPIN;
 		Map<String, Object> pinError;
+		/// The messages of the bank since the start of the dialog or the last rejected PIN, the newest first. `pinError` is the one that
+		/// `relevant` picks, so a later wrong PIN does not hide a block or the request of ING before it.
+		final List<HBCIRetVal> pinErrors = new ArrayList<>();
 		/// The PIN of this run. A new dialog after a change of the TAN method uses it again, unless the
 		/// bank rejected it.
 		String pin;
@@ -733,7 +738,15 @@ public class FinTSHelper {
 		public void log(String msg, int level, Date date, StackTraceElement trace) {
 			if (msg == null) return;
 			Matcher m = PIN_ERROR.matcher(msg);
-			if (m.find()) pinError = message("rejected", "kind", kind(m.group(1), m.group(2)), "code", m.group(1), "text", Out.withoutSecrets(m.group(2)));
+			boolean found = false;
+			while (m.find()) {
+				pinErrors.add(0, new HBCIRetVal(null, null, null, m.group(1), m.group(2).trim(), null));
+				found = true;
+			}
+			if (found) {
+				HBCIRetVal r = relevant(pinErrors);
+				pinError = message("rejected", "kind", kind(r.code, r.text), "code", r.code, "text", Out.withoutSecrets(r.text));
+			}
 			if (level <= 2) diagnostic("[" + (level <= 1 ? "error" : "warning") + "] " + msg);
 		}
 
@@ -752,6 +765,7 @@ public class FinTSHelper {
 				case NEED_FILTER -> set(retData, "Base64");
 				case WRONG_PIN -> {
 					rejectedPIN = pinError != null ? pinError : message("rejected", "text", "The bank did not accept the PIN.");
+					pinErrors.clear();
 					pin = null;
 				}
 				case NEED_PT_PIN -> {
@@ -831,6 +845,11 @@ public class FinTSHelper {
 		public void status(HBCIPassport passport, int statusTag, Object[] o) {
 			if (statusTag == STATUS_MSG_SEND || statusTag == STATUS_MSG_RAW_RECV_ENCRYPTED) send(message("alive"));
 			if (statusTag == STATUS_DIALOG_END_DONE && passport instanceof Passport p) p.open = null;
+			// A new dialog: the messages of the dialogs before it say nothing about its PIN.
+			if (statusTag == STATUS_DIALOG_INIT) {
+				pinErrors.clear();
+				pinError = null;
+			}
 			if (statusTag != STATUS_SEND_TASK || o == null || o.length == 0) return;
 			Integer index = jobs.get(o[0]);
 			if (index == null || index <= lastProgress) return;
@@ -1354,6 +1373,8 @@ public class FinTSHelper {
 		for (HBCIRetVal r : errors) if (SavingsBanks.appBlocked(Callback.server, r.text)) return r;
 		for (HBCIRetVal r : errors) if (DeutscheBankGroup.loginReplaced(Callback.server, r.code, r.text)) return r;
 		for (String code : URGENT) {
+			// The request of ING for a login on its website comes before a wrong PIN of the same code.
+			if (code.equals("9942")) for (HBCIRetVal r : errors) if (Ing.websiteLoginNeeded(Callback.server, r.code, r.text)) return r;
 			for (HBCIRetVal r : errors) if (code.equals(r.code)) return r;
 		}
 		return errors.isEmpty() ? null : errors.get(0);
@@ -1377,11 +1398,12 @@ public class FinTSHelper {
 	}
 
 	/// The meaning of an error that only the helper knows: an app that the user blocked in the online banking of a
-	/// savings bank, a login of the Deutsche Bank group that a new login replaced, or a refused TAN after an approval
-	/// in the app, which means that the approval did not happen.
+	/// savings bank, a login of the Deutsche Bank group that a new login replaced, a login that ING refuses until the user
+	/// logged in to its website, or a refused TAN after an approval in the app, which means that the approval did not happen.
 	static String kind(String code, String text) {
 		if (SavingsBanks.appBlocked(Callback.server, text)) return "appBlocked";
 		if (DeutscheBankGroup.loginReplaced(Callback.server, code, text)) return "loginReplaced";
+		if (Ing.websiteLoginNeeded(Callback.server, code, text)) return "websiteLogin";
 		return Callback.approvalAsked && TAN_REFUSED.contains(code) ? "approvalDeclined" : null;
 	}
 

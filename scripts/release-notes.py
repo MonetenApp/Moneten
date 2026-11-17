@@ -12,17 +12,25 @@
                                              of every item from CHANGELOG.md
   release-notes.py remove <version> --feed FILE --public-key KEY --out FILE
                                              take the item of a version out of the feed, after the
-                                             checks of check-feed
+                                             checks of check-feed, unless it is the last item
   release-notes.py stale-releases            read the releases of GitHub as JSON lines {"tag", "body"} and
                                              print the tag of each one whose text differs from its section
   release-notes.py check-feed --feed FILE --public-key KEY
                                              fail unless the update key KEY signed the feed and every
                                              disk image in it lies in a release of the repository
+  release-notes.py check-newer --feed FILE --current FILE
+                                             fail unless the feed has a higher revision than the current
+                                             feed and lists every version of it
   release-notes.py openssl                   print the path of an OpenSSL 3 or later, which check-feed uses
+  release-notes.py public-key FILE           print the public key of the private key file FILE of Sparkle,
+                                             for the test key and throwaway keys only
 
 The format is in the design of the change add-software-update. A version is 1.2.3 or 1.2.3-beta.4.
 The feed this script writes is not signed. sign_update of Sparkle signs it afterwards, and this
 script drops that signature when it reads the feed, because every change needs a new one.
+Every feed that appcast or remove writes has a revision one above the current feed, in each item,
+because Sparkle hands the app only the items. The app refuses a feed below the highest revision
+that it read, so nobody can replay an older signed feed (spec: "Check the update feed").
 """
 
 import argparse
@@ -40,6 +48,10 @@ import xml.etree.ElementTree as ET
 
 CHANGELOG = "CHANGELOG.md"
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+# The namespace of the revision. Sparkle keeps an element outside its own namespace under its
+# qualified name, so the app reads "moneten:revision", and the prefix must stay.
+MONETEN = "https://github.com/MonetenApp/Moneten/xml-namespaces/feed"
+REVISION = "{%s}revision" % MONETEN
 VERSION = r"(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?"
 HEADING = re.compile(r"## (?:Unreleased|(%s) \((\d{4}-\d{2}-\d{2})\))$" % VERSION)
 ENTRY = re.compile(r"- \S.*$")
@@ -175,6 +187,7 @@ def cut(path, version, today):
 # The feed
 
 ET.register_namespace("sparkle", SPARKLE)
+ET.register_namespace("moneten", MONETEN)
 
 
 def sparkle(tag):
@@ -182,17 +195,23 @@ def sparkle(tag):
 
 
 def read_feed(path):
-	"""Returns the items of a feed as dicts. The notes are not read, they come from CHANGELOG.md."""
+	"""Returns the items of a feed as dicts and the revision of the feed, None for a feed without
+	items. The notes are not read, they come from CHANGELOG.md."""
 	try:
 		root = ET.parse(path).getroot()
 	except (OSError, ET.ParseError) as error:
 		raise Failure("cannot read the current feed %s: %s" % (path, error))
 	items = []
+	revisions = set()
 	for item in root.iter("item"):
 		enclosure = item.find("enclosure")
 		version = item.findtext(sparkle("shortVersionString"))
 		if enclosure is None or version is None:
 			raise Failure("an item of %s has no version or no enclosure." % path)
+		revision = item.findtext(REVISION)
+		if revision is None or not revision.isdigit():
+			raise Failure("version %s in %s has no revision." % (version, path))
+		revisions.add(int(revision))
 		items.append({
 			"version": version,
 			"build": int(item.findtext(sparkle("version"))),
@@ -201,11 +220,13 @@ def read_feed(path):
 			"length": int(enclosure.get("length")),
 			"signature": enclosure.get(sparkle("edSignature")),
 		})
-	return items
+	if len(revisions) > 1:
+		raise Failure("the items of %s have different revisions." % path)
+	return items, (revisions.pop() if revisions else None)
 
 
-def write_feed(path, items, sections):
-	"""Writes the items newest first. The same items and CHANGELOG.md always give the same bytes."""
+def write_feed(path, items, sections, revision):
+	"""Writes the items newest first. The same items, revision, and CHANGELOG.md always give the same bytes."""
 	rss = ET.Element("rss", {"version": "2.0"})
 	channel = ET.SubElement(rss, "channel")
 	ET.SubElement(channel, "title").text = "Moneten"
@@ -222,6 +243,7 @@ def write_feed(path, items, sections):
 		ET.SubElement(item, sparkle("version")).text = str(data["build"])
 		ET.SubElement(item, sparkle("shortVersionString")).text = data["version"]
 		ET.SubElement(item, sparkle("minimumSystemVersion")).text = data["min_macos"]
+		ET.SubElement(item, REVISION).text = str(revision)
 		if is_pre_release(data["version"]):
 			ET.SubElement(item, sparkle("channel")).text = "beta"
 		# The entries as Markdown text. ElementTree escapes < and &, so no entry can break the feed.
@@ -240,10 +262,14 @@ def write_feed(path, items, sections):
 		f.write(b"\n")
 
 
-def current_items(args):
+def current_feed(args):
+	"""The items of the current feed and the revision of the next feed."""
 	if args.first_release:
-		return []
-	return read_feed(args.feed)
+		return [], 1
+	items, revision = read_feed(args.feed)
+	if revision is None:
+		raise Failure("the current feed %s has no items, so its revision is unknown." % args.feed)
+	return items, revision + 1
 
 
 def check_release(sections, version, build, items):
@@ -290,6 +316,25 @@ def openssl():
 	raise Failure("the feed check needs OpenSSL 3 or later, which macOS does not include: brew install openssl@3, or set MONETEN_OPENSSL.")
 
 
+# The PKCS#8 prefix of an Ed25519 private key in DER, before its 32 byte seed.
+ED25519_PRIVATE_PREFIX = bytes.fromhex("302e020100300506032b657004220420")
+
+
+def public_key_of(path):
+	"""The public key in Base64 of a private key file of Sparkle, which holds the 32 byte seed in
+	Base64. The seed goes to openssl through a pipe, never in an argument."""
+	try:
+		with open(path, "rb") as f:
+			seed = base64.b64decode(f.read().strip())[:32]
+	except (OSError, ValueError) as error:
+		raise Failure("cannot read the private key %s: %s" % (path, error))
+	result = subprocess.run([openssl(), "pkey", "-inform", "DER", "-pubout", "-outform", "DER"],
+		input=ED25519_PRIVATE_PREFIX + seed, capture_output=True)
+	if result.returncode != 0 or len(seed) != 32:
+		raise Failure("%s is not a private key of Sparkle." % path)
+	return base64.b64encode(result.stdout[-32:]).decode()
+
+
 def check_feed(path, public_key):
 	"""Fails unless the update key signed the feed as Sparkle checks it, and every disk image lies in
 	a release of the repository. The release script signs a new feed that keeps the items of the
@@ -321,9 +366,22 @@ def check_feed(path, public_key):
 			"-rawin", "-in", files["feed"], "-sigfile", files["signature"]], capture_output=True)
 	if result.returncode != 0:
 		raise Failure("the update key did not sign the feed %s." % path)
-	for item in read_feed(path):
+	for item in read_feed(path)[0]:
 		if not (item["url"] or "").startswith(DOWNLOADS):
 			raise Failure("version %s in the feed %s has a disk image outside %s: %s" % (item["version"], path, DOWNLOADS, item["url"]))
+
+
+def check_newer(path, current):
+	"""Fails unless the feed at path may replace the current feed: an app that read the current feed
+	accepts only a higher revision, and a release that was published meanwhile must stay in it."""
+	items, revision = read_feed(path)
+	current_items, current_revision = read_feed(current)
+	if revision is None or (current_revision is not None and revision <= current_revision):
+		raise Failure("revision %s of the feed %s is not above revision %s of the current feed." % (revision, path, current_revision))
+	versions = {i["version"] for i in items}
+	for item in current_items:
+		if item["version"] not in versions:
+			raise Failure("the feed %s misses version %s of the current feed." % (path, item["version"]))
 
 
 def main():
@@ -355,9 +413,13 @@ def main():
 	command.add_argument("--out", required=True)
 	commands.add_parser("stale-releases")
 	commands.add_parser("openssl")
+	commands.add_parser("public-key").add_argument("file")
 	command = commands.add_parser("check-feed")
 	command.add_argument("--feed", required=True)
 	command.add_argument("--public-key", required=True)
+	command = commands.add_parser("check-newer")
+	command.add_argument("--feed", required=True)
+	command.add_argument("--current", required=True)
 	args = parser.parse_args()
 
 	try:
@@ -368,10 +430,10 @@ def main():
 		elif args.command == "section":
 			print("\n".join(find(load(args.changelog), args.version).entries))
 		elif args.command == "check-release":
-			check_release(load(args.changelog), args.version, args.build, current_items(args))
+			check_release(load(args.changelog), args.version, args.build, current_feed(args)[0])
 		elif args.command == "appcast":
 			sections = load(args.changelog)
-			items = current_items(args)
+			items, revision = current_feed(args)
 			check_release(sections, args.version, args.build, items)
 			if not args.url.startswith("https://") or "/latest/" in args.url:
 				raise Failure("the URL of the disk image must name its own release: %s" % args.url)
@@ -380,22 +442,29 @@ def main():
 				"version": args.version, "build": args.build, "min_macos": args.min_macos,
 				"url": args.url, "length": args.length, "signature": args.signature,
 			})
-			write_feed(args.out, items, sections)
+			write_feed(args.out, items, sections, revision)
 		elif args.command == "remove":
 			# The owner signs the result, so a forged item of an unchecked feed would get a valid signature.
 			check_feed(args.feed, args.public_key)
-			items = read_feed(args.feed)
+			items, revision = read_feed(args.feed)
 			left = [i for i in items if i["version"] != args.version]
 			if len(left) == len(items):
 				raise Failure("the feed has no item for version %s." % args.version)
-			write_feed(args.out, left, load(args.changelog))
+			if not left:
+				raise Failure("%s is the last version in the feed. A feed without items carries no revision, so an app could not "
+					"tell it from an older feed. Release the fixed version first, then withdraw this one." % args.version)
+			write_feed(args.out, left, load(args.changelog), revision + 1)
 		elif args.command == "stale-releases":
 			for tag in stale_releases(load(args.changelog), sys.stdin):
 				print(tag)
 		elif args.command == "openssl":
 			print(openssl())
+		elif args.command == "public-key":
+			print(public_key_of(args.file))
 		elif args.command == "check-feed":
 			check_feed(args.feed, args.public_key)
+		elif args.command == "check-newer":
+			check_newer(args.feed, args.current)
 	except Failure as error:
 		sys.exit("%s: %s" % (args.changelog if args.command in ("check", "cut") else "release-notes.py", error))
 

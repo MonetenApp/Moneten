@@ -1,9 +1,16 @@
-// Signing of the app. Without a team, Xcode signs to run locally and leaves out the hardened
-// runtime, because its library validation refuses the ad hoc signed SQLCipher framework.
-// To sign with your team, create App/Local.xcconfig (ignored by git) with these two lines:
+// Signing of the app. Without a team, Xcode signs to run locally. To sign with your team, create
+// App/Local.xcconfig (ignored by git) with this line:
 //   DEVELOPMENT_TEAM = <your team ID>
-//   MONETEN_HARDENED_RUNTIME = YES
 CODE_SIGN_STYLE = Automatic
 DEVELOPMENT_TEAM =
+// Every Release build has the hardened runtime and no get-task-allow, so no other process can attach
+// to it or inject a library through DYLD variables (ADR 0017). A Debug build keeps both for the debugger.
 MONETEN_HARDENED_RUNTIME = NO
+MONETEN_HARDENED_RUNTIME[config=Release] = YES
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS[config=Release] = NO
+// A Release build signed to run locally has no team, so library validation would refuse its ad hoc
+// signed frameworks. Only that build turns library validation off. A build with a team keeps it.
+MONETEN_APP_ENTITLEMENTS = Moneten.entitlements
+MONETEN_LOCAL_ENTITLEMENTS_ = MonetenLocal.entitlements
+MONETEN_APP_ENTITLEMENTS[config=Release] = $(MONETEN_LOCAL_ENTITLEMENTS_$(DEVELOPMENT_TEAM):default=Moneten.entitlements)
 #include? "Local.xcconfig"
