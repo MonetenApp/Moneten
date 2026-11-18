@@ -272,7 +272,7 @@ The project SHALL publish an author guide in the public catalog repository `Mone
 
 ### Requirement: Replay in the catalog checks
 
-The project SHALL run `ext test` with the recording of every catalog package in the checks of the catalog repository. The checks build `ext` from the app repository at a pinned commit. A package whose replay fails does not enter the catalog.
+The project SHALL run `ext test` with the recording of every catalog package in the checks of the catalog repository. The checks run a signed release of `ext` from the app repository, pinned by its version, its commit, and the SHA-256 of its zip. A package whose replay fails does not enter the catalog.
 
 #### Scenario: Changed amount in a pull request
 

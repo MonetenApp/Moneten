@@ -17,3 +17,19 @@ extension DataFolder {
 		#endif
 	}
 }
+
+/// The keychain file of this run. Debug and Perf builds use the file that `MONETEN_KEYCHAIN_PATH` names, so that the
+/// debug harness and its scripts never open the login keychain of the developer (issue #421). A release build ignores
+/// the variable and keeps every entry in the login keychain, for the same reason as `MONETEN_DATA_DIR`.
+enum AppKeychain {
+	/// The file of `MONETEN_KEYCHAIN_PATH` as an absolute path, or nil in a release build and in a run without the
+	/// variable. A relative path counts from the current folder, because the Keychain would look for it in
+	/// `~/Library/Keychains`, the folder of the login keychain.
+	static var requestedPath: String? {
+		#if DEBUG || PERF_HARNESS
+		ProcessInfo.processInfo.environment["MONETEN_KEYCHAIN_PATH"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0).standardizedFileURL.path }
+		#else
+		nil
+		#endif
+	}
+}

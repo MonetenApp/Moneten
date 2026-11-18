@@ -150,6 +150,23 @@ check_hardened() {
 	return 0
 }
 
+# A Release build never reads the variables that point a Debug or Perf build at a data folder, a debug folder, or a
+# keychain file of its own (issues #327 and #421), because another program of the user can set them with
+# `launchctl setenv`. The code that reads them is compiled out, so their names must not be in any binary of the app:
+# the app itself, which a Debug build keeps in Contents/MacOS/Moneten.debug.dylib, the extension host, and the
+# frameworks.
+check_debug_only() {
+	find "$1/Contents" -type f | while read -r code; do
+		file -b "$code" | grep -q '^Mach-O' || continue
+		for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
+			if LC_ALL=C grep -a -q -F "$name" "$code"; then
+				echo "$code holds $name, which only Debug and Perf builds may read." >&2
+				exit 1
+			fi
+		done
+	done
+}
+
 # Copies each dSYM in the folder $1 that belongs to a binary of the app dist/Moneten.app to
 # dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
 # before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
@@ -222,5 +239,6 @@ check_fints_helper dist/Moneten.app
 python3 scripts/licenses.py check-app dist/Moneten.app >/dev/null
 check_extension_host dist/Moneten.app
 [ "$CONFIG" = Debug ] || check_hardened dist/Moneten.app
+[ "$CONFIG" = Debug ] || check_debug_only dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"

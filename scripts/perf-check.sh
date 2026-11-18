@@ -2,7 +2,8 @@
 # Runs the UI performance scenarios of App/Sources/PerfCheck.swift in the optimized Perf build.
 # A scenario over the half second of the spec is reported as slow. The script fails when a scenario
 # hangs past the limit, a table misses rows, or the app dies.
-# The app runs with a temporary data folder, so it never opens the real database, and as a copy under
+# The app runs with a temporary data folder, so it never opens the real database, with a throwaway keychain
+# file in MONETEN_KEYCHAIN_PATH, so it never opens the login keychain, and as a copy under
 # its own bundle ID, so it leaves the settings and window frames of an installed Moneten alone.
 set -e
 cd "$(dirname "$0")/.."
@@ -26,6 +27,14 @@ if [ ! -x "$NOTIFY" ] || [ scripts/perf-check.sh -nt "$NOTIFY" ]; then
 fi
 
 WORK="$(mktemp -d)"
+# The keychain file of the run, created and unlocked by its path. `security create-keychain` leaves the default
+# keychain and the search list of the user alone. The end of the run removes the file itself, because
+# `security delete-keychain` edits the search list.
+KEYCHAIN="$WORK/perf-check.keychain-db"
+trap 'rm -rf "$WORK"' EXIT
+security create-keychain -p perf-check "$KEYCHAIN"
+security unlock-keychain -p perf-check "$KEYCHAIN"
+security set-keychain-settings "$KEYCHAIN"
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 BUNDLE_ID="$BUNDLE_ID.${WORK##*.}"
@@ -35,7 +44,7 @@ defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP"
-MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_DEBUG_NO_IDLE_LOCK=1 "$APP/Contents/MacOS/Moneten" \
+MONETEN_DATA_DIR="$WORK/data" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_KEYCHAIN_PATH="$KEYCHAIN" MONETEN_DEBUG_NO_IDLE_LOCK=1 "$APP/Contents/MacOS/Moneten" \
 	-viewMode barChart -ApplePersistenceIgnoreState YES >"$WORK/app.log" 2>&1 &
 PID=$!
 

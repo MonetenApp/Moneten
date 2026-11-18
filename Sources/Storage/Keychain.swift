@@ -24,6 +24,12 @@ struct Keychain: Sendable {
 		return URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("Library/Keychains/login.keychain-db").path
 	}
 
+	/// The keychain file of the app: the file at `override` when the caller gives one, else the login keychain. The app
+	/// passes nil for an empty `MONETEN_KEYCHAIN_PATH`.
+	static func path(override: String?) -> String? {
+		override ?? loginKeychainPath
+	}
+
 	/// The path that a failure names when the home folder is unknown.
 	static let loginKeychainName = "~/Library/Keychains/login.keychain-db"
 

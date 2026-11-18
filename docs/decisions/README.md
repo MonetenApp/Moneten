@@ -18,11 +18,12 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0012](0012-system-glass-for-window-chrome.md) | Keep the system materials of macOS for the window chrome | Accepted |
 | [0013](0013-name-the-app-moneten.md) | Name the app Moneten | Accepted |
 | [0014](0014-fints-through-hbci4java.md) | Use hbci4java for FinTS, in a helper process | Accepted, amended by 0018 |
-| [0015](0015-extension-program.md) | Ship extensions with a reviewed, signed catalog in v0.1 | Accepted |
+| [0015](0015-extension-program.md) | Ship extensions with a reviewed, signed catalog in v0.1 | Accepted, amended by 0021 |
 | [0016](0016-developer-id-certificate-in-ci.md) | Sign releases with a Developer ID certificate that CI holds | Partly superseded by 0019 |
 | [0017](0017-hardened-runtime-for-every-release-build.md) | Give every Release build the hardened runtime | Accepted |
 | [0018](0018-sandbox-the-fints-helper.md) | Run the FinTS helper in the app sandbox | Accepted |
 | [0019](0019-ext-releases-in-the-build-environment.md) | Sign releases of ext in the environment build | Accepted |
 | [0020](0020-keep-gpl-3-after-hbci4java.md) | Keep GPL-3.0-or-later after the move to hbci4java | Accepted |
+| [0021](0021-catalog-checks-run-the-signed-ext-release.md) | Let the catalog checks run the signed release of ext | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

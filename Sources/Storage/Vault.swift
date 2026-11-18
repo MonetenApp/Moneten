@@ -154,8 +154,11 @@ public struct Vault: Sendable {
 		}
 	}
 
-	public init(folder: DataFolder, version: String = Vault.runningVersion) {
-		self.init(folder: folder, version: version, keychainPath: Keychain.loginKeychainPath)
+	/// Uses the login keychain, or the keychain file at `keychainOverride`. Only Debug and Perf builds of the app pass
+	/// the file of `MONETEN_KEYCHAIN_PATH` (issue #421), so that a run of the debug harness never opens the login
+	/// keychain. The app decides, because Xcode builds this package without the compilation conditions of the app.
+	public init(folder: DataFolder, version: String = Vault.runningVersion, keychainOverride: String? = nil) {
+		self.init(folder: folder, version: version, keychainPath: Keychain.path(override: keychainOverride))
 	}
 
 	/// Uses the keychain file at `keychainPath` in place of the login keychain, so that tests never open the login keychain.

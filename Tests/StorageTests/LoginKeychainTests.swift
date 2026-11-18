@@ -31,6 +31,22 @@ struct LoginKeychainTests {
 		#expect(Vault(folder: folder).keychain(.automaticUnlock).path == login)
 	}
 
+	/// Issue #421: Debug and Perf builds of the app pass the file of `MONETEN_KEYCHAIN_PATH` as the override, a Release
+	/// build passes nil, as it does for an empty variable. Without an override the vault and the crash report key use the
+	/// login keychain, and a data folder of its own does not move the crash report key out of a keychain file that was given.
+	@Test("The vault and the crash report key use the keychain file of the override, and the login keychain without one")
+	func overrideNamesTheKeychainFile() throws {
+		let entry = try #require(getpwuid(getuid())?.pointee.pw_dir)
+		let login = String(cString: entry) + "/Library/Keychains/login.keychain-db"
+		let file = KeychainFile.missingPath()
+		#expect(Vault(folder: folder, keychainOverride: nil).keychainPath == login)
+		#expect(Vault(folder: folder, keychainOverride: file).keychainPath == file)
+		#expect((CrashReportStore(folder: folder).keychain as? Keychain)?.path == login)
+		#expect((CrashReportStore(folder: folder, keychainOverride: file).keychain as? Keychain)?.path == file)
+		#expect((CrashReportStore(folder: folder, keyInFolder: true, keychainOverride: file).keychain as? Keychain)?.path == file)
+		#expect(CrashReportStore(folder: folder, keyInFolder: true).keychain is CrashReportKeyFile)
+	}
+
 	@Test("Every step of an entry uses only its keychain file and never touches an entry of the same name in another keychain")
 	func stepsStayInTheirFile() throws {
 		let login = try KeychainFile()
