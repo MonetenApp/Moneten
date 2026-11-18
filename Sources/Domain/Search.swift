@@ -366,6 +366,8 @@ enum SearchText {
 	/// The place of the first amount text. The amounts of `Ledger.amountTexts` come last, after the 7 fields, the 3
 	/// account numbers, and the 3 names, and a part of a split transaction adds the amounts of the transaction after its own.
 	static let amountPlace = 13
+	/// The number of texts of `Ledger.amountTexts` for each amount. The first holds the exact value.
+	static let textsPerAmount = 4
 
 	/// The fields that the search text holds as a rule reads them, only folded. It holds the account numbers without
 	/// spaces and lacks the currency.
@@ -504,12 +506,15 @@ struct AmountWord {
 	private enum Sign { case minus, plus }
 
 	private let sign: Sign?
-	/// The amount without sign and without thousands separators, once for each way to read it: "1.249" is 1249 with
-	/// a thousands point and 1,249 with a decimal point.
+	/// The value without sign, once for each way to read the word: "1.249" is 1249 with a thousands point and 1.249
+	/// with a decimal point. Each is written as the first, exact text of `Ledger.amountTexts` writes a value: a point
+	/// as the decimal mark, no zeros before the integer part, and none at the end of the fraction. So "1,230" finds
+	/// 1.230 KWD and not 1.234 KWD, whose rounded text "1.23" the search text also holds.
 	private let readings: [Needle]
 
 	/// Nil for a word that is no amount: digits with at most one decimal separator, or with thousands separators
-	/// every three digits, after an optional sign.
+	/// every three digits, after an optional sign. A word that starts with its decimal separator, such as ",99",
+	/// reads as 0,99, as the amount of a rule does.
 	init?(_ word: String) {
 		var body = Substring(word)
 		switch body.first {
@@ -517,23 +522,34 @@ struct AmountWord {
 		case "+": sign = .plus; body = body.dropFirst()
 		default: sign = nil
 		}
+		if body.first == "," || body.first == "." { body = "0" + body }
 		let isDigit = { (c: Character) in c.isASCII && c.isWholeNumber }
-		guard let first = body.first, let last = body.last, isDigit(first), isDigit(last),
-			body.allSatisfy({ isDigit($0) || $0 == "," || $0 == "." }) else { return nil }
+		guard let last = body.last, isDigit(last), body.allSatisfy({ isDigit($0) || $0 == "," || $0 == "." }) else { return nil }
 		var readings: [String] = []
-		if body.count(where: { $0 == "," || $0 == "." }) <= 1 { readings.append(String(body)) }
+		let marks = body.indices.filter { body[$0] == "," || body[$0] == "." }
+		if marks.count <= 1 { readings.append(Self.value(body[..<(marks.first ?? body.endIndex)], marks.first.map { body[body.index(after: $0)...] } ?? "")) }
 		for (group, decimal) in [(Character("."), Character(",")), (",", ".")] {
 			let sides = body.split(separator: decimal, omittingEmptySubsequences: false)
 			let groups = sides[0].split(separator: group, omittingEmptySubsequences: false)
-			guard sides.count <= 2, groups.count > 1, (1...3).contains(groups[0].count), groups.dropFirst().allSatisfy({ $0.count == 3 }),
-				sides.count == 1 || !sides[1].contains(group) else { continue }
-			readings.append(groups.joined() + (sides.count == 2 ? String(decimal) + sides[1] : ""))
+			// A group of thousands never starts with a zero, as in the amount of a rule, so "0.500" reads only as 0,5.
+			guard sides.count <= 2, groups.count > 1, (1...3).contains(groups[0].count), groups[0].first != "0",
+				groups.dropFirst().allSatisfy({ $0.count == 3 }), sides.count == 1 || !sides[1].contains(group) else { continue }
+			readings.append(Self.value(Substring(groups.joined()), sides.count == 2 ? sides[1] : ""))
 		}
 		guard !readings.isEmpty else { return nil }
-		self.readings = readings.map(Needle.init)
+		self.readings = Array(Set(readings)).map(Needle.init)
 	}
 
-	/// The word occurs as text in a field before the amounts, or one amount of the search text is this amount.
+	/// The value of an integer part and a fraction, written as `Ledger.amountTexts` writes it first.
+	private static func value(_ whole: Substring, _ fraction: Substring) -> String {
+		let whole = whole.drop { $0 == "0" }
+		var fraction = fraction
+		while fraction.last == "0" { fraction.removeLast() }
+		return (whole.isEmpty ? "0" : String(whole)) + (fraction.isEmpty ? "" : "." + fraction)
+	}
+
+	/// The word occurs as text in a field before the amounts, or the exact text of one amount of the search text is
+	/// this amount. The other texts of an amount write the same value with a comma or rounded to two decimals.
 	func occurs(in searchText: String, asText needle: Needle) -> Bool {
 		var searchText = searchText
 		return searchText.withUTF8 { text in
@@ -546,7 +562,8 @@ struct AmountWord {
 			var place = 0
 			var start = 0
 			for i in 0...text.count where i == text.count || text[i] == 1 {
-				if place >= SearchText.amountPlace, matches(UnsafeBufferPointer(rebasing: text[start..<i])) { return true }
+				if place >= SearchText.amountPlace, (place - SearchText.amountPlace) % SearchText.textsPerAmount == 0,
+					matches(UnsafeBufferPointer(rebasing: text[start..<i])) { return true }
 				place += 1
 				start = i + 1
 			}

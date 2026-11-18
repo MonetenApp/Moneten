@@ -45,7 +45,7 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 
 /// The filter bar that the pin saves for the next launch: the period choice and every filter but the search text.
 public struct SavedFilterBar: Hashable, Sendable, Codable {
-	public let period: PeriodChoice
+	public private(set) var period: PeriodChoice
 	let status: TransactionFilter.Status
 	let amount: TransactionFilter.AmountFilter
 	let categoryID: UUID?
@@ -67,9 +67,11 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		}
 	}
 
-	/// Nil for data that is not a saved filter bar, which then restores nothing.
+	/// Nil for data that is not a saved filter bar, which then restores nothing. A version before #474 saved a custom
+	/// period with its end before its start, in which no row falls, so such a period comes back with its dates swapped.
 	public init?(data: Data) {
-		guard let saved = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+		guard var saved = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+		if case let .custom(start, end) = saved.period, PeriodChoice.custom(from: start, to: end) == nil { saved.period = .custom(end, start) }
 		self = saved
 	}
 
