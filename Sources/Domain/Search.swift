@@ -153,6 +153,7 @@ struct SearchQuery {
 			if watch.gaveUp { return false }
 			guard let counterpartyOutcomes else { return reads(row) }
 			let key = row.transaction.counterpartyIBAN
+			guard key.map(isCacheable) ?? true else { return reads(row) }
 			if let known = counterpartyOutcomes.known[key] { return known }
 			let found = reads(row)
 			// A watch that gave up ends the search, and its `false` says nothing about the counterparty.
@@ -533,12 +534,19 @@ private struct AmountBounds {
 	}
 }
 
+/// Whether two texts that Swift calls equal are also equal for a regular expression. Swift calls "é" and "e" with a
+/// combining accent equal, and a bridged text with an unpaired UTF-16 surrogate equal to one with a replacement
+/// character, but a regular expression tells them apart. ASCII has neither case, and an IBAN or an account number is
+/// ASCII, so the caches of a pass keep only ASCII texts.
+private func isCacheable(_ text: String) -> Bool { text.utf8.allSatisfy { $0 < 0x80 } }
+
 /// The texts that a regular expression reads for each distinct account text, `IBAN.patternTexts(of:)` made once per
 /// search pass. A pass runs on one thread.
 private final class AccountForms {
 	private var forms: [String: [String]] = [:]
 
 	func of(_ text: String) -> [String] {
+		guard isCacheable(text) else { return IBAN.patternTexts(of: text) }
 		if let known = forms[text] { return known }
 		let made = IBAN.patternTexts(of: text)
 		forms[text] = made
