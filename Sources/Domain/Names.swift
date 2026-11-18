@@ -10,18 +10,13 @@ extension Account {
 }
 
 extension AccountGroup {
-	/// The name as a group keeps it, without the white space around it, or nil when nothing is left. A group always has a
-	/// name ("Create and rename account groups"), by the same rule as an account.
-	public static func acceptedName(_ typed: String) -> String? {
-		Account.acceptedName(typed)
-	}
-
 	/// Takes the fields that the group settings edit from `edited`, the group as the settings showed it. The name changes
 	/// only when the user changed it from that of `opened`, the group as the settings opened, so a stored name with white
-	/// space around it stays as it is. An empty name keeps the old name. The parent, the position, and whether the group
+	/// space around it stays as it is. An empty name keeps the old name. A group always has a name ("Create and rename account
+	/// groups"), by the rule of `Account.acceptedName(_:)`. The parent, the position, and whether the group
 	/// is expanded stay as they are now, so a move while the settings were open is kept.
 	public mutating func takeSettings(from edited: AccountGroup, opened: AccountGroup) {
-		if edited.name != opened.name { name = Self.acceptedName(edited.name) ?? name }
+		if edited.name != opened.name { name = Account.acceptedName(edited.name) ?? name }
 		showSum = edited.showSum
 		groupsByAccount = edited.groupsByAccount
 	}
@@ -47,6 +42,11 @@ extension Ledger {
 	/// category `id` that the user renames. A name is taken when a sibling has it in other upper and lower case or with white
 	/// space around it, because two such rows in one group cannot be told apart in the sidebar and the category menus.
 	/// The same name in another group is accepted. White space counts by the rule of an account name.
+	///
+	/// The comparison does not depend on the locale, because whether a name is valid must not change with the region of
+	/// the Mac. So the Turkish "I" and "ı", and "İ" and "i", stay different, while "Café" with a composed "é" and with "e"
+	/// and a combining accent count as equal. Case folding counts "ß" as "ss", so "Straße" is taken by "Strasse", which is
+	/// acceptable for names in one group.
 	public func checkCategoryName(_ typed: String, in parent: UUID?, renaming id: UUID? = nil) -> CategoryNameCheck {
 		guard let name = Account.acceptedName(typed) else { return .empty }
 		// The default category stands last at the top level, so it counts there too.

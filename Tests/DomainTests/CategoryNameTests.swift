@@ -48,6 +48,20 @@ struct CategoryNameTests {
 		}
 	}
 
+	/// The comparison does not depend on the locale of the Mac.
+	@Test("The Turkish dotted and dotless I stay different, a composed and a decomposed accent count as equal, and ß counts as ss")
+	func caseFolding() {
+		var l = ledger
+		for name in ["Izmir", "istanbul", "Café", "Straße"] {
+			l.upsert(Domain.Category(parentID: living.id, position: 10, name: name))
+		}
+		#expect(l.checkCategoryName("ızmir", in: living.id) == .accepted("ızmir"))
+		#expect(l.checkCategoryName("İstanbul", in: living.id) == .accepted("İstanbul"))
+		#expect(l.checkCategoryName("Cafe\u{301}", in: living.id) == .taken)
+		#expect(l.checkCategoryName("CAFÉ", in: living.id) == .taken)
+		#expect(l.checkCategoryName("Strasse", in: living.id) == .taken)
+	}
+
 	@Test("A rename skips the category itself, so it can change its case, and refuses the name of a sibling")
 	func rename() {
 		#expect(ledger.checkCategoryName("GAS", in: living.id, renaming: gas.id) == .accepted("GAS"))

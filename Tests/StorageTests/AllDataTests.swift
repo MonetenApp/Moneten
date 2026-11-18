@@ -396,7 +396,8 @@ struct AllDataTests {
 		#expect(haushalt.accountNumber == accountNumber)
 	}
 
-	/// The rule of "Account name" in openspec/changes/add-account-management/specs/account-management/spec.md for an import of all data.
+	/// The scenario "Empty name in an import of all data" of "Account name" in
+	/// openspec/changes/add-account-management/specs/account-management/spec.md.
 	@Test("An account whose name in the file is empty or only white space imports with the name of its type", arguments: ["", "  "])
 	func emptyAccountName(name: String) throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]

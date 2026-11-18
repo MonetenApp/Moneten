@@ -332,8 +332,9 @@ struct GroupSettingsSheet: View {
 	@State private var opened: AccountGroup?
 
 	var body: some View {
-		// An empty name keeps OK disabled, and the field asks for a name ("Create and rename account groups").
-		let canConfirm = group.map { $0.name == opened?.name || AccountGroup.acceptedName($0.name) != nil } ?? true
+		// An empty name keeps OK disabled, and the field asks for a name ("Create and rename account groups"). This holds
+		// also for a name that a migration or an import stored empty, so OK never saves it again.
+		let canConfirm = group.map { Account.acceptedName($0.name) != nil } ?? true
 		SheetFrame(title: "Account Group Settings", canConfirm: canConfirm, onConfirm: {
 			// A move or a collapse while the settings were open keeps its parent, position, and state.
 			guard let group, let opened, var current = model.ledger.group(groupID) else { return true }

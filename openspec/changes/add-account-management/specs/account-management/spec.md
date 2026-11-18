@@ -146,6 +146,11 @@ The app SHALL name a new account with the product name that the bank reports, or
 - **WHEN** the migration reads a giro account whose name is " "
 - **THEN** the account appears as "Giro account"
 
+#### Scenario: Empty name in an import of all data
+
+- **WHEN** the user imports a file of all data in which the giro account "Haushalt" has the name ""
+- **THEN** the account appears as "Giro account"
+
 ### Requirement: Account color
 
 The app SHALL draw an account in the sidebar and in the header as a small square in its color. The user can choose the color in the account settings. Without a chosen color, all accounts of one bank share a color, and an account without a bank takes a color for its type. A migration takes the color of the account's icon in the other program, not the picture.
@@ -547,6 +552,12 @@ The app SHALL create an account group with "Add Account Group". The new group ap
 - **WHEN** the user clears the name in the settings of the group "Private" and clicks "OK"
 - **THEN** the app keeps the settings open and asks for a name
 - **AND** the group keeps the name "Private"
+
+#### Scenario: Group stored without a name
+
+- **GIVEN** a group that a migration stored with the name " "
+- **WHEN** the user opens its settings
+- **THEN** "OK" is disabled until the user types a name
 
 ### Requirement: Move accounts into and out of groups
 
