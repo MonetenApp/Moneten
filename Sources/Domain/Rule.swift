@@ -400,21 +400,30 @@ extension Rule {
 	/// when it has no name. Nil when it has neither.
 	///
 	/// The rule language has no escape inside a term, and a quotation mark ends it, so each one becomes the
-	/// wildcard `?`, which matches it.
+	/// wildcard `?`, which matches it. A name made only of wildcards would match nearly every transaction, so it
+	/// counts as no name.
 	public static func condition(for t: Transaction) -> String? {
-		func quoted(_ text: String) -> String { "\"" + String(text.map { quotationMarks.contains($0) ? "?" : $0 }) + "\"" }
-		let name = t.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-		if !name.isEmpty { return "name:" + quoted(name) }
+		/// `text` as one term in quotation marks, with each quotation mark inside it as `?`.
+		func term(_ text: String) -> String { "\"" + String(text.map { quotationMarks.contains($0) ? "?" : $0 }) + "\"" }
+		let name = term(t.name.split(whereSeparator: \.isWhitespace).joined(separator: " "))
+		if name.dropFirst().dropLast().contains(where: { $0 != "*" && $0 != "?" && $0 != " " }) { return "name:" + name }
 		guard let iban = t.counterpartyIBAN.map(TextFolding.accountKey), !iban.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-		return "remote_account:" + quoted(iban)
+		return "remote_account:" + term(iban)
 	}
 
 	/// `rule` with `condition` as one more alternative. `OR` binds weakest, so the rule keeps every transaction
-	/// that it found before.
+	/// that it found before, without parentheses that would nest deeper with each created rule. A saved rule that
+	/// does not read stays unreadable after the join, so the settings show its error.
+	///
+	/// The join trims only what the parser skips between tokens. A character such as a zero-width space is part of
+	/// a term for the parser, so trimming it would change what the old rule finds.
 	public static func adding(_ condition: String, to rule: String) -> String {
-		let old = rule.trimmingCharacters(in: .whitespacesAndNewlines)
-		return old.isEmpty ? condition : "\(old) OR \(condition)"
+		guard let first = rule.firstIndex(where: { !isSpace($0) }), let last = rule.lastIndex(where: { !isSpace($0) }) else { return condition }
+		return "\(rule[first...last]) OR \(condition)"
 	}
+
+	/// The white space that separates two tokens of a rule.
+	static func isSpace(_ c: Character) -> Bool { c.isWhitespace }
 }
 
 extension RuleToken {
@@ -568,7 +577,7 @@ private struct RuleParser {
 		var fieldValueStart: Int?
 		while i < chars.count {
 			let c = chars[i]
-			if c.isWhitespace { i += 1; continue }
+			if Rule.isSpace(c) { i += 1; continue }
 			let start = i
 			let isFieldValue = i == fieldValueStart
 			if c == "(" { tokens.append((.open, i)); i += 1; continue }
@@ -614,7 +623,7 @@ private struct RuleParser {
 				throw RuleSyntaxError(position: start, message: String(localized: #"A sign cannot follow \#(field.rawValue)\#(op). Write \#(field.rawValue)!="…" to exclude a value, or \#(field.rawValue):"…" to match it."#))
 			}
 			var word = ""
-			while i < chars.count, !chars[i].isWhitespace, chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {
+			while i < chars.count, !Rule.isSpace(chars[i]), chars[i] != "(", chars[i] != ")", !openQuotes.contains(chars[i]) {
 				// A minus before a quotation mark or a parenthesis is NOT, also right after a word, as in Amazon-"Erstattung".
 				if chars[i] == "-", !word.isEmpty, i + 1 < chars.count, chars[i + 1] == "(" || openQuotes.contains(chars[i + 1]) { break }
 				word.append(chars[i])
