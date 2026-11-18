@@ -64,6 +64,28 @@ class BankDataTests(unittest.TestCase):
 		self.assertEqual(path.read_bytes().decode("utf-8").split("\r\n")[3:],
 			[moved, "76030080=Beispielbank|Nürnberg|CSDBDE71XXX|00||https://fints.example.org/fints|300|300|", added, ""])
 
+	def test_project_corrections_give_flatexdegiro_its_current_address(self):
+		"""The entries of the jar of hbci4java 4.1.17 near the Bankleitzahlen of flatexDEGIRO Bank (#234)."""
+		neighbor = "10130600=Isbank AG|Berlin|ISBKDEFXBER|06||https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp||300|"
+		jar_list = "\r\n".join([
+			neighbor,
+			"10130800=biw Bank für Investments und Wertpapiere|Willich|BIWBDE33XXX|01||https://konto.biw-bank.de/hbci/||300|",
+			"30330800=BIW Bank für Investments und Wertpapiere|Willich|BIWBDE33303|01|||||",
+			"76030080=Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank|Nürnberg, Mittelfr|CSDBDE71XXX|01||https://brokerage-hbci.consorsbank.de/hbci||300|",
+		]) + "\r\n"
+		corrections = (SCRIPT.parent.parent / "BankData" / "corrections.properties").read_text(encoding="utf-8")
+		result, path = self.build(jar_list.encode("utf-8"), corrections)
+		self.assertEqual(result.returncode, 0, result.stderr)
+		entries = dict(line.split("=", 1) for line in path.read_bytes().decode("utf-8").split("\r\n") if line and not line.startswith("#"))
+		for code in ["10130800", "30330800", "76030800"]:
+			fields = entries[code].split("|")
+			self.assertEqual(fields[5], "https://banking.flatexdegiro.com/hbci", code)
+			self.assertEqual(fields[7], "300", code)
+		self.assertEqual(entries["10130800"].split("|")[2], "BIWBDE33XXX")
+		self.assertEqual(entries["30330800"].split("|")[2], "BIWBDE33303")
+		self.assertEqual("10130600=" + entries["10130600"], neighbor)
+		self.assertTrue(entries["76030080"].endswith("|https://brokerage-hbci.consorsbank.de/hbci||300|"))
+
 	def test_build_writes_the_serial_of_now_in_utc(self):
 		jar, lock = self.jar((ENTRY + "\r\n").encode())
 		out = self.dir / "out"

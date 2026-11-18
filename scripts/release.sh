@@ -224,6 +224,41 @@ check_zip_paths() {
 	check_build_paths "$WORK/zip-paths.txt"
 }
 
+# Prints a crash report with one frame in each slice of the DWARF files named in $WORK/dwarf, at its
+# main function or else its first function. Each tool writes to a file before awk reads it: in a pipe,
+# the shell takes the status of awk, so a failing tool would leave an empty value, and the error
+# would name the symbolication instead of the tool. The script runs without pipefail, because grep -q
+# and head close their pipe early, and pipefail turns that into a failure.
+frames() {
+	while read -r f; do
+		dwarfdump --uuid "$f" > "$WORK/uuids" || fail "dwarfdump failed on the dSYM $f."
+		sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' "$WORK/uuids" > "$WORK/ids"
+		while read -r ID ARCH; do
+			nm -arch "$ARCH" -U -n "$f" > "$WORK/nm.txt" || fail "nm failed on the dSYM $f for $ARCH."
+			FUNCTION=$(awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }' "$WORK/nm.txt")
+			[ -n "$FUNCTION" ] || FUNCTION=$(awk '$2 ~ /^[Tt]$/ { print $1; exit }' "$WORK/nm.txt")
+			otool -l -arch "$ARCH" "$f" > "$WORK/otool.txt" || fail "otool failed on the dSYM $f for $ARCH."
+			TEXT=$(awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }' "$WORK/otool.txt")
+			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
+			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
+		done < "$WORK/ids"
+	done < "$WORK/dwarf"
+}
+
+# The frames of the dSYMs of this run stop with a message that names the tool when nm or otool fails.
+# A stub in front of PATH stands in for the failing tool.
+check_frame_tools() {
+	mkdir "$WORK/stub"
+	for TOOL in nm otool; do
+		rm -f "$WORK/stub/"*
+		printf '#!/bin/sh\necho "%s: stub failure" >&2\nexit 1\n' "$TOOL" > "$WORK/stub/$TOOL"
+		chmod +x "$WORK/stub/$TOOL"
+		(PATH="$WORK/stub:$PATH"; frames > /dev/null) 2>"$WORK/error" && fail "The frames of the dSYMs passed with a failing $TOOL."
+		grep -q "^$TOOL failed on the dSYM " "$WORK/error" || fail "A failing $TOOL stopped the frames of the dSYMs with another message: $(cat "$WORK/error")"
+	done
+	echo "The check of the dSYMs stops with the name of the tool when nm or otool fails."
+}
+
 # Zips dist/Moneten.dSYMs to $OUT/Moneten-$1-dSYMs.zip and checks the zip against the slices of the
 # app on the disk image, which check_dmg wrote. Then scripts/symbolicate-crash.sh must resolve a report
 # with one frame in each slice, at its main function or else its first function, to a function and
@@ -235,19 +270,7 @@ symbols() {
 	mkdir "$WORK/symbols"
 	ditto -x -k "$ZIP" "$WORK/symbols"
 	match_symbols "$WORK/app-slices" "$WORK/symbols"
-	while read -r f; do
-		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
-		while read -r ID ARCH; do
-			# awk reads to the end and keeps the first match. An awk that exits early closes the pipe
-			# under nm and otool, and the runner of GitHub ignores SIGPIPE, so they print
-			# "LLVM ERROR: IO failure on output stream: Broken pipe".
-			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '!found && $2 ~ /^[Tt]$/ && $3 == "_main" { print $1; found = 1 }')
-			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '!found && $2 ~ /^[Tt]$/ { print $1; found = 1 }')
-			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '!found && $1 == "segname" && $2 == "__TEXT" { getline; print $2; found = 1 }')
-			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
-			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
-		done < "$WORK/ids"
-	done < "$WORK/dwarf" > "$WORK/report.txt"
+	frames > "$WORK/report.txt"
 	scripts/symbolicate-crash.sh "$WORK/report.txt" "$WORK/symbols" > "$WORK/symbolicated.txt" \
 		|| fail "scripts/symbolicate-crash.sh failed on the dSYMs of the release."
 	[ "$(grep -cE '^Frame: .* -> [^0 ].* \(in [^)]+\) \([^)]+:[0-9]+\)$' "$WORK/symbolicated.txt")" = "$(wc -l < "$WORK/report.txt" | tr -d ' ')" ] \
@@ -350,13 +373,31 @@ withdrawn_feed() {
 	check_feed "$WORK/withdrawn/appcast.xml" "$2" || fail "The feed without $1 failed its check, so nothing was uploaded."
 }
 
+# Writes the feed of the release with the tag $1 to the file $2.
+release_feed() { curl -fsSL -o "$2" "https://github.com/$REPO/releases/download/$1/appcast.xml"; }
+
+# Fails unless the feed of the release $1 is still $WORK/current.xml, byte for byte, the feed that
+# withdrawn_feed read. A publish in between replaced that feed or made another release the newest.
+# The upload would then drop the new release from the feed and give the feed the revision of a feed
+# that apps already read, so they would refuse it.
+check_unchanged_feed() {
+	rm -f "$WORK/live.xml"
+	release_feed "$1" "$WORK/live.xml" || fail "The feed of $1 cannot be read, so nothing was uploaded."
+	cmp -s "$WORK/current.xml" "$WORK/live.xml" \
+		|| fail "The feed of $1 changed after withdraw read it, because a release was published at the same time. Nothing was uploaded. Run withdraw again."
+}
+
 # The check of the signed result with the committed key stops a wrong key in the login Keychain: a
-# feed that no installed app can check would stop every update.
+# feed that no installed app can check would stop every update. check_unchanged_feed stops a publish
+# that ran at the same time. A publish in the few seconds between that check and the upload still
+# races, but the later upload wins, and the check after the upload of the other command fails: the
+# feed lists the withdrawn version again, or it lacks the published one.
 withdraw() {
 	KEY=$(committed_key)
 	check_production_key "$KEY"
 	withdrawn_feed "$1" "$KEY"
 	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
+	check_unchanged_feed "$STABLE"
 	gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/withdrawn/appcast.xml"
 	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
 	check_feed "$WORK/published.xml" "$KEY" || fail "The feed at $FEED_URL failed its check."
@@ -478,17 +519,25 @@ check_feeds() {
 	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "A release accepted a current feed of another key."
 	# remove keeps the last version, so the withdrawal takes 0.0.2 out of a feed with two versions.
 	mkdir "$WORK/two"
-	printf '# Changelog\n\n## Unreleased\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
-	for BUILD in 1 2; do
-		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/appcast.xml"
+	printf '# Changelog\n\n## Unreleased\n\n## 0.0.3 (2026-01-03)\n\n- Three.\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
+	for BUILD in 1 2 3; do
+		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/$((BUILD - 1)).xml"
 		python3 scripts/release-notes.py --changelog "$WORK/two/CHANGELOG.md" appcast "0.0.$BUILD" --build "$BUILD" --min-macos 15.0 \
-			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/appcast.xml"
+			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/$BUILD.xml"
+		"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/$BUILD.xml" >/dev/null
 	done
-	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/appcast.xml" >/dev/null
-	CURRENT="$WORK/two/appcast.xml"
+	CURRENT="$WORK/two/2.xml"
 	(CHANGELOG="$WORK/two/CHANGELOG.md"; withdrawn_feed 0.0.2 "$KEY" "$1")
 	grep -q '<moneten:revision>3</moneten:revision>' "$WORK/withdrawn/appcast.xml" && ! grep -q '>0\.0\.2<' "$WORK/withdrawn/appcast.xml" \
 		|| fail "The withdrawal did not take 0.0.2 out of the feed with a revision one above the current one."
+	# The release still holds the feed that the withdrawal read, and then a publish of 0.0.3 replaces it.
+	release_feed() { cp "$LIVE" "$2"; }
+	LIVE="$WORK/two/2.xml"
+	(check_unchanged_feed v0.0.2) || fail "A withdrawal refused to upload over the feed that it read."
+	LIVE="$WORK/two/3.xml"
+	(check_unchanged_feed v0.0.2) 2>"$WORK/error" && fail "A withdrawal would upload over a feed that a publish replaced after it read it."
+	grep -qF "a release was published at the same time" "$WORK/error" \
+		|| fail "A withdrawal refused the feed of a publish at the same time for another reason: $(cat "$WORK/error")"
 	for CASE in "unsigned.xml:has no signature" "http.xml:has a disk image outside"; do
 		CURRENT="$WORK/${CASE%%:*}"
 		rm -rf "$WORK/withdrawn"
@@ -496,7 +545,7 @@ check_feeds() {
 		grep -qF "${CASE#*:}" "$WORK/error" || fail "A withdrawal refused the current feed ${CASE%%:*} for another reason: $(cat "$WORK/error")"
 		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed ${CASE%%:*}."
 	done
-	echo "A release refuses a current feed of another key, and a withdrawal raises the revision and refuses an unsigned feed and a forged disk image."
+	echo "A release refuses a current feed of another key, and a withdrawal raises the revision, refuses an unsigned feed and a forged disk image, and uploads nothing over a feed that a publish replaced."
 }
 
 # current_feed and check_latest with stubs of curl and gh in place of GitHub. STUB_LATEST is the tag
@@ -628,6 +677,7 @@ dry_run() {
 	check_latest_rule
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"
+	check_frame_tools
 	check_keys
 	check_source_rule
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).

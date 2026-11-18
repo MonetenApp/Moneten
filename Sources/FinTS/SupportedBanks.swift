@@ -32,6 +32,14 @@ public struct SupportedBanks: Sendable {
 		}
 	}
 
+	/// The note of a bank in the list: the note of a merged bank, then the note that the FinTS access cannot reach some
+	/// customers of the bank, then the help of the login name. So a customer of DEGIRO sees that flatexDEGIRO Bank serves
+	/// only flatex accounts with FinTS, and every other bank keeps the help of its login name. The note of a login hint
+	/// belongs to the login step, not to the list.
+	public static func note(of bank: BankDirectory.Entry) -> String? {
+		bank.mergerNote ?? bank.availabilityNote ?? bank.loginHint?.help
+	}
+
 	/// The services and banks that match every word of `query` in their names, and for a bank also in its
 	/// place or Bankleitzahl, as the first step of "Add Account" finds them. An empty query lists all.
 	public func matching(_ query: String) -> (services: [Service], banks: [BankDirectory.Entry]) {
