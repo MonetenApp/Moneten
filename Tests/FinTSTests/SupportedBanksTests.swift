@@ -69,6 +69,30 @@ struct SupportedBanksTests {
 		#expect(Self.list.matching("Neobank").banks.isEmpty)
 	}
 
+	@Test("The note of a bank is the note of a merged bank, then the availability note, then the help of the login name")
+	func note() {
+		let merged = Self.bank("21099999", "Sparkasse Altstadt -alt-", "Altstadt")
+		#expect(SupportedBanks.note(of: merged) == merged.mergerNote)
+		let flatex = BankDirectory.Entry(code: "10130800", city: "Willich", bank: FinTSBank(name: "biw Bank für Investments und Wertpapiere", bic: nil,
+			url: URL(string: "https://banking.flatexdegiro.com/hbci")))
+		#expect(SupportedBanks.note(of: flatex) == "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS.")
+		let comdirect = BankDirectory.Entry(code: "20041111", city: "Quickborn", bank: FinTSBank(name: "comdirect bank", bic: nil,
+			url: URL(string: "https://fints.comdirect.de/fints")))
+		#expect(SupportedBanks.note(of: comdirect) == CommerzbankGroup.comdirectHint.help)
+		// A login hint with a note before the first login still shows its help in the list.
+		let savingsBank = BankDirectory.Entry(code: "70150000", city: "München", bank: FinTSBank(name: "Stadtsparkasse München", bic: nil,
+			url: URL(string: "https://banking-by1.s-fints-pt-by.de/fints30")))
+		#expect(savingsBank.loginHint?.note != nil)
+		#expect(SupportedBanks.note(of: savingsBank) == LoginHint.savingsBank.help)
+		let commerzbank = BankDirectory.Entry(code: "10040000", city: "Berlin", bank: FinTSBank(name: "Commerzbank", bic: nil,
+			url: URL(string: "https://fints.commerzbank.de/fints")))
+		#expect(commerzbank.loginHint?.note != nil)
+		#expect(SupportedBanks.note(of: commerzbank) == CommerzbankGroup.commerzbankHint.help)
+		let consorsbank = Self.bank("76030080", "Consorsbank", "Nürnberg")
+		#expect(SupportedBanks.note(of: consorsbank) == LoginHint.consorsbank.help)
+		#expect(SupportedBanks.note(of: Self.bank("12030001", "Musterbank", "Altdorf")) == nil)
+	}
+
 	@Test("Without the bank directory the list still has every service")
 	func withoutDirectory() {
 		let list = SupportedBanks(directory: nil, services: [.init(name: "Musterbroker", extensionName: "Broker Extension")])

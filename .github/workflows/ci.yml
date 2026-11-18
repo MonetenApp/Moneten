@@ -50,7 +50,8 @@ jobs:
       - run: python3 scripts/test-release-notes.py
       # The script that builds and signs the bank data of the workflow bank-data.yml.
       - run: python3 scripts/test-bank-data.py
-      # The router of the changes job, and that nothing in the macOS job reads a file on its list.
+      # The router of the changes job, that nothing in the macOS job reads a file on its list, and that the path
+      # filter of release-ext.yml names the inputs of ext.
       - run: python3 scripts/test-ci-changes.py
       # Every part that the pins ship has a license notice at its version (issue #411).
       - run: python3 scripts/licenses.py check
