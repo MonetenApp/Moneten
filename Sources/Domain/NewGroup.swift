@@ -4,6 +4,11 @@ import Foundation
 public enum GroupName {
 	/// "New group", or the first free one of "New group 2", "New group 3", and so on, so that two new groups that the
 	/// user leaves with Escape still have names that tell them apart.
+	///
+	/// An exception to the rule that a localized text is never data: the default name is stored as the name of the
+	/// group, as the user would type it, and the free name is found by comparing it with the names of the siblings.
+	/// After a change of the language the numbering does not see the default names of the other language, so
+	/// "Neue Gruppe" and "New group" can stand side by side. Nothing else reads the name.
 	static func free(taken: Set<String>) -> String {
 		let base = String(localized: "New group")
 		guard taken.contains(base) else { return base }

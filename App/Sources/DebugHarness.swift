@@ -354,12 +354,17 @@ final class DebugHarness {
 			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
-		#if DEBUG || PERF_HARNESS
 		// "account" or "category" adds a group as "Add Account Group" or "Add Category Group" does, with its row in edit mode.
+		// "account twice" and "category twice" start the second command while the first waits for the table, as two quick
+		// clicks do, and log the names of the level by hash.
 		case "addgroup":
+			let parts = argument.split(separator: " ")
+			let kind = parts.first.map(String.init) ?? ""
+			let runs = parts.count > 1 && parts[1] == "twice" ? 2 : 1
+			let adds = (0..<runs).map { _ in Task { kind == "category" ? await model.addCategoryGroup() : await model.addGroup() } }
 			Task {
-				if argument == "category" { await model.addCategoryGroup() } else { await model.addGroup() }
-				log("addgroup", ("", .choice(argument, of: ["account", "category"], otherwise: "account")))
+				for add in adds { await add.value }
+				log("addgroup", ("", .choice(kind, of: ["account", "category"], otherwise: "account")), ("runs", .count(runs)))
 			}
 		// The row in edit mode, the field that has the focus, and the selected group with its place, names by hash.
 		case "naming": logNaming()
@@ -372,7 +377,6 @@ final class DebugHarness {
 					keyCode: argument == "escape" ? 53 : 36) else { return log("namekey rejected") }
 			window.sendEvent(event)
 			log("namekey", ("", .choice(argument, of: keys)))
-		#endif
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
 		case "refresh", "refreshenforced":
 			let enforced = command == "refreshenforced"
@@ -1984,8 +1988,6 @@ final class DebugHarness {
 		}
 	}
 
-	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
-	#if DEBUG || PERF_HARNESS
 	/// For the checks of "Name a new group in the sidebar": the row in edit mode, whether the main window has a field
 	/// with the focus and its text, the name of the selected group, its parent, and the names of its level in order.
 	private func logNaming() {
@@ -2010,8 +2012,8 @@ final class DebugHarness {
 		}
 		log(LogLine("naming", values: values))
 	}
-	#endif
 
+	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
 	private func logSidebarRows() {
 		guard let list = sidebarList(), let window = list.window, let screen = NSScreen.screens.first else { return log("sidebarrows no list") }
 		for index in 0..<list.numberOfRows {

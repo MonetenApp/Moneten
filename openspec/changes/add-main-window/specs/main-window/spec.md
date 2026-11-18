@@ -180,7 +180,7 @@ The app SHALL show a menu button below the sidebar with the commands "Add accoun
 
 ### Requirement: Name a new group in the sidebar
 
-The app SHALL let the user type the name of a new account group or category group in its sidebar row, which is in edit mode when the group appears. Return stores the typed name without spaces at its start and its end, and a click outside the row does the same. Escape, or a name that is empty or only spaces, keeps the name that the row had when edit mode began. The group stays in every case, and the row leaves edit mode.
+The app SHALL let the user type the name of a new account group or category group in its sidebar row, which is in edit mode when the group appears. Return stores the typed name without spaces at its start and its end, and so does a move of the focus away from the row, such as a click on another row. Escape, or a name that is empty or only spaces, keeps the name that the row had when edit mode began. The group stays in every case, and the row leaves edit mode.
 
 #### Scenario: Name confirmed with Return
 
@@ -196,6 +196,11 @@ The app SHALL let the user type the name of a new account group or category grou
 
 - **WHEN** the user chooses "Add Account Group", replaces the name with "   ", and presses Return
 - **THEN** the sidebar shows the group "New group"
+
+#### Scenario: Focus leaves the row
+
+- **WHEN** the user chooses "Add Category Group", types "Mobility", and clicks the category "Groceries"
+- **THEN** the sidebar shows the category group "Mobility", and the row is no longer in edit mode
 
 ### Requirement: Refresh button below the sidebar
 

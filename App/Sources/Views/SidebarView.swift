@@ -19,7 +19,7 @@ struct SidebarView: View {
 				}
 				.buttonStyle(.plain)
 			}
-			Section("Accounts") {
+			Section("Accounts", isExpanded: Binding(get: { model.showsAccountsSection }, set: { model.showsAccountsSection = $0 })) {
 				AccountTree(parent: nil)
 			}
 			if !model.savedSearches.isEmpty {
@@ -27,7 +27,7 @@ struct SidebarView: View {
 					ForEach(model.savedSearches) { SavedSearchRow(search: $0).tag(SidebarSelection.search($0.id)) }
 				}
 			}
-			Section("Categories") {
+			Section("Categories", isExpanded: Binding(get: { model.showsCategoriesSection }, set: { model.showsCategoriesSection = $0 })) {
 				CategoryTree(parent: nil, amounts: amounts)
 				if let d = model.ledger.defaultCategory {
 					CategoryRow(category: d, amount: amounts[d.id]).tag(SidebarSelection.category(d.id))
@@ -323,7 +323,7 @@ struct CategoryRow: View {
 	}
 }
 
-/// The name of a new group, typed in its sidebar row. Return, and a click elsewhere that takes the focus, store the
+/// The name of a new group, typed in its sidebar row. Return, and a move of the focus away from the row, store the
 /// name. Escape keeps the name the row had. A row that leaves the screen while it is in edit mode, such as when
 /// another new group takes the edit mode, stores the name as a click elsewhere does.
 struct SidebarNameField: View {

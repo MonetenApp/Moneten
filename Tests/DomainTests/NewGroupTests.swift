@@ -36,6 +36,34 @@ struct NewGroupTests {
 		#expect(Ledger(groups: [privateGroup, inner]).newAccountGroup().name == "New group")
 	}
 
+	@Test("Two account groups added one after the other get \"New group\" and \"New group 2\" at different places")
+	func twoAccountGroups() {
+		var ledger = Ledger()
+		let first = ledger.newAccountGroup()
+		ledger.upsert(first)
+		let second = ledger.newAccountGroup()
+
+		#expect([first.name, second.name] == ["New group", "New group 2"])
+		#expect(first.position == 0)
+		#expect(second.position == 1)
+	}
+
+	@Test("Two category groups added one after the other with the same selection get different names and places")
+	func twoCategoryGroups() {
+		let living = Domain.Category(position: 0, name: "Living", isGroup: true)
+		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent")
+		var ledger = Ledger(categories: [living, rent, uncategorized])
+		let first = ledger.newCategoryGroup(selected: rent.id)
+		ledger.upsert(first)
+		let second = ledger.newCategoryGroup(selected: rent.id)
+
+		#expect(first.parentID == living.id)
+		#expect(second.parentID == living.id)
+		#expect([first.name, second.name] == ["New group", "New group 2"])
+		#expect(first.position == 1)
+		#expect(second.position == 2)
+	}
+
 	@Test("A new category group goes to the end of the selected group")
 	func categoryGroupInSelectedGroup() {
 		let living = Domain.Category(position: 0, name: "Living", isGroup: true, isExpanded: false)

@@ -198,8 +198,13 @@ final class AppModel {
 	/// app runs ("Say when the bank has no older transactions", "Use only what the bank allows").
 	var bankHistories: [UUID: BankHistory] = [:]
 
-	/// The sidebar row of a new group whose name the user types, until Return, Escape, or a click elsewhere ends edit mode.
+	/// The sidebar row of a new group whose name the user types, until Return, Escape, or a move of the focus away
+	/// from the row ends edit mode.
 	var namingRow: SidebarSelection?
+	/// Whether the sections "Accounts" and "Categories" of the sidebar show their rows. A new group opens its section,
+	/// so that its row in edit mode is on screen.
+	var showsAccountsSection = true
+	var showsCategoriesSection = true
 
 	var selection: SidebarSelection? {
 		didSet {
@@ -714,6 +719,8 @@ final class AppModel {
 		bankNotices = BankNotices()
 		bankHistories = [:]
 		sheet = nil
+		// A name half typed into a new group is lost, and the group keeps the name it has in the database.
+		namingRow = nil
 		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
 		// table never goes in the drawing that changes its rows (issue #151).
@@ -1284,18 +1291,25 @@ final class AppModel {
 	/// "Add Account Group" stores a new group at the end of the section "Accounts" and puts its row in edit mode for
 	/// the name. A `name` gives the group that name and no edit mode, for the seeded data of the debug builds.
 	func addGroup(name: String? = nil) async {
-		guard let store else { return }
-		var g = ledger.newAccountGroup()
-		if let name { g.name = name }
-		do {
-			try store.save(g)
-			await replacingTable {
-				ledger.upsert(g)
-				selection = .group(g.id)
+		// The name and the place come from the ledger after the wait for the table, without a suspension up to the
+		// upsert, so that a second "Add Account Group" during the wait sees the first group and takes "New group 2".
+		let added: AccountGroup? = await replacingTable {
+			guard let store else { return nil }
+			var g = ledger.newAccountGroup()
+			if let name { g.name = name }
+			do {
+				try store.save(g)
+			} catch {
+				alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+				return nil
 			}
-			if name == nil { namingRow = .group(g.id) }
-		} catch {
-			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+			ledger.upsert(g)
+			selection = .group(g.id)
+			return g
+		}
+		if let added, name == nil {
+			showsAccountsSection = true
+			namingRow = .group(added.id)
 		}
 	}
 
@@ -1582,17 +1596,24 @@ final class AppModel {
 	/// "Add Category Group" stores a new group beside the selection and puts its row in edit mode for the name.
 	/// A collapsed group that gets it expands, so that the row is on screen.
 	func addCategoryGroup() async {
+		// The selection of the command, read before the wait, in which an earlier "Add Category Group" selects its group.
 		let selected: UUID? = if case let .category(id) = selection { id } else { nil }
-		let c = ledger.newCategoryGroup(selected: selected)
-		if let parentID = c.parentID, var parent = ledger.category(parentID), !parent.isExpanded {
-			parent.isExpanded = true
-			save(category: parent)
-		}
-		await replacingTable {
+		// The name and the place come from the ledger after the wait, as in `addGroup(name:)`.
+		let added: Domain.Category? = await replacingTable {
+			let c = ledger.newCategoryGroup(selected: selected)
 			save(category: c)
-			if ledger.category(c.id) != nil { selection = .category(c.id) }
+			guard ledger.category(c.id) != nil else { return nil }
+			if let parentID = c.parentID, var parent = ledger.category(parentID), !parent.isExpanded {
+				parent.isExpanded = true
+				save(category: parent)
+			}
+			selection = .category(c.id)
+			return c
 		}
-		if ledger.category(c.id) != nil { namingRow = .category(c.id) }
+		if let added {
+			showsCategoriesSection = true
+			namingRow = .category(added.id)
+		}
 	}
 
 	/// Ends edit mode of the row and stores the typed name. A nil `typed`, from Escape, keeps the name the row had,

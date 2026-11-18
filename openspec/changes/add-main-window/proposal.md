@@ -67,4 +67,5 @@ None.
 - The application menu has no license key, imprint, or license agreement command. "About Moneten" shows the version, the license, and a link to the source code.
 - "Help and FAQ..." and "Supported Banks..." open pages of the project. The Help menu has one "Supported Banks..." command and no split by country.
 - "Copy Sum" in the context menu of the sum copies the number without its currency and without thousands separators, so that a spreadsheet reads it as a number. Sums in several currencies copy one line each with the currency code.
+- Escape on the row of a new account group or category group keeps the group with the name it had when edit mode began, and drops only the typed name, as "New Folder" in the Finder does. The empty name keeps the group too. MoneyMoney was not tested here, because it changes data.
 - The app keeps running when the main window closes. This follows from "Main Window" in the Window menu and from the lock setting for a closed main window. It was not tested.
