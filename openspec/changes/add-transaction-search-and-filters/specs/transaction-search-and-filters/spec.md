@@ -191,13 +191,35 @@ The app SHALL stop a regular expression in the search that reads one text for ab
 
 ### Requirement: The search finds exact amounts
 
-The app SHALL find a transaction by its amount when the user enters the amount with its decimals, with a decimal comma or a decimal point, and with or without a sign.
+The app SHALL find a transaction by its amount when the user enters the amount with its decimals, with a decimal comma or a decimal point, with or without thousands separators, and with or without a sign. A search word that reads as an amount finds an amount only as a whole. Without a sign it finds the amount with either sign, and with a sign only the amount with that sign. In the other searched fields the word still finds text inside words.
 
 #### Scenario: Amount with decimals
 
 - **GIVEN** one transaction of -49,99 € and one of -149,99 €
 - **WHEN** the user searches for "49,99"
 - **THEN** the list shows the transaction of -49,99 € and not the one of -149,99 €
+
+#### Scenario: Amount with a sign
+
+- **GIVEN** one transaction of -49,99 € and one of 49,99 €
+- **WHEN** the user searches for "-49,99"
+- **THEN** the list shows only the transaction of -49,99 €
+- **WHEN** the user searches for "49.99"
+- **THEN** the list shows both transactions
+
+#### Scenario: Amount with thousands separators
+
+- **GIVEN** one transaction of -1.249,99 €
+- **WHEN** the user searches for "1.249,99" or "1,249.99"
+- **THEN** the list shows the transaction
+- **WHEN** the user searches for "249,99"
+- **THEN** the list shows no transaction
+
+#### Scenario: Amount as text in the purpose
+
+- **GIVEN** a transaction of -10,00 € with the purpose "Rechnung 149,99"
+- **WHEN** the user searches for "49,99"
+- **THEN** the list shows the transaction
 
 ### Requirement: Count and sum of the results
 

@@ -14,6 +14,12 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 		self = monthly ? .month(bar.start) : .custom(bar.start, last)
 	}
 
+	/// The period of "Custom...", or nil when the end lies before the start, which no row could fall in. Both dates
+	/// belong to the period.
+	public static func custom(from start: Day, to end: Day) -> PeriodChoice? {
+		end < start ? nil : .custom(start, end)
+	}
+
 	/// The period of a bar in a category chart.
 	public init(start: Day, chartPeriod: ChartPeriod) {
 		switch chartPeriod {

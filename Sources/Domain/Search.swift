@@ -17,6 +17,8 @@ public struct TransactionSearchResult: Sendable {
 struct SearchQuery {
 	private indirect enum Node {
 		case text(Needle)
+		/// A word that reads as an amount: text in the fields before the amounts, or an amount as a whole.
+		case amountWord(Needle, AmountWord)
 		/// Words with wildcards that must follow each other inside one field of the search text.
 		case words([WildcardPattern], literals: [Needle])
 		/// Words that must follow each other inside one value of a field, as in a rule. A row whose search text lacks
@@ -32,7 +34,7 @@ struct SearchQuery {
 		/// The term reads the fields of a row, which costs more than the search text.
 		var readsFields: Bool {
 			switch self {
-			case .text, .words, .amount, .constant: false
+			case .text, .amountWord, .words, .amount, .constant: false
 			case .field, .regex: true
 			case let .not(a): a.readsFields
 			case let .and(a, b), let .or(a, b): a.readsFields || b.readsFields
@@ -197,6 +199,8 @@ struct SearchQuery {
 		switch node {
 		case let .text(needle):
 			return needle.occurs(in: row.searchText)
+		case let .amountWord(needle, amount):
+			return amount.occurs(in: row.searchText, asText: needle)
 		case let .words(patterns, literals):
 			return literals.allSatisfy { $0.occurs(in: row.searchText) }
 				&& row.searchText.split(separator: "\u{1}").contains { follow(patterns, in: $0.split(separator: " ")) }
@@ -326,6 +330,8 @@ struct SearchQuery {
 			let words = patterns.map { String($0.pattern.characters) }
 			let core = words.count == 1 ? words[0].trimmingCharacters(in: CharacterSet(charactersIn: "*")) : ""
 			if !core.isEmpty, !core.contains("*"), !core.contains("?") {
+				// An amount such as "49,99" finds -49,99 € but not -149,99 €. With a wildcard it is a pattern of text.
+				if core == words[0], let amount = AmountWord(core) { return .amountWord(Needle(core), amount) }
 				// A single word with `*` at its ends only: a search word finds text inside words anyway.
 				return .text(Needle(core))
 			}
@@ -357,6 +363,10 @@ struct SearchQuery {
 /// so that a phrase finds its words across a line break or a double space. A field term reads its field here,
 /// already folded, because folding the fields of 50,000 rows again for each keystroke was too slow.
 enum SearchText {
+	/// The place of the first amount text. The amounts of `Ledger.amountTexts` come last, after the 7 fields, the 3
+	/// account numbers, and the 3 names, and a part of a split transaction adds the amounts of the transaction after its own.
+	static let amountPlace = 13
+
 	/// The fields that the search text holds as a rule reads them, only folded. It holds the account numbers without
 	/// spaces and lacks the currency.
 	static let foldedAsTheyAre: Set<RuleField> = [.name, .purpose, .bookingText, .reference, .mandate, .creditorID, .comment]
@@ -465,7 +475,7 @@ enum SearchText {
 /// A folded text to find in the search text, compared byte by byte. Both sides are folded the same way, and
 /// `String.contains` cost about 2 µs per row, most of the time of a search over 50,000 rows.
 struct Needle {
-	private let bytes: [UInt8]
+	fileprivate let bytes: [UInt8]
 
 	init(_ text: String) {
 		bytes = Array(text.utf8)
@@ -474,9 +484,88 @@ struct Needle {
 	func occurs(in text: String) -> Bool {
 		guard !bytes.isEmpty else { return true }
 		var text = text
-		return text.withUTF8 { haystack in
-			bytes.withUnsafeBufferPointer { memmem(haystack.baseAddress, haystack.count, $0.baseAddress, $0.count) != nil }
+		return text.withUTF8 { firstOffset(in: $0) != nil }
+	}
+
+	/// The offset of the first occurrence in the bytes of a text.
+	fileprivate func firstOffset(in haystack: UnsafeBufferPointer<UInt8>) -> Int? {
+		guard !bytes.isEmpty else { return 0 }
+		guard let base = haystack.baseAddress else { return nil }
+		return bytes.withUnsafeBufferPointer { needle in
+			memmem(base, haystack.count, needle.baseAddress, needle.count).map { UnsafePointer($0.assumingMemoryBound(to: UInt8.self)) - base }
 		}
+	}
+}
+
+/// A search word that reads as an amount, such as "49,99", "-49.99", or "1.249,99". It finds an amount only as a
+/// whole, so "49,99" finds -49,99 € and not -149,99 €. Without a sign it finds both signs, with a sign only its own.
+/// In the other fields it stays a search word and finds text inside words.
+struct AmountWord {
+	private enum Sign { case minus, plus }
+
+	private let sign: Sign?
+	/// The amount without sign and without thousands separators, once for each way to read it: "1.249" is 1249 with
+	/// a thousands point and 1,249 with a decimal point.
+	private let readings: [Needle]
+
+	/// Nil for a word that is no amount: digits with at most one decimal separator, or with thousands separators
+	/// every three digits, after an optional sign.
+	init?(_ word: String) {
+		var body = Substring(word)
+		switch body.first {
+		case "-": sign = .minus; body = body.dropFirst()
+		case "+": sign = .plus; body = body.dropFirst()
+		default: sign = nil
+		}
+		let isDigit = { (c: Character) in c.isASCII && c.isWholeNumber }
+		guard let first = body.first, let last = body.last, isDigit(first), isDigit(last),
+			body.allSatisfy({ isDigit($0) || $0 == "," || $0 == "." }) else { return nil }
+		var readings: [String] = []
+		if body.count(where: { $0 == "," || $0 == "." }) <= 1 { readings.append(String(body)) }
+		for (group, decimal) in [(Character("."), Character(",")), (",", ".")] {
+			let sides = body.split(separator: decimal, omittingEmptySubsequences: false)
+			let groups = sides[0].split(separator: group, omittingEmptySubsequences: false)
+			guard sides.count <= 2, groups.count > 1, (1...3).contains(groups[0].count), groups.dropFirst().allSatisfy({ $0.count == 3 }),
+				sides.count == 1 || !sides[1].contains(group) else { continue }
+			readings.append(groups.joined() + (sides.count == 2 ? String(decimal) + sides[1] : ""))
+		}
+		guard !readings.isEmpty else { return nil }
+		self.readings = readings.map(Needle.init)
+	}
+
+	/// The word occurs as text in a field before the amounts, or one amount of the search text is this amount.
+	func occurs(in searchText: String, asText needle: Needle) -> Bool {
+		var searchText = searchText
+		return searchText.withUTF8 { text in
+			// The fields come before the amounts, so a first occurrence among the amounts is the only one.
+			if let at = needle.firstOffset(in: text), Self.separators(in: UnsafeBufferPointer(rebasing: text[..<at])) < SearchText.amountPlace {
+				return true
+			}
+			// Most rows hold none of the readings, and finding that out costs no more than the text above.
+			guard readings.contains(where: { $0.firstOffset(in: text) != nil }) else { return false }
+			var place = 0
+			var start = 0
+			for i in 0...text.count where i == text.count || text[i] == 1 {
+				if place >= SearchText.amountPlace, matches(UnsafeBufferPointer(rebasing: text[start..<i])) { return true }
+				place += 1
+				start = i + 1
+			}
+			return false
+		}
+	}
+
+	private func matches(_ amount: UnsafeBufferPointer<UInt8>) -> Bool {
+		let isNegative = amount.first == UInt8(ascii: "-")
+		switch sign {
+		case .minus where !isNegative, .plus where isNegative: return false
+		default: break
+		}
+		let digits = isNegative ? UnsafeBufferPointer(rebasing: amount.dropFirst()) : amount
+		return readings.contains { $0.bytes.elementsEqual(digits) }
+	}
+
+	private static func separators(in bytes: UnsafeBufferPointer<UInt8>) -> Int {
+		bytes.reduce(0) { $1 == 1 ? $0 + 1 : $0 }
 	}
 }
 

@@ -57,6 +57,8 @@ struct PerformanceTests {
 		// Every row holds " kunden", so every row reads its fields.
 		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
+		// An amount word compares the amounts of the rows that hold its digits as a whole.
+		let (amountWordOverAll, amountWordCount) = overAll("49,99")
 		let (noSearch, noSearchCount) = overAll("")
 		let category = fastest { _ = ledger.rows(in: .category(categories[3].id)).rows }
 		var range = TransactionFilter()
@@ -76,10 +78,10 @@ struct PerformanceTests {
 		#expect(updated.rows(in: .accountGroup(everything.id)).rows.filter(\.isChecked).count == 200)
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), amount word \(amountWordOverAll) (\(amountWordCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_355)
-		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
+		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount, amountWordCount].allSatisfy { $0 > 0 })
 		#expect(slowRegexCount == 40_000)
 		#expect(noSearchCount == 51_000)
 		#expect(amounts[categories[61].id]?.minorUnits == 167_000)
@@ -98,6 +100,7 @@ struct PerformanceTests {
 		#expect(regexOverAll < budget(.milliseconds(200)))
 		#expect(slowRegexOverAll < budget(.milliseconds(600)))
 		#expect(plainOverAll < budget(.milliseconds(150)))
+		#expect(amountWordOverAll < budget(.milliseconds(150)))
 		#expect(amount < budget(.milliseconds(150)))
 		// A regular expression reads the fields as they are, so the search text rules out only the rows without its plain text.
 		#expect(regex < budget(.milliseconds(200)))

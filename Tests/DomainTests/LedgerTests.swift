@@ -671,6 +671,56 @@ struct LedgerTests {
 		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
 	}
 
+	@Test("An amount word finds the whole amount and not a longer amount that holds it")
+	func searchWholeAmount() {
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -4_999, name: "Kiosk"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -14_999, name: "Elektromarkt"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 4_999, name: "Erstattung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -124_999, name: "Möbelhaus"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Vermieter", purpose: "Rechnung 149,99 Kundennummer 4711"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.rows(in: .account(giro.id), filter: f).rows.map(\.name)
+		}
+		// Without a sign the amount finds both signs, with a sign only its own. The purpose "Rechnung 149,99" holds
+		// "49,99" as text, which a search word finds inside words.
+		#expect(found("49,99") == ["Kiosk", "Erstattung", "Vermieter"])
+		#expect(found("49.99") == ["Kiosk", "Erstattung"])
+		#expect(found("-49,99") == ["Kiosk"])
+		#expect(found("-49.99") == ["Kiosk"])
+		#expect(found("+49,99") == ["Erstattung"])
+		#expect(found("149,99") == ["Elektromarkt", "Vermieter"])
+		#expect(found("-149,99") == ["Elektromarkt"])
+		#expect(found("149.99") == ["Elektromarkt"])
+		// The list shows thousands separators, so an amount copied from there finds its row.
+		#expect(found("1.249,99") == ["Möbelhaus"])
+		#expect(found("-1.249,99") == ["Möbelhaus"])
+		#expect(found("1,249.99") == ["Möbelhaus"])
+		#expect(found("1249,99") == ["Möbelhaus"])
+		#expect(found("249,99").isEmpty)
+		#expect(found("99") == ["Vermieter"])
+		#expect(found("4711") == ["Vermieter"])
+		#expect(found("10") == ["Vermieter"])
+
+		// A part of a split transaction is found by its own amount and by the amount of the transaction, each as a whole.
+		let split = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -14_999, name: "Elektromarkt")
+		let parts = [SplitPart(transactionID: split.id, position: 0, amountMinor: -10_000, comment: "Kabel"),
+			SplitPart(transactionID: split.id, position: 1, amountMinor: -4_999, comment: "Adapter")]
+		let splitLedger = Ledger(accounts: [giro], transactions: [split], parts: parts)
+		func foundParts(_ text: String) -> [String?] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return splitLedger.rows(in: .account(giro.id), filter: f).rows.map(\.comment)
+		}
+		#expect(foundParts("-149,99") == ["Kabel", "Adapter"])
+		#expect(foundParts("49,99") == ["Adapter"])
+		#expect(foundParts("100") == ["Kabel"])
+		#expect(foundParts("1.000,00").isEmpty)
+	}
+
 	@Test("The search text holds each amount as typed: plain, with comma or point, and with two decimals")
 	func amountSearchText() {
 		func text(_ minor: Int64, _ currency: String = "EUR") -> [String] {
@@ -1261,6 +1311,16 @@ struct LedgerTests {
 		#expect(ledger.accountsWithTransactions == [giro.id])
 		ledger.remove(transactionIDs: [rent.id])
 		#expect(ledger.accountsWithTransactions.isEmpty)
+	}
+
+	@Test("A custom period applies both dates and refuses an end before the start")
+	func customPeriod() {
+		let start = Day(year: 2025, month: 4, day: 1), end = Day(year: 2026, month: 3, day: 31)
+		#expect(PeriodChoice.custom(from: start, to: end) == .custom(start, end))
+		#expect(PeriodChoice.custom(from: start, to: end)?.range() == DayRange(start: start, end: end))
+		#expect(PeriodChoice.custom(from: start, to: start) == .custom(start, start))
+		#expect(PeriodChoice.custom(from: Day(year: 2026, month: 10, day: 18), to: Day(year: 2025, month: 1, day: 1)) == nil)
+		#expect(PeriodChoice.custom(from: start, to: start.adding(days: -1)) == nil)
 	}
 
 	@Test("A view resets the filter that its filter bar does not show")
