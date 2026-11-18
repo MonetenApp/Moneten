@@ -19,6 +19,10 @@
   bank-data.py dry-run --out DIR [--jar FILE] [--sign-update TOOL]
                          build the files and sign them with a throwaway key, check them, check that one
                          changed byte fails, and publish nothing
+  bank-data.py check-latest --repo OWNER/NAME
+                         after an upload: fail when bank-data is the latest release, when the latest
+                         release is a version of the app whose feed URL does not answer, or when it is
+                         no version of the app although one is published. Reads GitHub with gh and curl.
 
 The app runs the same checks with BankData.verify and BankData.isReadableBankList in Sources/FinTS.
 Checking needs OpenSSL 3 or later, and so does signing without sign_update. The workflow signs with
@@ -284,6 +288,42 @@ def dry_run(out, jar=None, sign_update=None):
 	print("dry run: %s signed by %s with a throwaway key %s, checked, and refused after one changed byte." % (", ".join(FILES), tool, public))
 
 
+# A stable version of the app, which carries the update feed when it is the latest release.
+APP_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
+
+
+def check_latest(repo):
+	"""The feed URL of the app follows the latest release. GitHub marks the only published release as the
+	latest one even when it was created with --latest=false, so ext-v0.1.0 can be the latest release
+	before the first version of the app. That is fine while no version is published: the first version
+	takes the mark with --latest."""
+	result = subprocess.run(["gh", "api", "repos/%s/releases/latest" % repo, "--jq", ".tag_name"], capture_output=True, text=True)
+	if result.returncode == 0:
+		latest = result.stdout.strip()
+	elif "HTTP 404" in result.stderr:
+		latest = ""
+	else:
+		raise Failure("GitHub does not answer for the latest release: %s" % result.stderr.strip())
+	if latest == "bank-data":
+		raise Failure("bank-data is the latest release, so the feed URL breaks. Mark the newest version as latest.")
+	if APP_TAG.fullmatch(latest):
+		feed = "https://github.com/%s/releases/latest/download/appcast.xml" % repo
+		if subprocess.run(["curl", "-fsSIL", "--retry", "3", "-o", os.devnull, feed]).returncode != 0:
+			raise Failure("the feed URL %s does not answer." % feed)
+		print("The latest release %s carries the feed." % latest)
+		return
+	result = subprocess.run(["gh", "api", "--paginate", "repos/%s/releases?per_page=100" % repo, "--jq", '.[] | "\\(.tag_name) \\(.draft)"'],
+		capture_output=True, text=True)
+	if result.returncode != 0:
+		raise Failure("the releases of %s cannot be read: %s" % (repo, result.stderr.strip()))
+	published = [tag for tag, draft in (line.split() for line in result.stdout.splitlines() if line.strip())
+		if draft == "false" and APP_TAG.fullmatch(tag)]
+	if published:
+		raise Failure("the latest release is %s, not a version of the app, although these versions are published: %s. Mark the newest version as latest."
+			% (latest, ", ".join(published)))
+	print("No version of the app is published yet%s, so there is no feed to check." % (" (the latest release is %s)" % latest if latest else ""))
+
+
 def main(argv):
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 	commands = parser.add_subparsers(dest="command", required=True)
@@ -308,6 +348,8 @@ def main(argv):
 	p.add_argument("--out", required=True)
 	p.add_argument("--jar")
 	p.add_argument("--sign-update")
+	p = commands.add_parser("check-latest")
+	p.add_argument("--repo", required=True)
 	args = parser.parse_args(argv)
 	try:
 		if args.command == "build":
@@ -323,6 +365,8 @@ def main(argv):
 			print(public_key_of(args.file))
 		elif args.command == "dry-run":
 			dry_run(args.out, args.jar, args.sign_update)
+		elif args.command == "check-latest":
+			check_latest(args.repo)
 	except Failure as error:
 		print("bank-data.py: %s" % error, file=sys.stderr)
 		return 1

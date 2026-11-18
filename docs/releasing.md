@@ -106,6 +106,8 @@ Add a ruleset under Settings, Rules, for the tags `v*` and `ext-v*` that allows 
 
 The feed URL is `https://github.com/MonetenApp/Moneten/releases/latest/download/appcast.xml`. Every other release, such as `bank-data`, must be created with "Set as the latest release" turned off, or the feed URL breaks.
 
+GitHub marks the only published release as the latest one even when it was created with that switch turned off. So before the first version of the app, `ext-v0.1.0` is the latest release. `scripts/release.sh` treats a latest release whose tag is no version of the app, such as `ext-v0.1.0` or `bank-data`, as no release of the app, and starts the first feed, but only while no stable version is published. Once one is, it stops and asks to mark the newest version as latest. `publish` marks a stable version as the latest release explicitly and checks that GitHub reports it as latest. The dry run checks these cases with stubs of `curl` and `gh`.
+
 To start over after a failed run, delete the draft and run the workflow again on the same tag under Actions.
 
 ### Checklist
@@ -131,7 +133,7 @@ The app downloads the bank list `blz.properties` and its signature `blz.properti
 
 1. Run the dry run first, which needs no secret: `python3 scripts/bank-data.py dry-run --out dist/bank-data`. It builds the list, signs it with a throwaway key, checks it, and checks that one changed byte fails. A pull request that changes these files runs it in CI, and so does a run by hand without "publish".
 2. Under Actions, "Bank data", "Run workflow" on `main`, check "publish".
-3. Approve the job `publish`. It fails at once without the secret, outside `main`, or while `App/project.yml` has no production update key. It builds the list, signs it with `sign_update` of Sparkle, checks the signature with the key of `App/project.yml`, and uploads both files. Then it downloads them again, checks them, checks that `bank-data` is not the latest release, and that the feed URL still answers.
+3. Approve the job `publish`. It fails at once without the secret, outside `main`, or while `App/project.yml` has no production update key. It builds the list, signs it with `sign_update` of Sparkle, checks the signature with the key of `App/project.yml`, and uploads both files. Then it downloads them again, checks them, and runs `scripts/bank-data.py check-latest`: `bank-data` must not be the latest release, a version of the app as the latest release must have a feed URL that answers, and before the first version of the app, no latest release or `ext-v0.1.0` as the latest release is fine.
 
 Publish the bank data after each change of hbci4java in `dependencies.lock` and after each change of `BankData/corrections.properties`, before the tag of the next version. A new build of the app with a newer jar refuses a list from an older jar, so until the bank data is published again, it uses the list of its own jar. When hbci4java changes in `dependencies.lock`, also change `BankData.bundledHBCI4Java` in `Sources/FinTS/BankData.swift`. A test fails while the two differ.
 

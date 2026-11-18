@@ -119,5 +119,59 @@ class BankDataTests(unittest.TestCase):
 		self.assertNotEqual(run("verify", "--public-key", public, str(path)).returncode, 0)
 
 
+GH_STUB = """#!/bin/sh
+case "$*" in
+*/releases/latest*) [ -n "$STUB_LATEST" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }; echo "$STUB_LATEST" ;;
+*) printf "$STUB_RELEASES" ;;
+esac
+"""
+CURL_STUB = """#!/bin/sh
+[ "$STUB_FEED" = yes ] || exit 22
+"""
+
+
+class CheckLatestTests(unittest.TestCase):
+	"""check-latest with stubs of gh and curl in place of GitHub."""
+
+	def setUp(self):
+		self.folder = tempfile.TemporaryDirectory()
+		for name, text in (("gh", GH_STUB), ("curl", CURL_STUB)):
+			path = Path(self.folder.name) / name
+			path.write_text(text)
+			path.chmod(0o755)
+
+	def tearDown(self):
+		self.folder.cleanup()
+
+	def check(self, latest, releases, feed):
+		env = dict(os.environ, PATH=self.folder.name + os.pathsep + os.environ["PATH"],
+			STUB_LATEST=latest, STUB_RELEASES=releases, STUB_FEED="yes" if feed else "no")
+		return subprocess.run([sys.executable, str(SCRIPT), "check-latest", "--repo", "MonetenApp/Moneten"],
+			capture_output=True, text=True, env=env)
+
+	def test_no_version_of_the_app_skips_the_feed(self):
+		for latest, releases in (("ext-v0.1.0", "ext-v0.1.0 false\\nv0.1.0 true\\n"), ("", ""),
+				("ext-v0.2.0", "ext-v0.2.0 false\\nv0.1.0-beta.1 false\\n")):
+			result = self.check(latest, releases, feed=False)
+			self.assertEqual(result.returncode, 0, result.stderr)
+			self.assertIn("No version of the app is published yet", result.stdout)
+
+	def test_a_version_as_the_latest_release_needs_the_feed(self):
+		self.assertEqual(self.check("v0.1.0", "v0.1.0 false\\n", feed=True).returncode, 0)
+		result = self.check("v0.1.0", "v0.1.0 false\\n", feed=False)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("does not answer", result.stderr)
+
+	def test_bank_data_as_the_latest_release_fails(self):
+		result = self.check("bank-data", "bank-data false\\n", feed=True)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("bank-data is the latest release", result.stderr)
+
+	def test_another_latest_release_fails_once_a_version_is_published(self):
+		result = self.check("ext-v0.2.0", "ext-v0.2.0 false\\nv0.1.0 false\\n", feed=True)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("v0.1.0", result.stderr)
+
+
 if __name__ == "__main__":
 	unittest.main()

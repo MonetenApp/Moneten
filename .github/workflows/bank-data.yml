@@ -102,12 +102,9 @@ jobs:
           done
           cmp "$RUNNER_TEMP/published/blz.properties" dist/bank-data/blz.properties
           python3 scripts/bank-data.py verify --public-key "$PUBLIC_KEY" "$RUNNER_TEMP/published/blz.properties"
-          # No latest release yet, before the first version, is fine.
-          LATEST=$(gh api "repos/$REPO/releases/latest" --jq .tag_name 2>/dev/null) || LATEST=""
-          [ "$LATEST" != bank-data ] || { echo "::error::bank-data is the latest release, so the feed URL breaks. Mark the newest version as latest."; exit 1; }
-          if [ -n "$LATEST" ]; then
-            curl -fsSIL -o /dev/null "https://github.com/$REPO/releases/latest/download/appcast.xml" || { echo "::error::The feed URL does not answer."; exit 1; }
-          fi
+          # bank-data must never be the latest release. Before the first version of the app, no latest
+          # release, or ext-v0.1.0 as the latest one, is fine. A version as the latest release must carry the feed.
+          python3 scripts/bank-data.py check-latest --repo "$REPO" || { echo "::error::The latest release breaks the feed URL. See the message above."; exit 1; }
       - name: Remove the update key
         if: always()
         run: rm -f "$RUNNER_TEMP/update.key"
