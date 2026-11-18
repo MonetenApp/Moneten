@@ -297,6 +297,24 @@ final class DebugHarness {
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
+		// "<name>": takes a picture of the question of "Remove Account..." for the account, off screen, without the modal loop and
+		// without an answer, as removequestion.png.
+		case "removequestion":
+			guard let a = model.ledger.accounts.first(where: { $0.name == argument }), let question = model.removeQuestion(.account(a.id)) else {
+				return log("removequestion", ("", .presence(false)))
+			}
+			question.layout()
+			let window = question.window
+			window.setFrameOrigin(NSPoint(x: -5000, y: -5000))
+			window.orderFrontRegardless()
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+				if let view = window.contentView?.superview ?? window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
+					view.cacheDisplay(in: view.bounds, to: rep)
+					try? rep.representation(using: .png, properties: [:])?.write(to: self.folder.appendingPathComponent("removequestion.png"))
+				}
+				window.orderOut(nil)
+				self.log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")))
+			}
 		// "<name>": what "Remove" in the context menu of a category does.
 		case "removecategory":
 			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
