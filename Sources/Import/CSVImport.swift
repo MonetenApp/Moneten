@@ -326,15 +326,16 @@ public struct CSVFile: Sendable {
 	static let exportBank = 6
 
 	/// Whether the account and the bank column of an export hold their field: more than half of the filled cells of
-	/// each in the dated rows fit. The header already shows that these columns hold the counterparty, so one value in
-	/// every row, such as the reference account of a savings account, is kept.
+	/// each in the dated rows fit. A bank cell counts only beside an account, because a BIC of 8 characters fits only
+	/// beside an IBAN, and rows without one must not drop the column. The header already shows that these columns hold
+	/// the counterparty, so one value in every row, such as the reference account of a savings account, is kept.
 	private func exportColumnsFit(_ layout: CSVLayout) throws -> (account: Bool, bank: Bool) {
 		var account = 0, bank = 0
 		for row in try dataRows(layout) {
 			try Task.checkCancellation()
-			let iban = Self.cell(row.cells, Self.exportAccount)
-			if let iban { account += Self.isAccount(iban) ? 1 : -1 }
-			if let cell = Self.cell(row.cells, Self.exportBank) { bank += Self.isBank(cell, iban: iban) ? 1 : -1 }
+			guard let number = Self.cell(row.cells, Self.exportAccount) else { continue }
+			account += Self.isAccount(number) ? 1 : -1
+			if let cell = Self.cell(row.cells, Self.exportBank) { bank += Self.isBank(cell, account: number) ? 1 : -1 }
 		}
 		return (account > 0, bank > 0)
 	}
@@ -347,15 +348,15 @@ public struct CSVFile: Sendable {
 	}
 
 	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row.
-	/// A row without an IBAN takes only a BIC of 11 characters with any country, because bank names of eight capitals
-	/// such as "POSTBANK" and "RABOBANK" have a country in letters 5 and 6.
-	static func isBank(_ cell: String, iban: String?) -> Bool {
+	/// A row whose account is not an IBAN takes only a BIC of 11 characters with any country, because bank names of
+	/// eight capitals such as "POSTBANK" and "RABOBANK" have a country in letters 5 and 6.
+	static func isBank(_ cell: String, account: String) -> Bool {
 		let value = cell.filter { !$0.isWhitespace }
 		if value.count == 8, value.allSatisfy({ $0.isASCII && $0.isNumber }) { return true }
 		guard [8, 11].contains(value.count), value.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }),
 			value.prefix(6).allSatisfy(\.isLetter) else { return false }
 		let country = String(value.dropFirst(4).prefix(2))
-		if let iban, let parsed = IBAN(iban) { return parsed.electronic.hasPrefix(country) }
+		if let parsed = IBAN(account) { return parsed.electronic.hasPrefix(country) }
 		return value.count == 11 && countries.contains(country)
 	}
 
