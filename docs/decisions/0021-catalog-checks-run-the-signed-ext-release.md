@@ -20,7 +20,7 @@ ADR 0015 kept binaries out of the catalog: its checks built `ext` with Swift at 
 - The catalog trusts a binary instead of a build from source. Nothing in the checks proves that the binary was built from the pinned commit. The binary prints its own version line, the tag check never reads the binary, and the SHA-256 comes from the release itself. The build is not reproducible, so a build from the same commit gives another binary with another signature.
 - The trust now lies in three places: `release-ext.yml`, the ruleset of ADR 0019 that lets only the owner create `ext-v*` tags, and the Developer ID secrets in the environment `build`. Whoever controls an `ext-v*` tag or that environment can publish any binary signed with the Developer ID of the project. That binary passes `ext test` once a reviewed pull request pins its SHA-256.
 - The SHA-256 protects only against a zip that someone swaps after the lock was reviewed, for example with `gh release upload --clobber`. The version and tag checks catch a wrong pin, not a hostile binary. The signature check catches a binary that the project did not sign.
-- The damage stays limited. The job has the permission `contents: read` and no secrets, and the signing key of the index lives elsewhere. A hostile `ext` can at most fake a passing replay, and the review of a maintainer still applies to every package.
+- A hostile binary can run any code on the job runner and fake the result of the replay. The job gets no secrets and no write permission on the repository, and the index signing key stays in a separate job. The review of a maintainer still applies to every package.
 - A new version of `ext` reaches the catalog only through a pull request that changes `tools/ext.lock`.
 
 ## Alternatives
