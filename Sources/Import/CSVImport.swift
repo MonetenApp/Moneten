@@ -303,10 +303,64 @@ public struct CSVFile: Sendable {
 					layout.columns[field] = column
 				}
 			}
+			if Self.exportHeaders.contains(where: { normalized.starts(with: $0) }) {
+				let fits = try exportColumnsFit(layout)
+				for (field, column, fit) in [(CSVField.iban, Self.exportAccount, fits.account), (.bic, Self.exportBank, fits.bank)]
+					where fit && layout.columns[field] == nil && !layout.columns.values.contains(column) {
+					layout.columns[field] = column
+				}
+			}
 		}
 		layout.dateOrder = try dateOrders(layout).first ?? .dayMonthYear
 		return layout
 	}
+
+	/// The leading columns of the transaction export in English and in German, as `normalize` writes them. Moneten
+	/// writes the English ones and adds more after them. Other programs use "Account", "Konto", and "Bank" for the own
+	/// account, a card, a ledger account, or the name of a bank, so only these layouts give the columns a field.
+	static let exportHeaders = [
+		["Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", "Currency"],
+		["Datum", "Wertstellung", "Kategorie", "Name", "Verwendungszweck", "Konto", "Bank", "Betrag", "Währung"],
+	].map { $0.map(normalize) }
+	static let exportAccount = 5
+	static let exportBank = 6
+
+	/// Whether the account and the bank column of an export hold their field: more than half of the filled cells of
+	/// each in the dated rows fit. A bank cell counts only beside an account, because a BIC of 8 characters fits only
+	/// beside an IBAN, and rows without one must not drop the column. The header already shows that these columns hold
+	/// the counterparty, so one value in every row, such as the reference account of a savings account, is kept.
+	private func exportColumnsFit(_ layout: CSVLayout) throws -> (account: Bool, bank: Bool) {
+		var account = 0, bank = 0
+		for row in try dataRows(layout) {
+			try Task.checkCancellation()
+			guard let number = Self.cell(row.cells, Self.exportAccount) else { continue }
+			account += Self.isAccount(number) ? 1 : -1
+			if let cell = Self.cell(row.cells, Self.exportBank) { bank += Self.isBank(cell, account: number) ? 1 : -1 }
+		}
+		return (account > 0, bank > 0)
+	}
+
+	/// An IBAN with a valid checksum, or an account number of five digits or more. Shorter numbers are ledger
+	/// accounts or amounts.
+	static func isAccount(_ cell: String) -> Bool {
+		let value = cell.filter { !$0.isWhitespace }
+		return IBAN(value) != nil || (value.count >= 5 && value.allSatisfy { $0.isASCII && $0.isNumber })
+	}
+
+	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row.
+	/// A row whose account is not an IBAN takes only a BIC of 11 characters with any country, because bank names of
+	/// eight capitals such as "POSTBANK" and "RABOBANK" have a country in letters 5 and 6.
+	static func isBank(_ cell: String, account: String) -> Bool {
+		let value = cell.filter { !$0.isWhitespace }
+		if value.count == 8, value.allSatisfy({ $0.isASCII && $0.isNumber }) { return true }
+		guard [8, 11].contains(value.count), value.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }),
+			value.prefix(6).allSatisfy(\.isLetter) else { return false }
+		let country = String(value.dropFirst(4).prefix(2))
+		if let parsed = IBAN(account) { return parsed.electronic.hasPrefix(country) }
+		return value.count == 11 && countries.contains(country)
+	}
+
+	private static let countries = Set(Locale.Region.isoRegions.map(\.identifier).filter { $0.count == 2 && $0.allSatisfy(\.isLetter) })
 
 	/// The date orders that every booking date and value date of the layout fits, day first first. Two
 	/// orders mean that the file does not decide, and the preview asks the user to check. A value that
@@ -472,7 +526,7 @@ public struct CSVFile: Sendable {
 			}
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: money.minorUnits, currency: cur,
-				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),
+				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn).map(IBAN.electronicForm), counterpartyBIC: Self.cell(row, bicColumn),
 				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
 				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }

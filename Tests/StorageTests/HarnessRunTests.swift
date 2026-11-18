@@ -10,12 +10,12 @@ struct HarnessRunTests {
 	func withoutHarness() {
 		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: nil, keychainFile: nil).isEmpty)
 		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: "/tmp/data", keychainFile: nil).isEmpty)
-		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: "/tmp/data", keychainFile: "/tmp/run.keychain-db").isEmpty)
 	}
 
 	@Test("A keychain file of its own needs a data folder of its own, also without the harness")
 	func keychainFileNeedsDataFolder() {
 		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: nil, keychainFile: "/tmp/run.keychain-db") == [.dataFolder])
+		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: "/tmp/data", keychainFile: "/tmp/run.keychain-db").isEmpty)
 	}
 
 	@Test("A harness run starts only with a data folder and a keychain file of its own")

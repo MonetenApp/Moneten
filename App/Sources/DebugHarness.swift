@@ -289,7 +289,7 @@ final class DebugHarness {
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
-				iban: "DE02120300000000202051"))
+				iban: IBAN("DE02120300000000202051")))
 		// "<name>": a migrated savings account without an IBAN and a subnumber, with the account number 9 of the made-up bank.
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
@@ -901,11 +901,17 @@ final class DebugHarness {
 				await model.apply(rule: rule, of: c, mode: .all)
 				log("applyrule done")
 			}
-		// "<category>": what "Create Rule" in the context menu of the first selected row does with that category.
-		case "createrule":
-			guard let t = model.visibleSelection.first.flatMap(model.ledger.row), let condition = Rule.condition(for: t),
-				let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("createrule not found") }
-			model.createRule(condition, in: c.id)
+		// "<category>" selects the first row of the table, opens its context menu, and chooses that category in "Create Rule".
+		// "<n>" selects the first n rows and only opens the menu. Both log whether the menu has "Create Rule", and its items.
+		case "createrule": createRule(argument)
+		// "<category>|<account>" restricts the category to that account, as "Restrict to" in its settings does.
+		case "restrict":
+			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }),
+				let a = model.ledger.accounts.first(where: { $0.name == parts[1] }) else { return log("restrict not found") }
+			c.restrictedToID = a.id
+			model.save(category: c)
+			log("restrict done")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
@@ -1407,7 +1413,7 @@ final class DebugHarness {
 			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
 			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""),
 				.originalAmount(Money(minorUnits: 0, currency: "USD")), .deviatingParty("", recipient: true), .valueDate(Day.today()),
-				.iban(""), .bic("")].map(\.label)
+				.iban(IBAN("DE02120300000000202051")!), .bic("")].map(\.label)
 			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
 			let table = self.transactionTables().first
 			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()
@@ -1878,6 +1884,29 @@ final class DebugHarness {
 		menu.performActionForItem(at: index)
 	}
 
+	/// "Create Rule" in the context menu of the transaction table, as a right click builds it. Each item of the menu by
+	/// the hash of its title, which names a category, and whether it is enabled.
+	private func createRule(_ argument: String) {
+		guard let model, let table = transactionTables().first else { return log("createrule no table") }
+		let count = Int(argument) ?? 1
+		table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false)
+		guard let menu = contextMenu(row: 0, sidebar: false) else { return log("createrule no menu") }
+		menu.update()
+		// SwiftUI gives the item no identifier, so the harness finds it by the text that the user reads, in the language of this run.
+		guard let submenu = menu.items.first(where: { $0.title == String(localized: "Create Rule") })?.submenu else {
+			return log("createrule", ("rows", .count(count)), ("item", .presence(false)))
+		}
+		submenu.update()
+		log("createrule", ("rows", .count(count)), ("item", .presence(true)), ("categories", .list(submenu.items.map { .hash($0.title) })),
+			("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
+		guard Int(argument) == nil else { return }
+		guard let c = model.ledger.categories.first(where: { $0.name == argument }),
+			let index = submenu.items.firstIndex(where: { $0.title == model.ledger.categoryPath(c.id) }) else { return log("createrule not found") }
+		guard submenu.items[index].isEnabled else { return log("createrule refused", ("position", .position(index))) }
+		submenu.performActionForItem(at: index)
+		log("createrule chosen", ("position", .position(index)), ("sheet", .state(model.sheet)))
+	}
+
 	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
 	func sidebarList() -> NSOutlineView? {
 		guard let content = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true })?.contentView else { return nil }
@@ -2058,11 +2087,20 @@ enum DemoData {
 					let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
 					let amount = Int64(-(i % 9_000) - 100)
 					return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
-						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)", counterpartyIBAN: madeUpIBAN(i % 500))
 				}
 				_ = try? model.merge(.file(ts), into: account.id)
 			}
 		}
+	}
+
+	/// The IBAN of one of 500 made-up counterparties at the made-up bank code 12030000, with valid check digits, so
+	/// that a regular expression on `remote_account:` reads it in its electronic form and in groups of four.
+	static func madeUpIBAN(_ n: Int) -> String {
+		let bban = "12030000" + String(format: "%010d", 1_000_000 + n)
+		// D is 13 and E is 14, and the check digits count as 00 while they are computed.
+		let remainder = (bban + "131400").reduce(0) { ($0 * 10 + Int(String($1))!) % 97 }
+		return "DE" + String(format: "%02d", 98 - remainder) + bban
 	}
 
 	/// Ten years of a current account: salary and rent, an overdraft in the first year, and a few
@@ -2172,7 +2210,7 @@ enum DemoData {
 			let savings = model.ledger.accounts.first(where: { $0.name == "Tagesgeld" }) else { return }
 		var g = giro
 		g.initialBalanceMinor = 250_000
-		g.iban = "DE02120300000000202051"
+		g.iban = IBAN("DE02120300000000202051")
 		model.save(account: g)
 		var s = savings
 		s.initialBalanceMinor = 1_000_000

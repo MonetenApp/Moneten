@@ -331,6 +331,63 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("A regular expression on an account field searches, counts, and categorizes 50,000 rows within budget")
+	func accountRegexBudgets() throws {
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
+		// Made-up IBANs of one bank, 500 counterparties in their electronic form as the app stores them.
+		let ibans: [String] = (0..<500).map { Self.madeUpIBAN(account: 1_000_000 + $0) }
+		var ts: [Transaction] = []
+		ts.reserveCapacity(50_000)
+		for i in 0..<50_000 {
+			let day: Day = Day(year: 2014 + i % 12, month: 1 + i % 12, day: 1 + i % 28)
+			let amount: Int64 = -Int64(i % 9_000)
+			let name: String = "Haendler\(i % 70) Musterstadt"
+			let purpose: String = "Rechnung \(i) Kundennummer \(i * 7)"
+			ts.append(Transaction(accountID: account.id, bookingDate: day, amountMinor: amount, name: name, purpose: purpose,
+				counterpartyIBAN: ibans[i % ibans.count]))
+		}
+		// The groups of four, as an older version stored an IBAN, find counterparties 1000010 to 1000019.
+		let pattern = "remote_account:/0001 0000 1/"
+		let traders = Domain.Category(position: 0, name: "Haendler", rule: pattern)
+		let ledger = Ledger(accounts: [account], categories: [traders], transactions: ts)
+		var filter = TransactionFilter()
+		filter.searchText = pattern
+		var found = 0
+		let search = fastest { found = ledger.rows(in: .account(account.id), filter: filter).rows.count }
+		var count = 0
+		let counting = fastest {
+			let rule = try! Rule(parsing: traders.rule)
+			count = RuleApplier.matchCount(category: traders, rule: rule, ledger: ledger)
+		}
+		var sorted = 0
+		let categorizing = fastest {
+			let rules = Categorizer(ledger: ledger)
+			sorted = rules.allOrNothing { ts.count(where: { rules.category(for: $0) == traders.id }) }
+		}
+		print("remote_account regex over 50,000 rows: search \(search) (\(found) rows), count \(counting) (\(count) rows), categorization \(categorizing) (\(sorted) rows)")
+		#expect(found == 1_000 && count == 1_000 && sorted == 1_000)
+		// Before the forms of an account text were kept, each row parsed its IBAN for each rule and each search: on a busy
+		// Mac about 0.34 s to search, 0.43 s to count, and 0.51 s to categorize in release. A rule now takes about 0.15 s to
+		// count and 0.21 s to categorize, nearly all of it the regular expression on two forms of each IBAN, and the search
+		// reads each counterparty once. At a load average of 15 to 34, five release runs took at most 0.26 s to count and
+		// 0.38 s to categorize, so the count budget catches a return to the old speed on a quiet Mac, and the categorize budget
+		// only catches a large slowdown: one near 0.5 s would fail at random under load. Above a load average of about 57,
+		// 3 of 8 local runs broke 400 ms to count, so the count budget holds on a quiet Mac; on a GitHub runner it is 600 ms.
+		#if !DEBUG
+		#expect(search < budget(.milliseconds(200)))
+		#expect(counting < budget(.milliseconds(400)))
+		#expect(categorizing < budget(.seconds(1)))
+		#endif
+	}
+
+	/// A German IBAN of the made-up bank code 12030000 with valid check digits.
+	private static func madeUpIBAN(account: Int) -> String {
+		let bban = "12030000" + String(format: "%010d", account)
+		// D is 13 and E is 14, and the check digits count as 00 while they are computed.
+		let remainder = (bban + "131400").reduce(0) { ($0 * 10 + Int(String($1))!) % 97 }
+		return "DE" + String(format: "%02d", 98 - remainder) + bban
+	}
+
 	/// The fastest of `runs` runs. A shared CI machine sometimes stalls one run for longer than the
 	/// budget, which made this test fail at random; a slow change still makes every run slow.
 	/// A step of a few milliseconds takes 15 runs, because a stall there is as long as the step.

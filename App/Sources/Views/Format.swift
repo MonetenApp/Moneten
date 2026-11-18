@@ -278,9 +278,7 @@ enum AccountColors {
 	/// "XXX", or by its name. The IBAN wins, because MoneyMoney gives some accounts a BIC and others a
 	/// Bankleitzahl.
 	private static func bankKey(of account: Account) -> String? {
-		if let iban = account.iban?.replacingOccurrences(of: " ", with: "").uppercased(), iban.count > 12, iban.hasPrefix("DE") {
-			return String(iban.dropFirst(4).prefix(8))
-		}
+		if let bankCode = account.iban?.germanBankCode { return bankCode }
 		if let code = account.bankCode, !code.isEmpty { return String(code.uppercased().prefix(8)) }
 		return account.bankName
 	}

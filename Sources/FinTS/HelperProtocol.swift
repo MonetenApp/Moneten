@@ -437,7 +437,7 @@ extension AccountResult.Row {
 			original = Money(fitting: amount, currency: originalCurrency.uppercased())
 		}
 		return Transaction(accountID: account.accountID, bookingDate: try AccountResult.day(booked), valueDate: try value.map(AccountResult.day), amountMinor: money.minorUnits,
-			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban, counterpartyBIC: bic, bookingText: bookingText,
+			currency: money.currency, name: name ?? "", purpose: purpose ?? "", counterpartyIBAN: iban.map(IBAN.electronicForm), counterpartyBIC: bic, bookingText: bookingText,
 			endToEndReference: endToEnd, mandateReference: mandate, creditorID: creditor, isPending: pending,
 			originalAmount: Transaction.original(original, booked: money), deviatingParty: deviatingParty)
 	}
