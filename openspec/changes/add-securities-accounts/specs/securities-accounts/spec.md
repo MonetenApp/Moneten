@@ -150,6 +150,34 @@ The app SHALL convert a quote or a purchase price in a foreign currency to the a
 - **WHEN** the user opens the portfolio
 - **THEN** the value reads 1.100,00 USD
 
+### Requirement: Purchase price of OLB and Bankhaus Neelmeyer
+
+The app SHALL read the purchase price of a position from a FinTS host that ends in ".olb.de" or is `hbci.neelmeyer.de` as the purchase value of the whole position. It divides it by a quantity in units, and by a nominal amount times 100, which gives a percentage.
+
+#### Scenario: Percentage or no quantity
+
+- **GIVEN** an account on the host `hbci.olb.de` with a bond whose purchase price the bank sends as 97 %, and a position with the quantity 0 and the purchase price 50,00 €
+- **WHEN** the app reads the positions
+- **THEN** the bond keeps the purchase price 97 %, and the position with the quantity 0 has no purchase price
+
+#### Scenario: Units at OLB
+
+- **GIVEN** an account on the host `hbci.olb.de` with 10 units of "Musterwerke AG" and the purchase price 1.000,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 100,00 € per unit
+
+#### Scenario: Bond at Bankhaus Neelmeyer
+
+- **GIVEN** an account on the host `hbci.neelmeyer.de` with a bond of the nominal amount 10.000,00 € and the purchase price 9.800,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 98 %
+
+#### Scenario: Other bank
+
+- **GIVEN** an account on the host `fints.musterbank.example` with 10 units of "Musterwerke AG" and the purchase price 1.000,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 1.000,00 € per unit
+
 ### Requirement: Profit or loss
 
 The app SHALL compute the profit or loss of a position as its value minus its purchase value, and the percentage as the profit or loss divided by the purchase value. A gain carries the label "Profit" and a deficit the label "Loss". A position without a purchase price shows no profit or loss.

@@ -1384,7 +1384,7 @@ final class SelfTest {
 		answers.add("482915");
 		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\nHinweis\n\nBitte TAN eingeben", 0, new StringBuffer());
 		expect("a TAN request offers the methods to change to", asked.get(0),
-			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"methods\":" + methods + "}");
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"method\":\"pushTAN 2.0\",\"methods\":" + methods + "}");
 
 		history(passport, callback, asked, answers);
 

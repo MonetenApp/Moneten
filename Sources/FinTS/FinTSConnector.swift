@@ -190,7 +190,7 @@ public struct FinTSConnector: BankConnector {
 			case let .result(remoteID, result):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
-					let (outcome, errors) = try result.get().outcome(of: account)
+					let (outcome, errors) = try result.get().outcome(of: account, server: command.url.flatMap(URL.init(string:)))
 					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
 					notices += errors
 				} catch {

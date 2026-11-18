@@ -1207,7 +1207,7 @@ struct FinTSConnectorTests {
 		#expect(found.map(\.currency) == ["USD"])
 		// 100,00 € plus 10,00 $ accrued interest at 1.25 USD for 1 EUR are 108,00 €.
 		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"eur","value":{"amount":"100.00","currency":"eur"},"accrued":{"amount":"10.00","currency":"usd"},"rate":{"base":"eur","quoted":"usd","rate":"1.25"}}"#
-		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro)
+		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro, server: nil)
 		#expect(holding.value(in: "EUR") == Money(minorUnits: 10_800, currency: "EUR"))
 	}
 }

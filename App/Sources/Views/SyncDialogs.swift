@@ -186,6 +186,9 @@ struct TwoFactorSheet: View {
 				if request.loginOnly {
 					Text("This TAN is used only for the login and not for the order.").foregroundStyle(.secondary)
 				}
+				if let note = request.note {
+					Text(note).foregroundStyle(.secondary)
+				}
 				if !request.methods.isEmpty { methodMenu }
 			}
 			challenge
