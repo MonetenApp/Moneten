@@ -316,9 +316,8 @@ public struct FinTSConnector: BankConnector {
 			process.cancel()
 			asks.close()
 		}
-		// A helper that closed its output but still runs gets the cancel and the grace too, so the run
-		// never waits for its end without a limit.
-		if process.isRunning { process.cancel() }
+		// A helper that closed its output but still runs already got the cancel and the grace from
+		// `HelperProcess`, so the run never waits for its end without a limit.
 		watchdog.stop()
 		for approval in approvals.values {
 			approval.cancel()

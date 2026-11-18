@@ -31,23 +31,30 @@ struct PerformanceTests {
 		f.searchText = "kundennummer 7"
 		var count = 0
 		let search = fastest { count = ledger.rows(in: .accountGroup(UUID()), filter: f).rows.count + ledger.rows(in: .account(accounts[0].id), filter: f).rows.count }
+		// The fastest run, and the rows that a run found. The regular expressions of a search share 300 ms of
+		// processor time, the watch of `RegexWatch`. A search that spends it gives up and returns no rows, so a slow
+		// runner would read as a search that finds nothing. The count is nil when every run gave up.
+		func timed(_ scope: LedgerScope, _ text: String) -> (Duration, Int?) {
+			var filter = TransactionFilter()
+			filter.searchText = text
+			var count: Int?
+			let time = fastest {
+				let result = ledger.rows(in: scope, filter: filter)
+				if !result.gaveUp { count = result.rows.count }
+			}
+			return (time, count)
+		}
 		// "Uncategorized" holds three quarters of the rows.
-		func ruleSearch(_ text: String) -> (Duration, Int) {
-			var rule = TransactionFilter()
-			rule.searchText = text
-			var count = 0
-			return (fastest { count = ledger.rows(in: .category(categories[60].id), filter: rule).rows.count }, count)
+		func ruleSearch(_ text: String) -> (Duration, Int?) {
+			timed(.category(categories[60].id), text)
 		}
 		let (wildcard, wildcardCount) = ruleSearch("Haendler1*")
 		let (field, fieldCount) = ruleSearch(#"name:"Haendler1*""#)
 		let (amount, amountCount) = ruleSearch("amount<-50")
 		let (regex, regexCount) = ruleSearch("/Haendler1/")
 		// Words that most rows hold, so no row is ruled out before its fields are read.
-		func overAll(_ text: String) -> (Duration, Int) {
-			var filter = TransactionFilter()
-			filter.searchText = text
-			var count = 0
-			return (fastest { count = ledger.rows(in: .accountGroup(everything.id), filter: filter).rows.count }, count)
+		func overAll(_ text: String) -> (Duration, Int?) {
+			timed(.accountGroup(everything.id), text)
 		}
 		let (fieldOverAll, fullScanCount) = overAll("name:Haendler*")
 		let (rareFieldOverAll, rareFieldCount) = overAll("name:Haendler1*")
@@ -76,11 +83,18 @@ struct PerformanceTests {
 		#expect(updated.rows(in: .accountGroup(everything.id)).rows.filter(\.isChecked).count == 200)
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
-		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(wildcardCount) rows), field \(field) (\(fieldCount) rows), amount \(amount) (\(amountCount) rows), regex \(regex) (\(regexCount) rows), over 50,000: name:Haendler* \(fieldOverAll) (\(fullScanCount) rows), name:Haendler1* \(rareFieldOverAll) (\(rareFieldCount) rows), Kunden* \(prefixOverAll) (\(prefixCount) rows), purpose:Rech* \(purposeOverAll) (\(purposeCount) rows), regex \(regexOverAll) (\(regexOverAllCount) rows), regex every row reads \(slowRegexOverAll) (\(slowRegexCount) rows), plain \(plainOverAll) (\(plainOverAllCount) rows), no search \(noSearch) (\(noSearchCount) rows), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
+		func found(_ count: Int?) -> String { count.map { "\($0) rows" } ?? "gave up" }
+		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(found(wildcardCount))), field \(field) (\(found(fieldCount))), amount \(amount) (\(found(amountCount))), regex \(regex) (\(found(regexCount))), over 50,000: name:Haendler* \(fieldOverAll) (\(found(fullScanCount))), name:Haendler1* \(rareFieldOverAll) (\(found(rareFieldCount))), Kunden* \(prefixOverAll) (\(found(prefixCount))), purpose:Rech* \(purposeOverAll) (\(found(purposeCount))), regex \(regexOverAll) (\(found(regexOverAllCount))), regex every row reads \(slowRegexOverAll) (\(found(slowRegexCount))), plain \(plainOverAll) (\(found(plainOverAllCount))), no search \(noSearch) (\(found(noSearchCount))), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_355)
-		#expect([wildcardCount, fieldCount, amountCount, regexCount, fullScanCount, prefixCount, purposeCount, regexOverAllCount, slowRegexCount, plainOverAllCount, rareFieldCount].allSatisfy { $0 > 0 })
-		#expect(slowRegexCount == 40_000)
+		// Only a regular expression can give up. A search that gave up says nothing about its rows, and in a release
+		// build it fails its time budget below. A search that finished must find its rows.
+		#expect([wildcardCount, fieldCount, amountCount, fullScanCount, prefixCount, purposeCount, plainOverAllCount, rareFieldCount].allSatisfy { ($0 ?? 0) > 0 })
+		let regexCounts = [("/Haendler1/", regexCount), ("/Rechnung 1/", regexOverAllCount), (#"/\d{5} Kunden/"#, slowRegexCount)]
+		for (search, count) in regexCounts {
+			if let count { #expect(count > 0, "\(search)") }
+		}
+		if let slowRegexCount { #expect(slowRegexCount == 40_000) }
 		#expect(noSearchCount == 51_000)
 		#expect(amounts[categories[61].id]?.minorUnits == 167_000)
 		#expect(amounts[categories[62].id]?.minorUnits == -166_499)
@@ -88,6 +102,8 @@ struct PerformanceTests {
 		// so the budgets hold for a release build only: `scripts/test.sh -c release -Xswiftc -enable-testing
 		// --filter PerformanceTests`, which CI runs as its own step.
 		#if !DEBUG
+		// A search that gave up spent the 300 ms of processor time of its watch, more than its share of the budget.
+		#expect(regexCounts.filter { $0.1 == nil }.map(\.0) == [], "These searches gave up after the processor time of their watch")
 		#expect(search < budget(.milliseconds(150)))
 		#expect(wildcard < budget(.milliseconds(150)))
 		#expect(field < budget(.milliseconds(150)))

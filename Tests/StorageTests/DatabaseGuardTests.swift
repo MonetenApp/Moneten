@@ -25,13 +25,25 @@ struct DatabaseGuardTests {
 	// MARK: One running copy
 
 	@Test("A second opener of the same data folder is refused until the first one lets go")
-	func secondOpener() throws {
+	func secondOpener() async throws {
 		var first: DataFolderLock? = try DataFolderLock(folder: folder)
 		#expect(throws: DataFolderLock.Failure.inUse(folder.databaseFile.path)) { try DataFolderLock(folder: folder) }
 		// Another data folder has its own lock.
 		_ = try DataFolderLock(folder: DataFolder(root: root.appendingPathComponent("Other", isDirectory: true)))
 		withExtendedLifetime(first) {}
 		first = nil
+		// A process that another test starts at this moment holds a copy of every open file of this process until it
+		// has started, the locked data folder too. The lock then comes free a moment after the close, not with it, and
+		// on a busy Mac that moment grows (issue #437). The app takes the lock once and never starts a process between
+		// a release and a new lock.
+		for _ in 0..<500 {
+			do {
+				_ = try DataFolderLock(folder: folder)
+				return
+			} catch DataFolderLock.Failure.inUse {
+				try await Task.sleep(for: .milliseconds(10))
+			}
+		}
 		_ = try DataFolderLock(folder: folder)
 	}
 

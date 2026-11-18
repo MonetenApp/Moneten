@@ -474,16 +474,17 @@ struct FinTSConnectorTests {
 		let run = Task {
 			try? await connector("""
 				read cmd
-				exec >&-
 				\(Self.terminatedTrap)
+				exec >&-
 				read line; printf '%s\\n' "$line" >> "$R"
 				sleep 60 & wait
 				""", grace: 1).refresh(RefreshRequest(access: Self.access, accounts: [Self.giro]), Session())
 		}
 		// Without the cancel, the run would wait for the helper until its sleep ends and could not be
-		// awaited soon. The deadline lies far above the 40 seconds that the run can wait on CI for a thread.
-		let start = ContinuousClock.now
-		while !recorded.contains(where: { $0["type"] == "terminated" }), ContinuousClock.now - start < .seconds(120) { // time-ok: a deadline far above the wait on CI
+		// awaited soon. The cancel and the SIGTERM come from the thread that saw stdout end, so they need
+		// no thread of Swift concurrency, which the tests of other suites can hold for minutes on CI. The
+		// wait counts its sleeps, not the clock, so a stall of the test costs one sleep, not the whole wait.
+		for _ in 0..<1200 where !recorded.contains(where: { $0["type"] == "terminated" }) {
 			try await Task.sleep(for: .milliseconds(100))
 		}
 		#expect(recorded.map { $0["type"] } == ["cancel", "terminated"])
