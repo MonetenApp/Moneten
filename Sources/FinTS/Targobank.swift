@@ -16,11 +16,16 @@ enum Targobank {
 		return host == Self.host
 	}
 
+	/// An account number of 16 digits, as a card account of Targobank has. Like `DKB.isCard`, it counts only ASCII digits.
+	static func isCardNumber(_ remoteID: String) -> Bool {
+		remoteID.count == 16 && remoteID.allSatisfy { $0.isASCII && $0.isNumber }
+	}
+
 	/// The outcome of an account, with each pending card debit as a debit. Only an account whose account number has 16
-	/// characters gets the rule. The account number is the ID that the connector asks the helper for, because such an
+	/// digits gets the rule. The account number is the ID that the connector asks the helper for, because such an
 	/// account has no IBAN.
 	static func outcome(_ outcome: AccountOutcome, account remoteID: String, bankCode: String?, server: URL?) -> AccountOutcome {
-		guard case var .fetched(result) = outcome, let fetched = result.transactions, remoteID.count == 16,
+		guard case var .fetched(result) = outcome, let fetched = result.transactions, isCardNumber(remoteID),
 			isTargobank(bankCode: bankCode, server: server) else { return outcome }
 		result.transactions = FetchedTransactions(rows: fetched.rows.map(debit), from: fetched.from, maxBookingShift: fetched.maxBookingShift)
 		return .fetched(result)
@@ -34,6 +39,8 @@ enum Targobank {
 			row.counterpartyIBAN == nil else { return row }
 		var t = row
 		t.amountMinor = -row.amountMinor
+		// The original amount of a debit takes the minus as well, as the helper gives it to every other debit.
+		t.originalAmount = Transaction.original(row.originalAmount, booked: t.amount)
 		t.name = PendingCardDebit.name
 		t.purpose = PendingCardDebit.purpose
 		return t

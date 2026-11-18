@@ -51,6 +51,14 @@ struct TargobankTests {
 		}
 	}
 
+	@Test("A pending card debit of Targobank in another currency takes the minus for its original amount too")
+	func pendingCardDebitInAnotherCurrency() async throws {
+		let sent = #"{"booked":"2026-11-12","value":"2026-11-12","amount":"12.50","currency":"EUR","originalAmount":"13.00","originalCurrency":"USD","pending":true}"#
+		let rows = try await Self.rows([sent], of: Self.card, at: Self.targobank)
+		#expect(rows.map(\.amountMinor) == [-1_250])
+		#expect(rows.map(\.originalAmount) == [Money(minorUnits: -1_300, currency: "USD")])
+	}
+
 	@Test("A Targobank credit, a booked row, and a row with a booking text, an IBAN, a purpose, or a minus keep what the bank sent")
 	func otherRows() async throws {
 		let sent = [
@@ -67,10 +75,11 @@ struct TargobankTests {
 		#expect(rows.map(\.purpose) == ["Rückzahlung Kino", "", "", "", "Erstattung", ""])
 	}
 
-	@Test("The same row of an account with an IBAN or another length, and of another bank, keeps 12,50 € and no name")
+	@Test("The same row of an account with an IBAN, another length, or letters, and of another bank, keeps 12,50 € and no name")
 	func otherAccountsAndBanks() async throws {
 		let short = AccountRequest(accountID: UUID(), name: "Konto", remoteID: "001234567890123", currency: "EUR")
-		let cases: [(AccountRequest, Access)] = [(Self.giro, Self.targobank), (short, Self.targobank), (Self.card, Self.other), (Self.card, Self.lookalike)]
+		let letters = AccountRequest(accountID: UUID(), name: "Konto", remoteID: "00123456789ABCDE", currency: "EUR")
+		let cases: [(AccountRequest, Access)] = [(Self.giro, Self.targobank), (short, Self.targobank), (letters, Self.targobank), (Self.card, Self.other), (Self.card, Self.lookalike)]
 		for (account, access) in cases {
 			let rows = try await Self.rows([Self.bare], of: account, at: access)
 			#expect(rows.map(\.amountMinor) == [1_250])

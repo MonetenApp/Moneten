@@ -293,7 +293,7 @@ The app SHALL keep both transactions when one fetch delivers two transactions of
 
 ### Requirement: Replace a pending transaction by its booked version
 
-The app SHALL replace a pending transaction by the booked transaction when exactly one pending transaction of the account matches it in amount and counterparty within a few days. A pending card debit of Targobank that the app stored with the name "Abbuchung" names no counterparty, so it matches a booked transaction by the amount alone. The booked transaction takes over the comment, the checkmark, and a category that the user assigned by hand.
+The app SHALL replace a pending transaction by the booked transaction when exactly one pending transaction of the account matches it in amount and counterparty within a few days. A pending card debit of Targobank that the app stored with the name "Abbuchung" names no counterparty, so it matches a booked transaction by the amount alone. A pending transaction that matches by the counterparty or by a shared reference comes before such a card debit, and two card debits that match by the amount alone are both candidates, whatever their days. The booked transaction takes over the comment, the checkmark, and a category that the user assigned by hand.
 
 #### Scenario: Card payment gets booked
 
@@ -314,6 +314,20 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 - **GIVEN** the pending card debit of -12,50 € named "Abbuchung" from 12.11.2026 of the Targobank account `0012345678901234`
 - **WHEN** the bank books -12,50 € to "Tankstelle Muster" and -12,50 € to "Bäckerei Beispiel" on 13.11.2026
 - **THEN** the list shows both booked transactions and the pending row, each marked for review
+
+#### Scenario: Booking that names the party of another pending row
+
+- **GIVEN** a pending transaction of -12,50 € to "Tankstelle Muster" from 11.11.2026 with the comment "Fuel receipt"
+- **AND** the pending card debit of -12,50 € named "Abbuchung" from 12.11.2026 of the Targobank account `0012345678901234`, with the comment "Bread receipt"
+- **WHEN** the bank books -12,50 € to "Tankstelle Muster" on 13.11.2026 and sends the card debit again
+- **THEN** the list shows one booked transaction of -12,50 € to "Tankstelle Muster" with the comment "Fuel receipt"
+- **AND** the card debit stays pending with the comment "Bread receipt"
+
+#### Scenario: Two pending card debits of Targobank on different days
+
+- **GIVEN** the pending card debits of -12,50 € named "Abbuchung" from 11.11.2026 and 12.11.2026 of the Targobank account `0012345678901234`
+- **WHEN** the bank books -12,50 € to "Tankstelle Muster" on 13.11.2026
+- **THEN** the list shows the booked transaction and both pending rows, each marked for review
 
 #### Scenario: Pending row named "Abbuchung" by another bank
 

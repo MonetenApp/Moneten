@@ -786,18 +786,25 @@ struct Bookings {
 			let sameAmount: [Int] = pendingByAmount[m.amount] ?? []
 			// The bank's own pending row may be booked on an earlier day, such as a salary shown for a Sunday and booked on the
 			// Friday before. A file row only books on or after its own day. Rows on or before the booked day still come first.
-			var fits: [Int] = sameAmount.filter { (i: Int) -> Bool in
-				p[i].fits(m) && (pending[i].1.isFetched || p[i].day <= m.day)
+			let window: [Int] = sameAmount.filter { (i: Int) -> Bool in pending[i].1.isFetched || p[i].day <= m.day }
+			var fits: [Int] = window.filter { (i: Int) -> Bool in
+				p[i].fits(m) || p[i].fitsByAmountAlone(m) && p[i].identity.sharesIdentity(with: m.identity)
 			}
-			let onOrBefore: [Int] = fits.filter { (i: Int) -> Bool in p[i].day <= m.day }
-			if !onOrBefore.isEmpty { fits = onOrBefore }
-			let explicit: [Int] = fits.filter { (i: Int) -> Bool in p[i].identity.sharesIdentity(with: m.identity) }
-			if !explicit.isEmpty { fits = explicit }
-			if let nearest = fits.map({ abs(p[$0].day - m.day) }).min() {
-				fits = fits.filter { abs(p[$0].day - m.day) == nearest }
+			if fits.isEmpty {
+				// A row that fits by the amount alone, such as a pending card debit of Targobank, gives no evidence of the
+				// day, so every such row stays a candidate and two of them mark the rows for review.
+				fits = window.filter { (i: Int) -> Bool in p[i].fitsByAmountAlone(m) }
+			} else {
+				let onOrBefore: [Int] = fits.filter { (i: Int) -> Bool in p[i].day <= m.day }
+				if !onOrBefore.isEmpty { fits = onOrBefore }
+				let explicit: [Int] = fits.filter { (i: Int) -> Bool in p[i].identity.sharesIdentity(with: m.identity) }
+				if !explicit.isEmpty { fits = explicit }
+				if let nearest = fits.map({ abs(p[$0].day - m.day) }).min() {
+					fits = fits.filter { abs(p[$0].day - m.day) == nearest }
+				}
+				let fetched = fits.filter { pending[$0].1.isFetched }
+				if fetched.count == 1 { fits = fetched }
 			}
-			let fetched = fits.filter { pending[$0].1.isFetched }
-			if fetched.count == 1 { fits = fetched }
 
 			for x in fits {
 				edgesOfPending[x].append(y)
@@ -837,7 +844,8 @@ struct PendingMatch {
 	let iban: String?
 	let words: [Substring]
 	let identity: Identity
-	/// A pending card debit of Targobank, which names no counterparty and pairs with its booking by the amount alone.
+	/// A pending card debit of Targobank, which names no counterparty and pairs with its booking by the amount alone
+	/// (`fitsByAmountAlone`).
 	let isPendingCardDebit: Bool
 
 	init(_ t: Transaction) {
@@ -869,15 +877,28 @@ struct PendingMatch {
 		!words.isEmpty && !other.words.isEmpty && !words.starts(with: other.words) && !other.words.starts(with: words)
 	}
 
+	/// Whether the two rows name the same counterparty or share a reference.
 	func fits(_ other: PendingMatch) -> Bool {
 		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
-		// The name of a pending card debit of Targobank is no counterparty, so any booked row of the amount fits it.
-		if isPendingCardDebit && !other.identity.isPending || other.isPendingCardDebit && !identity.isPending { return true }
+		// The name of a pending card debit of Targobank is no counterparty of a booked row, so only a shared reference counts.
+		if namesNoCounterparty(against: other) { return identity.endToEnd != nil && identity.endToEnd == other.identity.endToEnd }
 		guard !counterpartyConflicts(with: other) else { return false }
 		if identity.isPending == other.identity.isPending,
 			let fileID = identity.fileIdentity, let otherID = other.identity.fileIdentity, fileID != otherID { return false }
 		return identity.endToEnd != nil && identity.endToEnd == other.identity.endToEnd
 			|| (iban != nil && other.iban != nil) || (!words.isEmpty && !other.words.isEmpty)
+	}
+
+	/// Whether a pending card debit of Targobank and a booked row fit by the amount and the days alone. This is weaker
+	/// evidence than `fits`, so `Bookings` takes it only when no pending row fits the booked row by `fits`. Two pending rows
+	/// never fit this way: a named pending row of the amount is another payment.
+	func fitsByAmountAlone(_ other: PendingMatch) -> Bool {
+		identity.agrees(with: other.identity) && amount == other.amount && abs(day - other.day) <= Self.maxDaysApart
+			&& namesNoCounterparty(against: other)
+	}
+
+	private func namesNoCounterparty(against other: PendingMatch) -> Bool {
+		isPendingCardDebit && !other.identity.isPending || other.isPendingCardDebit && !identity.isPending
 	}
 }
 

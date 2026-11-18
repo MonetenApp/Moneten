@@ -299,13 +299,19 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 
 ### Requirement: Store a pending card debit of Targobank as a debit
 
-The app SHALL store a pending transaction of Targobank with a positive amount and no name, no purpose, no booking text, and no IBAN, on an account whose account number has 16 characters, as a pending debit of the same amount with the name "Abbuchung". An access belongs to Targobank by the Bankleitzahl 30020900 or by the FinTS host `fints.targobank.de`.
+The app SHALL store a pending transaction of Targobank with a positive amount and no name, no purpose, no booking text, and no IBAN, on an account whose account number has 16 digits, as a pending debit of the same amount with the name "Abbuchung". An access belongs to Targobank by the Bankleitzahl 30020900 or by the FinTS host `fints.targobank.de`.
 
 #### Scenario: Pending card debit without a name
 
 - **GIVEN** the account `0012345678901234` of an access with the Bankleitzahl 30020900 and the FinTS address "https://fints.targobank.de/travicretail_fints30pintanbroker/FinTs30PinTanHttpGate"
 - **WHEN** the bank sends a pending MT940 row of 12,50 € with no name, no purpose, no booking text, and no IBAN, and the refresh ends
 - **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung"
+
+#### Scenario: Pending card debit in another currency
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a pending row of 12,50 € with the original amount 13,00 US dollars and no name, no purpose, no booking text, and no IBAN
+- **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung" and the original amount -13,00 US dollars
 
 #### Scenario: Pending credit with a name
 
@@ -322,7 +328,7 @@ The app SHALL store a pending transaction of Targobank with a positive amount an
 #### Scenario: Other account or other bank
 
 - **GIVEN** a pending row of 12,50 € with no name, no purpose, no booking text, and no IBAN
-- **WHEN** it comes for the Targobank account DE02120300000000202051, or for the account `0012345678901234` of an access with the Bankleitzahl 99090000 and the FinTS address "https://fints.musterbank.example/fints"
+- **WHEN** it comes for the Targobank account DE02120300000000202051 or `00123456789ABCDE`, or for the account `0012345678901234` of an access with the Bankleitzahl 99090000 and the FinTS address "https://fints.musterbank.example/fints"
 - **THEN** the pending transaction keeps 12,50 € and no name
 
 ### Requirement: Explain the missing name of a pending card debit of Targobank

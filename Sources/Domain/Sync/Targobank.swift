@@ -3,6 +3,9 @@
 /// such a row as a debit with this name and purpose (`Targobank` in `Sources/FinTS`), and `reconcile` pairs it with its
 /// booking by the amount alone, because it names no counterparty. Both texts are fixed German data of the row and not
 /// localized texts: the purpose takes part in the identity of the row, so it must not change with the language of the app.
+///
+/// Never change either text. `isPendingCardDebit` recognizes the stored rows by them, so a card debit stored with an older
+/// text would no longer pair with its booking, and the purpose is part of the identity by which a refresh finds a stored row.
 public enum PendingCardDebit {
 	public static let name = "Abbuchung"
 	public static let purpose = "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht."

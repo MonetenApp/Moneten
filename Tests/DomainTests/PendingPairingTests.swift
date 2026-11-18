@@ -90,6 +90,60 @@ extension ReconcileTests {
 		let r = merge(refresh([late]), stored: [pending], at: noon(20, month: 11))
 		#expect(r.booked.isEmpty)
 		#expect(r.added.map(\.name) == ["Tankstelle Muster"])
+
+		// A pending row of the note with a plus is no card debit, so a booked credit of the amount stays apart.
+		let credit = stored(row(12, 1_250, "Abbuchung", Self.targobankNote, pending: true))
+		let refund = merge(refresh([row(13, 1_250, "Tankstelle Muster", "Erstattung")]), stored: [credit], at: noon(13, month: 11))
+		#expect(refund.booked.isEmpty && refund.marked.isEmpty)
+		#expect(refund.added.map(\.name) == ["Tankstelle Muster"])
+
+		// The amount alone pairs a card debit only with a booked row. A named pending row of the amount on the next day is
+		// another payment: it is added, and the card debit that the bank no longer sends is dropped.
+		let bread = merge(refresh([row(13, -1_250, "Bäckerei Beispiel", "Bäckerei Beispiel Musterstadt", pending: true)]), stored: [pending],
+			at: noon(13, month: 11))
+		#expect(bread.added.map(\.name) == ["Bäckerei Beispiel"])
+		#expect(bread.dropped == [pending.id])
+		#expect(bread.booked.isEmpty && bread.updated.isEmpty && bread.marked.isEmpty)
+		// A pending debit without a name names no party that conflicts, so only the rule itself keeps the two apart.
+		let nameless = merge(refresh([row(13, -1_250, "", "", pending: true)]), stored: [pending], at: noon(13, month: 11))
+		#expect(nameless.added.map(\.amountMinor) == [-1_250])
+		#expect(nameless.dropped == [pending.id])
+		#expect(nameless.booked.isEmpty && nameless.updated.isEmpty && nameless.marked.isEmpty)
+	}
+
+	@Test("A booking that names the party of a pending row replaces that row and not a pending card debit of Targobank on a nearer day (#242)",
+		arguments: [false, true], [false, true])
+	func targobankGateKnownPartner(anonymousFirst: Bool, breadSentAgain: Bool) {
+		var fuel = stored(row(11, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt", pending: true))
+		fuel.comment = "Fuel receipt"
+		var card = stored(row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		card.comment = "Bread receipt"
+		let booked = row(13, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let stored = anonymousFirst ? [card, fuel] : [fuel, card]
+		let r = merge(refresh(breadSentAgain ? [fresh(card), booked] : [booked]), stored: stored, at: noon(13, month: 11))
+		#expect(r.booked.map(\.id) == [fuel.id])
+		#expect(r.added.isEmpty && r.marked.isEmpty)
+		#expect(r.dropped == (breadSentAgain ? [] : [card.id]))
+		let list = history(stored, after: r)
+		#expect(list.first { $0.id == fuel.id }.map { [$0.name, $0.comment] } == ["Tankstelle Muster", "Fuel receipt"])
+		#expect(list.first { $0.id == fuel.id }?.isPending == false)
+		#expect(list.contains { $0.id == card.id } == breadSentAgain)
+		#expect(!list.contains { $0.name == "Tankstelle Muster" && $0.comment == "Bread receipt" })
+	}
+
+	@Test("Two pending card debits of Targobank of the amount on different days and their booking are marked for review (#242)",
+		arguments: [false, true])
+	func targobankGateAmbiguousDays(nearerFirst: Bool) {
+		var earlier = stored(row(11, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		earlier.comment = "Fuel receipt"
+		var nearer = stored(row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		nearer.comment = "Bread receipt"
+		let booked = row(13, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let r = merge(refresh([booked]), stored: nearerFirst ? [nearer, earlier] : [earlier, nearer], at: noon(13, month: 11))
+		#expect(r.booked.isEmpty && r.dropped.isEmpty)
+		#expect(Set(r.marked.map(\.id)) == [earlier.id, nearer.id])
+		#expect(r.added.map(\.name) == ["Tankstelle Muster"])
+		#expect(r.added.allSatisfy { $0.review != nil })
 	}
 
 	@Test("A recurring reference cannot hide a later pending file rent", arguments: [false, true], [false, true])
