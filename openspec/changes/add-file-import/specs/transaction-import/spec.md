@@ -241,6 +241,26 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
+### Requirement: CSV account and bank columns by their values
+
+The app SHALL assign a column with the header "Account" or "Konto" to the counterparty account, and a column with the header "Bank" to the counterparty bank code, only when no other header names that field and more than half of the filled cells of the column are account numbers or IBANs, or bank codes or BICs. The import keeps the cells of the column as written.
+
+#### Scenario: Account and bank columns of an exported file
+
+- **GIVEN** a file with the headers "Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", and "Currency"
+- **AND** one row with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank, and one row with "0000202051" under Account and "12030000" under Bank
+- **WHEN** the file is imported
+- **THEN** the first transaction has the counterparty IBAN DE02120300000000202051 and the BIC BYLADEM1001
+- **AND** the second transaction has the counterparty account "0000202051" and the bank code "12030000"
+- **AND** the German headers "Konto" and "Bank" give the same
+
+#### Scenario: Account and bank columns with names
+
+- **GIVEN** a file with the headers "Buchungstag", "Empfänger", "Konto", "Bank", and "Betrag"
+- **AND** the rows have "Girokonto" and "Tagesgeld" under Konto and "Sparkasse Musterstadt" and "Volksbank Beispiel" under Bank
+- **WHEN** the preview opens
+- **THEN** the columns "Konto" and "Bank" hold no field
+
 ### Requirement: CSV data boundary
 
 The app SHALL apply this rule: A keyword header within the first 100 nonblank rows wins; without one, data starts after the nearest title row above the first transaction; dated rows above it are skipped with a warning.

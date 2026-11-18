@@ -68,6 +68,32 @@ public enum CSVField: String, CaseIterable, Sendable, Codable, CodingKeyRepresen
 		case .creditorID: ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
 		}
 	}
+
+	/// Header words that name the account or the bank of the counterparty in an exported file, such as "Account" and
+	/// "Bank", but name the own account or the name of a bank in the files of other programs. A column under one of
+	/// them holds the field only when most of its values fit, and only after the keywords of `keys` found no column.
+	var valueCheckedKeys: [String] {
+		switch self {
+		case .iban: ["account", "konto"]
+		case .bic: ["bank"]
+		default: []
+		}
+	}
+
+	/// Whether a cell has the form of the field: an IBAN or an account number of digits, or a BIC or a bank code of digits.
+	func fits(_ cell: String) -> Bool {
+		let value = cell.filter { !$0.isWhitespace }
+		let isDigits = !value.isEmpty && value.allSatisfy { $0.isASCII && $0.isNumber }
+		switch self {
+		case .iban: return (isDigits && value.count <= 34) || MoneyMoneyMigration.isIBAN(value)
+		case .bic:
+			guard !isDigits else { return value.count <= 11 }
+			// Upper case, as BICs are written, so that a bank name such as "Postbank" does not pass as one.
+			return [8, 11].contains(value.count) && value.allSatisfy { $0.isASCII && ($0.isUppercase || $0.isNumber) }
+				&& value.prefix(6).allSatisfy(\.isLetter)
+		default: return false
+		}
+	}
 }
 
 /// The text encodings of a CSV file that the app reads.
@@ -303,9 +329,26 @@ public struct CSVFile: Sendable {
 					layout.columns[field] = column
 				}
 			}
+			for field in CSVField.allCases where layout.columns[field] == nil && !field.valueCheckedKeys.isEmpty {
+				if let column = field.valueCheckedKeys.lazy.compactMap({ normalized.firstIndex(of: $0) }).first, !layout.columns.values.contains(column),
+					try mostFit(field, column: column, layout: layout) {
+					layout.columns[field] = column
+				}
+			}
 		}
 		layout.dateOrder = try dateOrders(layout).first ?? .dayMonthYear
 		return layout
+	}
+
+	/// Whether more than half of the filled cells of the column in the dated rows of the layout fit the field.
+	private func mostFit(_ field: CSVField, column: Int, layout: CSVLayout) throws -> Bool {
+		var fitting = 0, other = 0
+		for row in try dataRows(layout) {
+			try Task.checkCancellation()
+			guard let cell = Self.cell(row.cells, column) else { continue }
+			if field.fits(cell) { fitting += 1 } else { other += 1 }
+		}
+		return fitting > other
 	}
 
 	/// The date orders that every booking date and value date of the layout fits, day first first. Two
