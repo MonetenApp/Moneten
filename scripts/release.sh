@@ -199,6 +199,41 @@ check_zip_paths() {
 	check_build_paths "$WORK/zip-paths.txt"
 }
 
+# Prints a crash report with one frame in each slice of the DWARF files named in $WORK/dwarf, at its
+# main function or else its first function. Each tool writes to a file before awk reads it: in a pipe,
+# the shell takes the status of awk, so a failing tool would leave an empty value, and the error
+# would name the symbolication instead of the tool. The script runs without pipefail, because grep -q
+# and head close their pipe early, and pipefail turns that into a failure.
+frames() {
+	while read -r f; do
+		dwarfdump --uuid "$f" > "$WORK/uuids" || fail "dwarfdump failed on the dSYM $f."
+		sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' "$WORK/uuids" > "$WORK/ids"
+		while read -r ID ARCH; do
+			nm -arch "$ARCH" -U -n "$f" > "$WORK/nm.txt" || fail "nm failed on the dSYM $f for $ARCH."
+			FUNCTION=$(awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }' "$WORK/nm.txt")
+			[ -n "$FUNCTION" ] || FUNCTION=$(awk '$2 ~ /^[Tt]$/ { print $1; exit }' "$WORK/nm.txt")
+			otool -l -arch "$ARCH" "$f" > "$WORK/otool.txt" || fail "otool failed on the dSYM $f for $ARCH."
+			TEXT=$(awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }' "$WORK/otool.txt")
+			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
+			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
+		done < "$WORK/ids"
+	done < "$WORK/dwarf"
+}
+
+# The frames of the dSYMs of this run stop with a message that names the tool when nm or otool fails.
+# A stub in front of PATH stands in for the failing tool.
+check_frame_tools() {
+	mkdir "$WORK/stub"
+	for TOOL in nm otool; do
+		rm -f "$WORK/stub/"*
+		printf '#!/bin/sh\necho "%s: stub failure" >&2\nexit 1\n' "$TOOL" > "$WORK/stub/$TOOL"
+		chmod +x "$WORK/stub/$TOOL"
+		(PATH="$WORK/stub:$PATH"; frames > /dev/null) 2>"$WORK/error" && fail "The frames of the dSYMs passed with a failing $TOOL."
+		grep -q "^$TOOL failed on the dSYM " "$WORK/error" || fail "A failing $TOOL stopped the frames of the dSYMs with another message: $(cat "$WORK/error")"
+	done
+	echo "The check of the dSYMs stops with the name of the tool when nm or otool fails."
+}
+
 # Zips dist/Moneten.dSYMs to $OUT/Moneten-$1-dSYMs.zip and checks the zip against the slices of the
 # app on the disk image, which check_dmg wrote. Then scripts/symbolicate-crash.sh must resolve a report
 # with one frame in each slice, at its main function or else its first function, to a function and
@@ -210,16 +245,7 @@ symbols() {
 	mkdir "$WORK/symbols"
 	ditto -x -k "$ZIP" "$WORK/symbols"
 	match_symbols "$WORK/app-slices" "$WORK/symbols"
-	while read -r f; do
-		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
-		while read -r ID ARCH; do
-			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }')
-			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '$2 ~ /^[Tt]$/ { print $1; exit }')
-			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }')
-			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
-			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
-		done < "$WORK/ids"
-	done < "$WORK/dwarf" > "$WORK/report.txt"
+	frames > "$WORK/report.txt"
 	scripts/symbolicate-crash.sh "$WORK/report.txt" "$WORK/symbols" > "$WORK/symbolicated.txt" \
 		|| fail "scripts/symbolicate-crash.sh failed on the dSYMs of the release."
 	[ "$(grep -cE '^Frame: .* -> [^0 ].* \(in [^)]+\) \([^)]+:[0-9]+\)$' "$WORK/symbolicated.txt")" = "$(wc -l < "$WORK/report.txt" | tr -d ' ')" ] \
@@ -536,6 +562,7 @@ dry_run() {
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"
+	check_frame_tools
 	check_keys
 	check_source_rule
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).

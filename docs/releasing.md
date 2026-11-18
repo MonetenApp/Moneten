@@ -12,7 +12,7 @@ The dry run needs no secrets and publishes nothing. It builds the app signed to 
 scripts/release.sh dry-run           # version 0.0.0-beta.1, on a copy of CHANGELOG.md
 ```
 
-The dry run takes XcodeGen and the JDK from `scripts/build-tools.sh`, as a release does, and checks that Sparkle and the check of a feed agree on its signature, that a release refuses a current feed of another key, and that a withdrawal refuses an unsigned feed and a feed with a disk image over http.
+The dry run takes XcodeGen and the JDK from `scripts/build-tools.sh`, as a release does, and checks that Sparkle and the check of a feed agree on its signature, that a release refuses a current feed of another key, that a withdrawal refuses an unsigned feed and a feed with a disk image over http, and that the check of the dSYMs stops with the name of the tool when `nm` or `otool` fails.
 
 A Debug build trusts the test key and reads the feed of the dry run:
 
