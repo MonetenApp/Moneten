@@ -642,43 +642,19 @@ final class DebugHarness {
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
 			}
+		#if DEBUG || PERF_HARNESS
 		// "<account>|<name>" writes the rows of that account into <name>.tsv in the debug folder, for a check that compares
 		// them with a made-up import file. Like a snapshot, the file shows the data of the check, so it never goes into debug.log.
-		case "dumprows":
-			let parts = argument.components(separatedBy: "|")
-			guard parts.count == 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("dumprows refused") }
-			let rows = model.ledger.transactions(ofAccount: account.id).map { t in
-				[t.bookingDate.rawValue.description, t.valueDate.map { $0.rawValue.description } ?? "", t.amountMinor.description, t.currency, t.name, t.purpose,
-					t.counterpartyIBAN ?? "", t.counterpartyBIC ?? "", t.bookingText ?? "", t.isPending ? "pending" : "booked", model.ledger.categoryPath(t.categoryID), t.comment ?? ""]
-					.map { $0.replacing("\t", with: " ").replacing("\n", with: "\\n") }.joined(separator: "\t")
-			}
-			try? (rows.joined(separator: "\n") + "\n").write(to: folder.appendingPathComponent("\(parts[1]).tsv"), atomically: true, encoding: .utf8)
-			log("dumprows", ("", .count(rows.count)))
+		case "dumprows": dumpRows(argument)
 		// "<account>|<path>[|<source IDs>]" delivers the rows of a made-up CAMT, MT940, or CSV file as a refresh of the bank
-		// would, for the checks of pending rows that a bank and a file both bring. The path "-" delivers no row. The source IDs,
-		// separated by commas and empty for none, go to the rows in their order. The refresh covers the 30 days before
-		// today and every day of the file.
-		case "fetchfile":
-			let parts = argument.components(separatedBy: "|")
-			guard parts.count >= 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
-			var rows: [Transaction]
-			do { rows = parts[1] == "-" ? [] : try TransactionFileImporter.parse(Data(contentsOf: URL(filePath: parts[1])), currency: account.currency).transactions }
-			catch { return log("fetchfile", ("error", .type(of: error))) }
-			let ids = parts.count > 2 ? parts[2].components(separatedBy: ",") : []
-			for i in rows.indices {
-				rows[i].accountID = account.id
-				if ids.indices.contains(i), !ids[i].isEmpty { rows[i].sourceID = ids[i] }
-			}
-			let from = rows.map(\.bookingDate).min().map { min($0, Day.today().adding(days: -30)) } ?? Day.today().adding(days: -30)
-			let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: from))
-			let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890", currency: account.currency)])
-			model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
-			log("fetchfile", ("rows", .count(rows.count)))
-		// "<name>" writes the title and the text of the open import result or alert into <name>.txt in the debug folder, as "dumprows" does.
-		case "alerttext":
-			let text = model.importResult.map { "\($0.messageText)\n\($0.informativeText)" } ?? model.alert.map { "\($0.title)\n\($0.message)" }
-			try? (text ?? "").write(to: folder.appendingPathComponent("\(argument).txt"), atomically: true, encoding: .utf8)
-			log("alerttext", ("", .presence(text != nil)))
+		// would, through the scripted connector and never a bank, for the checks of pending rows that a bank and a file both
+		// bring. The path must lie in the debug folder or the data folder, and "-" delivers no row. The source IDs, separated
+		// by commas and empty for none, go to the rows in their order. The refresh covers the 30 days before today and every
+		// day of the file.
+		case "fetchfile": fetchFile(argument)
+		// "<name>" writes the title and the text of the alert, such as the result of an import, into <name>.txt in the debug folder, as "dumprows" does.
+		case "alerttext": alertText(argument)
+		#endif
 		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
 		case "manualrows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
@@ -884,14 +860,17 @@ final class DebugHarness {
 			Task {
 				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
-		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file, so only
-		// the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
+		// "<path>": imports that complete export without the open panel. The path must lie in the debug folder or the data folder.
+		// The reason of a refusal can quote the file, so only the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
+		#if DEBUG || PERF_HARNESS
 		case "importall":
+			guard let url = ownPath(argument) else { return log("importall refused", ("path", .word("outside"))) }
 			Task {
-				let outcome = await model.readAllData(from: URL(filePath: argument))
+				let outcome = await model.readAllData(from: url)
 				if outcome != "done" { model.alert = AlertMessage(title: String(localized: "Could not import the data."), message: outcome) }
 				log("importall", ("", .word(outcome == "done" ? "done" : "refused")))
 			}
+		#endif
 		case "exportcsv":
 			model.export(model.rowsToExport, to: URL(filePath: argument))
 			log("exportcsv", ("rows", .count(model.rowsToExport.count)))
@@ -1290,7 +1269,14 @@ final class DebugHarness {
 		#if DEBUG || PERF_HARNESS
 		// "today <yyyy-mm-dd>" completes typed days as if that were today, "today" alone uses the real day again.
 		case "today":
-			DateField.debugToday = parts.count == 2 ? Day(string: parts[1]) : nil
+			guard parts.count <= 2 else { return log("datefield today refused") }
+			if parts.count == 2 {
+				// Day(string:) is nil for a day that does not exist, such as 2026-02-30.
+				guard parts[1].wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}/) != nil, let day = Day(string: parts[1]) else { return log("datefield today refused") }
+				DateField.debugToday = day
+			} else {
+				DateField.debugToday = nil
+			}
 			log("datefield today", ("", DateField.debugToday.map { .day($0) } ?? .word("real")))
 		#endif
 		case "open":
@@ -1816,6 +1802,69 @@ final class DebugHarness {
 		values += [("filters", filters), ("period", .state(model.period))]
 		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
+
+	#if DEBUG || PERF_HARNESS
+	/// The file at a path that a command names, or nil when the path, with its symbolic links resolved, does not lie inside
+	/// the debug folder or the throwaway data folder of the run. A command of the checks never reads anything else.
+	private func ownPath(_ path: String) -> URL? {
+		func resolved(_ path: String) -> String { URL(filePath: path).standardizedFileURL.resolvingSymlinksInPath().path }
+		guard path.hasPrefix("/") else { return nil }
+		let file = resolved(path)
+		let roots = ([folder.path] + [DataFolder.requestedPath].compactMap { $0 }).map { resolved($0) + "/" }
+		return roots.contains { file.hasPrefix($0) } ? URL(filePath: file) : nil
+	}
+
+	/// The file <name>.<ext> in the debug folder, or nil for a name with other characters than letters, digits, "-", and "_",
+	/// so that no name reaches outside the folder.
+	private func ownFile(_ name: String, _ ext: String) -> URL? {
+		guard (1...64).contains(name.count), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+		return folder.appending(path: "\(name).\(ext)")
+	}
+
+	private func dumpRows(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }), let file = ownFile(parts[1], "tsv") else {
+			return log("dumprows refused")
+		}
+		let rows = model.ledger.transactions(ofAccount: account.id).map { t in
+			[t.bookingDate.rawValue.description, t.valueDate.map { $0.rawValue.description } ?? "", t.amountMinor.description, t.currency, t.name, t.purpose,
+				t.counterpartyIBAN ?? "", t.counterpartyBIC ?? "", t.bookingText ?? "", t.isPending ? "pending" : "booked", model.ledger.categoryPath(t.categoryID), t.comment ?? ""]
+				.map { $0.replacing("\t", with: " ").replacing("\n", with: "\\n") }.joined(separator: "\t")
+		}
+		try? (rows.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+		log("dumprows", ("", .count(rows.count)))
+	}
+
+	private func alertText(_ name: String) {
+		guard let model, let file = ownFile(name, "txt") else { return log("alerttext refused") }
+		let text = model.alert.map { "\($0.title)\n\($0.message)" }
+		try? (text ?? "").write(to: file, atomically: true, encoding: .utf8)
+		log("alerttext", ("", .presence(text != nil)))
+	}
+
+	private func fetchFile(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard (2...3).contains(parts.count), let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
+		let url = parts[1] == "-" ? nil : ownPath(parts[1])
+		guard parts[1] == "-" || url != nil else { return log("fetchfile refused", ("path", .word("outside"))) }
+		var rows: [Transaction]
+		do { rows = try url.map { try TransactionFileImporter.parse(Data(contentsOf: $0), currency: account.currency).transactions } ?? [] }
+		catch { return log("fetchfile", ("error", .type(of: error))) }
+		let ids = parts.count > 2 ? parts[2].components(separatedBy: ",") : []
+		guard ids.count <= rows.count else { return log("fetchfile refused", ("ids", .count(ids.count)), ("rows", .count(rows.count))) }
+		for i in rows.indices {
+			rows[i].accountID = account.id
+			if ids.indices.contains(i), !ids[i].isEmpty { rows[i].sourceID = ids[i] }
+		}
+		let from = rows.map(\.bookingDate).min().map { min($0, Day.today().adding(days: -30)) } ?? Day.today().adding(days: -30)
+		let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: from))
+		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890", currency: account.currency)])
+		model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
+		log("fetchfile", ("rows", .count(rows.count)))
+	}
+	#endif
 
 	private func csvPreview(_ argument: String) {
 		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
