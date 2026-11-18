@@ -4,7 +4,7 @@ import Testing
 @testable import FinTS
 
 /// The fintech banks whose Bankleitzahl the bank list of hbci4java lacks or lists under the name of the bank that runs
-/// their accounts (#233). None of them offers FinTS.
+/// their accounts (#233). The bank list names no FinTS address for any of them.
 @MainActor
 @Suite("Fintech banks and their brands")
 struct FintechTests {
@@ -43,7 +43,7 @@ struct FintechTests {
 
 	@Test("A listed Bankleitzahl shows the brand and keeps its place and BIC")
 	func listed() {
-		#expect(Self.directory.bank(code: "12070088") == Self.entry("12070088", "PayPal", "Potsdam", bic: "DEUTDEDBPAL"))
+		#expect(Self.directory.bank(code: "12070088") == Self.entry("12070088", "Deutsche Bank / PayPal", "Potsdam", bic: "DEUTDEDBPAL"))
 		#expect(Self.directory.bank(code: "50110800") == Self.entry("50110800", "J.P. Morgan / Pleo", "Frankfurt am Main", bic: "CHASDEFXXXX"))
 		#expect(Self.directory.bank(code: "50110801") == Self.entry("50110801", "J.P. Morgan / Pleo", "Frankfurt am Main", bic: "CHASDEFXVR1"))
 		#expect(Self.directory.bank(code: "12030000") == Self.musterbank)
@@ -62,11 +62,36 @@ struct FintechTests {
 		#expect(lookup.bank == bunq)
 	}
 
+	/// Lists outside hbci4java name a FinTS address for 12070088, so a bank list may give it one. The entry then keeps
+	/// the address and stays a bank of Deutsche Bank that the app reaches, found by both names.
+	@Test("12070088 with a FinTS address is found as Deutsche Bank and as PayPal, and the app offers FinTS for it")
+	func paypalWithAddress() async {
+		let listed = Self.entry("12070088", "Deutsche Bank (Gf intern)", "Potsdam", bic: "DEUTDEDBPAL", "https://fints.deutsche-bank.example/")
+		let deutscheBank = Self.entry("12030000", "Deutsche Bank", "Berlin", bic: "DEUTDEBBXXX", "https://fints.deutsche-bank.example/")
+		let directory = BankDirectory([listed, deutscheBank])
+		let shown = Self.entry("12070088", "Deutsche Bank / PayPal", "Potsdam", bic: "DEUTDEDBPAL", "https://fints.deutsche-bank.example/")
+		#expect(directory.bank(code: "12070088") == shown)
+		#expect(directory.search("deutsche bank").map(\.code) == ["12030000", "12070088"])
+		#expect(directory.search("paypal") == [shown])
+		#expect(directory.reachable("paypal") == [shown])
+		#expect(directory.reachable("deutsche bank").map(\.code) == ["12030000", "12070088"])
+		let lookup = BankLookup { directory }
+		lookup.entry = "DE20120700881234567890"
+		await lookup.lookUp(showingErrors: true)
+		#expect(lookup.bank == shown)
+	}
+
+	@Test("12070088 without a FinTS address is found as Deutsche Bank and as PayPal")
+	func paypalWithoutAddress() {
+		#expect(Self.directory.search("deutsche bank").map(\.code) == ["12070088"])
+		#expect(Self.directory.search("paypal").map(\.code) == ["12070088"])
+	}
+
 	@Test("An IBAN of a fintech bank names the bank and says how it can be added, not that the Bankleitzahl is invalid",
 		arguments: [
 			("DE74202208001234567890", "Banking Circle / TF Bank / Vivid"),
 			("DE92370190001234567890", "bunq"),
-			("DE20120700881234567890", "PayPal"),
+			("DE20120700881234567890", "Deutsche Bank / PayPal"),
 		])
 	func iban(iban: String, name: String) async {
 		let lookup = BankLookup { Self.directory }

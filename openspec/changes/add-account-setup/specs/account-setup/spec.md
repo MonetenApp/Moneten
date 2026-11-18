@@ -185,13 +185,19 @@ The app SHALL reject a Bankleitzahl that is not in the bank directory, also when
 
 ### Requirement: Name the fintech banks by their Bankleitzahlen
 
-The app SHALL show 10010123 as "Qonto", 10017997 as "Holvi", 10018000 as "Finom", 10019000 as "Adyen / Tide", 11010100 and 11010101 as "Solaris / Kontist / Tomorrow / ADAC", 12070088 as "PayPal", 20220800 as "Banking Circle / TF Bank / Vivid", 37019000 as "bunq", 37021500 and 37021548 as "Ford Bank", 50034200 as "Openbank", and 50110800 and 50110801 as "J.P. Morgan / Pleo", whatever name the bank list of hbci4java gives them.
+The app SHALL show 10010123 as "Qonto", 10017997 as "Holvi", 10018000 as "Finom", 10019000 as "Adyen / Tide", 11010100 and 11010101 as "Solaris / Kontist / Tomorrow / ADAC", 12070088 as "Deutsche Bank / PayPal", 20220800 as "Banking Circle / TF Bank / Vivid", 37019000 as "bunq", 37021500 and 37021548 as "Ford Bank", 50034200 as "Openbank", and 50110800 and 50110801 as "J.P. Morgan / Pleo", whatever name the bank list of hbci4java gives them.
 
 #### Scenario: IBAN on the Bankleitzahl of a brand
 
 - **GIVEN** the bank directory names 12070088 "Deutsche Bank (Gf intern)" without a FinTS address
 - **WHEN** the user enters "DE20120700881234567890" and clicks "Next"
-- **THEN** the message of a bank without a FinTS server names "PayPal", not "Deutsche Bank (Gf intern)"
+- **THEN** the message of a bank without a FinTS server names "Deutsche Bank / PayPal", not "Deutsche Bank (Gf intern)"
+
+#### Scenario: Search by the bank and by the brand
+
+- **GIVEN** the bank directory names 12070088 "Deutsche Bank (Gf intern)"
+- **WHEN** the user searches for "deutsche bank" or for "paypal"
+- **THEN** the matches contain "Deutsche Bank / PayPal" with 12070088
 
 ### Requirement: Know the fintech banks that the bank list lacks
 
@@ -210,6 +216,13 @@ The app SHALL add each Bankleitzahl of "Name the fintech banks by their Bankleit
 - **GIVEN** the bank list of hbci4java lists 37019000 in Berlin with a FinTS address
 - **WHEN** the user enters "37019000"
 - **THEN** the app shows "bunq" with "Berlin · 37019000"
+- **AND** "Next" leads to the login data
+
+#### Scenario: Bankleitzahl of a brand with a FinTS address
+
+- **GIVEN** the bank list of hbci4java lists 12070088 in Potsdam with a FinTS address
+- **WHEN** the user enters "DE20120700881234567890"
+- **THEN** the app shows "Deutsche Bank / PayPal" with "Potsdam · 12070088"
 - **AND** "Next" leads to the login data
 
 ### Requirement: Note for the Bankleitzahl of a merged bank

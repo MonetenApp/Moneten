@@ -70,7 +70,7 @@ struct BankDirectoryTests {
 	func fintsFirst() {
 		#expect(codes("aareal") == ["10010424"])
 		// The fintech banks that join every directory have no FinTS address either (`Fintechs`).
-		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "20220800", "10010424", "37021500", "37021548", "50034200"])
+		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "20220800", "10010424", "12070088", "37021500", "37021548", "50034200"])
 	}
 
 	@Test("Finds banks by the start of the Bankleitzahl, and a bank by its full Bankleitzahl")
@@ -97,7 +97,7 @@ struct BankDirectoryTests {
 			Self.bank("37050198", "Sparkasse KölnBonn", "Köln", url: savings), Self.bank("50890000", "VR Bank Muster -alt", "Musterstadt")])
 		#expect(directory.search("sparkasse bonn").map(\.code) == ["37050198", "38050000"])
 		// The fintech banks without a FinTS address that join every directory rank by their names, as "VR Bank Muster -alt" does.
-		#expect(directory.search("bank").map(\.code) == ["20220800", "37021500", "37021548", "50890000", "50034200"])
+		#expect(directory.search("bank").map(\.code) == ["20220800", "12070088", "37021500", "37021548", "50890000", "50034200"])
 		#expect(directory.search("muster").map(\.code) == ["50890000"])
 	}
 
