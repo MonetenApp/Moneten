@@ -108,8 +108,8 @@ extension AppModel {
 			guard let a = ledger.account(id) else { return false }
 			question.messageText = String(localized: "Are you sure you want to remove the account \(a.name)?")
 			question.informativeText = a.kind == .portfolio
-				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings.")
-				: String(localized: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
+				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
+				: String(localized: "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
 		case let .group(id):
 			guard let g = ledger.group(id) else { return false }
 			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
