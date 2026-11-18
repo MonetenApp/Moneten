@@ -20,17 +20,20 @@ let userRecordMaximumSize = 1_048_576
 func userDatabaseHome(initialSize: Int, lookup: (UnsafeMutablePointer<passwd>, UnsafeMutablePointer<CChar>, Int, UnsafeMutablePointer<UnsafeMutablePointer<passwd>?>) -> Int32) -> String? {
 	var size = initialSize > 0 ? min(initialSize, userRecordMaximumSize) : userRecordFallbackSize
 	while true {
-		var record = passwd()
-		var result: UnsafeMutablePointer<passwd>?
 		var buffer = [CChar](repeating: 0, count: size)
-		let status = buffer.withUnsafeMutableBufferPointer { lookup(&record, $0.baseAddress!, size, &result) }
+		// `pw_dir` points into `buffer`, and that pointer is valid only inside the closure, so the text is read there.
+		let (status, home) = buffer.withUnsafeMutableBufferPointer { storage -> (Int32, String?) in
+			var record = passwd()
+			var result: UnsafeMutablePointer<passwd>?
+			let status = lookup(&record, storage.baseAddress!, size, &result)
+			guard status == 0, result != nil, let directory = record.pw_dir else { return (status, nil) }
+			return (status, String(cString: directory))
+		}
 		if status == ERANGE, size < userRecordMaximumSize {
 			size = min(size * 2, userRecordMaximumSize)
 			continue
 		}
-		// `pw_dir` points into `buffer`, so the text is read while the buffer exists.
-		guard status == 0, result != nil, let directory = record.pw_dir else { return nil }
-		let home = String(cString: directory)
+		guard let home else { return nil }
 		return home.hasPrefix("/") ? home : nil
 	}
 }
