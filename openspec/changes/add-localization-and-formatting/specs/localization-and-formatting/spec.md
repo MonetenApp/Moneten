@@ -337,6 +337,22 @@ The app SHALL read an amount that the user types in the number format of macOS. 
 - **WHEN** the user types "12,3,4" into an amount field
 - **THEN** the field is marked as invalid and the app stores no amount
 
+### Requirement: Amount fields show the decimal mark of macOS
+
+The app SHALL show an existing amount in an amount field with the decimal mark of macOS, without thousands separators and with every decimal place of its currency.
+
+#### Scenario: Transaction in the United States
+
+- **GIVEN** macOS uses the region United States
+- **WHEN** the user opens a transaction of minus 89 euros
+- **THEN** the amount field shows "-89.00"
+
+#### Scenario: Initial balance in Germany
+
+- **GIVEN** macOS uses the region Germany
+- **WHEN** the user opens the settings of an account with an initial balance of 2.500 euros
+- **THEN** the field of the initial balance shows "2500,00"
+
 ### Requirement: IBANs in groups of four
 
 The app SHALL show an IBAN in groups of four characters with a space between the groups. An IBAN that the user copies from the app has no spaces.

@@ -197,7 +197,7 @@ struct AppCommands: Commands {
 				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)
 			Button("Export Transactions...") { model.exportTransactions() }
 				.disabled(!unlocked || model.selection == nil || model.isTransferringTransactions)
-			Button(model.removeTitle ?? "Remove...") { if let row = model.selection { model.confirmRemove(row) } }
+			Button(model.removeTitle ?? String(localized: "Remove...")) { if let row = model.selection { model.confirmRemove(row) } }
 				.disabled(!unlocked || model.removeTitle == nil || model.sheet != nil)
 			Divider()
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }

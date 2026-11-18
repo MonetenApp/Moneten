@@ -106,6 +106,7 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 
 - **WHEN** the user exports 3 November 2026 with th_TH formats
 - **THEN** Date is "03/11/2569" in the local calendar with ASCII digits
+- **AND** with en_TH formats, which macOS gives this app for English and the region Thailand, Date is "03/11/2569" too, without an era
 
 ### Requirement: Spreadsheet formula protection
 

@@ -8,6 +8,8 @@ struct TransactionDraftTests {
 	let business = Account(position: 1, name: "Business", kind: .giro, source: .offline)
 	let groceries = Domain.Category(position: 0, name: "Groceries")
 	let leisure = Domain.Category(position: 1, name: "Leisure")
+	let germany = Locale(identifier: "de_DE")
+	let unitedStates = Locale(identifier: "en_US")
 
 	func draft(amount: String) -> TransactionDraft {
 		var d = TransactionDraft()
@@ -84,13 +86,14 @@ struct TransactionDraftTests {
 		#expect(DecimalMark(region: Locale(identifier: "en_US")) == .point)
 	}
 
-	@Test("A selected transaction fills the name, the amount with its sign, the purpose, and the category")
+	@Test("A selected transaction fills the name, the amount with its sign in the decimal mark of the region, the purpose, and the category")
 	func template() {
 		let kiosk = Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: -1_200, name: "Kiosk am Markt",
 			purpose: "Zeitung", comment: "Sonntag", categoryID: leisure.id, categorizedBy: .rule)
-		let d = TransactionDraft(template: kiosk)
+		let d = TransactionDraft(template: kiosk, locale: germany)
 		#expect(d.name == "Kiosk am Markt")
 		#expect(d.amount == "-12,00")
+		#expect(TransactionDraft(template: kiosk, locale: unitedStates).amount == "-12.00")
 		#expect(d.amountMinor(in: "EUR", region: .comma) == .success(-1_200))
 		#expect(d.amountMinor(in: "EUR", region: .point) == .success(-1_200))
 		#expect(d.purpose == "Zeitung")
@@ -109,31 +112,38 @@ struct TransactionDraftTests {
 		let parts = [SplitPart(transactionID: split.id, position: 0, amountMinor: -1_000, categoryID: groceries.id), SplitPart(transactionID: split.id, position: 1, amountMinor: -2_000)]
 		let l = Ledger(accounts: [wallet, business], categories: [groceries, leisure], transactions: [kiosk, dollars, paper, split], parts: parts)
 
-		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id]) == TransactionDraft(template: kiosk))
-		let foreign = l.newTransactionDraft(in: wallet, selection: [dollars.id])
+		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id], locale: germany) == TransactionDraft(template: kiosk, locale: germany))
+		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id], locale: unitedStates).amount == "-12.00")
+		let foreign = l.newTransactionDraft(in: wallet, selection: [dollars.id], locale: germany)
 		#expect(foreign.name == "Kiosk am Markt" && foreign.purpose == "Zeitung" && foreign.categoryID == leisure.id)
 		#expect(foreign.amount == "")
-		#expect(l.newTransactionDraft(in: wallet, selection: [paper.id]) == TransactionDraft())
-		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id, dollars.id]) == TransactionDraft())
-		#expect(l.newTransactionDraft(in: wallet, selection: []) == TransactionDraft())
-		let part = l.newTransactionDraft(in: wallet, selection: [parts[0].id])
+		#expect(l.newTransactionDraft(in: wallet, selection: [paper.id], locale: germany) == TransactionDraft())
+		#expect(l.newTransactionDraft(in: wallet, selection: [kiosk.id, dollars.id], locale: germany) == TransactionDraft())
+		#expect(l.newTransactionDraft(in: wallet, selection: [], locale: germany) == TransactionDraft())
+		let part = l.newTransactionDraft(in: wallet, selection: [parts[0].id], locale: germany)
 		#expect(part.name == "Markt" && part.amount == "-10,00" && part.categoryID == groceries.id)
 	}
 
-	@Test("The window shows an amount with every decimal place of its currency, and the text reads back to the same amount")
+	@Test("The window shows an amount with every decimal place of its currency in the decimal mark of the region, and the text reads back to the same amount in both regions")
 	func amountText() {
-		func shown(_ minor: Int64, _ currency: String) -> String {
-			TransactionDraft(template: Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: minor, currency: currency, name: "")).amount
+		func shown(_ minor: Int64, _ currency: String, _ locale: Locale) -> String {
+			TransactionDraft(template: Transaction(accountID: wallet.id, bookingDate: Day(year: 2026, month: 10, day: 2), amountMinor: minor, currency: currency, name: ""), locale: locale).amount
 		}
-		#expect(shown(5_000, "EUR") == "50,00")
-		#expect(shown(-5, "EUR") == "-0,05")
-		#expect(shown(-123_456, "EUR") == "-1234,56")
-		#expect(shown(1_200, "JPY") == "1200")
-		#expect(shown(-1_234, "KWD") == "-1,2340")
+		#expect(shown(5_000, "EUR", germany) == "50,00")
+		#expect(shown(-5, "EUR", germany) == "-0,05")
+		#expect(shown(-123_456, "EUR", germany) == "-1234,56")
+		#expect(shown(1_200, "JPY", germany) == "1200")
+		#expect(shown(-1_234, "KWD", germany) == "-1,2340")
+		#expect(shown(5_000, "EUR", unitedStates) == "50.00")
+		#expect(shown(-8_900, "EUR", unitedStates) == "-89.00")
+		#expect(shown(-123_456, "EUR", unitedStates) == "-1234.56")
+		#expect(shown(-1_234, "KWD", unitedStates) == "-1.2340")
 		for (minor, currency) in [(5_000, "EUR"), (-5, "EUR"), (-123_456, "EUR"), (1_200, "JPY"), (-1_234, "KWD"), (7, "KWD")] as [(Int64, String)] {
-			var d = TransactionDraft()
-			d.amount = shown(minor, currency)
-			for region in DecimalMark.allCases { #expect(d.amountMinor(in: currency, region: region) == .success(minor)) }
+			for locale in [germany, unitedStates] {
+				var d = TransactionDraft()
+				d.amount = shown(minor, currency, locale)
+				for region in DecimalMark.allCases { #expect(d.amountMinor(in: currency, region: region) == .success(minor)) }
+			}
 		}
 	}
 

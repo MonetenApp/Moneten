@@ -66,6 +66,15 @@ struct TransactionCSVTests {
 		#expect(try lines([stadtwerke], "th_TH")[1].hasPrefix("03/11/2569;04/11/2569;"))
 	}
 
+	@Test("A date in the Buddhist or the Islamic calendar has no era, so that a spreadsheet reads it as a date")
+	func noEra() throws {
+		// macOS gives this app en_TH for English and the region Thailand, because the app has no Thai.
+		#expect(try lines([stadtwerke], "en_TH")[1].hasPrefix("03/11/2569;04/11/2569;"))
+		// 3 November 2026 is 23 Jumada al-Ula 1448 in the Umm al-Qura calendar of Saudi Arabia.
+		#expect(try lines([stadtwerke], "ar_SA")[1].hasPrefix("23\u{200F}/05\u{200F}/1448;24\u{200F}/05\u{200F}/1448;"))
+		#expect(try lines([stadtwerke], "en_SA")[1].hasPrefix("23/05/1448;24/05/1448;"))
+	}
+
 	@Test("The first line names the 17 columns in order")
 	func header() throws {
 		#expect(try lines([], "de_DE").first

@@ -22,7 +22,13 @@ public enum TransactionCSV {
 		dateLocale.numberingSystem = "latn"
 		dates.locale = Locale(components: dateLocale)
 		dates.timeZone = TimeZone(identifier: "UTC")
-		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: locale)
+		// The pattern that the locale has for the Gregorian calendar gives the order of day, month, and year and their
+		// separators, written in digits. The pattern for the Buddhist or the Islamic calendar adds an era, such as
+		// "03/11/2569 BE", or a month name, which a spreadsheet does not read as a date. The date itself stays in the
+		// calendar of the locale.
+		var gregorian = dateLocale
+		gregorian.calendar = .gregorian
+		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: Locale(components: gregorian))
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = TimeZone(identifier: "UTC")!
 		func day(_ d: Day?) -> String {

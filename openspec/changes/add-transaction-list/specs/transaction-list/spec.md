@@ -475,11 +475,11 @@ The app SHALL scroll, select, and update the list without visible delay for a vi
 
 ### Requirement: Row layout
 
-The app SHALL lay out a row in this way. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount omits the currency when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
+The app SHALL lay out a row in this way. The category is a ribbon in the color of the category below the booking date, not a column of its own. The amount shows its currency, also when it is the currency of the view, and it shows a minus sign. The checkmark is at the end of the row. The list has no column headers, a line separates the rows, and every row has the same height.
 
 #### Scenario: Categorized card payment
 
 - **GIVEN** the account "Giro" in EUR has a booked transaction of -42,50 € in the category "Groceries"
 - **WHEN** the user selects "Giro" in the sidebar
-- **THEN** the row shows the ribbon "GROCERIES" below the date and the amount "−42,50" without "€"
+- **THEN** the row shows the ribbon "GROCERIES" below the date and the amount "−42,50 €"
 - **AND** the checkmark is right of the amount

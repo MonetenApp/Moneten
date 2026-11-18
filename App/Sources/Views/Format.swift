@@ -3,41 +3,24 @@ import Foundation
 import SwiftUI
 
 extension Format {
-	/// An amount with its currency, such as "−42,50 €", with a minus sign as in MoneyMoney.
-	static func money(_ m: Money) -> String {
-		minus(m.decimal.formatted(.currency(code: m.currency)))
-	}
-
-	/// An amount without its currency, such as "−42,50", for a list in one currency.
-	static func amount(_ m: Money) -> String {
-		minus(m.decimal.formatted(.number.precision(.fractionLength(m.decimalPlaces))))
-	}
-
-	private static func minus(_ text: String) -> String {
-		text.replacingOccurrences(of: "-", with: "\u{2212}")
-	}
-
 	/// An amount in major units for a chart, with the decimal places of its currency.
 	static func chartValue(_ minor: Int64, _ currency: String) -> Double {
 		NSDecimalNumber(decimal: Money(minorUnits: minor, currency: currency).decimal).doubleValue
 	}
 
-	/// An amount for a text field, such as "1234.56", that `AmountParser` reads back unchanged.
+	/// The text of an existing amount in a field, in the decimal mark of the Mac: "2500,00" in Germany.
 	static func editableAmount(_ minor: Int64, _ currency: String) -> String {
-		AmountParser.editableText(Money(minorUnits: minor, currency: currency))
+		editableAmount(Money(minorUnits: minor, currency: currency), locale: .current)
+	}
+
+	/// The placeholder of an empty amount field, "0,00" in Germany and "0.00" in the United States.
+	static func emptyAmount(_ currency: String = "EUR") -> String {
+		editableAmount(0, currency)
 	}
 
 	/// Whether an amount field is empty or holds a text that `AmountParser` reads without doubt.
 	static func isReadableAmount(_ text: String) -> Bool {
 		text.isEmpty || AmountParser.decimal(from: text) != nil
-	}
-
-	static func sums(_ s: MoneySums) -> String {
-		sums(s.amounts)
-	}
-
-	static func sums(_ amounts: [Money]) -> String {
-		amounts.map(money).joined(separator: "  ")
 	}
 
 	/// The month and year of a day, read from noon GMT as `day` reads it.
@@ -86,13 +69,12 @@ extension Color {
 
 struct AmountText: View {
 	let money: Money
-	var showsCurrency = true
 	/// Increased on a selected table row, where red would be hard to read on the accent color.
 	@Environment(\.backgroundProminence) private var prominence
 	@Environment(\.negativeRed) private var red
 	var body: some View {
 		// A positive amount takes the color of its surroundings, such as the text color of the band.
-		Text(showsCurrency ? Format.money(money) : Format.amount(money))
+		Text(Format.money(money))
 			.monospacedDigit()
 			.foregroundStyle(money.isNegative && prominence != .increased ? AnyShapeStyle(red) : AnyShapeStyle(.primary))
 	}

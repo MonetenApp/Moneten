@@ -971,26 +971,6 @@
         }
       }
     },
-    "-0,00" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "-0,00"
-          }
-        }
-      }
-    },
-    "0,00" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0,00"
-          }
-        }
-      }
-    },
     "1 category has a budget in MoneyMoney. Moneten did not take the budget over." : {
       "localizations" : {
         "de" : {
@@ -8155,12 +8135,32 @@
         }
       }
     },
+    "Remove Account Group..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontengruppe entfernen..."
+          }
+        }
+      }
+    },
     "Remove Category..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kategorie entfernen..."
+          }
+        }
+      }
+    },
+    "Remove Category Group..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategoriegruppe entfernen..."
           }
         }
       }

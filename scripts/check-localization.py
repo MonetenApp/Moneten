@@ -8,7 +8,7 @@ build and compares their keys with App/Resources/Localizable.xcstrings. It fails
 catalog lacks, for an entry without a German value, for an entry that no code uses, for a value
 whose placeholders differ from those of its key, and for a plural without a text in "one" and "other".
 It also checks that App/Resources/InfoPlist.xcstrings gives each key of the Info.plist an English and a
-German value.
+German value, and that every title of the menu bar is a text that the catalog translates (see menu_title_problems).
 
     python3 scripts/check-localization.py .build/periphery           check
     python3 scripts/check-localization.py .build/periphery --update  add missing entries, remove unused ones
@@ -179,6 +179,127 @@ def plurals(node):
 		yield from plurals(substitution)
 
 
+# A view of the menu bar whose first argument, unless it has a label such as action:, is its title.
+MENU_VIEW = re.compile(r"\b(?:Button|Toggle|Menu|CommandMenu|Picker|Text)\(")
+STRING_LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"')
+LOCALIZED = re.compile(r'String\(localized:\s*"(?:[^"\\\n]|\\.)*"\)')
+PROPERTY = re.compile(r"^(?:model\.|self\.)?([a-z]\w*)$")
+
+
+def without_comments(text):
+	"""The text with each // comment removed, but not a // inside a string literal such as a URL."""
+	out, i, in_string = [], 0, False
+	while i < len(text):
+		c = text[i]
+		if in_string:
+			if c == "\\":
+				out.append(text[i:i + 2])
+				i += 2
+				continue
+			in_string = c != '"' and c != "\n"
+		elif c == '"':
+			in_string = True
+		elif text.startswith("//", i):
+			i = text.find("\n", i)
+			if i < 0:
+				break
+			continue
+		out.append(c)
+		i += 1
+	return "".join(out)
+
+
+def first_argument(text, start):
+	"""The first argument of the call whose parenthesis ends just before `start`."""
+	depth, i, in_string = 0, start, False
+	while i < len(text):
+		c = text[i]
+		if in_string:
+			if c == "\\":
+				i += 1
+			elif c == '"':
+				in_string = False
+		elif c == '"':
+			in_string = True
+		elif c in "([{":
+			depth += 1
+		elif c in ")]}" and depth:
+			depth -= 1
+		elif c in "),]}" and not depth:
+			break
+		i += 1
+	return text[start:i].strip()
+
+
+def property_body(sources, name):
+	"""The path and the body of the computed property `name` of type String or String?, or None."""
+	declaration = re.compile(r"\bvar\s+" + re.escape(name) + r"\s*:\s*String\??\s*\{")
+	for path, text in sorted(sources.items()):
+		match = declaration.search(text)
+		if not match:
+			continue
+		depth, i = 1, match.end()
+		while i < len(text) and depth:
+			depth += {"{": 1, "}": -1}.get(text[i], 0)
+			i += 1
+		return path, text[match.end():i - 1]
+	return None
+
+
+def menu_title_problems(sources):
+	"""Lists each title of the menu bar that the catalog cannot translate.
+
+	`sources` maps the path of each Swift file of the app to its text. The menus are the files that declare a
+	Commands type. SwiftUI looks up a literal title, such as Button("Add Category"), also both literals of a
+	ternary, in the catalog, and the compiler extracts its key. A title of type String shows verbatim, so it comes
+	from String(localized:). A literal after ?? next to such a title is a String too. A title that names a property,
+	such as Button(model.removeTitle), passes when every literal in the body of the property is the key of a
+	String(localized:). "Remove Account Group..." stayed English for both reasons (issue #463).
+	"""
+	problems = []
+	for path, text in sorted(sources.items()):
+		if not re.search(r":\s*Commands\s*\{", text):
+			continue
+		code = without_comments(text)
+		for match in MENU_VIEW.finditer(code):
+			argument = first_argument(code, match.end())
+			if not argument or re.match(r"\w+\s*:", argument):
+				continue
+			where = f"{path}:{code.count(chr(10), 0, match.start()) + 1}"
+			value, *fallbacks = [part.strip() for part in LOCALIZED.sub("", argument).split("??")]
+			if any(STRING_LITERAL.search(part) for part in fallbacks):
+				problems.append(f"{where}: the literal after ?? in the menu title {argument!r} is a String and shows verbatim. "
+					"Write String(localized: ...).")
+			if STRING_LITERAL.search(value):
+				if "+" in STRING_LITERAL.sub("", value):
+					problems.append(f"{where}: the menu title {argument!r} joins a literal to a String, so it shows verbatim. "
+						"Write String(localized: ...) with the whole text.")
+				continue
+			if not value:
+				continue
+			name = PROPERTY.match(value)
+			found = name and property_body(sources, name.group(1))
+			if not found:
+				problems.append(f"{where}: the menu title {argument!r} is neither a literal nor a String property of the app, "
+					"so this check cannot see its text. Use a literal or a property that returns String(localized: ...).")
+				continue
+			source, body = found
+			for literal in STRING_LITERAL.findall(LOCALIZED.sub("", without_comments(body))):
+				problems.append(f"{source}: {name.group(1)} returns the literal {literal} for the menu title at {where}, "
+					f"which shows verbatim. Write String(localized: {literal}).")
+	return problems
+
+
+def app_sources():
+	sources = {}
+	for path in sorted(glob.glob(os.path.join(ROOT, "App", "Sources", "**", "*.swift"), recursive=True)):
+		relative = os.path.relpath(path, ROOT)
+		if relative not in IGNORED:
+			with open(path, encoding="utf-8") as f:
+				sources[relative] = f.read()
+	return sources
+
+
 def info_plist_problems():
 	"""Lists each key of InfoPlist.xcstrings without a translated English and German value.
 
@@ -243,13 +364,14 @@ def main():
 	untranslated = sorted(k for k in keys if k in strings and not is_translated(strings[k]))
 	formats = [p for k in sorted(keys) if k in strings for p in format_problems(k, strings[k])]
 	info = info_plist_problems()
+	menus = menu_title_problems(app_sources())
 	for key in missing:
 		print(f"Missing in the catalog: {key!r}")
 	for key in unused:
 		print(f"Not used by any code: {key!r}")
 	for key in untranslated:
 		print(f"No German translation: {key!r}")
-	for problem in formats + info:
+	for problem in formats + info + menus:
 		print(problem)
 	if missing or unused or untranslated:
 		print("Run scripts/check-localization.py with --update, then write the German values. CONTRIBUTING.md explains it.")
@@ -257,9 +379,10 @@ def main():
 		print("Give each value the placeholders of its key, and each plural the forms \"one\" and \"other\".")
 	if info:
 		print("Give each key of App/Resources/InfoPlist.xcstrings the English text of App/Info.plist and a German value.")
-	if missing or unused or untranslated or formats or info:
+	if missing or unused or untranslated or formats or info or menus:
 		sys.exit(1)
 	print(f"All {len(keys)} texts of the interface have a German translation.")
 
 
-main()
+if __name__ == "__main__":
+	main()
