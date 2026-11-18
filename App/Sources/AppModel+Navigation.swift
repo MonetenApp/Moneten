@@ -2,6 +2,7 @@ import AppKit
 import Domain
 import Foundation
 import Import
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// Back and forward through the views, as in a browser. Observable, so that the menu and the
@@ -163,8 +164,11 @@ extension AppModel {
 		let panel = NSSavePanel()
 		panel.title = String(localized: "Backup Database")
 		panel.message = hasPassword
-			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac.")
-			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac.")
+			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac.")
+			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac.")
+		let help = NSHostingView(rootView: Link("About Backups", destination: AppCommands.backupHelpPage).padding(8))
+		help.frame.size = help.fittingSize
+		panel.accessoryView = help
 		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
 		guard panel.runModal() == .OK, let url = panel.url else { return }
 		do {

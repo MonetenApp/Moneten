@@ -1138,22 +1138,22 @@
       },
       "extractionState" : "manual"
     },
-    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
     },
-    "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
@@ -1406,6 +1406,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Wort ohne Feld durchsucht keine Kontonummern und IBANs. local_account: und remote_account: tun das."
+          }
+        }
+      }
+    },
+    "About Backups" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über die Datensicherung"
           }
         }
       }
@@ -9715,6 +9725,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The account group is empty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kontengruppe ist leer."
+          }
+        }
+      }
     },
     "The account has been closed" : {
       "localizations" : {

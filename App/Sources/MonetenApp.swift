@@ -233,6 +233,8 @@ struct AppCommands: Commands {
 extension AppCommands {
 	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
 	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
+	/// The help page about backups, a section of the README, which the save panel of "Backup Database..." links to.
+	static let backupHelpPage = URL(string: "https://github.com/MonetenApp/Moneten#back-up-your-data")!
 }
 
 extension Notification.Name {

@@ -321,6 +321,10 @@ final class AppModel {
 	var selectedTransactions = Set<UUID>() {
 		didSet { noteUndrawn(rows: true) }
 	}
+	/// The row that "Go to" selected, which the table of its view scrolls to. The number tells two requests for the
+	/// same row apart.
+	private(set) var revealedRow: RevealedRow?
+	@ObservationIgnored private var revealCount = 0
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 
@@ -833,6 +837,33 @@ final class AppModel {
 	/// A selection that the transaction table of `key` reports.
 	func select(transactions ids: Set<UUID>, in key: TableKey) {
 		if shows(key) { selectedTransactions = ids }
+	}
+
+	/// "Go to": opens `target` with the row `id` selected and visible. The view change clears the selected rows, and
+	/// a table must not see a change of its selection in the drawing that brings it (issue #135), so the row is
+	/// selected once the table of `target` is drawn.
+	func go(to target: SidebarSelection, selecting id: UUID) {
+		navigate(to: target)
+		select(id, whenDrawn: target, tries: 4)
+	}
+
+	/// The table of a view can wait for a drawing of a change of the ledger (issue #151), so this tries again after
+	/// each drawing until the table of `target` is drawn. It gives up when the user chose another view meanwhile.
+	private func select(_ id: UUID, whenDrawn target: SidebarSelection, tries: Int) {
+		afterDraw { [weak self] in
+			Task { @MainActor in
+				guard let self, self._selection == target else { return }
+				guard self._tableKey.selection == target, !self.tableUndrawn, self._tableHolds == 0 else {
+					if tries > 0 { self.select(id, whenDrawn: target, tries: tries - 1) }
+					return
+				}
+				// A portfolio shows positions, and a filter can hide the row.
+				guard self._tableKey.portfolios == nil, self.visibleTransactions.contains(where: { $0.id == id }) else { return }
+				self.selectedTransactions = [id]
+				self.revealCount += 1
+				self.revealedRow = RevealedRow(id: id, key: self._tableKey, request: self.revealCount)
+			}
+		}
 	}
 
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
@@ -1870,6 +1901,13 @@ struct TableKey: Hashable {
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
 	var portfolios: [UUID]?
+}
+
+/// A row that the table of `key` scrolls to.
+struct RevealedRow: Equatable {
+	let id: UUID
+	let key: TableKey
+	let request: Int
 }
 
 struct AlertMessage: Identifiable {

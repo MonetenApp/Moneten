@@ -434,7 +434,7 @@ struct TransactionTable: View {
 		} else if rows.isEmpty {
 			VStack {
 				Spacer()
-				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
+				Text(emptyText)
 					.foregroundStyle(.secondary)
 				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
 					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
@@ -459,44 +459,57 @@ struct TransactionTable: View {
 			// are built for the visible rows only, so they carry the drag, and its payload is made when
 			// a drag starts.
 			let sections = accountSections
-			Group {
-				if let sections {
-					// "Group transactions by account": a heading with the account name above its rows. The
-					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
-					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
-					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
-					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency, balances: balances, checkmarks: checkmarks)
-					} rows: {
-						ForEach(sections, id: \.account.id) { section in
-							Section(section.account.name) {
-								ForEach(section.rows) { TableRow($0) }
+			// The reader lets "Go to" scroll to the row that it selects.
+			ScrollViewReader { proxy in
+				Group {
+					if let sections {
+						// "Group transactions by account": a heading with the account name above its rows. The
+						// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
+						// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
+						// M-series Mac (perf scenario "group-by-account"), against half a second without it.
+						Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
+							columns(currency: currency, balances: balances, checkmarks: checkmarks)
+						} rows: {
+							ForEach(sections, id: \.account.id) { section in
+								Section(section.account.name) {
+									ForEach(section.rows) { TableRow($0) }
+								}
 							}
 						}
-					}
-				} else {
-					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency, balances: balances, checkmarks: checkmarks)
+					} else {
+						Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
+							columns(currency: currency, balances: balances, checkmarks: checkmarks)
+						}
 					}
 				}
+				.tableStyle(.bordered(alternatesRowBackgrounds: false))
+				.tableColumnHeaders(.hidden)
+				// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
+				// only that text, so this runs only without selected text.
+				.onCopyCommand { copiedRows() }
+				.contextMenu(forSelectionType: UUID.self) { ids in
+					TransactionMenu(ids: ids)
+				} primaryAction: { ids in
+					if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
+				}
+				.background(RowReveal(proxy: proxy, key: key))
+				// The table starts over for another view, and after a change of `AppModel.replacingTable`, such as a
+				// file import. A refresh usually updates the rows in place (issue #135). SwiftUI otherwise turns a
+				// new view into row insertions, and AppKit then measures every inserted row with its own
+				// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
+				// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
+				// view graph ran out of space. Edits inside one view still update single rows.
+				.id(key)
 			}
-			.tableStyle(.bordered(alternatesRowBackgrounds: false))
-			.tableColumnHeaders(.hidden)
-			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
-			// only that text, so this runs only without selected text.
-			.onCopyCommand { copiedRows() }
-			.contextMenu(forSelectionType: UUID.self) { ids in
-				TransactionMenu(ids: ids)
-			} primaryAction: { ids in
-				if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
-			}
-			// The table starts over for another view, and after a change of `AppModel.replacingTable`, such as a
-			// file import. A refresh usually updates the rows in place (issue #135). SwiftUI otherwise turns a
-			// new view into row insertions, and AppKit then measures every inserted row with its own
-			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
-			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
-			// view graph ran out of space. Edits inside one view still update single rows.
-			.id(key)
+		}
+	}
+
+	/// The text of an empty list. A group without accounts says so, also while a filter is active.
+	private var emptyText: String {
+		switch model.ledger.emptyList(in: key.selection?.scope ?? .all, filtered: key.filter.isActive || !key.filter.searchText.isEmpty) {
+		case .emptyGroup: String(localized: "The account group is empty.")
+		case .noMatches: String(localized: "No matching transactions found.")
+		case .noTransactions: String(localized: "No transactions found.")
 		}
 	}
 
@@ -960,6 +973,20 @@ struct CategoryChoices: View {
 	}
 }
 
+/// Scrolls the transaction table of `key` to the row that "Go to" selected. Only this view reads the request, so
+/// the table itself does not update for it.
+private struct RowReveal: View {
+	@Environment(AppModel.self) private var model
+	let proxy: ScrollViewProxy
+	let key: TableKey
+
+	var body: some View {
+		Color.clear.onChange(of: model.revealedRow) { _, row in
+			if let row, row.key == key { proxy.scrollTo(row.id, anchor: .center) }
+		}
+	}
+}
+
 /// A menu item that runs a closure.
 final class ActionMenuItem: NSMenuItem {
 	private let handler: () -> Void
@@ -986,9 +1013,20 @@ struct TransactionMenu: View {
 			if !first.name.isEmpty {
 				Button("Search for “\(first.name)”") { model.filter.searchText = TransactionFilter.searchText(for: first.name) }
 			}
-			Menu("Go to") {
-				if let a = model.ledger.account(first.accountID) { Button(a.name) { model.navigate(to: .account(a.id)) } }
-				if let c = model.ledger.effectiveCategoryID(of: first) { Button(model.ledger.categoryPath(c)) { model.navigate(to: .category(c)) } }
+			let targets = model.ledger.goToTargets(of: first, from: model.selection?.scope ?? .all)
+			if !targets.isEmpty {
+				Menu("Go to") {
+					ForEach(targets, id: \.self) { target in
+						switch target {
+						case let .account(id):
+							Button(model.ledger.account(id)?.name ?? "") { model.go(to: .account(id), selecting: first.id) }
+						case let .category(id):
+							Button(model.ledger.categoryPath(id)) { model.go(to: .category(id), selecting: first.id) }
+						case .accountGroup, .all:
+							EmptyView()
+						}
+					}
+				}
 			}
 			Divider()
 			Menu("Assign Category") {
