@@ -1,6 +1,6 @@
 # Format of the complete export
 
-"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 2 key by key. The reader also accepts version 1. The test `AllDataTests` checks that each key of an export is described here.
+"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 3 key by key. The reader also accepts versions 1 and 2. The test `AllDataTests` checks that each key of an export is described here.
 
 ## Conventions
 
@@ -11,6 +11,7 @@
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - A currency code has exactly three uppercase ASCII letters, `[A-Z]{3}`. This also applies to optional currencies of holdings and both currencies of an exchange rate.
 - Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` or `savedSearches` key as an empty list.
+- A change that a reader of an earlier version cannot read raises the format version: a new required key, a required key that is removed or renamed, and a new value of a fixed word such as `reason` in `failure` or `review`. A reader of the earlier version then refuses the file as needing a newer app, and not as damaged.
 - The lists keep the order of the database.
 - A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
 - The complete export is written atomically with mode 0600, so only its owner can read or write it. An unreadable stored holding fails the export instead of being omitted.
@@ -20,7 +21,7 @@
 | Key | Content |
 |---|---|
 | `format` | Always `"moneten-export"` |
-| `version` | The format version as a number, `2` for this page. A reader refuses a version below 1 as damaged and a version above 2 as needing a newer app. |
+| `version` | The format version as a number, `3` for this page. A reader refuses a version below 1 as damaged and a version above 3 as needing a newer app. |
 | `exportedAt` | The time of the export |
 | `accountGroups` | List of account groups |
 | `accounts` | List of accounts |
@@ -102,7 +103,7 @@ The period has a `kind` and, for some kinds, days. `all`, `days30`, `days90`, an
 | `accessID` | The bank access that refreshes the account |
 | `remoteID` | Identifier of the account at its bank |
 | `refreshedAt` | Time of the last successful refresh |
-| `refreshError` | The error of the last refresh, with `failure`, `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the refresh of the whole access failed, at the login or after it, in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. `failure` holds `reason`, the cause in a fixed English word such as `pinRejected`, `bank`, or `network`, and the values of that cause: `code` and `text`, the return code and the answer of the bank as the bank sent them, `accountName`, the account that the answer is about, `request` for `needsUser` (`pin`, `secondFactor`, `allowHost`, or `login`), `detail` for `network`, `unsupported`, and `notSaved`, and `nextStep` for `noTANMethodOfBank` (`dkbApp`). The app words the error in its own language when it shows it. A file written before #310 has `message` and `code` in place of `failure`, and a reader takes them as an answer of the bank with that text and code. |
+| `refreshError` | The error of the last refresh, with `failure`, `date`, `notices` (the notices of the bank), `waitsForUser` (whether only a refresh command of the user can resolve it), and `suggestsEditLoginData` (whether the refresh of the whole access failed, at the login or after it, in a way that can mean that the bank wants it set up again, so the error names "Edit Login Data..."). A reader takes a missing `waitsForUser` or `suggestsEditLoginData` as false. `failure` holds `reason`, the cause in a fixed English word such as `pinRejected`, `bank`, or `network`, and the values of that cause: `code` and `text`, the return code and the answer of the bank as the bank sent them, `accountName`, the account that the answer is about, `request` for `needsUser` (`pin`, `secondFactor`, `allowHost`, or `login`), `detail` for `network`, `unsupported`, and `notSaved`, and `nextStep` for `noTANMethodOfBank` (`dkbApp`). The app words the error in its own language when it shows it. A file of version 1 or 2 has `message` and `code` in place of `failure`, and a reader takes them as an answer of the bank with that text and code. |
 | `refreshInterval` | `everyTwoHours`, `fourTimesADay`, `onceADay`, `onceAWeek`, `onlyManually`, or `never` |
 | `missesOlderTransactions` | Whether older transactions of the account may be missing, because a refresh fetched less than the time since the last successful fetch, such as after a canceled TAN for older transactions. While it is true, no refresh sets `initialBalanceIsSet`, and the refresh that brings the full history sets this key to false. A reader takes a missing key as false. |
 
@@ -229,6 +230,8 @@ Each split part has these keys.
 
 The original stays once in `transactions` with its category and comment for undo. Parts stay in `splitParts`, never as additional transactions. Their IDs, links, positions, amounts, categories, comments, and VAT data survive an export and import. Each split has at least two parts of nonzero amounts that add up to its booked original. The reader refuses an unknown review reason or malformed part. The import refuses missing original or category references, duplicate row IDs or positions, negative positions, pending originals, and parts that break the split rules, without changing the target database.
 
-## Version 1 compatibility
+## Earlier versions
 
-A version-1 file has neither `splitParts` nor `review`. The version-2 reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
+A version-1 file has neither `splitParts` nor `review`. The reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
+
+A version-3 file writes the error of a refresh as `failure` and omits `message` and `code` (#310). A reader of version 2 requires `message`, so version 3 lets it refuse the file as needing a newer app. The reader of version 3 reads the `message` and `code` of a version-1 or version-2 file as an answer of the bank with that text and code.

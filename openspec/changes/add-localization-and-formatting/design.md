@@ -77,6 +77,8 @@ An error stored before #310 has `message` and `code` in place of `failure`. The 
 
 The text in `detail` comes from the source of the failure: the FinTS helper, an extension, macOS, or the database. Some of these texts are sentences of a connector, such as the timeout of the FinTS helper, which the connector writes in the language of the refresh. They stay as stored until the next refresh, because turning each of them into a value would move the sentences of every connector into `Domain`.
 
+Five sentences of the connectors go into `bank` as if the bank had sent them, so they too keep the language of the refresh: "The bank sent nothing for this account." in `Sources/FinTS/HelperProtocol.swift`, and in `Sources/ExtensionConnector/ExtensionConnector.swift` the login that returned a value that is not valid, the account that an extension lists twice, the missing list of accounts, and the login page that is not an allowed host. Each needs its own reason with the name of the extension, the account, or the host as values, and `mayAskForNewSetup` must keep its answer for them. Issue #462 tracks it.
+
 Alternative: a migration that clears the old errors. That would also clear `waitsForUser` and `lockedLogins`, so an access whose PIN the bank rejected, or whose login ING locked, would join the automatic refresh again.
 
 ### A pure completion function in `Domain`
@@ -144,7 +146,7 @@ The time is the short time of the locale without seconds. The weekday comes from
 ## Risks / Trade-offs
 
 - [A text that a library builds as a `String` without `String(localized:)` stays English.] → The check sees only literals that are looked up. Review a new message of a library for `String(localized:)`, as for any text of the app.
-- [The text of a network failure, an unsupported request, or a failed save keeps the language of the refresh.] → It changes with the next refresh. Every other part of the error of a refresh follows the language of the app.
+- [The text of a network failure, an unsupported request, or a failed save keeps the language of the refresh, and so do the five sentences of the connectors that are stored as an answer of the bank.] → It changes with the next refresh. Every other part of the error of a refresh follows the language of the app. Issue #462 turns the five sentences into reasons.
 - [A day typed more than two days ahead lands in the previous month.] → The field shows the full date at once, and the user can type the month as well.
 - [Near the end of a month, a day of the next month needs the month typed.] → The field shows the full date at once, so the user sees 01.11.2026 and can type "1.12" instead.
 

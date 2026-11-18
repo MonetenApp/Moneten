@@ -17,7 +17,8 @@ struct RefreshErrorTests {
 		.notFetched, .bank(bank), .offline, .network("Connection reset by peer"), .unsupported("noJobs"), .notSaved("SQLite error 19"),
 	])
 	func roundTrip(failure: SyncFailure) throws {
-		let error = RefreshError(failure: failure, date: Self.date, notices: ["Wartung am 14.11.2026"], waitsForUser: failure.waitsForUser)
+		let error = RefreshError(failure: failure, date: Self.date, notices: ["Wartung am 14.11.2026"], waitsForUser: failure.waitsForUser,
+			suggestsEditLoginData: true, lockedLogins: 1)
 		let decoded = try JSONDecoder().decode(RefreshError.self, from: JSONEncoder().encode(error))
 		#expect(decoded == error)
 		#expect(decoded.message == failure.message)
