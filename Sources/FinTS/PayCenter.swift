@@ -14,9 +14,7 @@ enum PayCenter {
 	/// The FinTS server of PayCenter is the host `fints.paycenter.de`, in lower case and without one trailing dot, as the
 	/// hosts of the other bank groups count.
 	static func isPayCenter(_ server: URL?) -> Bool {
-		guard var host = server?.host()?.lowercased() else { return false }
-		if host.hasSuffix(".") { host.removeLast() }
-		return host == "fints.paycenter.de"
+		FinTSServer.host(server) == "fints.paycenter.de"
 	}
 
 	/// The field of a typed TAN of the method 911 on the server of PayCenter: exactly 6 characters, so that a TAN with a

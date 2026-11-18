@@ -10,6 +10,30 @@ import Testing
 		#expect(!field.isComplete("1"))
 	}
 
+	/// A pasted TAN often carries a blank or a line break. A field with a length drops white space before it cuts, so the
+	/// cut keeps the last digit and not the blank.
+	@Test("A field with a length drops white space before it cuts to the length, and keeps letters", arguments: [
+		("123 456", "123456"),
+		(" 123456", "123456"),
+		("\t123456", "123456"),
+		("\n123456", "123456"),
+		("12 34 56", "123456"),
+		("123456\r\n", "123456"),
+		("ab C1 23", "abC123"),
+	])
+	func pastedWhiteSpace(pasted: String, accepted: String) {
+		let field = TANField(length: 6...6)
+		#expect(field.accept(pasted) == accepted)
+		#expect(field.isComplete(field.accept(pasted)))
+	}
+
+	@Test("A field with a length drops white space in capitals too, and a field without a length keeps the text as typed")
+	func whiteSpaceOtherFields() {
+		#expect(TANField(length: 6...6, isUppercase: true).accept("ab c12 3") == "ABC123")
+		#expect(TANField(length: 6...6, isNumeric: true).accept("123 456") == "123456")
+		#expect(TANField().accept("12 34") == "12 34")
+	}
+
 	@Test("The field names its length while the typed TAN is shorter, and says nothing when it is empty, complete, or without a length")
 	func lengthNote() {
 		let exact = TANField(length: 6...6)

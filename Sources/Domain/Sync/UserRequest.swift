@@ -307,9 +307,11 @@ public struct TANField: Sendable, Equatable {
 	}
 
 	/// The text as the field shows it: digits only for a numeric field, capitals when asked, and no
-	/// more characters than allowed.
+	/// more characters than allowed. A field with a length drops spaces, tabs, and line breaks before it cuts, because a
+	/// pasted TAN often carries them, and a cut that kept a blank would send a TAN one character short.
 	public func accept(_ text: String) -> String {
 		var text = isNumeric ? text.filter(\.isASCII).filter(\.isNumber) : text
+		if length != nil { text.removeAll(where: \.isWhitespace) }
 		if isUppercase { text = text.uppercased() }
 		if let length { text = String(text.prefix(max(0, length.upperBound))) }
 		return text

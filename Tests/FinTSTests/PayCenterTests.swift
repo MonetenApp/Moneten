@@ -61,6 +61,8 @@ struct PayCenterTests {
 		#expect(field.lengthNote(field.accept("123456")) == nil)
 		#expect(field.accept("1234567") == "123456")
 		#expect(field.lengthNote("") == nil)
+		#expect(field.accept("123 456") == "123456")
+		#expect(field.isComplete(field.accept("123 456")))
 
 		#expect(PayCenter.tanField(method: "912", server: URL(string: Self.payCenterURL)) == nil)
 		#expect(PayCenter.tanField(method: "9110", server: URL(string: Self.payCenterURL)) == nil)

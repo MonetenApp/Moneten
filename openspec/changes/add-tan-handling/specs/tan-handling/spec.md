@@ -203,7 +203,7 @@ The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank 
 
 ### Requirement: TAN length of PayCenter
 
-The app SHALL accept a typed TAN of exactly 6 characters for the method 911 on `fints.paycenter.de`, and it SHALL say so while the TAN is shorter. The field stops at 6 characters, and "Continue" stays disabled until it holds 6. A TAN with a missing character then never reaches the bank, where it would count as a wrong attempt. Other methods and other hosts keep their field.
+The app SHALL accept a typed TAN of exactly 6 characters for the method 911 on `fints.paycenter.de`, and it SHALL say so while the TAN is shorter. The field drops spaces, tabs, and line breaks, keeps letters, and stops at 6 characters, and "Continue" stays disabled until it holds 6. A TAN with a missing character then never reaches the bank, where it would count as a wrong attempt. Other methods and other hosts keep their field.
 
 #### Scenario: TAN of 5 characters
 
@@ -219,6 +219,14 @@ The app SHALL accept a typed TAN of exactly 6 characters for the method 911 on `
 - **WHEN** the user types "1234567"
 - **THEN** the field holds "123456"
 
+#### Scenario: Pasted TAN with a blank
+
+- **GIVEN** a TAN request of method 911 from `https://fints.paycenter.de`
+- **WHEN** the user pastes "123 456"
+- **THEN** the field holds "123456", "Continue" is enabled, and the app sends "123456"
+- **WHEN** the user pastes " 123456", a tab and "123456", a line break and "123456", or "12 34 56"
+- **THEN** the field holds "123456" each time
+
 #### Scenario: Same method code at another bank
 
 - **GIVEN** a TAN request of "Musterbank" for the method 911 from `https://fints.musterbank.example/fints`
@@ -227,7 +235,7 @@ The app SHALL accept a typed TAN of exactly 6 characters for the method 911 on `
 
 ### Requirement: Name the length of a TAN field
 
-The app SHALL say how many characters a TAN field with a set length needs while the typed TAN is shorter than that. "Continue" is disabled then, and the line says why. The line names digits for a field of digits only and characters for any other field.
+The app SHALL say how many characters a TAN field with a set length needs while a typed TAN that is not empty is shorter than that. "Continue" is disabled then, and the line says why. The line names digits for a field of digits only and characters for any other field.
 
 #### Scenario: Range of digits
 

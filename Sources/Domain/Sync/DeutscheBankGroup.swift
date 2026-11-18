@@ -24,8 +24,7 @@ extension FinTSServer {
 	/// Whether the host of `server` is a subdomain of `domain`. The host counts in lower case and without one trailing
 	/// dot, and a host with an empty label counts as none, as `SavingsBanks.name` of the helper reads it.
 	private static func host(of server: URL?, endsIn domain: String) -> Bool {
-		guard var host = server?.host()?.lowercased() else { return false }
-		if host.hasSuffix(".") { host.removeLast() }
+		guard let host = host(server) else { return false }
 		guard !host.hasPrefix("."), !host.hasSuffix("."), !host.contains("..") else { return false }
 		return host.hasSuffix("." + domain)
 	}

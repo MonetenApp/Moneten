@@ -10,9 +10,7 @@ enum DKB {
 	/// counts in lower case and without one trailing dot, as the hosts of the other bank groups do.
 	static func isDKB(bankCode: String?, server: URL?) -> Bool {
 		if bankCode == Self.bankCode { return true }
-		guard var host = server?.host()?.lowercased() else { return false }
-		if host.hasSuffix(".") { host.removeLast() }
-		return host.hasSuffix(".dkb.de")
+		return FinTSServer.host(server)?.hasSuffix(".dkb.de") ?? false
 	}
 
 	/// A DKB credit card has the 16 digit card number as its account number, which is the account that the
