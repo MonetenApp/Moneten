@@ -8,7 +8,7 @@ What main already has, and this change keeps:
 
 - A portfolio shows `bankBalanceMinor` through `Account.reportedBalance`, so its value counts in the sidebar, in the sum of its group, and in the total of all accounts ("Portfolio value in sums").
 - `PortfolioValue` records that value once a day, `Store.merge` and `Store.save` write the record together with the account, and `Store.loadLedger` adds a missing record ("Daily record of the portfolio value", "Record the balance of a saved portfolio", "Record a missing portfolio balance at open"). The balance chart of a group draws a portfolio from its first record on.
-- The value of a securities account is the total that the bank sends (HOLP), or else the sum of the values of its positions with their accrued interest, on the day of the statement. An empty securities account is worth 0 (#112).
+- The value of a securities account is the total that the bank sends (HOLP), or else the sum of the values of its positions with their accrued interest, on the day of the statement. An empty securities account is worth 0 (#112). A holding without a value counts with its quantity times its price, and holdings in more than one currency count with their values in the currency of the account when the bank sends them; otherwise the account fails, so no sum leaves out a holding (#241).
 
 So v0.1 adds the positions themselves: the types, their table, the positions in the result of the helper, the merge that replaces them, and the view.
 
