@@ -44,7 +44,7 @@ extension Ledger {
 				return id
 			}
 			var entry = Transaction(accountID: target.id, bookingDate: source.bookingDate, valueDate: source.bookingDate, amountMinor: -source.amountMinor,
-				currency: source.currency, name: source.name, purpose: source.purpose, counterpartyIBAN: from?.iban,
+				currency: source.currency, name: source.name, purpose: source.purpose, counterpartyIBAN: from?.iban?.electronic,
 				counterpartyBIC: from?.iban == nil ? nil : from?.bic, comment: source.comment, categoryID: kept,
 				categorizedBy: kept == nil ? .none : .manual, createdAt: now, isManual: true)
 			rules.categorize(&entry)

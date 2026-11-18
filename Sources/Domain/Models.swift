@@ -64,7 +64,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var kind: AccountKind
 	public var source: AccountSource
 	public var currency: String
-	public var iban: String?
+	public var iban: IBAN?
 	public var bic: String?
 	public var accountNumber: String?
 	public var bankCode: String?
@@ -113,7 +113,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	public var missesOlderTransactions: Bool
 
 	public init(id: UUID = UUID(), groupID: UUID? = nil, position: Int, name: String, kind: AccountKind, source: AccountSource, currency: String = "EUR",
-		iban: String? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
+		iban: IBAN? = nil, bic: String? = nil, accountNumber: String? = nil, bankCode: String? = nil, bankName: String? = nil, owner: String? = nil,
 		bankBalanceMinor: Int64? = nil, bankBalanceDate: Date? = nil, initialBalanceMinor: Int64 = 0, initialBalanceIsSet: Bool = false, initialBalanceIsDerived: Bool = false, isClosed: Bool = false, comment: String? = nil, sourceID: String? = nil,
 		color: String? = nil, accessID: UUID? = nil, remoteID: String? = nil, refreshedAt: Date? = nil, refreshError: RefreshError? = nil,
 		refreshInterval: RefreshInterval = .everyTwoHours, missesOlderTransactions: Bool = false, otherBankBalances: [Money] = [], bonusPoints: Int64? = nil, clearingEntry: ClearingEntryMark? = nil) {
