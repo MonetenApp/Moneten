@@ -449,8 +449,7 @@ final class DebugHarness {
 				else { nil }
 			guard let scope else { return }
 			#if DEBUG || PERF_HARNESS
-			let recipients = model.ledger.refreshAccounts(scope).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) }
-			guard recipients.allSatisfy({ HarnessRun.mayReach($0, fakeBank: usesFakeBank) }) else { return log("refresh refused") }
+			guard mayRefresh(model.ledger.refreshAccounts(scope)) else { return log("refresh refused") }
 			#endif
 			model.refresh(scope, enforced: enforced)
 		case "status":
@@ -1172,7 +1171,8 @@ final class DebugHarness {
 		case "modal": modal(argument)
 		// "<menu>|<item>" chooses the item of the menu bar by their English titles, as a click does, also while the app in the
 		// background shows the item disabled. It logs whether the item is enabled after an update of the menu. Only the
-		// local items of `HarnessGuard` are allowed, and a refresh or a bank setup only with the made-up bank.
+		// local items of `HarnessRun.menuActions` are allowed, and a refresh or a bank setup only when HarnessRun.mayReach lets
+		// it reach each recipient.
 		case "menuitem": menuItem(argument)
 		#endif
 		case "state":
@@ -1304,12 +1304,12 @@ final class DebugHarness {
 			}
 		}
 		if let setup = model.setup {
-			switch setup.service {
-			case nil: return .bankDialog(.fints)
-			case let .extensionService(id, _)?: return .bankDialog(recipient(of: .extension(id: id)))
-			// An offline account reaches no service.
-			case .offline?: return .other
+			let service: HarnessRun.SetupService = switch setup.service {
+			case nil: .fints
+			case let .extensionService(id, _)?: .extensionService(recipient(of: .extension(id: id)))
+			case .offline?: .offline
 			}
+			return HarnessRun.setupSurface(atLogin: setup.step == .login, service: service)
 		}
 		if model.phase != .unlocked { return window.isSheet ? .startAlert : .startWindow }
 		switch model.sheet {
@@ -1326,9 +1326,23 @@ final class DebugHarness {
 	private func recipient(of source: AccessSource) -> HarnessRun.Recipient {
 		switch source {
 		case .fints: .fints
-		case let .extension(id): fileExtensions.contains(id) || model?.extensions.fixtures[id] != nil ? .local : .realService
+		case let .extension(id): extensionRecipient(id, fixture: model?.extensions.fixtures[id] != nil)
 		case .finAPI: .realService
 		}
+	}
+
+	/// Who receives what the harness sends to the extension `id`, with or without a fixture of the run (HarnessRun.extensionRecipient).
+	private func extensionRecipient(_ id: String, fixture: Bool, loadedFromFile: Bool? = nil) -> HarnessRun.Recipient {
+		HarnessRun.extensionRecipient(hasFixture: fixture, loadedFromFile: loadedFromFile ?? fileExtensions.contains(id),
+			catalogName: model?.extensions.isCatalogName(id) ?? true)
+	}
+
+	/// Whether a refresh of `plan` reaches only the made-up bank or a local service. The commands "refresh",
+	/// "menuitem", and "extrefresh" ask before they start one, and `AppModel.refresh` asks for every other refresh of a
+	/// harness run, such as "Refresh All Accounts" in the popover of the menu bar icon and the automatic refresh.
+	func mayRefresh(_ plan: [UUID: [AccountRequest]]) -> Bool {
+		guard let model else { return false }
+		return plan.keys.compactMap { model.accesses[$0] }.allSatisfy { HarnessRun.mayReach(recipient(of: $0), fakeBank: usesFakeBank) }
 	}
 
 	/// Whether "answer", "method", "medium", and the answers of "ext..." may answer `prompt`.
@@ -1396,6 +1410,10 @@ final class DebugHarness {
 			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
 		let names: [StaticString] = ["table", "down", "up", "return", "escape", "cmd+k"]
 		guard names.contains(where: { "\($0)" == name }) else { return log("mainkey rejected") }
+		#if DEBUG || PERF_HARNESS
+		// The rule of "key": Return in the setup of an access logs in at the bank (issue #498).
+		if name != "table", !HarnessRun.mayKey(name, on: surface(of: target), fakeBank: usesFakeBank) { return log("mainkey refused") }
+		#endif
 		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
@@ -1726,6 +1744,9 @@ final class DebugHarness {
 			let fixture = try parts.count > 2 && !parts[2].isEmpty ? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[2]))) : nil
 			let access = Access(source: .extension(id: package.name), bankName: package.name, loginName: "")
 			#if DEBUG || PERF_HARNESS
+			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
+				return log("extrun refused")
+			}
 			fileExtensions.insert(package.name)
 			#endif
 			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] line in self?.log(line) }
@@ -1742,6 +1763,13 @@ final class DebugHarness {
 			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
 			// An id without a slash names an installed extension, which runs only after its check.
 			if !parts[0].contains("/") {
+				#if DEBUG || PERF_HARNESS
+				// Before the fixture of the run changes: without a fixture, only the run's own file extension under a name
+				// outside the catalog may start (issue #498).
+				guard HarnessRun.mayReach(extensionRecipient(parts[0], fixture: fixture != nil), fakeBank: usesFakeBank) else {
+					return log("", ("", .choice(command, of: ["extaccess", "extrefresh"])), ("", .word("refused")))
+				}
+				#endif
 				model.extensions.fixtures[parts[0]] = fixture
 				if command == "extaccess" {
 					model.addExtensionAccess(package: try model.extensions.verifiedPackage(parts[0]), service: parts.count > 2 ? parts[2] : parts[0], fixture: fixture)
@@ -1753,6 +1781,9 @@ final class DebugHarness {
 			}
 			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			#if DEBUG || PERF_HARNESS
+			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
+				return log("", ("", .choice(command, of: ["extaccess", "extrefresh"])), ("", .word("refused")))
+			}
 			fileExtensions.insert(package.name)
 			#endif
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
@@ -1986,7 +2017,7 @@ final class DebugHarness {
 		guard let model else { return }
 		let parts = argument.components(separatedBy: "|")
 		guard parts.count >= 5, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }),
-			let day = HarnessGuard.day(parts[1], today: .today()), let minor = Int64(parts[2]) else { return log("row refused") }
+			let day = HarnessRun.day(parts[1], today: .today()), let minor = Int64(parts[2]) else { return log("row refused") }
 		var t = Transaction(accountID: account.id, bookingDate: day, amountMinor: minor, currency: account.currency, name: parts[3], purpose: parts[4].replacingOccurrences(of: "\\n", with: "\n"))
 		for flag in (parts.count > 5 ? parts[5] : "").split(separator: ",").map(String.init) {
 			let pair = flag.split(separator: "=", maxSplits: 1).map(String.init)
@@ -2007,7 +2038,7 @@ final class DebugHarness {
 			case "creditor": t.creditorID = value
 			case "return": t.returnReason = value
 			case "valuedate":
-				guard let valueDate = HarnessGuard.day(value, today: .today()) else { return log("row refused") }
+				guard let valueDate = HarnessRun.day(value, today: .today()) else { return log("row refused") }
 				t.valueDate = valueDate
 			case "category":
 				t.categoryID = model.ledger.categories.first { $0.name == value }?.id
@@ -2038,6 +2069,7 @@ final class DebugHarness {
 			log("rowmenu submenu", ("item", .position(n)), ("items", .list(submenu.items.map { .hash($0.title) })), ("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
 		}
 		guard parts.count >= 3 else { return }
+		guard HarnessRun.mayChooseRowMenuItem(parts[2]) else { return log("rowmenu refused", ("title", .hash(parts[2]))) }
 		guard let item = menu.items.first(where: { $0.title == String(localized: String.LocalizationValue(parts[2])) }), let owner = item.menu else { return log("rowmenu no item") }
 		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
 		nonisolated(unsafe) let choose: () -> Void
@@ -2063,13 +2095,16 @@ final class DebugHarness {
 	private func menuItem(_ argument: String) {
 		let parts = argument.components(separatedBy: "|")
 		guard parts.count == 2 else { return log("menuitem refused") }
-		#if DEBUG
-		let helper = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"].flatMap { $0.isEmpty ? nil : $0 }
-		#else
-		// The Perf build ignores the variable and runs the real helper, as `AppModel.makeFinTSConnector` does.
-		let helper: String? = nil
-		#endif
-		guard HarnessGuard.allowsMenuItem(menu: parts[0], item: parts[1], fintsHelper: helper) else {
+		guard let model else { return }
+		let action = HarnessRun.menuAction(menu: parts[0], item: parts[1])
+		let recipients: [HarnessRun.Recipient] = switch action {
+		case .refresh?:
+			parts[1] == "Refresh All Accounts" ? model.ledger.refreshAccounts(.all).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) }
+				: model.refreshScopeOfSelection.map { model.ledger.refreshAccounts($0).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) } } ?? []
+		case .bankSetup?: [.fints]
+		case .local?, nil: []
+		}
+		guard HarnessRun.mayChoose(action, reaching: recipients, fakeBank: usesFakeBank) else {
 			return log("menuitem refused", ("title", .hash(parts[0] + "|" + parts[1])))
 		}
 		let localized = { (text: String) in String(localized: String.LocalizationValue(text)) }
@@ -2097,7 +2132,7 @@ final class DebugHarness {
 		// The app has no sandbox, so "Save" in the panel of "Backup Database..." or of an export would write into a folder
 		// of the developer, such as Documents.
 		let filePanel = window is NSSavePanel || window.className.contains("SavePanel") || window.className.contains("OpenPanel")
-		guard HarnessGuard.allowsModalButton(argument, inFilePanel: filePanel) else { return log("modal refused", ("panel", .flag(true))) }
+		guard HarnessRun.mayClickModal(argument, inFilePanel: filePanel) else { return log("modal refused", ("panel", .flag(true))) }
 		guard let button = buttons.first(where: { $0.title == String(localized: String.LocalizationValue(argument)) }) else { return log("modal no button") }
 		button.performClick(nil)
 	}

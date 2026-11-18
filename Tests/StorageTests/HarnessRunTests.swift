@@ -1,4 +1,5 @@
 import Foundation
+import Domain
 import Storage
 import Testing
 
@@ -179,5 +180,106 @@ struct HarnessActionTests {
 		#expect(!HarnessRun.usesFakeBank(helper: ""))
 		#expect(!HarnessRun.usesFakeBank(helper: "scripts/fake-fints-helper.sh"))
 		#expect(!HarnessRun.usesFakeBank(helper: "/Users/erika/Moneten/Tools/FinTSHelper/run.sh"))
+	}
+}
+
+/// The commands that act as a user would in the menus, the context menu of a row, and a modal session (#486), and the
+/// paths of issue #498 that reached a bank or a service without the check of the recipient.
+@Suite("Debug harness menus, modal sessions, and recipients")
+struct HarnessReachTests {
+	@Test("menuitem chooses the local items that the scenario checks need")
+	func localMenuItems() {
+		for (menu, item) in [("File", "Mark All Transactions as Checked"), ("Window", "Main Window"), ("Account", "Add Category Group"),
+			("Account", "Remove Account..."), ("Account", "Account Settings..."), ("View", "Daily Balance"), ("Moneten", "About Moneten")] {
+			#expect(HarnessRun.menuAction(menu: menu, item: item) == .local, "\(menu)|\(item)")
+			#expect(HarnessRun.mayChoose(HarnessRun.menuAction(menu: menu, item: item), reaching: [], fakeBank: false), "\(menu)|\(item)")
+		}
+	}
+
+	@Test("menuitem refuses the items that open a page, a file panel, or an update check")
+	func outwardMenuItems() {
+		for (menu, item) in [("Help", "Moneten on GitHub..."), ("Help", "Help and FAQ..."), ("Help", "Report an Issue..."),
+			("Help", "Show Database in Finder..."), ("Tools", "Backup Database..."), ("File", "Export All Data..."),
+			("File", "Import All Data..."), ("File", "Import from MoneyMoney..."), ("Account", "Export Transactions..."),
+			("Account", "Import Transactions..."), ("Moneten", "Check for Updates..."), ("Moneten", "Set Database Password...")] {
+			#expect(HarnessRun.menuAction(menu: menu, item: item) == nil, "\(menu)|\(item)")
+			#expect(!HarnessRun.mayChoose(HarnessRun.menuAction(menu: menu, item: item), reaching: [], fakeBank: true), "\(menu)|\(item)")
+		}
+	}
+
+	@Test("menuitem refreshes and sets up an access only when every recipient may be reached")
+	func bankMenuItems() {
+		#expect(HarnessRun.menuAction(menu: "File", item: "Refresh All Accounts") == .refresh)
+		#expect(HarnessRun.menuAction(menu: "Account", item: "Refresh Account") == .refresh)
+		#expect(HarnessRun.menuAction(menu: "Account", item: "Refresh Accounts") == .refresh)
+		for item in ["Add Account...", "Edit Login Data...", "Look for New Accounts..."] {
+			#expect(HarnessRun.menuAction(menu: "Account", item: item) == .bankSetup, "\(item)")
+		}
+		let refresh = HarnessRun.menuAction(menu: "File", item: "Refresh All Accounts")
+		#expect(!HarnessRun.mayChoose(refresh, reaching: [.fints], fakeBank: false))
+		#expect(HarnessRun.mayChoose(refresh, reaching: [.fints], fakeBank: true))
+		#expect(HarnessRun.mayChoose(refresh, reaching: [.fints, .local], fakeBank: true))
+		// The fake helper replaces only FinTS: an extension of the catalog in the same refresh keeps it from running.
+		#expect(!HarnessRun.mayChoose(refresh, reaching: [.fints, .realService], fakeBank: true))
+		#expect(HarnessRun.mayChoose(refresh, reaching: [], fakeBank: false))
+		let setup = HarnessRun.menuAction(menu: "Account", item: "Look for New Accounts...")
+		#expect(!HarnessRun.mayChoose(setup, reaching: [.fints], fakeBank: false))
+		#expect(HarnessRun.mayChoose(setup, reaching: [.fints], fakeBank: true))
+	}
+
+	@Test("rowmenu chooses the local items of the context menu of a row, and no export")
+	func rowMenuItems() {
+		for item in ["Search for “Stadtwerke Musterstadt”", "Go to", "Assign Category", "Remove Transaction from Category", "Create Offsetting Entry",
+			"Add Comment...", "Edit Comment...", "Mark as Checked", "Mark as Unchecked", "Edit Transaction...", "Split Transaction",
+			"Delete Transaction...", "Delete Transactions..."] {
+			#expect(HarnessRun.mayChooseRowMenuItem(item), "\(item)")
+		}
+		for item in ["Export Transaction...", "Export Transactions...", "Search for", "Share...", ""] {
+			#expect(!HarnessRun.mayChooseRowMenuItem(item), "\(item)")
+		}
+	}
+
+	@Test("modal clicks only Cancel in a save or open panel, and any button of an alert")
+	func modal() {
+		#expect(HarnessRun.mayClickModal("Cancel", inFilePanel: true))
+		#expect(!HarnessRun.mayClickModal("Save", inFilePanel: true))
+		#expect(!HarnessRun.mayClickModal("Open", inFilePanel: true))
+		#expect(HarnessRun.mayClickModal("Delete", inFilePanel: false))
+		#expect(HarnessRun.mayClickModal("Back Up Anyway", inFilePanel: false))
+	}
+
+	@Test("row takes a real day or an offset from today")
+	func day() {
+		let today = Day(year: 2026, month: 11, day: 18)
+		#expect(HarnessRun.day("20261105", today: today) == Day(year: 2026, month: 11, day: 5))
+		#expect(HarnessRun.day("20280229", today: today) == Day(year: 2028, month: 2, day: 29))
+		#expect(HarnessRun.day("-3", today: today) == Day(year: 2026, month: 11, day: 15))
+		#expect(HarnessRun.day("20", today: today) == Day(year: 2026, month: 12, day: 8))
+		for text in ["20261332", "20270229", "20261100", "-1000000", "yesterday", ""] {
+			#expect(HarnessRun.day(text, today: today) == nil, "\(text)")
+		}
+	}
+
+	@Test("The login step of the assistant sends the login to FinTS, whatever service the step before chose")
+	func setupLogin() {
+		for service in [HarnessRun.SetupService.fints, .offline, .extensionService(.local), .extensionService(.realService)] {
+			#expect(HarnessRun.setupSurface(atLogin: true, service: service) == .bankDialog(.fints), "\(service)")
+			#expect(!HarnessRun.mayKey("return", on: HarnessRun.setupSurface(atLogin: true, service: service), fakeBank: false), "\(service)")
+		}
+		#expect(HarnessRun.setupSurface(atLogin: false, service: .fints) == .bankDialog(.fints))
+		#expect(HarnessRun.setupSurface(atLogin: false, service: .offline) == .other)
+		#expect(HarnessRun.setupSurface(atLogin: false, service: .extensionService(.local)) == .bankDialog(.local))
+		#expect(HarnessRun.setupSurface(atLogin: false, service: .extensionService(.realService)) == .bankDialog(.realService))
+	}
+
+	@Test("An extension is local only with a fixture of the run, or when the run loaded it from a file under a name outside the catalog")
+	func extensionRecipient() {
+		#expect(HarnessRun.extensionRecipient(hasFixture: true, loadedFromFile: false, catalogName: true) == .local)
+		#expect(HarnessRun.extensionRecipient(hasFixture: true, loadedFromFile: false, catalogName: false) == .local)
+		#expect(HarnessRun.extensionRecipient(hasFixture: false, loadedFromFile: true, catalogName: false) == .local)
+		// The installed package of a catalog name runs in place of the file, so the name gives no trust.
+		#expect(HarnessRun.extensionRecipient(hasFixture: false, loadedFromFile: true, catalogName: true) == .realService)
+		#expect(HarnessRun.extensionRecipient(hasFixture: false, loadedFromFile: false, catalogName: false) == .realService)
+		#expect(HarnessRun.extensionRecipient(hasFixture: false, loadedFromFile: false, catalogName: true) == .realService)
 	}
 }
