@@ -73,6 +73,9 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 - **WHEN** a diagnostic beginning and ending at 10:58:00 arrives
 - **THEN** the short report of B stays, because the diagnostic can belong to A or to B
 - **AND** the short report of B also stays when the user already declined the short report or the full report of A
+- **AND** the short report of B also stays when the crash file of A is gone by the next launch
+- **AND** the short report of B also stays when the crash file of A is dated 10:58:24, after launch B started
+- **AND** the short report of B also stays when the crash file of A is dated exactly 10:58:00
 - **AND** if the crash file of A is dated 10:57:55 instead, the diagnostic replaces the short report of B
 
 #### Scenario: Replay of a declined diagnostic in the next minute

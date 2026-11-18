@@ -205,9 +205,11 @@ struct CrashReportStoreTests {
 	}
 
 	/// Launch A starts at 10:57:50 and crashes at 10:58:05. Launch B starts at 10:58:21 and crashes at 10:58:38. A payload
-	/// of 10:58:00 can be the crash of either launch, so it never replaces the short report of B.
-	@Test("A payload of the minute that two launches share keeps the newer short report", arguments: ["pending", "fallback declined", "details declined"])
-	func sharedMinute(earlier: String) {
+	/// of 10:58:00 can be the crash of either launch, so it never replaces the short report of B. When the crash file of
+	/// A is gone by the next launch, the saved report or decision of A is the only sign of that earlier crash.
+	@Test("A payload of the minute that two launches share keeps the newer short report",
+		arguments: ["pending", "fallback declined", "details declined"], [true, false])
+	func sharedMinute(earlier: String, keepsFileA: Bool) {
 		let minute = 39_480.0 // 10:58:00
 		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
 		var state = CrashReportStore.State()
@@ -222,30 +224,61 @@ struct CrashReportStoreTests {
 		}
 		if earlier != "pending" { state.decide(.decline) }
 		state.start(.init(start: Date(timeIntervalSince1970: minute + 67), appVersion: "0.1.0", macOSVersion: "15.2"),
-			files: [fileA, ("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))])
+			files: (keepsFileA ? [fileA] : []) + [("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))])
 		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
 		state.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
 		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
 		#expect(state.pending?.diagnostic.signal == nil)
 	}
 
+	/// Launch A starts at 10:57:50 and crashes at 10:58:05, but its crash file is written at 10:58:24, after launch B
+	/// started at 10:58:21. B crashes at 10:58:38, and its file is dated 10:58:46. The file of A still shows that an
+	/// earlier crash may own the minute 10:58:00, so the payload of that minute keeps the short report of B.
+	@Test("An earlier crash file written after the next launch keeps the newer short report")
+	func delayedEarlierFile() throws {
+		let minute = 39_480.0 // 10:58:00
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
+		_ = try store.startLaunch(at: Date(timeIntervalSince1970: minute - 10), appVersion: "0.1.0", macOSVersion: "15.2", files: [])
+		#expect(try store.startLaunch(at: Date(timeIntervalSince1970: minute + 21), appVersion: "0.1.0", macOSVersion: "15.2", files: []) == nil)
+		let files: [(name: String, date: Date)] = [("Moneten-a.ips", Date(timeIntervalSince1970: minute + 24)),
+			("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))]
+		let fallback = try store.startLaunch(at: Date(timeIntervalSince1970: minute + 67), appVersion: "0.1.0", macOSVersion: "15.2", files: files)
+		#expect(fallback?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
+		let pending = try store.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
+		#expect(pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+		#expect(pending?.diagnostic.signal == nil)
+		let saved = try CrashReportStore(folder: folder, keyInFolder: true).load()?.pending
+		#expect(saved?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+		#expect(saved?.diagnostic.signal == nil)
+	}
+
 	/// An earlier crash file dated 10:57:55 proves that the earlier crash came before 10:58:00, so the payload of
-	/// 10:58:00 belongs to launch B even after the user declined the earlier short report.
-	@Test("A payload of the launch minute replaces the short report when the earlier crash came before that minute")
-	func earlierCrashBeforeMinute() {
+	/// 10:58:00 belongs to launch B even after the user declined the earlier short report. A file dated exactly
+	/// 10:58:00 lies in that minute, so the payload can belong to A, and the short report of B stays.
+	@Test("A payload of the launch minute replaces the short report only when the earlier crash came before that minute",
+		arguments: [-5.0, 0])
+	func earlierCrashBeforeMinute(fileA offset: TimeInterval) {
 		let minute = 39_480.0 // 10:58:00
 		var state = CrashReportStore.State()
 		state.start(.init(start: Date(timeIntervalSince1970: minute - 60), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
 		state.start(.init(start: Date(timeIntervalSince1970: minute - 10), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
-		let fileA = ("Moneten-a.ips", Date(timeIntervalSince1970: minute - 5))
+		let fileA = ("Moneten-a.ips", Date(timeIntervalSince1970: minute + offset))
 		state.start(.init(start: Date(timeIntervalSince1970: minute + 21), appVersion: "0.1.0", macOSVersion: "15.2"), files: [fileA])
 		state.decide(.decline)
 		state.start(.init(start: Date(timeIntervalSince1970: minute + 67), appVersion: "0.1.0", macOSVersion: "15.2"),
 			files: [fileA, ("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))])
 		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
 		state.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
-		#expect(state.pending?.fallback == nil)
-		#expect(state.pending?.diagnostic.signal == 5)
+		if offset < 0 { // time-ok: a timestamp that picks the case, not a time limit
+			#expect(state.pending?.fallback == nil)
+			#expect(state.pending?.diagnostic.signal == 5)
+		} else {
+			#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+			#expect(state.pending?.diagnostic.signal == nil)
+		}
 	}
 
 	/// C0 crashes at 1202 under the launch at 1000. The launch at 1205 gets its payload of 1200 and the user declines it.

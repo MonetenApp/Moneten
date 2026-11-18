@@ -10,8 +10,10 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public struct Fallback: Codable, Equatable, Sendable {
 		public let date: Date
 		let launchStart: Date
-		/// True when an earlier crash is known from the whole minute of the launch on: a crash file, a short report, or
-		/// a payload. A payload from before the launch could then belong to that earlier crash.
+		/// True when an earlier crash is known from the whole minute of the launch on: a crash file dated before this
+		/// crash, a short report, or a payload. A payload from before the launch could then belong to that earlier crash.
+		/// ReportCrash can write the file of the earlier crash after the next launch started, so the file counts up to
+		/// the date of this crash, not only up to the launch.
 		let sharesMinute: Bool
 
 		static func minute(of date: Date) -> Date {
@@ -89,8 +91,9 @@ public struct CrashReportStore {
 				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
 					exceptionType: nil, signal: nil, frames: [])
 				let launchMinute = PendingCrashReport.Fallback.minute(of: previous.start)
-				let earlier = [latest, pending?.date, decidedFallback?.date].compactMap { $0 }
-					+ files.filter { CrashReports.isCrashFile($0.name) && $0.date < previous.start }.map(\.date)
+				// A decision raises `latest` to the date of its short report, so `latest` also covers decided reports.
+				let earlier = [latest, pending?.date].compactMap { $0 }
+					+ files.filter { CrashReports.isCrashFile($0.name) && $0.date < crash.date }.map(\.date)
 				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date,
 					launchStart: previous.start, sharesMinute: earlier.contains { $0 >= launchMinute }))
 			}
@@ -100,9 +103,7 @@ public struct CrashReportStore {
 		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
 			let replacesFallback: Bool
 			if let fallback = pending?.fallback {
-				// A start before the launch is a whole minute that an older crash may share, so only a payload newer
-				// than every handled one may use it.
-				guard fallback.matches(start: start), start >= fallback.launchStart || date > (latest ?? .distantPast) else { return }
+				guard fallback.matches(start: start) else { return }
 				replacesFallback = true
 			} else {
 				replacesFallback = false
