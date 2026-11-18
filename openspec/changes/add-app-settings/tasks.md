@@ -15,7 +15,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [x] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 2026-11-18 (owner decision): 8 of 13 scenarios passed. Not checkable in the harness: "Immediate effect" (the switch stores at once, but the full menu bar of the MacBook hid the icon from the harness), "Restart needed" (the language menu needs a click), "Update" (no version 0.2 yet; the settings survive a restart), "Storage fails" (macOS cannot be made to refuse a value), and "Payment setting" (v0.1 has no "Payments" tab). Open: the owner's walk-through in a Release build.
+- [x] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 2026-11-18 (owner decision): 8 of 13 scenarios passed. Not checkable in the harness: "Update" (no version 0.2 yet; the settings survive a restart), "Storage fails" (macOS cannot be made to refuse a value), and "Payment setting" (v0.1 has no "Payments" tab). Open for the owner's walk-through in a Release build, because no test and no harness run checked them: "Immediate effect" (the switch stores at once, but the full menu bar of the MacBook hid the icon from the harness, so nobody saw the icon go away) and "Restart needed" (the language menu needs a click).
 
 ## Workflow follow-up
 

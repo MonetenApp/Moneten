@@ -33,8 +33,10 @@ final class DebugHarness {
 	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
+	#if DEBUG || PERF_HARNESS
 	/// Set by "backup": answers the warning of "Backup Database..." without a database password and logs it.
 	var alertAnswer: ((NSAlert) -> NSApplication.ModalResponse)?
+	#endif
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
 	private static var requestedPath: String? {
@@ -187,6 +189,7 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		#if DEBUG || PERF_HARNESS
 		// The buttons and switches of the sheet on top, or without a sheet of the main window, such as the lock screen and the
 		// first launch: each label by its hash, whether it is enabled, and the value of a switch. "press <n>" first clicks
 		// control number n, counted from 0.
@@ -230,6 +233,7 @@ final class DebugHarness {
 		// "<path>" chooses "Backup Database..." and answers its save panel with the path. "<path>|<button>" first answers the
 		// warning without a database password with button number n, counted from 0. Logs each text that the user would see by its hash.
 		case "backup": backup(argument)
+		#endif
 		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
 		case "update": update(argument, model: model)
 		// "Try Again" of the window that shows why the database did not open.
@@ -362,14 +366,15 @@ final class DebugHarness {
 				sheet.sendEvent(event)
 				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
-		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, or without a sheet to the main window, such as
-		// the lock screen, as the keyboard does. The log rejects any other key.
+		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. Without a sheet it
+		// goes to the main window only while the database is not open, such as on the lock screen, so that a key between two
+		// sheets never presses "Import from MoneyMoney..." of an empty database. The log rejects any other key.
 		case "key":
 			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
 			let command = argument.hasPrefix("cmd")
 			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; case "tab": "\t"; default: String(argument.dropFirst(3)) }
-			if let sheet = fieldWindow, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
+			if let sheet = model.phase == .unlocked ? topSheet : fieldWindow, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : argument == "tab" ? 48 : 24) {
 				let handled = sheet.performKeyEquivalent(with: event)
@@ -1191,9 +1196,14 @@ final class DebugHarness {
 		NSApp.windows.compactMap(\.attachedSheet).flatMap { sequence(first: $0) { $0.attachedSheet } }.last
 	}
 
-	/// The sheet on top, or the visible main window when no sheet is open, for "focusfield" and "key".
+	/// The sheet on top, or the visible main window when no sheet is open, for "focusfield", "key", and "controls".
+	/// A release build keeps only the sheet on top.
 	private var fieldWindow: NSWindow? {
+		#if DEBUG || PERF_HARNESS
 		topSheet ?? NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+		#else
+		topSheet
+		#endif
 	}
 
 	/// Logs the class, the content type, and the AutoFill hints of the first secure field in a sheet,
@@ -1391,7 +1401,9 @@ final class DebugHarness {
 			}
 			hidden.orderFrontRegardless()
 		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
+		#if DEBUG || PERF_HARNESS
 		case "close": window()?.performClose(nil)
+		#endif
 		case "press":
 			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
 			_ = (switches()[number] as AnyObject).accessibilityPerformPress?()
@@ -1893,9 +1905,19 @@ final class DebugHarness {
 		}
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// "backup" replaces an existing file at the path, so it writes only inside the debug folder or the data folder of the run.
 	private func backup(_ argument: String) {
 		guard let model else { return }
 		let parts = argument.components(separatedBy: "|")
+		let folders = [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? [])
+		guard parts.count <= 2, HarnessRun.allowsWrite(to: parts[0], inside: folders) else { return log("backup rejected") }
+		// The warning has three buttons: 0 "Set Database Password...", 1 "Back Up Anyway", and 2 "Cancel".
+		let button: Int
+		if parts.count == 2 {
+			guard let n = Int(parts[1]), (0...2).contains(n) else { return log("backup rejected") }
+			button = n
+		} else { button = 0 }
 		defer {
 			savePanelAnswer = nil
 			alertAnswer = nil
@@ -1903,7 +1925,7 @@ final class DebugHarness {
 		alertAnswer = { [weak self] alert in
 			self?.log("backup warning", ("title", .hash(alert.messageText)), ("message", .hash(alert.informativeText)),
 				("buttons", .list(alert.buttons.map { .hash($0.title) })))
-			return NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + (parts.count > 1 ? Int(parts[1]) ?? 0 : 0))
+			return NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + button)
 		}
 		savePanelAnswer = { [weak self] panel in
 			self?.log("backup panel", ("title", .hash(panel.title ?? "")), ("message", .hash(panel.message ?? "")), ("name", .hash(panel.nameFieldStringValue)))
@@ -1912,6 +1934,7 @@ final class DebugHarness {
 		model.backupDatabase()
 		log("backup", ("alert", model.alert.map { .hash($0.title) } ?? .presence(false)), ("sheet", .state(model.sheet)))
 	}
+	#endif
 
 	private func menuExport(_ argument: String) {
 		let parts = argument.components(separatedBy: "|")
