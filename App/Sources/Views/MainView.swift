@@ -3,7 +3,6 @@ import SwiftUI
 
 struct MainView: View {
 	@Environment(AppModel.self) private var model
-	@State private var presentedImport: FileImport?
 
 	var body: some View {
 		@Bindable var model = model
@@ -45,25 +44,21 @@ struct MainView: View {
 					.help("Next view").accessibilityLabel("Next view").disabled(!model.canGoForward)
 			}
 		}
-		.sheet(item: $model.sheet, onDismiss: {
-			presentedImport?.sheetDismissed()
-			presentedImport = nil
-		}) { kind in
+		// An alert waits for `onDismiss`, which comes after the sheet has slid out (`SheetAlerts`).
+		.sheet(item: $model.sheet, onDismiss: { model.alerts.isSheetOnScreen = false }) { kind in
 			SheetView(kind: kind).environment(model)
-				.onAppear {
-					if case let .fileImport(run) = kind {
-						presentedImport = run
-						run.isPresented = true
-					}
-				}
+				.onAppear { model.alerts.isSheetOnScreen = true }
 				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account".
 				.sheet(item: Binding(get: { model.sync.broker.sheet }, set: { _ in })) { sheet in
 					SyncDialog(broker: model.sync.broker, sheet: sheet)
 						.interactiveDismissDisabled()
 				}
 		}
-		.alert(item: $model.alert) { a in
-			Alert(title: Text(a.title), message: a.message.isEmpty ? nil : Text(a.message))
+		.onAppear { model.alerts.isViewOnScreen = true }
+		.onDisappear {
+			model.alerts.isViewOnScreen = false
+			// A sheet that goes with the view, for example at the lock, can end without `onDismiss`.
+			model.alerts.isSheetOnScreen = false
 		}
 	}
 }

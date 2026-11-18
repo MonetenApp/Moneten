@@ -90,12 +90,23 @@ final class ExtensionLibrary {
 	var question: Question?
 	/// The extension whose details the window shows.
 	var selection: String?
-	var failure: String?
+	/// The alerts of the Extensions window, which show once no sheet is on it.
+	@ObservationIgnored let alerts = SheetAlerts(window: "extensions")
+	/// Why an install, an update, an allow, or a removal failed, first of the failures in line. Setting one puts
+	/// it in line, and nil closes the first one, as its OK button does.
+	var failure: String? {
+		get { alerts.message?.title }
+		set { if let newValue { alerts.post(AlertMessage(title: newValue, message: "")) } else { alerts.closeFirst() } }
+	}
 	var automatic: Bool = UserDefaults.standard.object(forKey: Preference.updateExtensionsAutomatically) as? Bool ?? true {
 		didSet {
 			UserDefaults.standard.set(automatic, forKey: Preference.updateExtensionsAutomatically)
 			Task { await applyUpdates() }
 		}
+	}
+
+	init() {
+		alerts.hasSheet = { [weak self] in self?.question != nil }
 	}
 
 	@ObservationIgnored weak var model: AppModel?
