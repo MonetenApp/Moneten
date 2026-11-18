@@ -618,10 +618,17 @@ struct PerfScenario {
 		run.cancel()
 		await pending.value
 		let took = clock.now - start
-		let canceled = c.model.importResult?.informativeText.hasPrefix("Import canceled. 0 files were imported before.") == true
+		// The result waits in line until the import sheet has slid out, and then shows as an alert sheet.
+		let ended = clock.now
+		while c.model.alerts.panel == nil, clock.now - ended < alertLimit { try? await Task.sleep(for: .milliseconds(50)) }
+		let shown = c.model.alerts.panel != nil
+		let alertTook = clock.now - ended
+		let canceled = c.model.alert?.message.hasPrefix("Import canceled. 0 files were imported before.") == true
 		c.harness.run("alert", "")
-		c.harness.log("perf cancel", ("cancel_ms", .count(Int((took / .milliseconds(1)).rounded()))), ("canceled", .flag(canceled)))
+		c.harness.log("perf cancel", ("cancel_ms", .count(Int((took / .milliseconds(1)).rounded()))), ("canceled", .flag(canceled)),
+			("alert_ms", .count(Int((alertTook / .milliseconds(1)).rounded()))), ("shown", .flag(shown)))
 		if !canceled { c.fail("the result does not report the cancel") }
+		if !shown { c.fail("the result did not show after the sheet closed") }
 		if took > cancelLimit { c.fail("the cancel did not end the import in time") }
 		if c.model.ledger.transactions(ofAccount: account.id).count != before { c.fail("the cancel changed the ledger") }
 		if await storedRows(of: account.id, in: c.model.store) != before { c.fail("the cancel left rows in the database") }
@@ -636,6 +643,8 @@ struct PerfScenario {
 	private static var pendingImport: Task<Void, Never>?
 	/// A canceled write rolls back and the sheet closes. Before the cancel was checked in the write, it waited for all rows.
 	private static let cancelLimit = Duration.seconds(2)
+	/// The result shows once the sheet has slid out. A sheet without `onDismiss` holds it back for 3 seconds, so this waits longer.
+	private static let alertLimit = Duration.seconds(4)
 	static let importedRows = 50_000
 	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")
 
