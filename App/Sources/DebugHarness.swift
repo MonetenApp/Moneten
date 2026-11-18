@@ -444,15 +444,12 @@ final class DebugHarness {
 				self?.log("escape", ("open", .state(self?.model?.sync.broker.current?.request.kind)))
 			}
 		case "alert":
-			// Logs the title of the alert on screen and closes it, as its OK button does.
-			if let result = model.importResult {
-				log("alert Transaction Import")
-				result.window.sheetParent?.endSheet(result.window)
-			} else {
-				// The hash of the title, which can quote the name of a file.
-				log("alert", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)))
-				model.alert = nil
-			}
+			// Logs the title of the alert, by its hash because it can quote the name of a file, and whether it is on
+			// screen or still waits for a sheet to slide out. Then it closes the alert, as its OK button does.
+			log("alert", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)), ("shown", .flag(model.alerts.panel != nil)))
+			model.alert = nil
+		// Logs the same as "alert" and leaves the alert open.
+		case "alertstate": log("alertstate", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)), ("shown", .flag(model.alerts.panel != nil)))
 		case "extanswer":
 			// Clicks "Allow" or "Deny" in the question about a new host.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
@@ -525,6 +522,13 @@ final class DebugHarness {
 			guard let question = model.extensions.question else { return log("extconfirm no question") }
 			model.extensions.question = nil
 			model.extensions.confirm(question)
+		// Logs the title of the failure in the Extensions window by its hash and closes it, as "alert" does in the main window.
+		case "extalert":
+			log("extalert", ("title", model.extensions.failure.map { .hash($0) } ?? .presence(false)), ("shown", .flag(model.extensions.alerts.panel != nil)))
+			model.extensions.failure = nil
+		// Logs the same as "extalert" and leaves the failure open.
+		case "extalertstate":
+			log("extalertstate", ("title", model.extensions.failure.map { .hash($0) } ?? .presence(false)), ("shown", .flag(model.extensions.alerts.panel != nil)))
 		case "extlist":
 			let library = model.extensions
 			log("ext list", ("index", .count(library.index?.version ?? 0)), ("reachable", .flag(library.reachable)), ("problem", .presence(library.problem != nil)),
@@ -703,6 +707,8 @@ final class DebugHarness {
 				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Devisen", kind: .other,
 					source: .bank, bankBalanceMinor: 125_000, otherBankBalances: others))
 			}
+		// Stores a made-up problem of an automatic refresh, which the status line and the menu bar popover show.
+		case "backgroundproblem": model.backgroundProblem = AlertMessage(title: "The bank refused the refresh.", message: "")
 		case "refreshfailed":
 			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
 			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {

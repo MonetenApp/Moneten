@@ -267,7 +267,7 @@ public struct FinTSConnector: BankConnector {
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
-						let request = try ask.request(server: command.url.flatMap { URL(string: $0) })
+						let request = try ask.request(server: command.url.flatMap { URL(string: $0) }, bankCode: command.bankCode)
 						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
 							approvals[id] = task
