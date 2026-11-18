@@ -966,7 +966,7 @@ final class DebugHarness {
 		// The reason of a refusal can quote the file, so only the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
 		#if DEBUG || PERF_HARNESS
 		case "importall":
-			guard let url = ownPath(argument) else { return log("importall refused", ("path", .word("outside"))) }
+			guard let url = readTarget(argument) else { return log("importall refused", ("path", .word("outside"))) }
 			Task {
 				let outcome = await model.readAllData(from: url)
 				if outcome != "done" { model.alert = AlertMessage(title: String(localized: "Could not import the data."), message: outcome) }
@@ -1993,14 +1993,11 @@ final class DebugHarness {
 	}
 
 	#if DEBUG || PERF_HARNESS
-	/// The file at a path that a command names, or nil when the path, with its symbolic links resolved, does not lie inside
-	/// the debug folder or the throwaway data folder of the run. A command of the checks never reads anything else.
-	private func ownPath(_ path: String) -> URL? {
-		func resolved(_ path: String) -> String { URL(filePath: path).standardizedFileURL.resolvingSymlinksInPath().path }
-		guard path.hasPrefix("/") else { return nil }
-		let file = resolved(path)
-		let roots = ([folder.path] + [DataFolder.requestedPath].compactMap { $0 }).map { resolved($0) + "/" }
-		return roots.contains { file.hasPrefix($0) } ? URL(filePath: file) : nil
+	/// The canonical path of a file that "fetchfile" or "importall" may read, resolved once, or nil when it does not lie
+	/// inside the debug folder or the throwaway data folder of the run (`HarnessRun.readTarget` says what this guards against).
+	/// The command then reads this path and not the path it was given.
+	private func readTarget(_ path: String) -> URL? {
+		HarnessRun.readTarget(path, in: [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? [])).map { URL(filePath: $0) }
 	}
 
 	/// The file <name>.<ext> in the debug folder, or nil for a name with other characters than letters, digits, "-", and "_",
@@ -2036,7 +2033,7 @@ final class DebugHarness {
 		guard let model else { return }
 		let parts = argument.components(separatedBy: "|")
 		guard (2...3).contains(parts.count), let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
-		let url = parts[1] == "-" ? nil : ownPath(parts[1])
+		let url = parts[1] == "-" ? nil : readTarget(parts[1])
 		guard parts[1] == "-" || url != nil else { return log("fetchfile refused", ("path", .word("outside"))) }
 		var rows: [Transaction]
 		do { rows = try url.map { try TransactionFileImporter.parse(Data(contentsOf: $0), currency: account.currency).transactions } ?? [] }

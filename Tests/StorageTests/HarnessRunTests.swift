@@ -105,6 +105,79 @@ struct HarnessWriteTests {
 	}
 }
 
+/// Review of the release-scenario checks (#496, merge gate round 1): "fetchfile" and "importall" read a made-up file, so the
+/// harness reads only an existing file inside its debug folder and its data folder.
+@Suite("Debug harness reads")
+struct HarnessReadTests {
+	let root: URL
+	let debug: URL
+	let data: URL
+	let outside: URL
+
+	init() throws {
+		root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)", isDirectory: true)
+		debug = root.appendingPathComponent("debug", isDirectory: true)
+		data = root.appendingPathComponent("data", isDirectory: true)
+		outside = root.appendingPathComponent("outside", isDirectory: true)
+		for folder in [debug.appendingPathComponent("in", isDirectory: true), data, outside] {
+			try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+		}
+		try Data("made-up".utf8).write(to: debug.appendingPathComponent("in/rent.xml"))
+		try Data("made-up".utf8).write(to: data.appendingPathComponent("export.json"))
+		try Data("real".utf8).write(to: outside.appendingPathComponent("real.json"))
+	}
+
+	func allows(_ path: String) -> Bool {
+		HarnessRun.allowsRead(path, in: [debug.path, data.path])
+	}
+
+	@Test("An existing file inside the debug folder or the data folder qualifies, and its target is the canonical path")
+	func inside() throws {
+		#expect(allows(debug.appendingPathComponent("in/rent.xml").path))
+		#expect(allows(data.appendingPathComponent("export.json").path))
+		let target = try #require(HarnessRun.readTarget(debug.path + "/in/../in/rent.xml", in: [debug.path, data.path]))
+		#expect(target.hasSuffix("/debug/in/rent.xml") && !target.contains(".."))
+		try FileManager.default.removeItem(at: root)
+	}
+
+	@Test("A file outside the folders, a missing file, a folder, and a relative path do not qualify")
+	func outsideFolders() throws {
+		#expect(!allows(outside.appendingPathComponent("real.json").path))
+		#expect(!allows(debug.appendingPathComponent("in/missing.xml").path))
+		#expect(!allows(debug.appendingPathComponent("in").path))
+		#expect(!allows(debug.path))
+		#expect(!allows("in/rent.xml"))
+		#expect(!allows("../outside/real.json"))
+		try FileManager.default.removeItem(at: root)
+	}
+
+	@Test("A .. that leads out of the folders does not qualify")
+	func parentReference() throws {
+		#expect(!allows(debug.path + "/../outside/real.json"))
+		#expect(!allows(debug.path + "/in/../../outside/real.json"))
+		#expect(allows(debug.path + "/../data/export.json"))
+		try FileManager.default.removeItem(at: root)
+	}
+
+	@Test("A symlink that leads out of the folders, to a file or a folder, and a broken symlink do not qualify")
+	func symlinks() throws {
+		let fm = FileManager.default
+		try fm.createSymbolicLink(at: debug.appendingPathComponent("in/link.json"), withDestinationURL: outside.appendingPathComponent("real.json"))
+		try fm.createSymbolicLink(at: debug.appendingPathComponent("away"), withDestinationURL: outside)
+		try fm.createSymbolicLink(at: debug.appendingPathComponent("in/broken.json"), withDestinationURL: debug.appendingPathComponent("in/none.json"))
+		try fm.createSymbolicLink(at: debug.appendingPathComponent("in/hosts"), withDestinationURL: URL(filePath: "/etc/hosts"))
+		#expect(!allows(debug.appendingPathComponent("in/link.json").path))
+		#expect(!allows(debug.appendingPathComponent("away/real.json").path))
+		#expect(!allows(debug.appendingPathComponent("in/broken.json").path))
+		#expect(!allows(debug.appendingPathComponent("in/hosts").path))
+		// A symlink that stays inside the folders reads its target there.
+		try fm.createSymbolicLink(at: debug.appendingPathComponent("in/export.json"), withDestinationURL: data.appendingPathComponent("export.json"))
+		let target = try #require(HarnessRun.readTarget(debug.appendingPathComponent("in/export.json").path, in: [debug.path, data.path]))
+		#expect(target.hasSuffix("/data/export.json"))
+		try fm.removeItem(at: root)
+	}
+}
+
 /// Review of the scenario checks (#485 and #486): a key or a press of the harness never saves through a save panel and
 /// never reaches a real bank or a web page.
 @Suite("Debug harness presses and keys")
