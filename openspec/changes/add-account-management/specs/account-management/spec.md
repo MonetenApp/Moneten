@@ -520,12 +520,24 @@ The app SHALL reopen an account when the user turns off "The account has been cl
 
 ### Requirement: Create and rename account groups
 
-The app SHALL create an account group with "Add Account Group". The new group appears in the sidebar with the name "New group" in edit mode. The user can rename a group in the sidebar and in its settings.
+The app SHALL create an account group with "Add Account Group". The new group appears selected at the end of the section "Accounts", outside every group, with the name "New group" in edit mode. When a group of that level has the name "New group" already, the new group gets the first free name of "New group 2", "New group 3", and so on. The user can rename a group in the sidebar and in its settings.
 
 #### Scenario: New group
 
 - **WHEN** the user chooses "Add Account Group" and types "Business"
 - **THEN** the sidebar shows an empty group "Business"
+
+#### Scenario: Place of the new group
+
+- **GIVEN** the account "Giro" inside the group "Private" is selected
+- **WHEN** the user chooses "Add Account Group"
+- **THEN** the selected row "New group" appears at the end of the section "Accounts", outside "Private", in edit mode
+
+#### Scenario: Second new group
+
+- **GIVEN** the group "New group" outside every group
+- **WHEN** the user chooses "Add Account Group"
+- **THEN** the new row has the name "New group 2" in edit mode
 
 #### Scenario: Empty group selected
 

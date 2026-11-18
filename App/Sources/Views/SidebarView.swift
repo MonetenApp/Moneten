@@ -58,10 +58,10 @@ struct AddMenuButton: View {
 	var body: some View {
 		Menu {
 			Button("Add account") { model.addAccount() }
-			Button("Add account group") { model.sheet = .newGroup }
+			Button("Add account group") { Task { await model.addGroup() } }
 			Divider()
-			Button("Add category") { model.sheet = .newCategory(isGroup: false) }
-			Button("Add category group") { model.sheet = .newCategory(isGroup: true) }
+			Button("Add category") { model.sheet = .newCategory() }
+			Button("Add category group") { Task { await model.addCategoryGroup() } }
 			Divider()
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
 		} label: {
@@ -143,7 +143,15 @@ struct GroupRow: View {
 
 	var body: some View {
 		HStack {
-			Label { Text(group.name).atLeastEllipsisWide() } icon: { Image(systemName: "folder") }
+			Label {
+				if model.namingRow == .group(group.id) {
+					SidebarNameField(row: .group(group.id), name: group.name)
+				} else {
+					Text(group.name).atLeastEllipsisWide()
+				}
+			} icon: {
+				Image(systemName: "folder")
+			}
 			// A collapsed group stands for its accounts and shows their markers.
 			let markers = group.isExpanded ? nil : model.ledger.markers(ofGroup: group.id)
 			if let markers, markers.newTransactions > 0 {
@@ -167,7 +175,7 @@ struct GroupRow: View {
 		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: group.id) }
-			Button("Add Account Group") { model.sheet = .newGroup }
+			Button("Add Account Group") { Task { await model.addGroup() } }
 			Divider()
 			Button("Export Transactions...") { model.exportTransactions(of: .group(group.id)) }
 				.disabled(model.isTransferringTransactions)
@@ -217,7 +225,7 @@ struct AccountRow: View {
 		}
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: account.groupID) }
-			Button("Add Account Group") { model.sheet = .newGroup }
+			Button("Add Account Group") { Task { await model.addGroup() } }
 			if account.takesManualTransactions {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
@@ -290,7 +298,11 @@ struct CategoryRow: View {
 	var body: some View {
 		HStack {
 			Label {
-				Text(category.name)
+				if model.namingRow == .category(category.id) {
+					SidebarNameField(row: .category(category.id), name: category.name)
+				} else {
+					Text(category.name)
+				}
 			} icon: {
 				Image(systemName: CategorySymbols.name(of: category))
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
@@ -311,13 +323,47 @@ struct CategoryRow: View {
 	}
 }
 
+/// The name of a new group, typed in its sidebar row. Return, and a click elsewhere that takes the focus, store the
+/// name. Escape keeps the name the row had. A row that leaves the screen while it is in edit mode, such as when
+/// another new group takes the edit mode, stores the name as a click elsewhere does.
+struct SidebarNameField: View {
+	@Environment(AppModel.self) private var model
+	let row: SidebarSelection
+	@State private var text: String
+	@State private var ended = false
+	@FocusState private var focused: Bool
+
+	init(row: SidebarSelection, name: String) {
+		self.row = row
+		_text = State(initialValue: name)
+	}
+
+	var body: some View {
+		TextField("Name", text: $text)
+			.labelsHidden()
+			.focused($focused)
+			.onSubmit { end(storing: true) }
+			.onExitCommand { end(storing: false) }
+			.onChange(of: focused) { _, now in if !now { end(storing: true) } }
+			.onDisappear { end(storing: true) }
+			// The row joins the list one update after the group, so the focus waits for it.
+			.onAppear { DispatchQueue.main.async { focused = true } }
+	}
+
+	private func end(storing: Bool) {
+		guard !ended else { return }
+		ended = true
+		model.endNaming(row, typed: storing ? text : nil)
+	}
+}
+
 private struct CategoryContextMenu: View {
 	@Environment(AppModel.self) private var model
 	let category: Domain.Category
 
 	var body: some View {
-		Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
-		Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		Button("Add Category") { model.sheet = .newCategory() }
+		Button("Add Category Group") { Task { await model.addCategoryGroup() } }
 		Divider()
 		Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
 			.disabled(model.isTransferringTransactions)

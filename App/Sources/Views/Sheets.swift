@@ -122,15 +122,14 @@ struct NameSheet: View {
 
 struct NewCategorySheet: View {
 	@Environment(AppModel.self) private var model
-	let isGroup: Bool
 	/// The transactions to move into the new category.
 	var assigning: Set<UUID> = []
 	@State private var name = ""
 	@State private var parentID: UUID?
 
 	var body: some View {
-		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: !name.isEmpty, onConfirm: {
-			Task { await model.addCategory(name: name, isGroup: isGroup, parentID: parentID, assigning: assigning) }
+		SheetFrame(title: "Add Category", canConfirm: !name.isEmpty, onConfirm: {
+			Task { await model.addCategory(name: name, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {

@@ -354,6 +354,25 @@ final class DebugHarness {
 			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
+		#if DEBUG || PERF_HARNESS
+		// "account" or "category" adds a group as "Add Account Group" or "Add Category Group" does, with its row in edit mode.
+		case "addgroup":
+			Task {
+				if argument == "category" { await model.addCategoryGroup() } else { await model.addGroup() }
+				log("addgroup", ("", .choice(argument, of: ["account", "category"], otherwise: "account")))
+			}
+		// The row in edit mode, the field that has the focus, and the selected group with its place, names by hash.
+		case "naming": logNaming()
+		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it.
+		case "namekey":
+			let keys: [StaticString] = ["return", "escape"]
+			guard keys.contains(where: { "\($0)" == argument }), let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+				let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+					characters: argument == "escape" ? "\u{1b}" : "\r", charactersIgnoringModifiers: argument == "escape" ? "\u{1b}" : "\r", isARepeat: false,
+					keyCode: argument == "escape" ? 53 : 36) else { return log("namekey rejected") }
+			window.sendEvent(event)
+			log("namekey", ("", .choice(argument, of: keys)))
+		#endif
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
 		case "refresh", "refreshenforced":
 			let enforced = command == "refreshenforced"
@@ -888,7 +907,7 @@ final class DebugHarness {
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
-			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			case "newCategory": model.sheet = .newCategory(assigning: model.visibleSelection)
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
@@ -919,7 +938,7 @@ final class DebugHarness {
 			model.save(category: c)
 			log("restrict done")
 		// What "Add category" in "Assign Category" does with the selected rows.
-		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		case "newcategory": Task { await model.addCategory(name: argument, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
 		case "offsetting":
 			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.row($0) })
@@ -1966,6 +1985,33 @@ final class DebugHarness {
 	}
 
 	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
+	#if DEBUG || PERF_HARNESS
+	/// For the checks of "Name a new group in the sidebar": the row in edit mode, whether the main window has a field
+	/// with the focus and its text, the name of the selected group, its parent, and the names of its level in order.
+	private func logNaming() {
+		guard let model else { return }
+		let window = NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+		let editor = window?.firstResponder as? NSTextView
+		var values: [(StaticString, LogValue)] = [("row", .state(model.namingRow)), ("editor", .flag(editor != nil)),
+			("text", editor.map { .hash($0.string) } ?? .presence(false))]
+		switch model.selection {
+		case let .group(id):
+			let group = model.ledger.group(id)
+			values += [("selected", group.map { .hash($0.name) } ?? .presence(false)), ("parent", .presence(group?.parentID != nil)),
+				("level", .list(model.ledger.accountTree(in: group?.parentID).map { item in
+					switch item { case let .group(g): .hash(g.name); case let .account(a): .hash(a.name) }
+				}))]
+		case let .category(id):
+			let category = model.ledger.category(id)
+			let parent = category?.parentID.flatMap(model.ledger.category)
+			values += [("selected", category.map { .hash($0.name) } ?? .presence(false)), ("parent", parent.map { .hash($0.name) } ?? .presence(false)),
+				("expanded", .flag(parent?.isExpanded ?? true)), ("level", .list(model.ledger.childCategories(of: category?.parentID).map { .hash($0.name) }))]
+		default: values.append(("selected", .presence(false)))
+		}
+		log(LogLine("naming", values: values))
+	}
+	#endif
+
 	private func logSidebarRows() {
 		guard let list = sidebarList(), let window = list.window, let screen = NSScreen.screens.first else { return log("sidebarrows no list") }
 		for index in 0..<list.numberOfRows {
