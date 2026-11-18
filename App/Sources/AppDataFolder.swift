@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Storage
 
@@ -6,7 +7,34 @@ extension DataFolder {
 	/// so that the tests, the debug harness, and `scripts/perf-check.sh` never open the real database.
 	/// A release build ignores the variable: another process of the user could set it with
 	/// `launchctl setenv` and let the app open a database that the user did not create (issue #327).
-	static var current: DataFolder { .standard(override: requestedPath) }
+	/// The folder lies in the home folder that the user database of macOS names, never in the one of
+	/// `CFFIXED_USER_HOME`, which another process can set with `open --env` (issue #422).
+	///
+	/// `requireHomeFolder()` looks the folder up once at launch, before the model exists, and every later read takes that
+	/// folder. A later failure of the user database, such as a restart of the directory service, cannot take it away.
+	static var current: DataFolder {
+		guard let folder = run.folder else {
+			// Never after launch: `requireHomeFolder()` found the folder, or quit, before any code reads this property,
+			// and the run keeps a folder once found.
+			preconditionFailure("DataFolder.current is read before requireHomeFolder() found the data folder.")
+		}
+		return folder
+	}
+
+	/// The one lookup of the data folder in this run.
+	private static let run = DataFolderOfRun(override: requestedPath)
+
+	/// Called at launch, before the model opens the data folder. Without a home folder in the user database the app
+	/// does not know where the data folder lies, so it says so and quits instead of opening a folder somewhere else.
+	@MainActor static func requireHomeFolder() {
+		guard run.folder == nil else { return }
+		let alert = NSAlert()
+		alert.alertStyle = .critical
+		alert.messageText = String(localized: "Moneten cannot find your home folder")
+		alert.informativeText = String(localized: "macOS names no home folder for your user account, so Moneten does not know where its data folder is. Moneten quits.")
+		alert.runModal()
+		exit(1)
+	}
 
 	/// The folder of `MONETEN_DATA_DIR`, or nil in a release build and in a run without the variable.
 	static var requestedPath: String? {

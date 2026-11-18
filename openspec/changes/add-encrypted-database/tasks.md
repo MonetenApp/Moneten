@@ -32,7 +32,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [x] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 2026-11-18 (owner decision): 42 of 53 scenarios passed. "Wrong password" passed only with the fix of the lock screen in the same pull request, which keeps "Incorrect password!" after it clears the field. A lock of another program on a copy was checked as a copy without read permission, and a work file that cannot be removed as a file with the immutable flag. Not checkable in the harness: "The Mac stops during the change" (a stop between two steps of one change), "Another program reads during the change" (a reader of the encrypted file), the seven upgrade and newer-version scenarios, which are the four of "Upgrade the database safely", the two of "Refuse a database from a newer version", and "Large database after an update" (no earlier and no newer release of the database exists before v0.2), and the two scenarios of a removed PIN (they need a bank access and every page decrypted); unit tests in `Tests/StorageTests` cover them. Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 
