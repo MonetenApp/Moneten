@@ -216,7 +216,7 @@ struct LedgerTests {
 	@Test("An IBAN written with a no-break or a narrow no-break space is found by the plain IBAN, as the rule finds it", arguments: ["\u{00A0}", "\u{202F}"])
 	func searchIBANWithOtherSpaces(_ space: String) throws {
 		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
-		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: iban)
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: try IBAN(parsing: iban))
 		let other = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline, iban: "DE89370400440532013000")
 		let rows = [
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_250, name: "Markt", purpose: "REWE"),

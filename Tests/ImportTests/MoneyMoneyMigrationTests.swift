@@ -112,6 +112,22 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.skippedTransactions == 1)
 	}
 
+	@Test("A migrated account keeps a valid IBAN, and an invalid one becomes the account number of an account without one")
+	func accountIBANs() throws {
+		let raw: [[String: Any]] = [
+			["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "iban": "de02 1203 0000 0000 2020 51", "currency": "EUR"],
+			["uuid": "A2", "name": "Old Giro", "group": false, "indentation": 0, "type": "Giro account", "iban": "DE03120300000000202051", "currency": "EUR"],
+			["uuid": "A3", "name": "Card", "group": false, "indentation": 0, "type": "Credit card", "iban": "DE03120300000000202051", "accountNumber": "4711",
+				"currency": "EUR"],
+		]
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(raw), categories: try plist(categories),
+			transactions: try plist(["creator": "MoneyMoney", "transactions": [Any]()]), into: Ledger())
+		let accounts = Dictionary(uniqueKeysWithValues: p.accounts.map { ($0.name, $0) })
+		#expect(accounts["Giro"]?.iban == "DE02120300000000202051")
+		#expect(accounts["Old Giro"]?.iban == nil && accounts["Old Giro"]?.accountNumber == "DE03120300000000202051")
+		#expect(accounts["Card"]?.iban == nil && accounts["Card"]?.accountNumber == "4711")
+	}
+
 	@Test("Group tree with order and balances")
 	func groups() throws {
 		let p = try plan()
@@ -1271,7 +1287,7 @@ struct MoneyMoneyMigrationTests {
 		#expect(r.dropped.count == 0)
 	}
 
-	func bankAccount(_ name: String, iban: String? = nil, number: String, remoteID: String) -> Account {
+	func bankAccount(_ name: String, iban: IBAN? = nil, number: String, remoteID: String) -> Account {
 		Account(position: 0, name: name, kind: .giro, source: .bank, iban: iban, accountNumber: number, bankCode: "12030000", accessID: UUID(), remoteID: remoteID)
 	}
 
@@ -1327,13 +1343,8 @@ struct MoneyMoneyMigrationTests {
 		#expect(q.notes.contains { $0.contains("\"Private\"") })
 	}
 
-	@Test("IBAN and BIC are recognized")
-	func ibanAndBIC() {
-		#expect(MoneyMoneyMigration.isIBAN("DE02120300000000202051"))
-		#expect(MoneyMoneyMigration.isIBAN("DE02 1203 0000 0000 2020 51"))
-		#expect(MoneyMoneyMigration.isIBAN("DE02\u{00A0}1203\u{202F}0000 0000 2020 51"))
-		#expect(!MoneyMoneyMigration.isIBAN("DE03120300000000202051"))
-		#expect(!MoneyMoneyMigration.isIBAN("202051"))
+	@Test("A BIC is recognized")
+	func bic() {
 		#expect(MoneyMoneyMigration.isBIC("BYLADEM1001") && MoneyMoneyMigration.isBIC("BYLADEM1"))
 		#expect(!MoneyMoneyMigration.isBIC("12030000"))
 	}

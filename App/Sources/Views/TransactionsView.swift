@@ -74,7 +74,7 @@ struct HeaderView: View {
 				Text(model.title).font(.title2.bold()).lineLimit(1)
 				if let account = model.selectedAccount {
 					HStack(spacing: 8) {
-						if let iban = account.iban { Text(Format.iban(iban)) }
+						if let iban = account.iban { Text(iban.formatted) }
 						switch account.source {
 						case .migrated: Text("Taken over from MoneyMoney. Not connected to a bank yet.")
 						case .offline: Text("Offline account")
@@ -670,7 +670,7 @@ extension TransactionDetail {
 		case let .bookingText(v), let .returnReason(v), let .endToEndReference(v), let .mandateReference(v), let .creditorID(v), let .bic(v), let .deviatingParty(v, _): v
 		case let .originalAmount(money): Format.money(money)
 		case let .valueDate(day): Format.day(day)
-		case let .iban(v): Format.iban(v)
+		case let .iban(v): Format.counterpartyAccount(v)
 		}
 	}
 }

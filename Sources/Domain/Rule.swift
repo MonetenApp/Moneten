@@ -43,7 +43,7 @@ public struct RuleSubject: Sendable {
 		let money = t.amount
 		self.init(name: t.name, purpose: t.purpose, bookingText: t.bookingText ?? "", endToEndReference: t.endToEndReference ?? "",
 			mandateReference: t.mandateReference ?? "", creditorID: t.creditorID ?? "", comment: t.comment ?? "",
-			localAccounts: [account?.iban, account?.accountNumber].compactMap { $0 },
+			localAccounts: [account?.iban?.electronic, account?.accountNumber].compactMap { $0 },
 			remoteAccounts: [t.counterpartyIBAN].compactMap { $0 },
 			currency: t.currency, amount: money.decimal)
 	}

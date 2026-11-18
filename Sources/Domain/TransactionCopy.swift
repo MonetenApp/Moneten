@@ -13,6 +13,7 @@ public enum TransactionDetail: Hashable, Sendable {
 	/// The deviating recipient of a debit or the deviating originator of a credit.
 	case deviatingParty(String, recipient: Bool)
 	case valueDate(Day)
+	/// The account of the counterparty as the source gave it: an IBAN or an older account number.
 	case iban(String)
 	case bic(String)
 
@@ -27,7 +28,7 @@ public enum TransactionDetail: Hashable, Sendable {
 		case .originalAmount: String(localized: "Original amount")
 		case let .deviatingParty(_, recipient): recipient ? String(localized: "Deviating recipient") : String(localized: "Deviating originator")
 		case .valueDate: String(localized: "Value date")
-		case .iban: String(localized: "IBAN")
+		case let .iban(v): IBAN(v) == nil ? String(localized: "Account number") : String(localized: "IBAN")
 		case .bic: String(localized: "BIC")
 		}
 	}

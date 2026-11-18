@@ -438,6 +438,16 @@ enum Schema {
 				t.column("name", .text).primaryKey()
 			}
 		}
+		// The IBAN of an account was text that no one checked. A valid IBAN takes its electronic form, and other text
+		// moves as `Account.takeIBAN(_:)` moves it, so that loading never meets an IBAN that it refuses. It comes after v30.
+		m.registerMigration("v31") { db in
+			for row in try Row.fetchAll(db, sql: "SELECT id, iban, accountNumber FROM account WHERE iban IS NOT NULL") {
+				var account = Account(position: 0, name: "", kind: .giro, source: .offline, accountNumber: row["accountNumber"])
+				account.takeIBAN(row["iban"])
+				try db.execute(sql: "UPDATE account SET iban = ?, accountNumber = ? WHERE id = ?",
+					arguments: [account.iban?.electronic, account.accountNumber, row["id"]])
+			}
+		}
 		return m
 	}
 

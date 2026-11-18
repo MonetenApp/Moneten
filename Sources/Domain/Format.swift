@@ -1,12 +1,9 @@
 import Foundation
 
 public enum Format {
-	/// Groups an IBAN in blocks of four. It reads the IBAN as the search does, so U+00A0 and U+202F count as spaces.
-	public static func iban(_ s: String) -> String {
-		let compact = TextFolding.accountKey(s)
-		guard compact.count > 8, compact.prefix(2).allSatisfy(\.isLetter) else { return s }
-		let characters = Array(compact)
-		return stride(from: 0, to: characters.count, by: 4).map { String(characters[$0..<min($0 + 4, characters.count)]) }.joined(separator: " ")
+	/// The account of a counterparty in groups of four when it is a valid IBAN, and any other text as it is.
+	public static func counterpartyAccount(_ text: String) -> String {
+		IBAN(text)?.formatted ?? text
 	}
 
 	/// The day in the date format of the region, read from noon GMT, so a day that has no local midnight, such as

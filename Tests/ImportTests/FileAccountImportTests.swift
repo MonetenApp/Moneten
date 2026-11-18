@@ -38,6 +38,21 @@ struct FileAccountImportTests {
 		#expect(try TransactionFileImporter.parse(Data(empty.utf8), currency: "EUR").account == nil)
 	}
 
+	@Test("A CAMT file whose IBAN has a wrong checksum names its account by that text as a number")
+	func camtInvalidIBAN() throws {
+		let camt = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Acct><Id><IBAN>DE03120300000000202051</IBAN></Id></Acct>
+		<Ntry><Amt Ccy="EUR">89.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		let account = try TransactionFileImporter.parse(Data(camt.utf8), currency: "EUR").account
+		#expect(account == .number(bankCode: nil, account: "DE03120300000000202051"))
+		let offline = try #require(account).offlineAccount(groupID: nil, position: 0, currency: "EUR")
+		#expect(offline.name == "Account DE03120300000000202051" && offline.accountNumber == "DE03120300000000202051" && offline.iban == nil)
+	}
+
 	@Test("An MT940 file names its account in field 25 as an IBAN or as bank code and account number", arguments: [
 		(":25:DE02120300000000202051", FileAccount.iban("DE02120300000000202051")),
 		(":25:12030000/0000202051", FileAccount.number(bankCode: "12030000", account: "0000202051")),
@@ -49,6 +64,8 @@ struct FileAccountImportTests {
 		(":25:MT84MALT011000012345MTLCAST001S", FileAccount.iban("MT84MALT011000012345MTLCAST001S")),
 		(":25:DE16120300000001000012EUR", FileAccount.iban("DE16120300000001000012")),
 		(":25:/00797453990", FileAccount.number(bankCode: nil, account: "00797453990")),
+		(":25:DE03120300000000202051", FileAccount.number(bankCode: nil, account: "DE03120300000000202051")),
+		(":25:12030000/DE03120300000000202051", FileAccount.number(bankCode: "12030000", account: "DE03120300000000202051")),
 	])
 	func mt940(field: String, account: FileAccount) throws {
 		let text = ":20:STARTUMS\n\(field)\n:28C:0\n:60F:C261031EUR1000,00\n:61:2611031103DR89,00NMSCNONREF\n:86:105?20Abschlag\n:62F:C261103EUR911,00\n-\n"

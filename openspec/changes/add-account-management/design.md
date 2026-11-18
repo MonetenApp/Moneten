@@ -41,6 +41,21 @@ A closed account takes no refresh. `AppModel.save(account:)` calls `SyncCoordina
 
 The bar chart of a selected closed account still draws its history. The chart of a group leaves closed accounts out, as the sum of the group does.
 
+### One IBAN type
+
+`IBAN` in `Domain` holds an IBAN whose country code, length, and checksum are valid. It replaces the two checks that the setup entry and the migration had, and it uses the length table of the SWIFT IBAN Registry release 103. `Account.iban` is an `IBAN?`, so no view, rule, or match checks the text again.
+
+The edges make it. `FinTSAccount.account(access:bank:group:)` in `FinTS`, `ListedAccount` in `ExtensionConnector`, `MoneyMoneyMigration.plan` in `Import`, and the import of an export file take the IBAN with `Account.takeIBAN(_:)`. The account of a CAMT or MT940 file is a `FileAccount.iban(IBAN)` only when it is valid, and otherwise a `FileAccount.number`. The setup entry `BankEntry.bankCode(of:)` parses the IBAN and keeps its own error messages.
+
+Text that is not a valid IBAN becomes the account number of an account that has none. A bank or an extension always names an account by a number, so their invalid IBANs are dropped. A migrated account or a file account keeps the number it was known by, and the setup can still find it by account number and Bankleitzahl.
+
+The account of a counterparty stays a `String`. It can be an older account number, and the fingerprint of a transaction reads it, so a refresh must never drop it or fail on it. `IBAN.electronicForm(of:)` stores a valid IBAN without spaces in upper case. The fingerprint compares the account without spaces and case already, so stored rows keep their identity. The details of a transaction show "IBAN" in groups of four only for a valid IBAN, and "Account number" for other text.
+
+`Storage` keeps the text column `iban`. `IBAN` encodes its electronic form and refuses invalid text when it decodes, so the migration `v31` applies `Account.takeIBAN(_:)` once to every stored account.
+
 ## Risks / Trade-offs
+
+- An IBAN of a country that the registry adds after release 103 is not taken as an IBAN until the table has it. The account keeps the text as its account number. The table must only grow, because a stored IBAN of a country that leaves it no longer loads.
+
 
 Tasks marked as built in part may differ from the spec in the way their note says.

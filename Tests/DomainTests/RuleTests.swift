@@ -250,7 +250,7 @@ struct RuleTests {
 			#expect(try matches("local_account:DE0?1203*", RuleSubject(localAccounts: [value])), "\(value)")
 		}
 		#expect(try !matches("local_account:DE0?1203*", RuleSubject(localAccounts: ["DE89370400440532013000"])))
-		#expect(Format.iban(iban) == "DE02 1203 0000 0000 2020 51")
+		#expect(Format.counterpartyAccount(iban) == "DE02 1203 0000 0000 2020 51")
 	}
 
 	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))

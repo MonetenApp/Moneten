@@ -472,7 +472,7 @@ public struct CSVFile: Sendable {
 			}
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: money.minorUnits, currency: cur,
-				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),
+				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn).map(IBAN.electronicForm), counterpartyBIC: Self.cell(row, bicColumn),
 				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
 				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }

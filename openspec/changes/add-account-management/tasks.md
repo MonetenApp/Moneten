@@ -28,6 +28,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.22 Account color: a square in the color of the user, the bank, or the type, in the sidebar and the header; a color row in the account settings; the migration takes the color of the MoneyMoney icon. Verified by MoneyMoneyMigrationTests "Accounts take the color of their MoneyMoney icon", SchemaTests "v5", and sidebar snapshots of the debug harness.
 - [x] 1.23 Derived initial balance beyond the limit (issue #324). `AmountOverflowTests` "A refresh whose balance gives an initial balance beyond the limit keeps the old one and is refused" and `InitialBalanceLimitTests` "The merge fails with the name of the account and writes nothing" failed while the refresh clamped the derived initial balance, and pass since `Store.merge` throws `InitialBalanceTooLarge`.
 - [x] 1.24 Balance of a closed account. A closed account shows its computed balance, and a closed portfolio its value. Verified by ClosedAccountTests (the bank account shows 0,00 € alone, the sum of a group leaves the closed account out before and after its entry, and the bar chart ends at 0,00 €), and the scenario "File import into a closed account" by ClosedAccountTests "fileIntoClosedAccount". In a debug build, the closed wallet "Reisekasse" shows 0,00 € without US$, and "Private" sums only its open accounts.
+- [x] 1.25 IBAN of an account. Test the `IBAN` type with valid and invalid examples first, then parse every account IBAN at the edges and move invalid text into the account number.
+- [x] 1.26 Account of a counterparty. Test that a counterparty account keeps its text and that only a valid IBAN is stored in its electronic form, then show "IBAN" or "Account number" in the details.
 
 ## 2. Integration
 

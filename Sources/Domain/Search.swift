@@ -84,7 +84,7 @@ struct SearchQuery {
 			case .mandate: body(t.mandateReference ?? "")
 			case .creditorID: body(t.creditorID ?? "")
 			case .comment: body(t.comment ?? "")
-			case .localAccount: if let a = account() { a.iban.map(body); a.accountNumber.map(body) }
+			case .localAccount: if let a = account() { a.iban.map { body($0.electronic) }; a.accountNumber.map(body) }
 			case .remoteAccount: t.counterpartyIBAN.map(body)
 			case .currency: body(t.currency)
 			}
@@ -350,7 +350,7 @@ enum SearchText {
 	static func of(_ t: Transaction, account: Account?, categoryName: String?) -> String {
 		// Separate lets with their types, because the compiler of CI gave up on one expression for all parts.
 		let fields: [String] = [t.name, t.purpose, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.comment ?? ""]
-		let numbers: [String?] = [t.counterpartyIBAN, account?.iban, account?.accountNumber]
+		let numbers: [String?] = [t.counterpartyIBAN, account?.iban?.electronic, account?.accountNumber]
 		let accountNumbers: [String] = numbers.map { (number: String?) -> String in number.map(TextFolding.accountKey) ?? "" }
 		let names: [String] = [t.counterpartyBIC ?? "", account?.name ?? "", categoryName ?? ""]
 		let amounts: [String] = Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)

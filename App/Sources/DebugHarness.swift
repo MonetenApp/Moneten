@@ -267,7 +267,7 @@ final class DebugHarness {
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
-				iban: "DE02120300000000202051"))
+				iban: IBAN("DE02120300000000202051")))
 		// "<name>": a migrated savings account without an IBAN and a subnumber, with the account number 9 of the made-up bank.
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
@@ -1380,7 +1380,7 @@ final class DebugHarness {
 			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
 			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""),
 				.originalAmount(Money(minorUnits: 0, currency: "USD")), .deviatingParty("", recipient: true), .valueDate(Day.today()),
-				.iban(""), .bic("")].map(\.label)
+				.iban("DE02120300000000202051"), .bic("")].map(\.label)
 			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
 			let table = self.transactionTables().first
 			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()
@@ -2145,7 +2145,7 @@ enum DemoData {
 			let savings = model.ledger.accounts.first(where: { $0.name == "Tagesgeld" }) else { return }
 		var g = giro
 		g.initialBalanceMinor = 250_000
-		g.iban = "DE02120300000000202051"
+		g.iban = IBAN("DE02120300000000202051")
 		model.save(account: g)
 		var s = savings
 		s.initialBalanceMinor = 1_000_000

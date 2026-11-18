@@ -74,7 +74,7 @@ public enum TransactionFileImporter {
 		let readable = names.compactMap { $0 }
 		let keys = readable.map { account -> FileAccount in
 			switch account {
-			case let .iban(text): return .iban(TextFolding.accountKey(text))
+			case .iban: return account
 			case let .number(bankCode, number, bic):
 				let number = TextFolding.accountKey(number)
 				let digits = String(number.drop { $0 == "0" })
@@ -163,9 +163,9 @@ enum MT940Parser {
 			if value.count > 4, value.prefix(2).allSatisfy(\.isLetter) {
 				// An IBAN followed by its currency, such as "…0123456789EUR". Some IBANs end in letters, so the checksum
 				// of the text without them decides.
-				let text = String(value), trimmed = String(value.dropLast(3))
-				let hasCurrency = value.suffix(3).allSatisfy(\.isLetter) && MoneyMoneyMigration.isIBAN(trimmed)
-				return .iban(hasCurrency ? trimmed : text)
+				if value.suffix(3).allSatisfy(\.isLetter), let iban = IBAN(String(value.dropLast(3))) { return .iban(iban) }
+				// Text that is not a valid IBAN names the account by its number.
+				return IBAN(String(value)).map(FileAccount.iban) ?? .number(bankCode: bankCode, account: String(value), bic: bic)
 			}
 			let number = value.suffix(3).allSatisfy(\.isLetter) ? value.dropLast(3) : value
 			guard number.first?.isNumber == true, number.allSatisfy({ $0.isNumber || $0 == "-" }) else { return nil }
@@ -232,7 +232,7 @@ enum MT940Parser {
 		}
 		t.bookingText = parts["00"]
 		t.counterpartyBIC = parts["30"].flatMap { $0.isEmpty ? nil : $0 }
-		t.counterpartyIBAN = parts["31"].flatMap { $0.isEmpty ? nil : $0 }
+		t.counterpartyIBAN = parts["31"].flatMap { $0.isEmpty ? nil : IBAN.electronicForm(of: $0) }
 		t.name = (parts["32"] ?? "") + (parts["33"] ?? "")
 		let purposeKeys = (20...29).map { String($0) } + (60...63).map { String($0) }
 		let lines = purposeKeys.compactMap { parts[$0] }
@@ -504,7 +504,8 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		let account: FileAccount
 		guard !value.isEmpty else { return }
 		if name == "IBAN", at(1) == "Id", at(2) == "Acct", at(3).map(owners.contains) == true {
-			account = .iban(value)
+			// Text that is not a valid IBAN names the account by its number.
+			account = IBAN(value).map(FileAccount.iban) ?? .number(bankCode: nil, account: value)
 		} else if name == "Id", at(1) == "Othr", at(2) == "Id", at(3) == "Acct", at(4).map(owners.contains) == true {
 			account = .number(bankCode: nil, account: value)
 		} else {
@@ -566,7 +567,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			amountMinor: money.minorUnits, currency: currency,
 			name: ofOneParty(side + "Name") ?? "",
 			purpose: PurposeLines.camt(purposes),
-			counterpartyIBAN: ofOneParty(side + "IBAN"),
+			counterpartyIBAN: ofOneParty(side + "IBAN").map(IBAN.electronicForm),
 			counterpartyBIC: ofOneParty(side + "BIC"),
 			bookingText: entry["bookingText"],
 			endToEndReference: ofOneParty("e2e").flatMap { $0 == "NOTPROVIDED" ? nil : $0 },
