@@ -541,3 +541,54 @@ The app SHALL offer a help button next to the rule field that opens a descriptio
 
 - **WHEN** the user clicks the help button in the category settings
 - **THEN** the app shows the description of the rule language
+
+### Requirement: Create a rule from a transaction
+
+The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name or a counterparty IBAN. The command lists every category that can have a rule and can take the transaction. A chosen category opens its settings with a condition for the counterparty added to its rule, and the settings show how many transactions the new rule matches. Nothing changes until the user confirms the settings.
+
+The condition is `name:` with the counterparty name in quotation marks, or `remote_account:` with the IBAN without spaces when the transaction has no name. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
+
+#### Scenario: Category without a rule
+
+- **GIVEN** the category "Energy" without a rule, and 3 transactions from the counterparty "Stadtwerke Musterstadt"
+- **WHEN** the user chooses "Create Rule" and then "Energy" in the context menu of one of these transactions
+- **THEN** the settings of "Energy" open with the rule `name:"Stadtwerke Musterstadt"`
+- **AND** they show "The rule matches 3 transactions."
+- **AND** no transaction changes its category until the user clicks OK and chooses how to apply the rule
+
+#### Scenario: Category with a rule
+
+- **GIVEN** the category "Energy" with the rule `"Abschlag"`
+- **WHEN** the user creates a rule for "Energy" from a transaction of "Stadtwerke Musterstadt"
+- **THEN** the settings show the rule `"Abschlag" OR name:"Stadtwerke Musterstadt"`
+
+#### Scenario: Transaction without a name
+
+- **GIVEN** a transaction without a counterparty name and with the counterparty IBAN "DE02 1203 0000 0000 2020 51"
+- **WHEN** the user creates a rule for "Energy" from it
+- **THEN** the settings show the rule `remote_account:"DE02120300000000202051"`
+
+#### Scenario: Quotation marks in the name
+
+- **GIVEN** a transaction from the counterparty `Café "Zur Linde"`
+- **WHEN** the user creates a rule for "Restaurants" from it
+- **THEN** the settings show the rule `name:"Café ?Zur Linde?"`
+- **AND** the rule matches the transaction
+
+#### Scenario: Operator words in the name
+
+- **GIVEN** a transaction from the counterparty "Müller OR Söhne"
+- **WHEN** the user creates a rule for "Craftsmen" from it
+- **THEN** the rule `name:"Müller OR Söhne"` matches the transaction and not a transaction from "Müller"
+
+#### Scenario: No counterparty
+
+- **GIVEN** a transaction without a counterparty name and without a counterparty IBAN
+- **WHEN** the user opens its context menu
+- **THEN** the menu has no "Create Rule"
+
+#### Scenario: Restricted category
+
+- **GIVEN** the category "Car" restricted to the account "Savings"
+- **WHEN** the user opens "Create Rule" for a transaction of the account "Giro"
+- **THEN** "Car" is disabled

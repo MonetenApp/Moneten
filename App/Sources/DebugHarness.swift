@@ -879,6 +879,11 @@ final class DebugHarness {
 				await model.apply(rule: rule, of: c, mode: .all)
 				log("applyrule done")
 			}
+		// "<category>": what "Create Rule" in the context menu of the first selected row does with that category.
+		case "createrule":
+			guard let t = model.visibleSelection.first.flatMap(model.ledger.row), let condition = Rule.condition(for: t),
+				let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("createrule not found") }
+			model.createRule(condition, in: c.id)
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.

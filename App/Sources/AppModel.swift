@@ -330,6 +330,9 @@ final class AppModel {
 	private(set) var isApplyingRule = false
 	/// The run of `apply(rule:of:mode:)`, which a lock cancels.
 	@ObservationIgnored private var ruleRun: Task<[Transaction], Never>?
+	/// The rule that "Create Rule" puts into the settings of a category. The settings take it when they open,
+	/// and it is saved only when the user confirms them.
+	@ObservationIgnored var ruleDraft: (categoryID: UUID, rule: String)?
 
 	/// A message for an alert.
 	var alert: AlertMessage? {
@@ -904,6 +907,14 @@ final class AppModel {
 	func openCategoryPicker() {
 		let ids = visibleSelection
 		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
+	}
+
+	/// What "Create Rule" in the context menu of a transaction does: the settings of the category, with
+	/// `condition` added to its rule.
+	func createRule(_ condition: String, in categoryID: UUID) {
+		guard let c = ledger.category(categoryID) else { return }
+		ruleDraft = (categoryID, Rule.adding(condition, to: c.rule))
+		sheet = .categorySettings(categoryID)
 	}
 
 	func assign(category: UUID?, to ids: Set<UUID>) {

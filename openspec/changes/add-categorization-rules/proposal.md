@@ -11,6 +11,7 @@ A user with several accounts gets hundreds of transactions each month. Nobody so
 - The app applies the rules to every new transaction, and again when a pending transaction is booked.
 - When the user changes a rule, the app asks how to apply it to existing transactions.
 - A category can be restricted to one account or account group.
+- The context menu of a transaction creates a rule for its counterparty in a chosen category.
 
 ## Capabilities
 
@@ -51,3 +52,4 @@ None.
 - The app rejects a rule with a syntax error and shows where the error is. MoneyMoney's behavior was not observed.
 - The sidebar marks a category whose saved rule the app cannot parse, with a warning symbol and the error in its tooltip. Such a rule can come from an older version or from a migration. MoneyMoney's behavior was not observed.
 - A category that the user assigned by hand survives the next refresh and the booking of a pending transaction. Only "Apply to all transactions." replaces it.
+- The context menu of one transaction offers "Create Rule" with the categories. A chosen category opens its settings with `name:"…"` for the counterparty, or `remote_account:"…"` for its IBAN when it has no name, joined to the existing rule with `OR`. The settings show the match count, and the existing question applies the rule. MoneyMoney has no such command: its transaction context menu lists none ([analysis](../../../docs/research/moneymoney-analysis.md#context-menus-u)), and a rule is typed only in the category settings. A switcher therefore finds the same rule field and the same question, reached from one more place.
