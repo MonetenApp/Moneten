@@ -2,7 +2,7 @@
 
 This page explains how Moneten is split into modules, how data flows from a bank into the database, and why each boundary sits where it does. The exact fields of each type are in [data model](data-model.md). The reasons behind the big choices are in [decisions](decisions/).
 
-The first build has nine modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, `ExtensionHost`, `ExtensionConnector`, and `App`. The other bank connectors, payments, and the log are planned. Each section below says when it describes the plan.
+The build has these modules: `Domain`, `Storage`, `Import`, `Sync`, `SyncTesting`, `FinTS`, `ExtensionHost`, `ExtensionConnector`, `ExtensionCatalog`, `ext`, and `App`. The finAPI connector, payments, and the log are planned. Each section below says when it describes the plan.
 
 ## The modules and what each one owns
 
@@ -36,22 +36,22 @@ The libraries are one Swift package at the root of the repository. The app targe
 | Module | Owns | Depends on |
 |---|---|---|
 | `Domain` | Types, money arithmetic, the in-memory `Ledger`, the rule engine, categorization, import matching, chart data, and the sync model: the connector protocol, the requests to the user, and the refresh states | Nothing |
-| `Storage` | The encrypted database, migrations, loading and saving the ledger, Keychain access | `Domain`, GRDB |
+| `Storage` | The encrypted database, migrations, loading and saving the ledger, Keychain access | `Domain`, `Import`, GRDB |
 | `Import` | The MoneyMoney migration and the CSV, CAMT, and MT940 parsers. `TransactionFileImporter.parse` returns `[Transaction]`, and `MoneyMoneyMigration.plan` returns a `Plan` that the app shows before it stores anything. | `Domain` |
 | `Sync` | `SyncCoordinator`, which refreshes up to three accesses at a time with one `SyncState` each, and `SessionBroker`, which shows one dialog at a time, keeps the PINs in memory, and saves a PIN through `SavedPINStore` on request | `Domain` |
 | `SyncTesting` | `ScriptedConnector`, which plays requests, progress, results, and failures in place of a bank, for the tests, the previews, and the debug harness | `Domain` |
 | `FinTS` | `FinTSConnector`, which starts the hbci4java helper of `Tools/FinTSHelper` for each refresh, lists the accounts of a login, looks up a bank by its code, and maps the requests and results of the helper to `Domain` types. macOS decides whether to trust the server of the bank, and a helper that stays silent for 30 seconds fails the refresh. The helper runs in the app sandbox with only the network client and JIT entitlements ([ADR 0018](decisions/0018-sandbox-the-fints-helper.md)). The app uses it for the "Add Account" assistant and for every refresh of a FinTS access. A debug build can replace the helper with `scripts/fake-fints-helper.sh`. `BankDataUpdater` downloads the signed bank list of the release `bank-data` at most once a day, and the connector sends it to the helper, which uses it in place of the list in its jar. | `Domain`, the helper process ([ADR 0014](decisions/0014-fints-through-hbci4java.md)) |
 | `ExtensionHost` | `HostSession`, which runs one extension package in its own Lua 5.4 state with the environment of ADR 0015, `HostPolicy`, which decides every request and redirect target, and `ExtensionHostClient`, which starts one sandboxed `MonetenExtensionHost` process per session and talks to it in JSON lines over a pipe. `Sources/ExtensionHost/API` offers the MoneyMoney-compatible API: the entry points, `Connection`, `HTML`, `JSON`, `PDF`, `LocalStorage`, and `MM`. `Sources/CLua` holds the Lua sources of lua.org. `Sources/ExtensionHost/PublicSuffix` holds the Public Suffix List under the Mozilla Public License 2.0 (`scripts/vendor-public-suffix.sh`), so that the cookie jar refuses a cookie for a domain such as `github.io`. | `Domain`, Lua 5.4 |
 | `ExtensionConnector` | `ExtensionConnector`, which logs in, calls the entry points in the order of the API, turns each challenge table into a request to the user, and maps the account and result tables to `Domain` types. It keeps `LocalStorage` and the account tables in the `AccessState` of the access, and lists the accounts again when a refresh asks for one without a table. The app stores extension accesses in the table `access` like FinTS accesses. | `Domain`, `ExtensionHost` |
-| `App` | SwiftUI views, the `AppModel`, window and menu wiring | All of the above |
+| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain`, `ExtensionHost`, `Storage` |
+| `ext` | A command line tool in `Tools/ext` that runs, records, and tests an extension without the app | `Domain`, `ExtensionHost`, `ExtensionConnector` |
+| `App` | SwiftUI views, the `AppModel`, window and menu wiring | The libraries above |
 
-These modules are planned:
+This module is planned:
 
 | Module | Owns | Depends on |
 |---|---|---|
 | `FinAPIConnector` | finAPI login through its web form and data mapping (v0.3) | `Domain` |
-| `ext` | A command line tool that runs and tests an extension without the app | `ExtensionHost` |
-| `ExtensionCatalog` | Verifying the signed catalog index, installing packages, and planning updates | `Domain`, `ExtensionHost`, `Storage` |
 
 The sync state machine described below is in `Domain`. The payment state machine will be there too.
 
@@ -61,7 +61,7 @@ The libraries, `Domain` included, may call `String(localized:)`, but only to bui
 
 ## Every bank speaks through one protocol
 
-The protocol and the dialogs exist. The connectors are the plan.
+The protocol, the dialogs, `FinTSConnector`, and `ExtensionConnector` exist. The finAPI connector and `PaymentConnector` are the plan.
 
 FinTS, extensions, and finAPI differ in almost everything. The app hides that behind one protocol in `Domain`:
 
@@ -75,16 +75,18 @@ protocol PaymentConnector: BankConnector {
 }
 ```
 
-A refresh covers all requested accounts of one access, that is one login at one source, so FinTS keeps them in one dialog. Listing the accounts of a new access joins the protocol with the FinTS connector. `SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_:)` with a PIN request or a second-factor request and waits for the answer. `Challenge` is one enum for all sources:
+A refresh covers all requested accounts of one access, that is one login at one source, so FinTS keeps them in one dialog. Listing the accounts of a new access is not part of the protocol: `FinTSConnector.listAccounts(of:state:session:)` and `ExtensionConnector.setUp` do it. `SyncSession` is how a connector asks the user for something. A connector calls `session.ask(_:)` with a PIN request or a second-factor request and waits for the answer. `Challenge` is one enum for all sources:
 
 ```swift
 enum Challenge {
 	case chooseTANMethod([TANMethod], current: TANMethod.ID?)
 	case chooseTANMedium([String])
+	case nameTANMedium(TANMediumName)
 	case enterTAN(prompt: String, image: ChallengeImage?)
 	case flickerCode(prompt: String, code: FlickerCode)
 	case approveInApp(prompt: String, app: String?, image: ChallengeImage?, step: Step?)
-	case openBrowser(URL)
+	case openBrowser(BrowserApproval)
+	case captcha(CaptchaRequest)
 }
 ```
 
@@ -92,11 +94,11 @@ The [design of add-account-refresh](../openspec/changes/add-account-refresh/desi
 
 One enum means one set of dialogs in the app. A pushTAN from FinTS, an app approval in an extension, and the finAPI web form all reach the user through the same screens.
 
-Only `FinTSConnector` and `FinAPIConnector` conform to `PaymentConnector`. `ExtensionConnector` does not, so the app itself never sends a payment through an extension. This does not stop a malicious extension from submitting a form on a bank website it is allowed to reach. The sandbox limits which hosts it reaches, and the catalog review is the protection against that case.
+Only `FinTSConnector` and `FinAPIConnector` are planned to conform to `PaymentConnector`. `ExtensionConnector` does not, so the app itself never sends a payment through an extension. This does not stop a malicious extension from submitting a form on a bank website it is allowed to reach. The sandbox limits which hosts it reaches, and the catalog review is the protection against that case.
 
 ## A sync is a state machine
 
-`SyncState` and its transitions are built. The connectors that drive them are the plan.
+`SyncState` and its transitions are built, and `FinTSConnector` and `ExtensionConnector` drive them.
 
 A sync of one connection moves through fixed states:
 
@@ -110,7 +112,7 @@ A request for the user can come during the fetch too: Consorsbank waives the sec
 
 ## Transactions need an identity the bank does not give
 
-A refresh, a file import, a MoneyMoney migration, and later an extension deliver rows that the history may already hold. FinTS gives no stable ID: a second refresh returns the same rows again, and a pending card payment comes back booked with another date or text. All of them go through one pure function in `Domain`, `reconcile`, and one write, `Store.merge`:
+A refresh, a file import, and a MoneyMoney migration deliver rows that the history may already hold. FinTS gives no stable ID: a second refresh returns the same rows again, and a pending card payment comes back booked with another date or text. All of them go through one pure function in `Domain`, `reconcile`, and one write, `Store.merge`:
 
 ```swift
 public enum Delivery: Sendable {
@@ -120,7 +122,7 @@ public enum Delivery: Sendable {
 }
 
 public func reconcile(_ delivery: Delivery, into account: Account, stored: [Transaction],
-	deleted: [DeletedTransaction], rules: Categorizer, now: Date) -> Reconciliation
+	deleted: [DeletedTransaction], holdings: [Holding] = [], split: Set<UUID> = [], rules: Categorizer, now: Date) -> Reconciliation
 ```
 
 `reconcile` keeps the existing booked-only matching function for booked deliveries against booked rows without a file identity. Pairs with a pending side or a stored file identity use the five numbered levels in the [file-import spec](../openspec/changes/add-file-import/specs/transaction-import/spec.md). Candidates sort by the documented tuple and pair greedily one to one. A refresh prefers a fitting fetched pending row within seven days over an unfetched file row. File imports keep nearest-day matching within seven days.
@@ -135,11 +137,11 @@ A delete leaves a `DeletedTransaction` with the raw fields of the fingerprint an
 
 `Store.merge` reads the account's live rows, deleted rows, and rules inside its write transaction, calls `reconcile`, and writes the result. `Ledger.apply` then takes over exactly what was written. `SyncCoordinator.deliver` calls the merge once per fetched account. A thrown error fails only that account with `SyncFailure.notSaved`, and the next refresh delivers the same rows again.
 
-The bank fields of a fetched row can't be edited yet. When the transaction list allows that, the original fields move to columns of their own, so that the fingerprint keeps the bank's version.
+"Edit Transaction..." changes the bank fields of a fetched row. The values that the source delivered stay in `original`, so that the fingerprint keeps the bank's version.
 
 ## External data is parsed once, at the edge
 
-Bank responses, extension results, and import files are untrusted input. Each import parser, and later each connector, turns raw data into `Domain` types at its edge and rejects what it cannot parse with an error that names the field. Code inside `Domain`, `Storage`, and `App` trusts those types and does not check them again.
+Bank responses, extension results, and import files are untrusted input. Each import parser and each connector turns raw data into `Domain` types at its edge and rejects what it cannot parse with an error that names the field. Code inside `Domain`, `Storage`, and `App` trusts those types and does not check them again.
 
 ## The database password protects everything
 
@@ -148,17 +150,17 @@ Moneten handles secrets the way MoneyMoney does. [ADR 0009](decisions/0009-datab
 - The database is encrypted with SQLCipher. The key comes from the database password that you set at first launch or later. Until you set one, a random key in the Keychain protects the database.
 - Saving the password in the Keychain is optional. You need it saved to unlock automatically at launch, with Touch ID, or with an Apple Watch.
 - You can make the app lock after a set time without activity or when the main window closes.
-
-The rest of this list is the plan for bank access and the log:
-
 - A PIN is saved only if you turn on saving for that connection, and then only inside the encrypted database. Otherwise the app asks once and keeps it in memory until the app locks or quits.
 - TANs are never stored.
+
+The rest of this list is the plan for the log:
+
 - Logs never contain PINs, TANs, passwords, cookies, or tokens. The app removes them from its own output, from the output of the FinTS helper, and from recorded HTTP traffic, and no setting turns that off.
 - Logs also redact IBANs, names, and amounts by default. A debug switch shows those for one sync, and the app warns before you share the log.
 
 ## Extensions run in a sandbox
 
-This section is the plan for extensions. [ADR 0015](decisions/0015-extension-program.md) records the decisions behind it.
+[ADR 0015](decisions/0015-extension-program.md) records the decisions behind extensions.
 
 An extension is a single `.lua` file or a package. A single file may have a manifest with the same base name next to it, such as `Demo.json` next to `Demo.lua`. A package is a folder with `manifest.json`, one or more Lua files in the load order that the manifest lists, and a README. The app installs, updates, and removes a package as one unit.
 
@@ -210,10 +212,16 @@ Moneten/
 │   ├── Import/
 │   ├── Sync/
 │   ├── SyncTesting/
-│   └── FinTS/
+│   ├── FinTS/
+│   ├── CLua/
+│   ├── ExtensionHost/
+│   ├── MonetenExtensionHost/
+│   ├── ExtensionConnector/
+│   └── ExtensionCatalog/
 ├── Tests/                   One test target per library
 ├── App/                     The app target: project.yml, sources, Info.plist, resources
 ├── Tools/
+│   ├── ext/                 The command line tool for extension authors
 │   ├── FinTSHelper/         The hbci4java helper that FinTSConnector runs (ADR 0014)
 │   └── FinTSProbeJava/      The hbci4java probe of issue #11, and dependencies.lock
 ├── scripts/                 Test, build, project, and check scripts
@@ -221,4 +229,4 @@ Moneten/
 └── docs/
 ```
 
-The planned modules get their own folders under `Sources/`.
+The planned module gets its own folder under `Sources/`.

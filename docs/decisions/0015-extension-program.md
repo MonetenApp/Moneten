@@ -53,7 +53,7 @@ The maintainer made decisions 1 to 20 in two rounds of questions on 12 November 
 - ADR 0004 is partly superseded. Its compatible API and its three additions stay. Decision 7 replaces its manifest rule. Decision 20 replaces its payment sentence, so undocumented payment functions are not supported.
 - The specs `add-web-banking-extensions`, `add-extension-catalog`, `add-extension-developer-tools`, and `add-import-export-extensions` follow these decisions. `add-extension-catalog` moves to v0.1.
 - A new module `ExtensionCatalog` verifies the index, installs packages, and plans updates.
-- A user sets up an account with an extension through the add account assistant of `add-account-setup`, which #85 builds as part 2 of the FinTS work and which is not built yet. Until it is, an installed extension cannot be set up in the app, so the Extensions window waits for it.
+- A user sets up an account with an extension through the add account assistant of `add-account-setup`, which #85 builds as part 2 of the FinTS work and which is not built yet. Until it is, an installed extension cannot be set up in the app, so the Extensions window waits for it. (Issue #85 built the assistant on 12 November 2026. Since 13 November 2026, pull request #101, the assistant sets up an account with an installed extension.)
 - The maintainer approves every package and every signing run. A block for a security problem reaches users only after that approval and the next index download, which happens at start and once a day.
 - The catalog can only take extensions whose authors chose a license. About 21 percent of the listed extensions have none [§4].
 - The forbidden functions in the catalog checks and in the runtime must stay the same list.
