@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Tests of scripts/ci-changes.py, run by scripts/check.sh and by the specs job of CI."""
+"""Tests of scripts/ci-changes.py and of the path filter of release-ext.yml, run by scripts/check.sh and by the specs
+job of CI."""
 
 import contextlib
 import importlib.util
 import io
+import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -24,8 +27,8 @@ CONSUMERS = ["Tests", "Sources", "App", "Tools", "scripts", "Package.swift", ".g
 UBUNTU_ONLY = ["scripts/check-docs.py", "scripts/check-ui.py", "scripts/roadmap.py", "scripts/ci-changes.py", "scripts/test-ci-changes.py"]
 
 # Lines outside comments that name a file on the list but do not read it, as (file, listed path, part of the
-# line), so that a second read on the same line still counts. A
-# new line that names one fails the test, even in a file listed here: then either the file leaves the list,
+# line), so that a second read on the same line still counts.
+# A new line that names one fails the test, even in a file listed here: then either the file leaves the list,
 # or the line goes here with its reason.
 MENTIONS = {
 	# A README.md inside an extension package, not the one of the repository.
@@ -146,9 +149,222 @@ class Failures(unittest.TestCase):
 		self.assertEqual(out.getvalue().strip(), "macos=true")
 
 	def test_the_macos_job_skips_only_on_an_explicit_docs_only_decision(self):
-		# A failed, cancelled, or silent router leaves the output empty, and != 'false' then runs the job.
+		# A router that did not succeed runs the job through its result, even when it wrote macos=false before it
+		# failed. A successful router that wrote nothing leaves the output empty, and != 'false' then runs the job.
 		workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 		self.assertIn("if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.macos != 'false') }}", workflow)
+
+
+RELEASE_EXT = ROOT / ".github/workflows/release-ext.yml"
+# The inputs of the ext dry run besides the folders of the targets that ext builds.
+EXT_INPUTS = {
+	# The dry run itself, and the script that builds, packages, and checks the binary.
+	".github/workflows/release-ext.yml",
+	"scripts/release-ext.sh",
+	# The package graph and the pinned dependencies.
+	"Package.swift",
+	"Package.resolved",
+	# The example extension that the check of the script replays with the packaged binary.
+	"Extensions/Example/**",
+	"Fixtures/example/**",
+}
+
+
+def release_ext_filter():
+	"""The paths of the pull_request trigger of release-ext.yml."""
+	block = re.search(r"^  pull_request:\n    paths:\n((?:      - .+\n)+)", RELEASE_EXT.read_text(), re.M)
+	return [line.strip()[2:] for line in block.group(1).splitlines()]
+
+
+def dumped_package():
+	"""The evaluated Package.swift as JSON from `swift package dump-package`, or None when no swift is on PATH."""
+	if shutil.which("swift") is None:
+		return None
+	out = subprocess.run(["swift", "package", "dump-package"], cwd=ROOT, check=True, capture_output=True)
+	return json.loads(out.stdout)
+
+
+def ext_folders_from_dump(package):
+	"""The source folders of ext and of every local target and local package that it reaches, from the evaluated
+	manifest. A product of a remote package is pinned by Package.resolved. A dependency that names neither a local
+	target nor a product of a known package fails, so no form of the manifest can hide a dependency."""
+	targets = {t["name"]: t for t in package["targets"]}
+	local = {d["fileSystem"][0]["identity"]: d["fileSystem"][0]["path"] for d in package["dependencies"] if "fileSystem" in d}
+	remote = {next(iter(d.values()))[0]["identity"] for d in package["dependencies"] if "fileSystem" not in d}
+	folders, seen, todo = set(), set(), ["ext"]
+	while todo:
+		name = todo.pop()
+		if name in seen:
+			continue
+		seen.add(name)
+		target = targets[name]
+		folders.add(target.get("path") or f"Sources/{name}")
+		for dependency in target["dependencies"]:
+			kind, value = next(iter(dependency.items()))
+			if kind in ("byName", "target") and value[0] in targets:
+				todo.append(value[0])
+			elif kind == "product" and value[1] in local:
+				folders.add(local[value[1]])
+			elif kind == "product" and value[1] in remote:
+				continue
+			elif kind == "byName" and remote and not local:
+				# A bare name that is no local target is a product of the remote packages, which Package.resolved pins.
+				continue
+			else:
+				raise ValueError(f"{name} depends on {dependency}, which this check cannot place")
+	return folders
+
+
+def ext_folders(manifest=None):
+	"""The source folders of the product ext and of every target that it depends on, as Package.swift declares them.
+
+	Each target of Package.swift stands on one line. A target whose declaration or dependency list does not close
+	on its line fails the test, so a form this reader does not know never drops a dependency. A dependency on a
+	product of another package is pinned by Package.resolved, so only local targets count.
+	"""
+	text = manifest if manifest is not None else (ROOT / "Package.swift").read_text()
+	targets = {}
+	start = re.compile(r"^\s*\.(?:target|executableTarget|testTarget)\(")
+	declaration = re.compile(r'^\s*\.(?:target|executableTarget|testTarget)\(name: "(\w+)"(.*)$')
+	for line in text.splitlines():
+		if not start.match(line):
+			continue
+		found = declaration.match(line)
+		if not found or line.count("(") != line.count(")"):
+			raise ValueError(f"Package.swift declares a target that does not stand on one line: {line.strip()}")
+		name, rest = found.groups()
+		local = ""
+		if "dependencies: [" in rest:
+			begin = rest.index("dependencies: [") + len("dependencies: [")
+			depth, end = 1, begin
+			while end < len(rest) and depth:
+				depth += {"[": 1, "]": -1}.get(rest[end], 0)
+				end += 1
+			if depth:
+				raise ValueError(f"the dependencies of {name} do not close on their line")
+			local = re.sub(r"\.product\([^)]*\)", "", rest[begin:end - 1])
+		elif "dependencies:" in rest:
+			raise ValueError(f"the dependencies of {name} are not a list on their line")
+		path = re.search(r'path: "([^"]+)"', rest)
+		targets[name] = (path.group(1) if path else f"Sources/{name}", re.findall(r'"(\w+)"', local))
+	seen, todo = set(), ["ext"]
+	while todo:
+		name = todo.pop()
+		if name not in seen:
+			seen.add(name)
+			todo.extend(targets[name][1])
+	return {targets[name][0] for name in seen}
+
+
+def script_reads(text, files):
+	"""The tracked files that the lines of a script name, a path written with ./ included."""
+	read = set()
+	for line in text.splitlines():
+		if COMMENT.match(line):
+			continue
+		for token in re.findall(r"[\w./${}-]+", line):
+			# A path behind a variable such as $ROOT/ or ${ROOT}/, or behind ../ after a cd, counts as the
+			# repository path it names, so that a hidden prefix never hides a read.
+			token = re.sub(r"^(\$\{?\w+\}?/|\.{1,2}/)+", "", token).rstrip("/")
+			if "$" in token:
+				continue
+			read |= {f for f in files if f and (f == token or f.startswith(token + "/"))}
+	return read
+
+
+def in_filter(patterns, path):
+	"""Whether a path of a pull request starts the dry run. The filter uses exact paths and folder/** only."""
+	return any(path.startswith(p[:-2]) if p.endswith("/**") else path == p for p in patterns)
+
+
+class ReleaseExtFilter(unittest.TestCase):
+	"""The dry run of release-ext.yml starts for every input of ext, and for nothing else."""
+
+	def test_the_filter_names_exactly_the_inputs_of_ext(self):
+		package = dumped_package()
+		folders = ext_folders_from_dump(package) if package is not None else ext_folders()
+		print(f"ext inputs from {'swift package dump-package' if package is not None else 'the line reader'}", file=sys.stderr)
+		self.assertEqual(folders, {"Tools/ext", "Sources/Domain", "Sources/CLua", "Sources/ExtensionHost", "Sources/ExtensionConnector"})
+		patterns = release_ext_filter()
+		self.assertEqual(len(patterns), len(set(patterns)), "a path appears twice")
+		self.assertEqual(set(patterns), {f"{folder}/**" for folder in folders} | EXT_INPUTS)
+		for pattern in patterns:
+			with self.subTest(pattern=pattern):
+				self.assertNotRegex(pattern.removesuffix("/**"), r"[*?\[\]!+]", "in_filter knows exact paths and folder/** only")
+
+	def test_every_file_that_the_script_reads_is_in_the_filter(self):
+		files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout.decode().split("\0")
+		patterns = release_ext_filter()
+		read = script_reads((ROOT / "scripts/release-ext.sh").read_text(), files)
+		self.assertTrue({"Tools/ext/Ext.swift", "Sources/ExtensionHost/Manifest.swift", "Fixtures/example/fixture.json"} <= read)
+		self.assertEqual({path for path in read if not in_filter(patterns, path)}, set())
+
+	def test_a_dependency_list_that_does_not_close_on_its_line_fails(self):
+		manifest = (ROOT / "Package.swift").read_text()
+		line = '.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),'
+		self.assertIn(line, manifest)
+		several = manifest.replace(line, '.target(name: "ExtensionConnector", dependencies: [\n\t\t\t"Domain", "ExtensionHost", "Sync",\n\t\t]),')
+		with self.assertRaises(ValueError):
+			ext_folders(several)
+
+	def test_a_nested_list_keeps_the_dependencies_after_it(self):
+		manifest = (ROOT / "Package.swift").read_text()
+		line = '.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),'
+		nested = manifest.replace(line, '.target(name: "ExtensionConnector", dependencies: [.target(name: "Domain", condition: .when(platforms: [.macOS])), "ExtensionHost", "Sync"]),')
+		self.assertIn("Sources/Sync", ext_folders(nested))
+
+	def test_the_evaluated_manifest_gives_the_same_inputs_as_the_line_reader(self):
+		package = dumped_package()
+		if package is None:
+			self.skipTest("no swift on PATH")
+		self.assertEqual(ext_folders_from_dump(package), ext_folders())
+
+	def test_the_evaluated_manifest_follows_any_form_of_a_dependency(self):
+		package = {
+			"dependencies": [],
+			"targets": [
+				{"name": "ext", "path": "Tools/ext", "dependencies": [{"byName": ["Domain", None]}, {"target": ["Sync", None]}]},
+				{"name": "Domain", "path": None, "dependencies": []},
+				{"name": "Sync", "path": None, "dependencies": [{"byName": ["Domain", None]}]},
+			],
+		}
+		self.assertEqual(ext_folders_from_dump(package), {"Tools/ext", "Sources/Domain", "Sources/Sync"})
+		package["dependencies"] = [{"fileSystem": [{"identity": "kit", "path": "Packages/Kit"}]}]
+		package["targets"][0]["dependencies"].append({"product": ["Kit", "kit", None, None]})
+		self.assertEqual(ext_folders_from_dump(package), {"Tools/ext", "Sources/Domain", "Sources/Sync", "Packages/Kit"})
+		# With a local package, a bare name that is no local target could come from it, so it fails.
+		package["targets"][2]["dependencies"].append({"byName": ["Kit", None]})
+		with self.assertRaises(ValueError):
+			ext_folders_from_dump(package)
+
+	def test_a_path_behind_a_variable_or_a_parent_folder_counts_as_read(self):
+		files = ["Sources/Sync/SyncCoordinator.swift"]
+		for line in ['cat "$ROOT/Sources/Sync/SyncCoordinator.swift"', "cat ${ROOT}/Sources/Sync/SyncCoordinator.swift",
+				"cd Tools && cat ../Sources/Sync/SyncCoordinator.swift"]:
+			with self.subTest(line=line):
+				self.assertEqual(script_reads(line, files), {"Sources/Sync/SyncCoordinator.swift"})
+
+	def test_a_path_written_with_dot_slash_counts_as_read(self):
+		files = ["Sources/Sync/SyncCoordinator.swift", "Sources/Domain/Money.swift"]
+		self.assertEqual(script_reads("cat ./Sources/Sync/SyncCoordinator.swift", files), {"Sources/Sync/SyncCoordinator.swift"})
+		self.assertEqual(script_reads("cat Sources/Sync/SyncCoordinator.swift", files), {"Sources/Sync/SyncCoordinator.swift"})
+
+	def test_a_change_outside_the_inputs_skips(self):
+		patterns = release_ext_filter()
+		for path in ["Sources/Storage/Vault.swift", "Sources/FinTS/FinTSConnector.swift", "Sources/ExtensionCatalog/Installer.swift",
+				"Sources/MonetenExtensionHost/main.swift", "Sources/Sync/SyncCoordinator.swift", "App/Sources/AppModel.swift",
+				"Tests/ExtToolTests/CommandTests.swift", "Fixtures/extensions/monzo/Monzo.lua", "docs/releasing-ext.md",
+				"scripts/release.sh", ".github/workflows/ci.yml", "Tools/FinTSHelper/build.gradle"]:
+			with self.subTest(path=path):
+				self.assertFalse(in_filter(patterns, path))
+
+	def test_a_change_to_an_input_runs(self):
+		patterns = release_ext_filter()
+		for path in ["Tools/ext/Ext.swift", "Sources/ExtensionHost/Manifest.swift", "Sources/Domain/Money.swift", "Sources/CLua/lvm.c",
+				"Sources/ExtensionConnector/ExtensionConnector.swift", "Package.swift", "Package.resolved", "scripts/release-ext.sh",
+				".github/workflows/release-ext.yml", "Extensions/Example/Example.lua", "Fixtures/example/expected.json"]:
+			with self.subTest(path=path):
+				self.assertTrue(in_filter(patterns, path))
 
 
 class Diff(unittest.TestCase):
