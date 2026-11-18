@@ -20,7 +20,7 @@ This page records, as of 2026-11-15, which providers v0.1 reaches beyond FinTS t
 | Partial: login and accounts work, orders need a second run | 2 |
 | Blocked | 5 |
 
-With the open PRs, 94 of the 101 extensions run in the host and 2 more run in part. 4 of the 94 run, but their recording cannot replay in `ext test`, see the smaller findings.
+All pull requests that this page names were merged on 16 November 2026. With them, 94 of the 101 extensions run in the host and 2 more run in part. 4 of the 94 run, but their recording cannot replay in `ext test`, see the smaller findings.
 
 ## Gaps by reach
 

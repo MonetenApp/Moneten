@@ -102,7 +102,7 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 1. "Add Account..." (or `send sheet newAccount`), search the savings bank by its Bankleitzahl, enter the login name and the PIN. Approve the login in the pushTAN app.
 2. Expected: the dialog says "to allow the login", closes by itself after the approval, and the account list shows every account with its type. Record the types (giro, savings, credit card, portfolio) and whether a credit card is in the list.
 3. Add all accounts. The first refresh asks for the full history. When the bank asks for a second approval "to allow the download of transactions", approve it once and note whether the list then starts more than 90 days ago (`historyStart`).
-4. `send refreshenforced all`, and this time click "Cancel" in the dialog for the download. Expected: no error on the account and the last 90 days. The note "Older transactions may be missing." comes with #264, so record what shows. Record whether the bank asked for the approval at all.
+4. `send refreshenforced all`, and this time click "Cancel" in the dialog for the download. Expected: no error on the account, the last 90 days, and the note "Older transactions may be missing." Record whether the bank asked for the approval at all.
 5. `send refresh all` again within a few minutes. Expected: no dialog after the login, or only the login approval.
 6. Decline one login approval in the pushTAN app. Expected: "The required authorization was not carried out." Record the code that `send status` shows.
 

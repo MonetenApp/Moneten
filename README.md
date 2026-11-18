@@ -21,7 +21,7 @@ Moneten is an open source banking app for the Mac. It fetches balances and trans
 The app is a native macOS app in Swift and SwiftUI. It talks to banks in two ways:
 
 1. FinTS, the standard interface of German banks. This is free and built in. The app runs [hbci4java](https://github.com/hbci4j/hbci4java), the FinTS library that Hibiscus uses, in a helper process inside the app bundle, so you install nothing ([ADR 0014](docs/decisions/0014-fints-through-hbci4java.md)).
-2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Each extension runs in a sandboxed process. You install reviewed extensions with one click from the signed catalog in [moneten-extensions](https://github.com/MonetenApp/moneten-extensions). An extension that you install from a file runs after a warning and stays marked "Unverified". Extensions only read data. The extension API has no payment functions, and the app sends payments only through FinTS or finAPI.
+2. Extensions. An extension is a Lua script that fetches data from one service, for example a broker, a credit card portal, or a crypto exchange. Each extension runs in a sandboxed process. You install reviewed extensions with one click from the signed catalog in [moneten-extensions](https://github.com/MonetenApp/moneten-extensions). An extension that you install from a file runs after a warning and stays marked "Unverified". Extensions only read data. The extension API has no payment functions, and the app will send payments only through FinTS or finAPI.
 
 Read [architecture](docs/architecture.md) for the modules and the data model, and [decisions](docs/decisions/) for why the project is built this way.
 
@@ -60,7 +60,7 @@ The app keeps its data in `~/Library/Application Support/Moneten`. To try it wit
 The project uses [OpenSpec](https://github.com/Fission-AI/OpenSpec). Every behavior of the app is written down as a requirement with testable scenarios before any code exists.
 
 - [openspec/changes](openspec/changes/) holds one folder for each planned change. A change has a proposal and the specs that it adds.
-- [openspec/specs](openspec/specs/) holds the specs of what is built. A change moves there when its code is merged and the change is archived, so the folder is empty until then.
+- [openspec/specs](openspec/specs/) holds the specs of what is built. A change moves there when its code is merged and the change is archived.
 - [MoneyMoney analysis](docs/research/moneymoney-analysis.md) records the behavior that the specs start from, and [MoneyMoney features](docs/research/moneymoney-features.md) maps each feature to its change.
 - [Extension coverage](docs/research/extension-coverage.md) lists which providers the published MoneyMoney extensions reach in Moneten and what blocks the others.
 

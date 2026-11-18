@@ -7,7 +7,7 @@ Thank you for helping. This page explains how to find work, how to propose a cha
 - The [roadmap](docs/roadmap.md) lists every change and every issue by release.
 - Each change in [openspec/changes](openspec/changes/) has a proposal that explains why it exists and specs that say what the app must do.
 - Issues labeled `kind: prototype` settle open decisions. They are a good start if you like to explore.
-- To add a bank or service, write an extension. The author guide arrives with v0.1.
+- To add a bank or service, write an extension. The [author guide](https://github.com/MonetenApp/moneten-extensions/tree/main/docs/guide) of the catalog repository explains how.
 - To request support for a bank, open an issue with the **Bank or service request** template.
 
 ## How a change moves from spec to code
@@ -47,7 +47,7 @@ For a bug fix that restores specified behavior, open a pull request. For new or 
 
 ## What a pull request needs
 
-1. Tests for the behavior you add or change. Tests never contact a real bank. Tests for FinTS and extensions will replay recorded responses.
+1. Tests for the behavior you add or change. Tests never contact a real bank. Tests for FinTS run scripts in place of the helper, and tests for extensions replay recorded responses.
 2. A green CI run.
 3. Screenshots in light and dark mode for any change to the interface. Use made-up names, IBANs, and amounts, never your own data.
 4. No personal data. Remove names, IBANs, account numbers, and amounts from fixtures and logs before you commit them.
