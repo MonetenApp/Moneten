@@ -3,6 +3,7 @@ import Foundation
 import Testing
 import GRDB
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Encrypted database")
 struct VaultTests {
@@ -22,7 +23,7 @@ struct VaultTests {
 
 	@Test("The file shows no readable data")
 	func encrypted() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		_ = try sampleData(store)
 		try store.close()
@@ -34,7 +35,7 @@ struct VaultTests {
 
 	@Test("The answers about the hosts of an extension stay after a restart, for that extension only")
 	func hostDecisions() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try store.save(.allowed, host: "www.bank.example", of: "Demo")
 		try store.save(.denied, host: "tracker.example", of: "Demo")
@@ -49,7 +50,7 @@ struct VaultTests {
 
 	@Test("The database password is the key")
 	func passwordIsKey() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let (_, t) = try sampleData(store)
 		try store.close()
@@ -61,7 +62,7 @@ struct VaultTests {
 
 	@Test("Change the password")
 	func changePassword() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
 		_ = try sampleData(store)
 		#expect(throws: Vault.Failure.incorrectPassword) { try vault.changePassword(current: "falsch", new: "neu", on: store) }
@@ -73,7 +74,7 @@ struct VaultTests {
 
 	@Test("Many wrong attempts change nothing")
 	func wrongAttempts() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		try vault.create(password: "richtig", starterCategories: []).close()
 		for i in 0..<20 { _ = try? vault.open(password: "falsch\(i)") }
 		#expect(vault.verify(password: "richtig"))
@@ -81,7 +82,7 @@ struct VaultTests {
 
 	@Test("Categories survive a reopen with their rules")
 	func categories() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let c = Domain.Category(position: 0, name: "Salary", rule: #""Lohn" OR "Gehalt""#)
 		try vault.create(password: "pw", starterCategories: [c, Domain.Category(position: 1, name: "Uncategorized", isDefault: true)]).close()
 		let ledger = try vault.open(password: "pw").loadLedger()
@@ -92,7 +93,7 @@ struct VaultTests {
 
 	@Test("A backup opens with the same password")
 	func backup() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "pw-backup", starterCategories: [])
 		_ = try sampleData(store)
 		let copy = folder.root.appendingPathComponent("Backup.sqlite")
@@ -100,12 +101,12 @@ struct VaultTests {
 		let other = DataFolder(root: folder.root.appendingPathComponent("Other"))
 		try other.createFolders()
 		try FileManager.default.copyItem(at: copy, to: other.databaseFile)
-		#expect(try Vault(folder: other).open(password: "pw-backup").loadLedger().transactions.count == 1)
+		#expect(try Vault(testing: other).open(password: "pw-backup").loadLedger().transactions.count == 1)
 	}
 
 	@Test("A backup replaces an older backup but never the open database")
 	func backupTarget() throws {
-		let store = try Vault(folder: folder).create(password: "pw-backup", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "pw-backup", starterCategories: [])
 		_ = try sampleData(store)
 		let copy = folder.root.appendingPathComponent("Backup.sqlite")
 		try Data("old backup".utf8).write(to: copy)
@@ -118,7 +119,7 @@ struct VaultTests {
 
 	@Test("Marking an account as seen clears only its new transactions")
 	func markSeen() throws {
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline)
 		func new(_ account: Account) -> Transaction {
@@ -133,10 +134,9 @@ struct VaultTests {
 		#expect(ledger.transactions(ofAccount: savings.id).allSatisfy { $0.isNew })
 	}
 
-	// It writes the login Keychain of the Mac that runs it, which CI does not offer.
-	@Test("A key under the old app name moves to the new name and opens the database", .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil))
+	@Test("A key under the old app name moves to the new name and opens the database")
 	func legacyKeychainEntry() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		_ = try vault.create(password: "legacy-key", starterCategories: [])
 		FileManager.default.createFile(atPath: vault.noPasswordMarker.path, contents: Data())
 		try vault.legacyKeyKeychain.write("legacy-key", account: folder.legacyKeychainAccount)
@@ -152,14 +152,14 @@ struct VaultTests {
 
 	@Test("A missing database means a new start")
 	func emptyFolder() throws {
-		#expect(try Vault(folder: folder).state() == .empty)
+		#expect(try Vault(testing: folder).state() == .empty)
 	}
 
 	@Test("A file with no content is an error")
 	func emptyFile() throws {
 		try folder.createFolders()
 		FileManager.default.createFile(atPath: folder.databaseFile.path, contents: Data())
-		#expect(throws: Vault.Failure.self) { try Vault(folder: folder).state() }
+		#expect(throws: Vault.Failure.self) { try Vault(testing: folder).state() }
 	}
 }
 

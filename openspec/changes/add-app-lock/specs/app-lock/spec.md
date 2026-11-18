@@ -207,6 +207,44 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 - **THEN** the main window shows the accounts without a prompt
 - **AND** "Unlock with Touch ID" is still on
 
+### Requirement: A secret goes only into a Keychain entry of the app
+
+The app SHALL write a password or a key into the Keychain only as a new entry that it creates, and it SHALL first remove an entry of the same name for the same database. The new entry has the access list that macOS gives a new entry, so another program cannot read it without a prompt of macOS. An entry that another program created never receives the secret, whatever its access list allows.
+
+#### Scenario: Another program created the entry before
+
+- **GIVEN** another program created the Keychain entry "Moneten database password for Touch ID" for this database with an access list that lets every app read it
+- **WHEN** the user turns on "Unlock with Touch ID" and enters the database password
+- **THEN** that entry is gone
+- **AND** the Keychain holds the database password in a new entry whose access list names only the app
+
+#### Scenario: Password change with an entry of another program
+
+- **GIVEN** "Unlock automatically at application start" is on and another program replaced its entry with one that lets every app read it
+- **WHEN** the user changes the database password to "neu-und-noch-laenger"
+- **THEN** the Keychain holds "neu-und-noch-laenger" in a new entry whose access list names only the app
+
+#### Scenario: The Keychain refuses the new entries after the old ones are gone
+
+- **GIVEN** "Unlock automatically at application start" and "Unlock with Touch ID" are on
+- **WHEN** the user changes the database password and the Keychain removes each entry but refuses each new one
+- **THEN** the app shows that the Keychain did not accept the new password
+- **AND** both settings are off, and no entry holds the earlier password
+
+#### Scenario: A locked Keychain at an unlock
+
+- **GIVEN** "Unlock with Touch ID" is on, and its entry holds an earlier password of a database that the user restored from a backup
+- **WHEN** the user unlocks with the password, and the Keychain is locked and the user cancels the prompt that unlocks it
+- **THEN** the app shows that the password could not be stored in the Keychain
+- **AND** "Unlock with Touch ID" is still on
+
+#### Scenario: The Keychain refuses a new entry at an unlock
+
+- **GIVEN** "Unlock with Touch ID" is on, and its entry holds an earlier password of a database that the user restored from a backup
+- **WHEN** the user unlocks with the password and the Keychain removes the entry but refuses the new one
+- **THEN** the app shows that the password could not be stored in the Keychain
+- **AND** "Unlock with Touch ID" is off, and the lock screen no longer offers Touch ID
+
 ### Requirement: Report a Keychain failure
 
 The app SHALL leave an unlock setting off when it cannot store the password or the configuration in the Keychain, and it tells the user that the Keychain did not accept the entry.

@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Positions in the database")
 struct HoldingStoreTests {
@@ -12,7 +13,7 @@ struct HoldingStoreTests {
 	let twelfth = Date(timeIntervalSince1970: 1_794_441_600)
 
 	func makeStore() throws -> Store {
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try store.save(depot)
 		return store
 	}

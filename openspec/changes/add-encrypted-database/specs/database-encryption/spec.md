@@ -70,6 +70,29 @@ The app SHALL, while no database password is set, encrypt the database with a ra
 - **WHEN** a person copies only the database file to another Mac
 - **THEN** the copy cannot be opened there
 
+### Requirement: A new database never uses a key from the Keychain
+
+The app SHALL encrypt a new database without a password with a new random key, and it SHALL replace a key that the Keychain already holds for the path of the database. The app never takes over a key that it finds in the Keychain, because another program may have created that entry and know the key. A new database with a password leaves a random key of the path alone.
+
+#### Scenario: Another program created a key entry before
+
+- **GIVEN** an empty data folder and a Keychain entry "Moneten database key" for its database path that another program created with the key "bekannter-schluessel"
+- **WHEN** the user creates a new database without a password
+- **THEN** "bekannter-schluessel" does not open the database
+- **AND** the Keychain holds the new key in a new entry whose access list names only the app
+
+#### Scenario: A renamed database and a new database without a password
+
+- **GIVEN** a database without a password whose folder "Database" the user renamed to "Database_OLD"
+- **WHEN** the user creates a new database without a password and later puts "Database_OLD" back as "Database"
+- **THEN** the renamed database does not open, because the Keychain holds only the key of the new database
+
+#### Scenario: A renamed database and a new database with a password
+
+- **GIVEN** a database without a password whose folder "Database" the user renamed to "Database_OLD"
+- **WHEN** the user creates a new database with the password "korrekt-pferd-batterie", removes it later, and puts "Database_OLD" back as "Database"
+- **THEN** the renamed database opens with its random key
+
 ### Requirement: Set a password later
 
 The app SHALL offer "Set Database Password..." in the application menu and in the "Security" settings while no password is set. Setting a password encrypts the database and the copies that the app keeps in the database folder with the new key, and then removes the random key from the Keychain. When a copy cannot be encrypted again, the app keeps the random key, so the copy still opens, and names the copy.

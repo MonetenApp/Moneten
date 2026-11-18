@@ -4,6 +4,7 @@ import Foundation
 import GRDB
 @testable import Storage
 import Testing
+import StorageTestSupport
 
 @Suite struct InstallerTests {
 	let root = FileManager.default.temporaryDirectory.appending(path: "ExtensionCatalogTests-\(UUID().uuidString)")
@@ -145,7 +146,7 @@ import Testing
 	}
 
 	func store() throws -> Store {
-		try Vault(folder: DataFolder(root: root.appending(path: "Data"))).create(password: "korrekt-pferd-batterie", starterCategories: [])
+		try Vault(testing: DataFolder(root: root.appending(path: "Data"))).create(password: "korrekt-pferd-batterie", starterCategories: [])
 	}
 
 	/// What the window keeps for the updates, as the library holds it on the main actor.

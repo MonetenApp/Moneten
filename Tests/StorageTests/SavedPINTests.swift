@@ -4,6 +4,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// login-credentials "Saved PINs live in the encrypted database": a saved PIN stays in the database
 /// file, which SQLCipher encrypts with the database password, and nowhere else.
@@ -19,7 +20,7 @@ struct SavedPINTests {
 
 	@Test("A saved PIN comes back after the database opens again, until it is removed")
 	func roundTrip() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: AccessState(Data([1])), accounts: [Self.giro])
 		#expect(try store.savedPINs().isEmpty)
@@ -39,7 +40,7 @@ struct SavedPINTests {
 
 	@Test("A saved PIN goes with its access and its last account")
 	func goesWithAccess() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: nil, accounts: [Self.giro])
 		try store.savePIN(Secret("48151"), for: Self.access.id)
 		try store.deleteAccount(Self.giro.id)
@@ -69,7 +70,7 @@ struct SavedPINTests {
 
 	@Test("No byte of the database file or of its backup shows the PIN, and the backup opens on another Mac with the database password")
 	func encrypted() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: nil, accounts: [Self.giro])
 		try store.savePIN(Secret("48151"), for: Self.access.id)
 		let other = DataFolder(root: root.appendingPathComponent("Mac B"))
@@ -86,13 +87,13 @@ struct SavedPINTests {
 			#expect(bytes.range(of: Data("4\u{0}8\u{0}1\u{0}5\u{0}1".utf8)) == nil, "\(file.lastPathComponent) shows the PIN in UTF-16")
 		}
 
-		let restored = try Vault(folder: other).open(password: Self.password)
+		let restored = try Vault(testing: other).open(password: Self.password)
 		#expect(try restored.savedPINs() == [Self.access.id: Secret("48151")])
 	}
 
 	@Test("A removed PIN leaves no byte in the decrypted pages, also after the password changes")
 	func removedLeavesNoTrace() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		try store.add(Self.access, state: nil, accounts: [Self.giro])
 		try store.savePIN(Secret("48151"), for: Self.access.id)
@@ -148,7 +149,7 @@ struct SavedPINTests {
 		#expect(freePages > 0)
 		#expect(try decryptedPages(password: Self.password).range(of: pin) == nil)
 
-		let vault = Vault(folder: folder, version: "0.2.0")
+		let vault = Vault(testing: folder, version: "0.2.0")
 		let store = try vault.open(password: Self.password)
 		#expect(try store.accesses().count == 1_000)
 		#expect(try store.savedPINs().isEmpty)

@@ -1,6 +1,8 @@
 import Domain
 import Foundation
 import GRDB
+import os
+import Security
 
 /// Opens, creates, and protects the encrypted database (ADR 0009).
 ///
@@ -94,7 +96,7 @@ public struct Vault: Sendable {
 			case let .passwordSetWithLeftover(detail):
 				String(localized: "The database password has been set, but Moneten could not remove the random key of the database: \(detail)")
 			case let .keychainNotUpdated(detail, copies):
-				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain.")
+				String(localized: "The database password has been changed, but the Keychain did not accept the new password: \(detail)\n\nAn unlock setting whose entry is gone is now off. Turn it on again in the \"Security\" settings. A setting that is still on stores the new password at the next unlock with the database password.")
 					+ (copies.isEmpty ? "" : "\n\n" + Failure.copiesNotUpdated(copies).description)
 			case let .passwordNotChanged(detail):
 				String(localized: "Could not change the database password, for example because the disk is full. The database is unchanged and opens as before.\n\n\(detail)")
@@ -110,16 +112,22 @@ public struct Vault: Sendable {
 		}
 	}
 
+	/// Names no path and no value, because the path of the data folder can hold the name of the user.
+	private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Moneten", category: "vault")
+
 	public let folder: DataFolder
 	/// The version of the running app. An upgrade records it in the database, so that an older version can name it.
 	public let version: String
-	let keyKeychain = Keychain(service: "Moneten database key")
+	/// A keychain file instead of the keychains of the user, for tests. See `Keychain.file`.
+	nonisolated(unsafe) let keychainFile: SecKeychain?
+	var keyKeychain: Keychain { Keychain(service: "Moneten database key", file: keychainFile) }
 	/// The entry of the old name (ADR 0013). A read moves it to the new name.
-	let legacyKeyKeychain = Keychain(service: "MonetenMoneten database key")
+	var legacyKeyKeychain: Keychain { Keychain(service: "MonetenMoneten database key", file: keychainFile) }
 	/// The entry that builds before the per-setting entries shared between all three unlock settings, under
 	/// the new and the old app name. It unlocks nothing now and is removed.
-	let sharedPasswordKeychain = Keychain(service: "Moneten database password")
-	let legacySharedPasswordKeychain = Keychain(service: "MonetenMoneten database password")
+	var sharedPasswordKeychain: Keychain { Keychain(service: "Moneten database password", file: keychainFile) }
+	var legacySharedPasswordKeychain: Keychain { Keychain(service: "MonetenMoneten database password", file: keychainFile) }
+	func keychain(_ entry: PasswordEntry) -> Keychain { Keychain(service: entry.service, file: keychainFile) }
 
 	/// The unlock settings. Each keeps the database password in a Keychain entry of its own, which only
 	/// `setUnlockMethod(_:on:password:)` writes after the password check and which turning the setting off
@@ -131,18 +139,24 @@ public struct Vault: Sendable {
 		case touchID = "unlockWithTouchID"
 		case appleWatch = "unlockWithAppleWatch"
 
-		var keychain: Keychain {
+		var service: String {
 			switch self {
-			case .automaticUnlock: Keychain(service: "Moneten database password for automatic unlock")
-			case .touchID: Keychain(service: "Moneten database password for Touch ID")
-			case .appleWatch: Keychain(service: "Moneten database password for Apple Watch")
+			case .automaticUnlock: "Moneten database password for automatic unlock"
+			case .touchID: "Moneten database password for Touch ID"
+			case .appleWatch: "Moneten database password for Apple Watch"
 			}
 		}
 	}
 
 	public init(folder: DataFolder, version: String = Vault.runningVersion) {
+		self.init(folder: folder, version: version, keychainFile: nil)
+	}
+
+	/// Uses a keychain file instead of the keychains of the user, so that tests never write the login Keychain.
+	package init(folder: DataFolder, version: String = Vault.runningVersion, keychainFile: SecKeychain?) {
 		self.folder = folder
 		self.version = version
+		self.keychainFile = keychainFile
 	}
 
 	/// The version in the bundle of the app.
@@ -191,25 +205,27 @@ public struct Vault: Sendable {
 	/// Lists the copies that a password change still has to re-key, one file name per line. It holds no key.
 	var rekeyMarker: URL { folder.databaseFolder.appendingPathComponent("RekeyCopies") }
 
-	/// Creates a new database. Without a password, a random key in the Keychain protects it.
-	/// A random key of a database that was in this folder before, such as one the user renamed, stays and
-	/// protects the new database too, so the renamed one still opens. The entries of the unlock settings go,
-	/// because the settings of a new database start off.
+	/// Creates a new database. Without a password, a new random key in the Keychain protects it, and it replaces
+	/// a key that the Keychain holds for this path. That key is never used: the path is easy to guess, so another
+	/// program may have created the entry with a key it knows. A new database with a password leaves the key
+	/// alone, so a database that the user renamed still opens with it when it comes back. The entries of the unlock
+	/// settings go, because the settings of a new database start off.
 	/// A database folder that holds files is never touched, so a stale call cannot replace a database.
 	public func create(password: String?, starterCategories: [Domain.Category]) throws -> Store {
 		guard try state() == .empty else { throw Failure.databaseExists(folder.databaseFile.path) }
 		try folder.createFolders()
 		// An entry is what turns an unlock setting on, and a new database starts with the settings off, so the
-		// entries of a database that was here before go. Its random key stays: it still opens that database.
+		// entries of a database that was here before go.
 		for entry in PasswordEntry.allCases { try removeStoredPassword(for: entry) }
 		try removeSharedEntry()
 		let key: String
 		if let password {
 			key = password
-		} else if let existing = try keychain({ try read(keyKeychain, legacy: legacyKeyKeychain) }) {
-			key = existing
 		} else {
 			key = Self.randomKey()
+			if try keychain({ try keyKeychain.delete(account: folder.keychainAccount) }) {
+				Self.log.notice("A new database without a password replaced a database key that was in the Keychain for its path.")
+			}
 			try keychain { try keyKeychain.write(key, account: folder.keychainAccount) }
 		}
 		var store: Store?
@@ -229,6 +245,8 @@ public struct Vault: Sendable {
 			try? store?.close()
 			try? removeWithSideFiles(folder.databaseFile)
 			try? FileManager.default.removeItem(at: noPasswordMarker)
+			// No database uses the new random key.
+			if password == nil { _ = try? keyKeychain.delete(account: folder.keychainAccount) }
 			throw error
 		}
 	}
@@ -294,7 +312,7 @@ public struct Vault: Sendable {
 	/// "Change the password" in the design of add-encrypted-database.
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try connect(folder.databaseFile, key: current).close()
-		let keptEntries = try PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil }
+		let keptEntries = try unlockSettings()
 		try removeWorkFilesFirst()
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
@@ -304,10 +322,8 @@ public struct Vault: Sendable {
 		try writeRekeyList(plan.toRekey + earlier)
 		try rekeyDatabase(store, from: current, to: new, restoringList: earlier)
 		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true)
-		do {
-			for entry in keptEntries { try entry.keychain.write(new, account: folder.keychainAccount) }
-		} catch {
-			throw Failure.keychainNotUpdated(String(describing: error), copies: notUpdated)
+		if let failure = writeEach(new, to: keptEntries) {
+			throw Failure.keychainNotUpdated(String(describing: failure), copies: notUpdated)
 		}
 		if !notUpdated.isEmpty { throw Failure.copiesNotUpdated(notUpdated) }
 	}
@@ -584,15 +600,15 @@ public struct Vault: Sendable {
 	// MARK: Password in the Keychain for an unlock without typing it
 
 	public func storedPassword(for entry: PasswordEntry) throws -> String? {
-		try keychain { try entry.keychain.read(account: folder.keychainAccount) }
+		try keychain { try keychain(entry).read(account: folder.keychainAccount) }
 	}
 
 	func storePassword(_ password: String, for entry: PasswordEntry) throws {
-		try keychain { try entry.keychain.write(password, account: folder.keychainAccount) }
+		try keychain { try keychain(entry).write(password, account: folder.keychainAccount) }
 	}
 
 	public func removeStoredPassword(for entry: PasswordEntry) throws {
-		try keychain { try entry.keychain.delete(account: folder.keychainAccount) }
+		try keychain { try keychain(entry).delete(account: folder.keychainAccount) }
 	}
 
 	/// Turns an unlock setting on or off after checking the database password. Returns false for a wrong
@@ -608,9 +624,20 @@ public struct Vault: Sendable {
 		return true
 	}
 
-	/// The unlock settings of this database that are on: the ones whose entry exists.
+	/// The unlock settings of this database that are on: the ones whose entry exists. It reads no password.
 	public func unlockSettings() throws -> Set<PasswordEntry> {
-		try Set(PasswordEntry.allCases.filter { try storedPassword(for: $0) != nil })
+		try keychain { try Set(PasswordEntry.allCases.filter { try keychain($0).contains(account: folder.keychainAccount) }) }
+	}
+
+	/// Writes the password into the entry of each setting, also after a write failed, and returns the first failure.
+	/// A failed write may have removed its entry, which turns that setting off, but no entry keeps an earlier password
+	/// because a later write did not run.
+	private func writeEach(_ password: String, to entries: Set<PasswordEntry>) -> (any Error)? {
+		var first: (any Error)?
+		for entry in PasswordEntry.allCases where entries.contains(entry) {
+			do { try keychain(entry).write(password, account: folder.keychainAccount) } catch { first = first ?? error }
+		}
+		return first
 	}
 
 	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers
@@ -625,11 +652,17 @@ public struct Vault: Sendable {
 
 	/// Replaces each password in the Keychain that differs from the one that just opened the database, such as
 	/// the newer password of a database that the user replaced with a backup. The next unlock without the
-	/// password then works again. It never creates an entry: only `setUnlockMethod(_:on:password:)` does.
+	/// password then works again. It rewrites an entry only after it read the entry: a read that fails, such as the
+	/// one of a locked Keychain whose prompt the user canceled, throws before anything changes, because a delete would
+	/// work there but the add would not. It never creates an entry: only `setUnlockMethod(_:on:password:)` does.
+	/// Every entry is written before the first failure is thrown, and a failed write may have removed its entry, so
+	/// the caller reads `unlockSettings()` again.
 	public func refreshStoredPassword(_ password: String) throws {
-		for entry in PasswordEntry.allCases {
-			if let stored = try storedPassword(for: entry), stored != password { try storePassword(password, for: entry) }
+		let stale = try unlockSettings().filter { entry in
+			guard let stored = try storedPassword(for: entry) else { return false }
+			return stored != password
 		}
+		if let failure = writeEach(password, to: stale) { throw Failure.keychain(String(describing: failure)) }
 	}
 
 	/// Removes the entry that earlier builds shared between the three unlock settings.

@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// The mark of a row that the user added with "Add Transaction...". All names and numbers are made up.
 @Suite("Manual transactions in the database")
@@ -12,7 +13,7 @@ struct ManualMarkTests {
 	let day = Day(year: 2026, month: 11, day: 3)
 
 	func makeStore() throws -> Store {
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try store.save(accounts: [giro])
 		return store
 	}

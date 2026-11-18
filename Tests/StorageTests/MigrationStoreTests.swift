@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 @testable import Import
 import Synchronization
+import StorageTestSupport
 import Testing
 @testable import Storage
 
@@ -24,7 +25,7 @@ struct MigrationStoreTests {
 	func stalePreview(change: String) async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStale-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		let account = Account(position: 0, name: "Synthetic bank account", kind: .giro, source: .bank, bankBalanceMinor: 10_000, sourceID: "A1")
 		try store.save(account)
@@ -68,7 +69,7 @@ struct MigrationStoreTests {
 	func cancelRebuild() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationRebuild-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		let plan = try sourcePlan(amounts: [1.0, 2.0])
 		let cancel = MigrationCancel()
@@ -96,7 +97,7 @@ struct MigrationStoreTests {
 
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStored-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		let cancel = MigrationCancel()
 		_ = try await store.importMigration(try sourcePlan(amounts: [0.01, 0.02]), cancel: cancel)
@@ -109,7 +110,7 @@ struct MigrationStoreTests {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
 		let starter = Domain.Category(position: 0, name: "Synthetic starter")
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [starter])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [starter])
 		defer { try? store.close() }
 		let before = try store.loadLedger()
 		let plan = try sourcePlan(amounts: [0.01, 0.02])
@@ -132,7 +133,7 @@ struct MigrationStoreTests {
 	func changedOnDisk() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		try store.save(Account(position: 0, name: "Synthetic giro", kind: .giro, source: .offline))
 		var config = Configuration()
@@ -152,7 +153,7 @@ struct MigrationStoreTests {
 	func taskCancel() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		var amounts: [Double] = []
 		for i in 0..<20_000 { amounts.append(Double(i % 97 + 1) / 100) }
@@ -190,7 +191,7 @@ struct MigrationStoreTests {
 	func complete() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MigrationStore-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let store = try Vault(folder: folder).create(password: "synthetic-migration", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "synthetic-migration", starterCategories: [])
 		defer { try? store.close() }
 		let depot = Account(position: 0, name: "Synthetic depot", kind: .portfolio, source: .migrated, bankBalanceMinor: 1_000_000, sourceID: "A1")
 		try store.save(depot)
