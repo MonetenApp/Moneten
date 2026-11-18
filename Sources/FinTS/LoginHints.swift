@@ -65,8 +65,14 @@ extension BankDirectory.Entry {
 	}
 
 	/// What the bank requires or offers before the first login, which the login step shows above the fields: the note of the
-	/// login hint, or the note of flatexDEGIRO Bank on the brands that its FinTS access serves.
+	/// login hint, or the availability note.
 	public var loginNote: String? {
-		loginHint?.note ?? (FlatexDegiro.bankCodes.contains(code) ? FlatexDegiro.note : nil)
+		loginHint?.note ?? availabilityNote
+	}
+
+	/// A note that the FinTS access of the bank cannot reach some of its customers, such as the brands of flatexDEGIRO
+	/// Bank that the access does not serve.
+	public var availabilityNote: String? {
+		FlatexDegiro.bankCodes.contains(code) ? FlatexDegiro.note : nil
 	}
 }

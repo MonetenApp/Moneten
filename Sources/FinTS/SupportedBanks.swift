@@ -32,11 +32,12 @@ public struct SupportedBanks: Sendable {
 		}
 	}
 
-	/// The note of a bank in the list: the note of a merged bank, then what the bank requires or offers before the first
-	/// login, then the help of the login name. The note before the first login comes before the help, so that a customer
-	/// of DEGIRO sees that flatexDEGIRO Bank serves only flatex accounts with FinTS.
+	/// The note of a bank in the list: the note of a merged bank, then the note that the FinTS access cannot reach some
+	/// customers of the bank, then the help of the login name. So a customer of DEGIRO sees that flatexDEGIRO Bank serves
+	/// only flatex accounts with FinTS, and every other bank keeps the help of its login name. The note of a login hint
+	/// belongs to the login step, not to the list.
 	public static func note(of bank: BankDirectory.Entry) -> String? {
-		bank.mergerNote ?? bank.loginNote ?? bank.loginHint?.help
+		bank.mergerNote ?? bank.availabilityNote ?? bank.loginHint?.help
 	}
 
 	/// The services and banks that match every word of `query` in their names, and for a bank also in its

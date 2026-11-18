@@ -873,6 +873,12 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **THEN** the list shows "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)" with "FinTS/HBCI with TAN method"
 - **AND** its note says that the FinTS access serves flatex accounts, and that DEGIRO and ViTrade accounts cannot be added with FinTS
 
+#### Scenario: Savings bank in the list
+
+- **GIVEN** the bank directory lists 70150000 as "Stadtsparkasse München" on a FinTS server of the savings banks
+- **WHEN** the user opens the list and types "Stadtsparkasse München"
+- **THEN** the note of the bank is the help of its login name, not the note before the first login
+
 #### Scenario: Bank directory that does not load
 
 - **GIVEN** an installed extension declares the service "Musterbroker", and the bank directory fails to load
