@@ -495,10 +495,15 @@ check_path_rule() {
 	esac
 }
 
-# The check of publish must accept the source archives that this run downloaded, and refuse a
-# missing archive, another digest, and notices that cannot be read.
+# The check of publish must read the notices of a commit, accept the source archives that this run
+# downloaded with the notices of the checkout, and refuse a missing archive, another digest, and
+# notices that cannot be read.
 check_source_rule() {
 	tag_notices HEAD
+	python3 scripts/licenses.py --root "$WORK/tag" check >/dev/null || fail "The license notices of HEAD fail their check."
+	rm -rf "$WORK/tag"
+	mkdir "$WORK/tag"
+	tar -cf - $(python3 scripts/licenses.py inputs) | tar -xf - -C "$WORK/tag"
 	for f in "$OUT"/sources/*; do echo "${f##*/} sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)"; done > "$WORK/assets-good"
 	(check_sources "$WORK/tag" "$WORK/assets-good") || fail "The check of publish refuses the source archives of this commit."
 	tail -n +2 "$WORK/assets-good" > "$WORK/assets-short"
