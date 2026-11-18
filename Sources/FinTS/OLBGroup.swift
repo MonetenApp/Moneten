@@ -46,13 +46,20 @@ enum OLBGroup {
 	}
 
 	/// The purchase price of a position of the group, which the bank sends as the purchase value of the whole position:
-	/// divided by the quantity of units, or by the nominal amount and times 100, which gives a percentage. A purchase price
-	/// in percent stays as it is, a position with the quantity 0 has none, and the price of any other bank stays as it is.
-	static func purchasePrice(_ price: Quote?, quantity: Decimal, isNominal: Bool, server: URL?) -> Quote? {
-		guard isGroup(server), let price, price.currency != nil else { return price }
+	/// divided by the quantity of units. A nominal amount gets a percentage: the purchase value in the currency of the
+	/// nominal amount, converted with `rate` when the bank sends it in another currency, divided by the nominal amount and
+	/// times 100. Without a rate that links the two currencies, or without the currency of the nominal amount, the
+	/// position keeps the purchase value divided by the nominal amount in the currency of the bank, because a percentage
+	/// would be read in the currency of the nominal amount. The quantity times that price is the purchase value again,
+	/// so the gain stays right. A purchase price in percent stays as it is, a position with the quantity 0 has none, and
+	/// the price of any other bank stays as it is.
+	static func purchasePrice(_ price: Quote?, quantity: Decimal, isNominal: Bool, nominalCurrency: String?, rate: ExchangeRate?, server: URL?) -> Quote? {
+		guard isGroup(server), let price, let currency = price.currency else { return price }
 		guard quantity != 0 else { return nil }
-		if isNominal { return Quote(amount: price.amount * 100 / quantity, currency: nil, day: price.day) }
-		return Quote(amount: price.amount / quantity, currency: price.currency, day: price.day)
+		if isNominal, let nominalCurrency, let value = currency == nominalCurrency ? price.amount : rate?.convert(price.amount, from: currency, to: nominalCurrency) {
+			return Quote(amount: value * 100 / quantity, currency: nil, day: price.day)
+		}
+		return Quote(amount: price.amount / quantity, currency: currency, day: price.day)
 	}
 }
 

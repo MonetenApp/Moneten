@@ -86,11 +86,16 @@ struct OLBGroupTests {
 		#expect(try Self.note(choose, server: Self.musterbankURL) == nil)
 	}
 
-	/// A position of the helper with a purchase price, read for an account of `server`.
-	static func purchase(_ position: String, server: String) throws -> Quote? {
+	/// A position of the helper, read for an account in euros of `server`.
+	static func holding(_ position: String, server: String) throws -> Holding {
 		let decoded = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8))
 		let account = AccountRequest(accountID: UUID(), name: "Depot", remoteID: "7654321", currency: "EUR")
-		return try decoded.holding(of: account, server: URL(string: server)).purchasePrice
+		return try decoded.holding(of: account, server: URL(string: server))
+	}
+
+	/// The purchase price of a position of the helper, read for an account of `server`.
+	static func purchase(_ position: String, server: String) throws -> Quote? {
+		try holding(position, server: server).purchasePrice
 	}
 
 	static let shares = #"{"name":"Musterwerke AG","quantity":"10","value":{"amount":"1250.00","currency":"EUR"},"purchase":{"amount":"1000.00","currency":"EUR","day":"2024-03-01"}}"#
@@ -105,6 +110,36 @@ struct OLBGroupTests {
 		#expect(try Self.purchase(percent, server: Self.olbURL) == Quote(amount: 97, currency: nil))
 		let none = #"{"name":"Musterwerke AG","quantity":"0","purchase":{"amount":"50.00","currency":"EUR"}}"#
 		#expect(try Self.purchase(none, server: Self.olbURL) == nil)
+	}
+
+	/// A bond of the nominal amount 10.000 USD, bought for 8.000,00 € and worth 9.000,00 €, with `rate` as the rate of the bank.
+	static func dollarBond(rate: String?) -> String {
+		#"{"name":"Anleihe Musterstaat","quantity":"10000","nominal":true,"currency":"USD","value":{"amount":"9000.00","currency":"EUR"},"#
+			+ #""purchase":{"amount":"8000.00","currency":"EUR"}"# + (rate.map { ",\"rate\":\($0)" } ?? "") + "}"
+	}
+
+	@Test("A bond in US dollars bought for 8.000,00 € at 1,25 USD per euro has the purchase price 100 % and gains 1.000,00 €, with the rate in either direction")
+	func foreignNominalWithRate() throws {
+		for rate in [#"{"base":"EUR","quoted":"USD","rate":"1.25"}"#, #"{"base":"USD","quoted":"EUR","rate":"0.8"}"#] {
+			for server in [Self.olbURL, Self.neelmeyerURL] {
+				let bond = try Self.holding(Self.dollarBond(rate: rate), server: server)
+				#expect(bond.purchasePrice == Quote(amount: 100, currency: nil))
+				#expect(bond.gain(in: "EUR")?.amount == Money(minorUnits: 100_000, currency: "EUR"))
+			}
+		}
+	}
+
+	@Test("A bond in US dollars bought for 8.000,00 € without a rate that links euros and dollars keeps the price of one unit in euros and gains 1.000,00 €")
+	func foreignNominalWithoutRate() throws {
+		for rate in [nil, #"{"base":"EUR","quoted":"CHF","rate":"0.95"}"#] {
+			let bond = try Self.holding(Self.dollarBond(rate: rate), server: Self.olbURL)
+			#expect(bond.purchasePrice == Quote(amount: Decimal(8) / 10, currency: "EUR"))
+			#expect(bond.gain(in: "EUR")?.amount == Money(minorUnits: 100_000, currency: "EUR"))
+		}
+		let unknown = #"{"name":"Anleihe Musterstaat","quantity":"10000","nominal":true,"value":{"amount":"9000.00","currency":"EUR"},"purchase":{"amount":"8000.00","currency":"EUR"}}"#
+		let bond = try Self.holding(unknown, server: Self.olbURL)
+		#expect(bond.purchasePrice == Quote(amount: Decimal(8) / 10, currency: "EUR"))
+		#expect(bond.gain(in: "EUR")?.amount == Money(minorUnits: 100_000, currency: "EUR"))
 	}
 
 	@Test("Another bank keeps the purchase price of the bank")

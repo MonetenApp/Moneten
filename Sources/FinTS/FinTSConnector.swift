@@ -181,6 +181,7 @@ public struct FinTSConnector: BankConnector {
 		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
 		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, today: today)?.description) }
 		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
+		let server = command.url.flatMap(URL.init(string:))
 		var state: AccessState?
 		var notices: [BankMessage] = []
 		func handle(_ message: HelperMessage) async throws {
@@ -190,15 +191,15 @@ public struct FinTSConnector: BankConnector {
 			case let .result(remoteID, result):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
-					let (outcome, errors) = try result.get().outcome(of: account, server: command.url.flatMap(URL.init(string:)))
-					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+					let (outcome, errors) = try result.get().outcome(of: account, server: server)
+					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: server)
 					notices += errors
 				} catch {
 					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
 				}
 			case let .accountFailed(remoteID, error):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
-				outcomes[account.accountID] = .failed(DKB.failure(of: error, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+				outcomes[account.accountID] = .failed(DKB.failure(of: error, account: remoteID, bankCode: command.bankCode, server: server)
 					?? error.failure)
 			case let .state(data): state = AccessState(data)
 			case let .failed(error): throw error.failure

@@ -419,10 +419,12 @@ extension AccountResult {
 			let quantityValue = try AccountResult.decimal(quantity)
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
 			let exchangeRate = try rate.map { ExchangeRate(base: $0.base.uppercased(), quoted: $0.quoted.uppercased(), rate: try AccountResult.decimal($0.rate)) }
+			let nominalCurrency = nominal == true ? currency?.uppercased() : nil
 			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
-				quantity: quantityValue, isNominal: nominal == true, nominalCurrency: nominal == true ? currency?.uppercased() : nil,
+				quantity: quantityValue, isNominal: nominal == true, nominalCurrency: nominalCurrency,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
-				purchasePrice: OLBGroup.purchasePrice(try purchase.map(Self.quote), quantity: quantityValue, isNominal: nominal == true, server: server),
+				purchasePrice: OLBGroup.purchasePrice(try purchase.map(Self.quote), quantity: quantityValue,
+					isNominal: nominal == true, nominalCurrency: nominalCurrency, rate: exchangeRate, server: server),
 				exchangeRate: exchangeRate)
 			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
 			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }

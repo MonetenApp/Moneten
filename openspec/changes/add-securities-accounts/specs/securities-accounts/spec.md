@@ -152,7 +152,7 @@ The app SHALL convert a quote or a purchase price in a foreign currency to the a
 
 ### Requirement: Purchase price of OLB and Bankhaus Neelmeyer
 
-The app SHALL read the purchase price of a position from a FinTS host that ends in ".olb.de" or is `hbci.neelmeyer.de` as the purchase value of the whole position. It divides it by a quantity in units, and by a nominal amount times 100, which gives a percentage.
+The app SHALL read the purchase price of a position from a FinTS host that ends in ".olb.de" or is `hbci.neelmeyer.de` as the purchase value of the whole position, divided by the quantity. For a nominal amount, it first converts that value into the currency of the nominal amount with the rate of the position, and gives a percentage. Without such a rate, it keeps the currency of the bank.
 
 #### Scenario: Percentage or no quantity
 
@@ -171,6 +171,20 @@ The app SHALL read the purchase price of a position from a FinTS host that ends 
 - **GIVEN** an account on the host `hbci.neelmeyer.de` with a bond of the nominal amount 10.000,00 € and the purchase price 9.800,00 €
 - **WHEN** the app reads the positions
 - **THEN** the purchase price is 98 %
+
+#### Scenario: Bond in another currency with an exchange rate
+
+- **GIVEN** an account in euros on the host `hbci.olb.de` with a bond of the nominal amount 10.000,00 USD, the purchase price 8.000,00 €, the market value 9.000,00 €, and the exchange rate 1,25 USD per euro
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 100 %
+- **AND** the profit is 1.000,00 €
+
+#### Scenario: Bond in another currency without an exchange rate
+
+- **GIVEN** an account in euros on the host `hbci.olb.de` with a bond of the nominal amount 10.000,00 USD, the purchase price 8.000,00 €, the market value 9.000,00 €, and no exchange rate
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 0,80 € per unit of the nominal amount
+- **AND** the profit is 1.000,00 €
 
 #### Scenario: Other bank
 
