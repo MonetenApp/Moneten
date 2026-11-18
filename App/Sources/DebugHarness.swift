@@ -43,6 +43,28 @@ final class DebugHarness {
 		#endif
 	}
 
+	/// Called first at launch, before anything opens a data folder or a keychain. A run of the harness needs a
+	/// throwaway data folder in `MONETEN_DATA_DIR` and a throwaway keychain file in `MONETEN_KEYCHAIN_PATH`, so that no
+	/// check changes the real database or reads or writes the login keychain of the developer (issue #421).
+	/// `HarnessRun.missing` has the reasons. Without both the app names what is missing on standard error and exits.
+	/// A debug build started without the harness keeps the real data folder and the login keychain. One that names a
+	/// keychain file of its own must name a data folder of its own too.
+	static func requireOwnFoldersIfRequested() {
+		#if DEBUG || PERF_HARNESS
+		let missing = HarnessRun.missing(debugFolder: requestedPath, dataFolder: DataFolder.requestedPath, keychainFile: AppKeychain.requestedPath)
+		guard !missing.isEmpty else { return }
+		let needs = missing.map {
+			switch $0 {
+			case .dataFolder: "MONETEN_DATA_DIR (the path of a throwaway data folder)"
+			case .keychainFile: "MONETEN_KEYCHAIN_PATH (the path of a throwaway keychain file)"
+			}
+		}
+		let run = requestedPath != nil ? "The debug harness" : "A run with MONETEN_KEYCHAIN_PATH"
+		FileHandle.standardError.write(Data("\(run) needs \(needs.joined(separator: " and ")).\n".utf8))
+		exit(2)
+		#endif
+	}
+
 	/// Called before the app finishes launching. A run of the harness does not bring the app to the front,
 	/// because the developer keeps working in another app. The app then drops every request to become the
 	/// active app, also for a bank dialog, an alert, and the offer of a crash report, and only "mainkey table"

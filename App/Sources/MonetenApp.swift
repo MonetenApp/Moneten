@@ -9,6 +9,8 @@ struct MonetenApp: App {
 	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
 
 	init() {
+		// Before the model exists, because the model opens the data folder and the keychain.
+		DebugHarness.requireOwnFoldersIfRequested()
 		// Before the model exists, so that every text of the app is in the language of this run.
 		AppLanguage.applyAtLaunch()
 		_model = State(initialValue: AppModel())
