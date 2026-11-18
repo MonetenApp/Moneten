@@ -14,21 +14,21 @@ public struct NewMarks: Sendable, Equatable {
 
 	public var isEmpty: Bool { kept.isEmpty }
 
-	/// The new transactions of the account that the user opened, no longer new, for the app to write through the store
-	/// and then into the ledger. Their rows keep the mark until `leave(account:in:)`.
-	public mutating func open(account id: UUID, in ledger: Ledger) -> [Transaction] {
-		let seen = Self.seen(account: id, in: ledger)
-		kept.formUnion(seen.map(\.id))
-		return seen
+	/// The number of new transactions of the account that the user opened. They count as seen now: the app writes it
+	/// through `Store.markSeen` and then `Ledger.markSeen`. Their rows keep the mark until `leave(account:in:)`.
+	public mutating func open(account id: UUID, in ledger: Ledger) -> Int {
+		let seen = Self.newIDs(account: id, in: ledger)
+		kept.formUnion(seen)
+		return seen.count
 	}
 
-	/// The user left the view, closed the main window, or locked the app. The marks that the view kept go. The rows that
-	/// are still new in `id`, the account of the visit, came during the visit: they return no longer new, for the app to
-	/// write as `open(account:in:)` returns them. Without an account, such as after a group, nothing returns.
-	public mutating func leave(account id: UUID?, in ledger: Ledger) -> [Transaction] {
+	/// The user left the view or closed the main window. The marks that the view kept go. The transactions that are still
+	/// new in `id`, the account of the visit, came during the visit, and their number returns: they count as seen now, and
+	/// the app writes it as after `open(account:in:)`. Without an account, such as after a group, it is 0.
+	public mutating func leave(account id: UUID?, in ledger: Ledger) -> Int {
 		kept = []
-		guard let id else { return [] }
-		return Self.seen(account: id, in: ledger)
+		guard let id else { return 0 }
+		return ledger.newTransactionCounts[id, default: 0]
 	}
 
 	/// The user checked these rows. Checking ends the mark, as `Transaction.markChecked()` ends it on a row that is still new.
@@ -37,7 +37,9 @@ public struct NewMarks: Sendable, Equatable {
 	/// True when the row of `t` shows the mark: the transaction is new, or it was new when the view opened.
 	public func shows(_ t: Transaction) -> Bool { t.isNew || kept.contains(t.id) }
 
-	private static func seen(account id: UUID, in ledger: Ledger) -> [Transaction] {
-		ledger.transactions(ofAccount: id).filter(\.isNew).map { var t = $0; t.isNew = false; return t }
+	/// Reads the rows in place, without the copy of each transaction that `Ledger.transactions(ofAccount:)` makes.
+	private static func newIDs(account id: UUID, in ledger: Ledger) -> [UUID] {
+		guard ledger.newTransactionCounts[id, default: 0] > 0 else { return [] }
+		return Array(ledger.transactions.lazy.filter { $0.accountID == id && $0.isNew }.map(\.id))
 	}
 }

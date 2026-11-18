@@ -924,11 +924,11 @@ final class AppModel {
 		try? store.markSeen(account: id)
 	}
 
-	/// Writes that the new transactions of an account are seen, through the store first, then into the ledger.
-	private func storeSeen(_ seen: [Transaction], of id: UUID) {
-		guard !seen.isEmpty, let store, (try? store.markSeen(account: id)) != nil else { return }
+	/// Writes that the `count` new transactions of an account are seen, through the store first, then into the ledger.
+	private func storeSeen(_ count: Int, of id: UUID) {
+		guard count > 0, let store, (try? store.markSeen(account: id)) != nil else { return }
 		ledgerChange = "seen"
-		ledger.update(seen)
+		ledger.markSeen(account: id)
 	}
 
 	var title: String {

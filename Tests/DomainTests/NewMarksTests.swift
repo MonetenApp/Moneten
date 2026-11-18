@@ -20,22 +20,21 @@ struct NewMarksTests {
 		var ledger = Ledger(accounts: [Self.giro, Self.card], transactions: new + [old, other])
 		var marks = NewMarks()
 
-		let seen = marks.open(account: Self.giro.id, in: ledger)
-		#expect(Set(seen.map(\.id)) == Set(new.map(\.id)))
-		#expect(seen.allSatisfy { !$0.isNew })
+		#expect(marks.open(account: Self.giro.id, in: ledger) == 3)
 		// The app writes the seen rows through the store, then into the ledger.
-		ledger.update(seen)
+		ledger.markSeen(account: Self.giro.id)
+		#expect(new.allSatisfy { !ledger.transaction($0.id)!.isNew })
 		#expect(ledger.newTransactionCounts[Self.giro.id, default: 0] == 0)
 		#expect(new.allSatisfy { marks.shows(ledger.transaction($0.id)!) })
 		#expect(!marks.shows(ledger.transaction(old.id)!))
 
-		#expect(marks.leave(account: Self.giro.id, in: ledger).isEmpty)
+		#expect(marks.leave(account: Self.giro.id, in: ledger) == 0)
 		#expect(new.allSatisfy { !marks.shows(ledger.transaction($0.id)!) })
 		// The other account was not opened, so its row is still new.
 		#expect(marks.shows(ledger.transaction(other.id)!))
 
 		// Back in "Girokonto" later: nothing is new any more.
-		#expect(marks.open(account: Self.giro.id, in: ledger).isEmpty)
+		#expect(marks.open(account: Self.giro.id, in: ledger) == 0)
 		#expect(new.allSatisfy { !marks.shows(ledger.transaction($0.id)!) })
 	}
 
@@ -45,7 +44,7 @@ struct NewMarksTests {
 		let other = Self.row(Self.card, -700, isNew: true)
 		var ledger = Ledger(accounts: [Self.giro, Self.card], transactions: [old, other])
 		var marks = NewMarks()
-		#expect(marks.open(account: Self.giro.id, in: ledger).isEmpty)
+		#expect(marks.open(account: Self.giro.id, in: ledger) == 0)
 
 		// The refresh adds a row of -12,00 € while "Girokonto" is open.
 		let added = Self.row(Self.giro, -1_200, isNew: true)
@@ -53,18 +52,34 @@ struct NewMarksTests {
 		#expect(marks.shows(ledger.transaction(added.id)!))
 
 		// The user leaves the view: the added row counts as seen, written through the store and then into the ledger.
-		let seen = marks.leave(account: Self.giro.id, in: ledger)
-		#expect(seen.map(\.id) == [added.id])
-		#expect(seen.allSatisfy { !$0.isNew })
-		ledger.update(seen)
+		#expect(marks.leave(account: Self.giro.id, in: ledger) == 1)
+		ledger.markSeen(account: Self.giro.id)
+		#expect(!ledger.transaction(added.id)!.isNew)
 		#expect(!marks.shows(ledger.transaction(added.id)!))
 		#expect(ledger.newTransactionCounts[Self.giro.id, default: 0] == 0)
 		// The other account was not open, so its row stays new.
 		#expect(marks.shows(ledger.transaction(other.id)!))
 
 		// The next visit of "Girokonto" finds nothing new.
-		#expect(marks.open(account: Self.giro.id, in: ledger).isEmpty)
+		#expect(marks.open(account: Self.giro.id, in: ledger) == 0)
 		#expect(!marks.shows(ledger.transaction(added.id)!))
+	}
+
+	@Test("Seen in the ledger: a split row of -50,00 € loses the flag in both parts, and the other account keeps its new row")
+	func ledgerMarkSeen() {
+		let split = Self.row(Self.giro, -5_000, isNew: true)
+		let other = Self.row(Self.card, -700, isNew: true)
+		let parts = [SplitPart(transactionID: split.id, position: 0, amountMinor: -2_000), SplitPart(transactionID: split.id, position: 1, amountMinor: -3_000)]
+		var ledger = Ledger(accounts: [Self.giro, Self.card], transactions: [split, other], parts: parts)
+		#expect(ledger.rows(in: .account(Self.giro.id)).rows.filter(\.isNew).count == 2)
+
+		ledger.markSeen(account: Self.giro.id)
+		#expect(ledger.rows(in: .account(Self.giro.id)).rows.count == 2)
+		#expect(ledger.rows(in: .account(Self.giro.id)).rows.allSatisfy { !$0.isNew })
+		#expect(!ledger.transaction(split.id)!.isNew)
+		#expect(ledger.newTransactionCounts[Self.giro.id] == nil)
+		#expect(ledger.newTransactionCounts[Self.card.id] == 1)
+		#expect(ledger.transaction(other.id)!.isNew)
 	}
 
 	@Test("Leaving a view without an account, such as a group, empties the marks and returns no rows")
@@ -73,7 +88,7 @@ struct NewMarksTests {
 		let ledger = Ledger(accounts: [Self.giro], transactions: [row])
 		var marks = NewMarks()
 		_ = marks.open(account: Self.giro.id, in: ledger)
-		#expect(marks.leave(account: nil, in: ledger).isEmpty)
+		#expect(marks.leave(account: nil, in: ledger) == 0)
 		#expect(marks.isEmpty)
 	}
 
@@ -82,7 +97,8 @@ struct NewMarksTests {
 		let first = Self.row(Self.giro, -1_000, isNew: true), second = Self.row(Self.giro, -2_000, isNew: true)
 		var ledger = Ledger(accounts: [Self.giro], transactions: [first, second])
 		var marks = NewMarks()
-		ledger.update(marks.open(account: Self.giro.id, in: ledger))
+		#expect(marks.open(account: Self.giro.id, in: ledger) == 2)
+		ledger.markSeen(account: Self.giro.id)
 
 		var checked = ledger.transaction(first.id)!
 		checked.markChecked()
