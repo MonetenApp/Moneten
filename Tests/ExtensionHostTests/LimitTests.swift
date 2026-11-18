@@ -86,7 +86,9 @@ import TestSupport
 		let bodies = LargeBodies(html: true)
 		let session = HostSession(package: package, transport: bodies, memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
 		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fetch")) }
-		#expect(result == .success(.array([.integer(8 * 1_048_576), .string("ISO-8859-1")])))
+		// Typed outside #expect: the compiler of the CI runner reads the product inside the macro as Int.
+		let size: Int64 = 8 * 1_048_576
+		#expect(result == .success(.array([.integer(size), .string("ISO-8859-1")])))
 		#expect(bodies.freed.withLock { $0 } == 1)
 	}
 
