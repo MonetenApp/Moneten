@@ -526,6 +526,9 @@ final class DebugHarness {
 		case "extalert":
 			log("extalert", ("title", model.extensions.failure.map { .hash($0) } ?? .presence(false)), ("shown", .flag(model.extensions.alerts.panel != nil)))
 			model.extensions.failure = nil
+		// Logs the same as "extalert" and leaves the failure open.
+		case "extalertstate":
+			log("extalertstate", ("title", model.extensions.failure.map { .hash($0) } ?? .presence(false)), ("shown", .flag(model.extensions.alerts.panel != nil)))
 		case "extlist":
 			let library = model.extensions
 			log("ext list", ("index", .count(library.index?.version ?? 0)), ("reachable", .flag(library.reachable)), ("problem", .presence(library.problem != nil)),
@@ -704,6 +707,8 @@ final class DebugHarness {
 				model.save(account: Account(groupID: group.id, position: model.ledger.nextTreePosition(in: group.id), name: "Devisen", kind: .other,
 					source: .bank, bankBalanceMinor: 125_000, otherBankBalances: others))
 			}
+		// Stores a made-up problem of an automatic refresh, which the status line and the menu bar popover show.
+		case "backgroundproblem": model.backgroundProblem = AlertMessage(title: "The bank refused the refresh.", message: "")
 		case "refreshfailed":
 			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
 			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
