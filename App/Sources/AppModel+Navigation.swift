@@ -334,6 +334,9 @@ extension AppModel {
 						problems.append("\(name): \(error)")
 					}
 				}
+				// Without a stored file, as after a cancel, there is nothing to load, and loading the whole ledger again would keep
+				// the sheet open for seconds after "Cancel".
+				guard !storedFiles.isEmpty else { return }
 				do { try await reloadFileImport(from: store) }
 				catch { problems.append(String(localized: "The imported transactions could not be loaded: \(String(describing: error))")) }
 			}
