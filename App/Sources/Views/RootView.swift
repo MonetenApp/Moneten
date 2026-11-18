@@ -155,7 +155,9 @@ struct LockView: View {
 				refreshAvailability()
 			}
 		}
-		.onChange(of: password) { _, _ in
+		.onChange(of: password) { _, typed in
+			// Clearing the field after a wrong password keeps "Incorrect password!" until the user types again.
+			guard !typed.isEmpty else { return }
 			wrong = false
 			busy = false
 		}

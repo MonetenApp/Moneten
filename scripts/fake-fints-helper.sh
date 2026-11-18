@@ -51,7 +51,9 @@
 # Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
 # shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB, the DKB step for "ohnetan", and the DKB
-# message of a card without jobs for "karteohnejobs". The login of every
+# message of a card without jobs for "karteohnejobs". Oberbank (70120700) has its real FinTS address on the server of
+# Bank-Verlag, so the setup shows its note, and its login asks for the TAN method from "smsTAN" and "TAN-Generator", with
+# the Security App that cannot be chosen, and then for the SMS code with the note on the Security App. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
@@ -85,6 +87,7 @@ case "$cmd" in
 '{"code":"10010010","name":"Postbank","city":"Berlin","bic":"PBNKDEFF100","url":"https://hbci.postbank.de/banking/hbci.do"},'\
 '{"code":"10077777","name":"norisbank GmbH","city":"Berlin","bic":"NORSDE51XXX","url":"https://fints.norisbank.de/"},'\
 '{"code":"50010517","name":"ING-DiBa","city":"Frankfurt am Main","bic":"INGDDEFFXXX","url":"https://fints.ing.de/fints/"},'\
+'{"code":"70120700","name":"Oberbank","city":"München","bic":"OBKLDEMXXXX","url":"https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"},'\
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
@@ -119,6 +122,11 @@ case "$cmd" in
 	case "$cmd" in
 	*'"bankCode":"50040000"'*) echo "$photoTAN"'"900"}' ;;
 	*'"bankCode":"20041111"'*) echo "$photoTAN"'"902"}' ;;
+	*'"bankCode":"70120700"'*)
+		echo '{"type":"ask","id":2,"kind":"tanMethod","purpose":"login","methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"972","name":"TAN-Generator"}]}'
+		answer
+		echo '{"type":"ask","id":3,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die xTAN aus der SMS ein.","current":"921","methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"972","name":"TAN-Generator"}]}'
+		;;
 	*) echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}' ;;
 	esac
 	answer
