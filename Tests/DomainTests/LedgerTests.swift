@@ -793,6 +793,23 @@ struct LedgerTests {
 		#expect(l.rows(in: .category(d.id)).rows.count == 3)
 	}
 
+	/// charts "Categories can be left out of charts": a hidden category leaves the slice of every group above it too.
+	@Test("A category without Show in diagrams leaves the pie also when it sits in a group")
+	func hiddenSubcategoryLeavesPie() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let living = Domain.Category(position: 0, name: "Living", isGroup: true)
+		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent", showInDiagrams: false)
+		let groceries = Domain.Category(parentID: living.id, position: 1, name: "Groceries")
+		let day = Day(year: 2026, month: 11, day: 2)
+		func row(_ c: Domain.Category, _ minor: Int64) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: minor, name: "Muster", categoryID: c.id, categorizedBy: .manual)
+		}
+		let l = Ledger(accounts: [giro], categories: [living, rent, groceries], transactions: [row(rent, -95_000), row(groceries, -30_000)])
+		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-30_000])
+		#expect(l.categoryTotals(of: l.transactions, below: living.id).map(\.category.name) == ["Groceries"])
+		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-30_000])
+	}
+
 	@Test("A pending transaction counts in the balance, the bars, and the pie")
 	func pendingCounts() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, initialBalanceMinor: 100_000)

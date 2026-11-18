@@ -7130,6 +7130,16 @@
         }
       }
     },
+    "No visible categories; no pie chart." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine sichtbaren Kategorien, kein Tortendiagramm."
+          }
+        }
+      }
+    },
     "No withdrawals" : {
       "localizations" : {
         "de" : {

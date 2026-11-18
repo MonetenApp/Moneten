@@ -218,10 +218,13 @@ struct CategoryPie: View {
 	var body: some View {
 		let currencies = ChartCurrency.ranked(rows.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
-		let slices = Self.slices(of: ChartCurrency.rows(rows, in: currency, of: currencies), in: model)
+		let shown = ChartCurrency.rows(rows, in: currency, of: currencies)
+		let slices = Self.slices(of: shown, in: model)
 		GeometryReader { geometry in
 			if slices.withdrawals.isEmpty, slices.deposits.isEmpty {
-				Text("No transactions; no pie chart.").foregroundStyle(Palette.bandLabel).frame(maxWidth: .infinity, maxHeight: .infinity)
+				// Rows whose categories are all left out of charts give no slice either, and the text says why.
+				Text(shown.contains { !$0.isPending || $0.review == nil } ? "No visible categories; no pie chart." : "No transactions; no pie chart.")
+					.foregroundStyle(Palette.bandLabel).frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
 				// Each pie takes half the width up to its own, and the outer labels use what is left at the edges.
 				let width = min(PieChart.width, geometry.size.width / 2)

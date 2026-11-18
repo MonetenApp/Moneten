@@ -198,9 +198,11 @@ extension Ledger {
 		let roots = parent.map { childCategories(of: $0) } ?? (childCategories(of: nil) + [defaultCategory].compactMap { $0 })
 		var rootOf: [UUID: UUID] = [:]
 		for r in roots { for id in categoryIDs(inTree: r.id) { rootOf[id] = r.id } }
+		// A hidden category leaves the slice of every group above it too, as in `periodSums`.
+		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
 		var totals: [UUID: Int128] = [:]
 		for t in transactions where t.countsInSums {
-			guard let c = effectiveCategoryID(of: t), let r = rootOf[c] else { continue }
+			guard let c = effectiveCategoryID(of: t), !hidden.contains(c), let r = rootOf[c] else { continue }
 			totals[r, default: 0] += Int128(t.amountMinor)
 		}
 		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, Int64(clampingSum: $0)) } }

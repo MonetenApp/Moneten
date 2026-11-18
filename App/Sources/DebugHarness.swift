@@ -487,7 +487,7 @@ final class DebugHarness {
 			menu.update()
 			let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }
 			log("menu", ("", .choice(argument, of: names)), ("items", .list(items.map { .hash($0.title) })),
-				("enabled", .list(items.map { .flag($0.isEnabled) })), ("checked", .list(items.map { .flag($0.state == .on) })))
+				("enabled", .list(items.map { .flag($0.isEnabled) })))
 		// Also whether a file import or an export runs, and whether a migration stores, which alone holds back the commands,
 		// the settings, and the extensions.
 		case "menucommands":
@@ -652,13 +652,16 @@ final class DebugHarness {
 				c.symbol = parts[1].isEmpty ? nil : parts[1]
 				model.save(category: c)
 			}
+		#if DEBUG || PERF_HARNESS
 		case "color":
 			// "<category>=#RRGGBB" sets the color of a category, as a choice in its settings does, "<category>=" removes it.
 			let parts = argument.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-			if parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }) {
-				c.color = parts[1].isEmpty ? nil : parts[1]
-				model.save(category: c)
+			guard parts.count == 2, parts[1].isEmpty || HarnessInput.isHexColor(parts[1]), var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else {
+				return log("color refused")
 			}
+			c.color = parts[1].isEmpty ? nil : parts[1]
+			model.save(category: c)
+		#endif
 		case "sidebaramount":
 			// "<category>=<value>" sets "Display in sidebar", with a value of `SidebarAmount` such as "currentMonth".
 			let parts = argument.split(separator: "=").map(String.init)
@@ -890,8 +893,10 @@ final class DebugHarness {
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			#if DEBUG || PERF_HARNESS
 			// What "Add Category Group" in the context menu of a category opens.
 			case "newCategoryGroup": model.sheet = .newCategory(isGroup: true)
+			#endif
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
@@ -913,11 +918,13 @@ final class DebugHarness {
 		// "<category>" selects the first row of the table, opens its context menu, and chooses that category in "Create Rule".
 		// "<n>" selects the first n rows and only opens the menu. Both log whether the menu has "Create Rule", and its items.
 		case "createrule": createRule(argument)
+		#if DEBUG || PERF_HARNESS
 		// "<count>|<item>|<choice>" selects the first <count> rows of the table, opens the context menu of the first row as a
 		// right click does, and logs its items. With <item>, the title of an item with a submenu such as "Assign Category", it
 		// also logs that submenu, and with <choice>, the title of an item of the submenu, it chooses that item. An <item> without
 		// a submenu is chosen itself. Each title by its hash, whether it is enabled, and whether it has a checkmark.
 		case "rowmenu": rowMenu(argument)
+		#endif
 		// "<category>|<account>" restricts the category to that account, as "Restrict to" in its settings does.
 		case "restrict":
 			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
@@ -928,64 +935,57 @@ final class DebugHarness {
 			log("restrict done")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		#if DEBUG || PERF_HARNESS
+		// Commands of the release check of categories, rules, splits, and charts. Each refuses input that it would otherwise bend,
+		// and clicks only titles of an allow-list, never in a save or open panel (`HarnessInput`).
 		// "<account>|<key>=<value>|..." adds made-up rows to the account as a file import does, so that the rules run on them.
 		// The keys are name, purpose, comment, iban, booking, reference, mandate, creditor, amount in minor units, currency,
-		// days before today, pending=yes, id for a source ID, and count for that many equal rows. "via=refresh" delivers
-		// them in a refresh of a made-up connector in place of the file. It logs the number of rows of the account.
+		// days before today, pending=yes, id for a source ID, and count for that many equal rows; "#" starts the next row.
+		// "manual=yes" saves them as manual rows, "stored=yes" with "category=<name>" as rows that an older version sorted by a
+		// rule, and "via=refresh" delivers them in a refresh of a made-up connector.
 		case "addrow": addRows(argument)
 		// "<text>" replaces the text of the first text editor of the sheet on top, such as the rule field of the category
 		// settings, as typing does. It logs whether it found the editor.
-		case "editortext":
-			func editors(in view: NSView) -> [NSTextView] { ((view as? NSTextView).map { $0.isEditable && !$0.isFieldEditor ? [$0] : [] } ?? []) + view.subviews.flatMap(editors) }
-			guard let sheet = topSheet, let editor = sheet.contentView.flatMap({ editors(in: $0).first }) else { return log("editortext", ("found", .flag(false))) }
-			sheet.makeFirstResponder(editor)
-			editor.selectAll(nil)
-			editor.insertText(argument, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
-			log("editortext", ("found", .flag(true)))
+		case "editortext": editorText(argument)
 		// "<name>": an empty giro account in euros that a bank refreshes, for "addrow ...|via=refresh" with a balance.
 		case "bankaccount":
+			guard !argument.isEmpty else { return log("bankaccount refused") }
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .bank))
 			log("bankaccount done")
-		// "<account>": the initial balance of the account and whether a calibration is proposed, as a check of the merge, without
-		// the amount, which "initialbalance" compares with the argument "<account>|<minor units>" instead.
-		case "initialbalance":
-			let parts = argument.split(separator: "|").map(String.init)
-			guard let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("initialbalance no account") }
-			log("initialbalance", ("matches", parts.count == 2 ? .flag(Int64(parts[1]) == account.initialBalanceMinor) : .presence(false)),
-				("set", .flag(account.initialBalanceIsSet)), ("derived", .flag(account.initialBalanceIsDerived)),
-				("calibration", .flag(model.proposedCalibration(of: account) != nil)), ("older", .flag(account.missesOlderTransactions)))
-		// "<category>": what "Remove..." in the context menu of a category or a category group does. The question is modal, so
-		// it opens after this command returns, and "button" answers it. Logs whether the category was removed.
-		case "confirmremove":
-			guard let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("confirmremove not found") }
-			DispatchQueue.main.async { [self] in
-				let removed = model.confirmRemove(.category(c.id))
-				log("confirmremove", ("removed", .flag(removed)))
-			}
+		// "<account>|<minor units>": whether the initial balance of the account is that amount, and whether a calibration is
+		// proposed. The log has only the flags, never the amount.
+		case "initialbalance": initialBalance(argument)
 		// "<purpose>|<minor units>" changes the amount of the manual row with that purpose as the transaction sheet does, and
 		// "manualdelete <purpose>" deletes it as "Delete Transaction..." does.
-		case "manualedit", "manualdelete":
-			let parts = argument.split(separator: "|").map(String.init)
-			guard var t = model.ledger.transactions.first(where: { $0.isManual && $0.purpose == parts[0] }) else { return log("manualedit no row") }
-			if command == "manualdelete" {
-				model.delete(transactions: [t.id])
-			} else if parts.count == 2, let minor = Int64(parts[1]) {
-				t.amountMinor = minor
-				model.save(transaction: t, adding: false)
-			}
-			log("manualedit done")
+		case "manualedit", "manualdelete": manualEdit(command, argument)
+		// "<category>|Remove" or "<category>|Cancel": what "Remove..." in the context menu of a category or a group does,
+		// answered with that button of the question.
+		case "confirmremove": confirmRemove(argument)
 		// "<category>": the rows of the category view, by the hash of each name and each purpose in the order of the list.
 		case "categoryrows": categoryRows(argument)
-		// "<n>" clicks button n, counted from 0, of the sheet or the alert on top, or of the modal alert, such as a button of the
-		// question whether to apply a changed rule. "" only logs. The log has the buttons and the texts by the hash of each.
-		case "button":
-			func buttons(in view: NSView) -> [NSButton] { ((view as? NSButton).map { [$0] } ?? []) + view.subviews.flatMap(buttons) }
-			func texts(in view: NSView) -> [String] { ((view as? NSTextField).map { $0.isEditable ? [] : [$0.stringValue] } ?? []) + view.subviews.flatMap(texts) }
-			guard let window = topSheet ?? NSApp.modalWindow, let content = window.contentView else { return log("button no sheet") }
-			let all = buttons(in: content).filter { !$0.isHidden && !$0.title.isEmpty }
-			log("button", ("titles", .list(all.map { .hash($0.title) })), ("enabled", .list(all.map { .flag($0.isEnabled) })),
-				("texts", .list(texts(in: content).filter { !$0.isEmpty }.map { .hash($0) })), ("modal", .flag(window === NSApp.modalWindow)))
-			if let n = Int(argument), all.indices.contains(n) { all[n].performClick(nil) }
+		// "<title>" clicks the button with that title in the sheet or the alert on top, from the allow-list of the question
+		// whether to apply a changed rule. "" only logs the buttons and the texts by the hash of each.
+		case "button": clickButton(argument)
+		// "<menu>" logs a menu of the menu bar with the checkmark of each item, such as the active view mode in "View".
+		case "menustate": menuState(argument)
+		// "<cmd+i|cmd+k|cmd+1|cmd+2|cmd+3>" sends that shortcut to the main window and the menu bar.
+		case "shortcut": shortcut(argument)
+		// "<row>" logs the context menu of a sidebar row with its items enabled or not, and its submenu "Move to Group".
+		case "sidebarmenu": sidebarMenu(argument)
+		case "viewmode": viewMode()
+		// "month", "quarter", or "year": the switch "M", "Q", "Y" of the category chart.
+		case "chartperiod":
+			guard let period = ChartPeriod(rawValue: argument) else { return log("chartperiod refused") }
+			model.chartPeriod = period
+		// "<category>=on" or "<category>=off": "Show in diagrams" in the settings of the category.
+		case "diagrams":
+			let parts = argument.split(separator: "=").map(String.init)
+			guard parts.count == 2, ["on", "off"].contains(parts[1]), var c = model.ledger.categories.first(where: { $0.name == parts[0] }) else {
+				return log("diagrams refused")
+			}
+			c.showInDiagrams = parts[1] == "on"
+			model.save(category: c)
+		#endif
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
 		case "offsetting":
 			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.row($0) })
@@ -1115,12 +1115,13 @@ final class DebugHarness {
 		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
 		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
 		case "savedsearch": savedSearch(argument)
+		#if DEBUG || PERF_HARNESS
 		case "chartbar": chartBar(argument)
+		#endif
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
-				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)),
-				("mode", .state(model.viewMode)))
+				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
 			// The case of the amount filter, without the ends of a custom range.
 			log(LogLine("", values: [("pin", .flag(model.isFilterBarPinned)), ("period", .state(model.period)), ("status", .state(model.filter.status)),
 				("amount", .state(model.filter.amount)), ("filter", .list(model.filter.activeKinds.map { .word($0) }))] + Self.filterTargets(model)
@@ -1239,24 +1240,6 @@ final class DebugHarness {
 
 	/// The euro balance chart of the selected account or group: the days of its first and last bar, and
 	/// whether the last bar equals the total in the title, without the amounts.
-	/// "<days ago>|<minor units>": whether the euro balance bar of the selected account or group that holds that day shows the
-	/// amount, as the bar chart draws it. The log has only the flags, never the amount of the bar.
-	private func chartBar(_ argument: String) {
-		guard let model else { return }
-		let parts = argument.split(separator: "|").map(String.init)
-		guard parts.count == 2, let daysAgo = Int(parts[0]), let expected = Int64(parts[1]) else { return log("chartbar bad argument") }
-		let ids: Set<UUID> = switch model.selection {
-		case let .account(id): [id]
-		case let .group(id): model.ledger.accountIDs(inGroupTree: id)
-		default: []
-		}
-		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
-		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
-		let day = Day.today().adding(days: -daysAgo)
-		let bar = bars.first { $0.start <= day && day < $0.end }
-		log("chartbar", ("found", .flag(bar != nil)), ("matches", .flag(bar?.money.minorUnits == expected)), ("bars", .count(bars.count)))
-	}
-
 	private func logChart() {
 		guard let model else { return }
 		let ids: Set<UUID>
@@ -1280,8 +1263,8 @@ final class DebugHarness {
 		guard let model, let table = transactionTables().first, let main = table.window else { return log("mainkey no table") }
 		let target = topSheet ?? main
 		let keys: [String: (String, UInt16)] = ["down": (String(UnicodeScalar(NSDownArrowFunctionKey)!), 125), "up": (String(UnicodeScalar(NSUpArrowFunctionKey)!), 126),
-			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40), "cmd+i": ("i", 34), "cmd+1": ("1", 18), "cmd+2": ("2", 19), "cmd+3": ("3", 20)]
-		let names: [StaticString] = ["table", "down", "up", "return", "escape", "cmd+k", "cmd+i", "cmd+1", "cmd+2", "cmd+3"]
+			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
+		let names: [StaticString] = ["table", "down", "up", "return", "escape", "cmd+k"]
 		guard names.contains(where: { "\($0)" == name }) else { return log("mainkey rejected") }
 		var handledBy: StaticString = "-"
 		if name == "table" {
@@ -1290,7 +1273,7 @@ final class DebugHarness {
 			main.makeKeyAndOrderFront(nil)
 			main.makeFirstResponder(table)
 		} else if let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero,
-			modifierFlags: name.hasPrefix("cmd+") ? .command : key.1 >= 125 ? [.numericPad, .function] : [], timestamp: 0, windowNumber: target.windowNumber,
+			modifierFlags: name == "cmd+k" ? .command : key.1 >= 125 ? [.numericPad, .function] : [], timestamp: 0, windowNumber: target.windowNumber,
 			context: nil, characters: key.0, charactersIgnoringModifiers: key.0, isARepeat: false, keyCode: key.1) {
 			// The order of NSApplication: the key equivalents of the window, then the menu bar, then the focused view.
 			if target.performKeyEquivalent(with: event) {
@@ -1311,7 +1294,7 @@ final class DebugHarness {
 				.map { ledger.effectiveCategoryID(of: $0).flatMap(order.firstIndex).map { LogValue.position($0) } ?? .word("default") }
 			self.log("mainkey", ("", .choice(name, of: names)), ("handled", .word(handledBy)), ("sheet", .state(model.sheet)),
 				("tablefocus", .flag(table.window?.firstResponder === table)), ("key", .flag(NSApp.keyWindow === table.window)), ("row", .position(table.selectedRow)),
-				("category", .list(categories)), ("mode", .state(model.viewMode)), ("active", .flag(NSApp.isActive)))
+				("category", .list(categories)))
 		}
 	}
 
@@ -1915,16 +1898,11 @@ final class DebugHarness {
 		for index in 0..<list.numberOfRows {
 			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
-			menu?.update()
-			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })),
-				("enabled", .list((menu?.items ?? []).map { .flag($0.isEnabled) })))
+			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
 			if choice.count == 2, choice[0] == index,
 				// "Move to Group" is the only submenu of a row, and its title follows the language.
 				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
 				submenu.update()
-				log("contextmenu submenu", ("items", .list(submenu.items.map { .hash($0.title) })), ("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
-				// A negative item only logs the submenu.
-				guard choice[1] >= 0 else { return }
 				guard submenu.items.indices.contains(choice[1]), submenu.items[choice[1]].isEnabled else {
 					return log("contextmenu move refused")
 				}
@@ -1979,103 +1957,6 @@ final class DebugHarness {
 		}
 		log("menuexport item", ("title", .hash(menu.items[index].title)))
 		menu.performActionForItem(at: index)
-	}
-
-	private func addRows(_ argument: String) {
-		guard let model else { return }
-		let parts = argument.components(separatedBy: "|")
-		guard let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("addrow no account") }
-		guard let fields = Self.fields(parts.dropFirst().joined(separator: "|").components(separatedBy: "#")[0]) else { return log("addrow bad argument") }
-		let today = Day.today()
-		var rows: [Transaction] = []
-		// "#" starts the fields of the next row, so that one delivery can bring rows of several kinds in their order.
-		for spec in [fields] + parts.dropFirst().joined(separator: "|").components(separatedBy: "#").dropFirst().map(Self.fields) {
-			guard let spec else { return log("addrow bad argument") }
-			rows += (0..<(spec["count"].flatMap(Int.init) ?? 1)).map { _ in
-				Transaction(accountID: account.id, bookingDate: today.adding(days: -(spec["days"].flatMap(Int.init) ?? 0)),
-					amountMinor: spec["amount"].flatMap { Int64($0) } ?? -100, currency: spec["currency"] ?? account.currency, name: spec["name"] ?? "",
-					purpose: spec["purpose"] ?? "", counterpartyIBAN: spec["iban"], bookingText: spec["booking"], endToEndReference: spec["reference"],
-					mandateReference: spec["mandate"], creditorID: spec["creditor"], comment: spec["comment"], isPending: spec["pending"] == "yes",
-					sourceID: spec["id"])
-			}
-		}
-		if fields["manual"] == "yes" {
-			// Manual rows, saved one by one as OK in the transaction sheet saves them.
-			for var t in rows {
-				t.isManual = true
-				model.save(transaction: t, adding: true)
-			}
-			return log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)))
-		}
-		if fields["via"] == "refresh" {
-			// "balance" in minor units with "balanceday" days before today, "failed=yes" for a transaction request that failed
-			// beside the balance, "complete=yes" for the full history, "older=yes" for an answer that may miss older rows, and
-			// "count=0" with "rows=none" for a balance without a transaction list. The rows of the delivery start "from" days ago.
-			let balanceDate = fields["balanceday"].flatMap(Int.init).flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Date()) }
-			let fetched = fields["rows"] == "none" || fields["failed"] == "yes" ? nil
-				: FetchedTransactions(rows: rows, from: today.adding(days: -(fields["from"].flatMap(Int.init) ?? 10)))
-			let result = RefreshResult(balance: fields["balance"].flatMap { Int64($0) }.map { Money(minorUnits: $0, currency: account.currency) },
-				balanceDate: balanceDate, transactions: fetched, isComplete: fields["complete"] == "yes",
-				transactionFailure: fields["failed"] == "yes" ? .notFetched : nil, missesOlder: fields["older"] == "yes")
-			let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890",
-				currency: account.currency)])
-			let start = ContinuousClock.now
-			model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
-			Task {
-				while model.sync.refreshingAccounts.contains(account.id) || ContinuousClock.now - start < .milliseconds(200) { try? await Task.sleep(for: .milliseconds(50)) }
-				log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)),
-					("ms", .count(Int((ContinuousClock.now - start) / .milliseconds(1)))))
-			}
-			return
-		}
-		Task {
-			await model.replacingTable { _ = try? model.merge(.file(rows), into: account.id) }
-			log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)))
-		}
-	}
-
-	/// The fields "<key>=<value>|..." of one row of "addrow", nil when a part has no "=".
-	private static func fields(_ text: String) -> [String: String]? {
-		var fields: [String: String] = [:]
-		for part in text.components(separatedBy: "|") where !part.isEmpty {
-			let pair = part.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
-			guard pair.count == 2 else { return nil }
-			fields[pair[0]] = pair[1]
-		}
-		return fields
-	}
-
-	private func categoryRows(_ name: String) {
-		guard let model, let c = model.ledger.categories.first(where: { $0.name == name }) else { return log("categoryrows not found") }
-		let rows = model.ledger.rows(in: .category(c.id)).rows
-		log("categoryrows", ("", .count(rows.count)), ("names", .list(rows.map { .hash($0.name) })), ("purposes", .list(rows.map { .hash($0.purpose) })))
-	}
-
-	private func rowMenu(_ argument: String) {
-		let parts = argument.components(separatedBy: "|")
-		guard let table = transactionTables().first, let count = Int(parts[0]) else { return log("rowmenu no table") }
-		table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false)
-		guard let menu = contextMenu(row: 0, sidebar: false) else { return log("rowmenu no menu") }
-		menu.update()
-		func logItems(_ event: StaticString, _ items: [NSMenuItem]) {
-			let items = items.filter { !$0.isSeparatorItem && !$0.isHidden }
-			log(event, ("items", .list(items.map { .hash($0.title) })), ("enabled", .list(items.map { .flag($0.isEnabled) })),
-				("checked", .list(items.map { .flag($0.state == .on) })), ("image", .list(items.map { .flag($0.image != nil) })))
-		}
-		logItems("rowmenu", menu.items)
-		guard parts.count > 1 else { return }
-		guard let submenu = menu.items.first(where: { $0.title == parts[1] })?.submenu else {
-			guard let index = menu.items.firstIndex(where: { $0.title == parts[1] }), menu.items[index].isEnabled else { return log("rowmenu no item") }
-			menu.performActionForItem(at: index)
-			return log("rowmenu chosen")
-		}
-		submenu.update()
-		logItems("rowmenu submenu", submenu.items)
-		guard parts.count > 2 else { return }
-		guard let index = submenu.items.firstIndex(where: { $0.title == parts[2] }) else { return log("rowmenu no choice") }
-		guard submenu.items[index].isEnabled else { return log("rowmenu refused") }
-		submenu.performActionForItem(at: index)
-		log("rowmenu chosen")
 	}
 
 	/// "Create Rule" in the context menu of the transaction table, as a right click builds it. Each item of the menu by
@@ -2253,6 +2134,285 @@ final class DebugHarness {
 		}
 	}
 }
+
+#if DEBUG || PERF_HARNESS
+/// The commands of the release check of categories, rules, splits, and charts. They click only titles of an allow-list,
+/// compared in full and never in a save or open panel, and refuse input that they would otherwise bend (`HarnessInput`).
+extension DebugHarness {
+	private static func buttons(in view: NSView) -> [NSButton] { ((view as? NSButton).map { [$0] } ?? []) + view.subviews.flatMap(buttons) }
+
+	private static func texts(in view: NSView) -> [String] {
+		((view as? NSTextField).map { $0.isEditable ? [] : [$0.stringValue] } ?? []) + view.subviews.flatMap(texts)
+	}
+
+	fileprivate func addRows(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("addrow no account") }
+		let specs = parts.dropFirst().joined(separator: "|").components(separatedBy: "#").map(HarnessInput.rowFields)
+		guard let fields = specs.first ?? nil, !specs.contains(where: { $0 == nil }) else { return log("addrow refused") }
+		let today = Day.today()
+		var rows: [Transaction] = []
+		for spec in specs.compactMap({ $0 }) {
+			rows += (0..<(spec["count"].flatMap(Int.init) ?? 1)).map { _ in
+				Transaction(accountID: account.id, bookingDate: today.adding(days: -(spec["days"].flatMap(HarnessInput.day) ?? 0)),
+					amountMinor: spec["amount"].flatMap { Int64($0) } ?? -100, currency: spec["currency"] ?? account.currency, name: spec["name"] ?? "",
+					purpose: spec["purpose"] ?? "", counterpartyIBAN: spec["iban"], bookingText: spec["booking"], endToEndReference: spec["reference"],
+					mandateReference: spec["mandate"], creditorID: spec["creditor"], comment: spec["comment"], isPending: spec["pending"] == "yes",
+					sourceID: spec["id"])
+			}
+		}
+		if fields["stored"] == "yes" {
+			// Rows as an older version stored them from a refresh, with the category of "category" set by a rule, also a group,
+			// which a rule of this version never gives. The save runs no rule on a row that has a category.
+			guard let category = fields["category"].flatMap({ name in model.ledger.categories.first { $0.name == name } }) else { return log("addrow refused") }
+			for var t in rows {
+				t.categoryID = category.id
+				t.categorizedBy = .rule
+				t.isFetched = true
+				model.save(transaction: t, adding: true)
+			}
+			return log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)))
+		}
+		if fields["manual"] == "yes" {
+			// Manual rows, saved one by one as OK in the transaction sheet saves them.
+			for var t in rows {
+				t.isManual = true
+				model.save(transaction: t, adding: true)
+			}
+			return log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)))
+		}
+		if fields["via"] == "refresh" {
+			// "balance" in minor units with "balanceday" days before today, "failed=yes" for a transaction request that failed
+			// beside the balance, "complete=yes" for the full history, "older=yes" for an answer that may miss older rows, and
+			// "count=0" with "rows=none" for a balance without a transaction list. The rows of the delivery start "from" days ago.
+			// The connector is the scripted one of the tests, so no bank is contacted.
+			let balanceDate = fields["balanceday"].flatMap(HarnessInput.day).flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Date()) }
+			let fetched = fields["rows"] == "none" || fields["failed"] == "yes" ? nil
+				: FetchedTransactions(rows: rows, from: today.adding(days: -(fields["from"].flatMap(HarnessInput.day) ?? 10)))
+			let result = RefreshResult(balance: fields["balance"].flatMap { Int64($0) }.map { Money(minorUnits: $0, currency: account.currency) },
+				balanceDate: balanceDate, transactions: fetched, isComplete: fields["complete"] == "yes",
+				transactionFailure: fields["failed"] == "yes" ? .notFetched : nil, missesOlder: fields["older"] == "yes")
+			let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890",
+				currency: account.currency)])
+			let start = ContinuousClock.now
+			model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
+			Task {
+				while model.sync.refreshingAccounts.contains(account.id) || ContinuousClock.now - start < .milliseconds(200) { try? await Task.sleep(for: .milliseconds(50)) }
+				log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)),
+					("ms", .count(Int((ContinuousClock.now - start) / .milliseconds(1)))))
+			}
+			return
+		}
+		Task {
+			await model.replacingTable { _ = try? model.merge(.file(rows), into: account.id) }
+			log("addrow done", ("rows", .count(model.ledger.transactions(ofAccount: account.id).count)))
+		}
+	}
+
+	fileprivate func editorText(_ text: String) {
+		func editors(in view: NSView) -> [NSTextView] {
+			((view as? NSTextView).map { $0.isEditable && !$0.isFieldEditor ? [$0] : [] } ?? []) + view.subviews.flatMap(editors)
+		}
+		guard let sheet = topSheet, !(sheet is NSSavePanel), let editor = sheet.contentView.flatMap({ editors(in: $0).first }) else {
+			return log("editortext", ("found", .flag(false)))
+		}
+		sheet.makeFirstResponder(editor)
+		editor.selectAll(nil)
+		editor.insertText(text, replacementRange: NSRange(location: 0, length: (editor.string as NSString).length))
+		log("editortext", ("found", .flag(true)))
+	}
+
+	fileprivate func initialBalance(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: "|").map(String.init)
+		guard parts.count == 2, let expected = Int64(parts[1]), let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else {
+			return log("initialbalance refused")
+		}
+		log("initialbalance", ("matches", .flag(expected == account.initialBalanceMinor)), ("set", .flag(account.initialBalanceIsSet)),
+			("derived", .flag(account.initialBalanceIsDerived)), ("calibration", .flag(model.proposedCalibration(of: account) != nil)),
+			("older", .flag(account.missesOlderTransactions)))
+	}
+
+	fileprivate func manualEdit(_ command: String, _ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: "|").map(String.init)
+		guard let purpose = parts.first, var t = model.ledger.transactions.first(where: { $0.isManual && $0.purpose == purpose }) else { return log("manualedit refused") }
+		if command == "manualdelete", parts.count == 1 {
+			model.delete(transactions: [t.id])
+		} else if command == "manualedit", parts.count == 2, let minor = Int64(parts[1]), HarnessInput.rowFields("amount=\(minor)") != nil {
+			t.amountMinor = minor
+			model.save(transaction: t, adding: false)
+		} else {
+			return log("manualedit refused")
+		}
+		log("manualedit done")
+	}
+
+	/// The question of `AppModel.confirmRemove` is modal, and a modal run loop gets no distributed notification, so a timer that
+	/// runs in the modal mode too logs the question by the hash of its texts and buttons and then clicks the button.
+	fileprivate func confirmRemove(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: "|").map(String.init)
+		let allowed: Set = [String(localized: "Remove"), String(localized: "Cancel")]
+		guard parts.count == 2, let c = model.ledger.categories.first(where: { $0.name == parts[0] }), !c.isDefault,
+			HarnessInput.mayClick(String(localized: String.LocalizationValue(parts[1])), allowed: allowed, inFilePanel: false, cancel: String(localized: "Cancel")) else {
+			return log("confirmremove refused")
+		}
+		let answer = String(localized: String.LocalizationValue(parts[1]))
+		let timer = Timer(timeInterval: 0.5, repeats: false) { [weak self] _ in
+			MainActor.assumeIsolated {
+				guard let window = NSApp.modalWindow, let content = window.contentView else { return }
+				let all = Self.buttons(in: content).filter { !$0.isHidden && !$0.title.isEmpty }
+				self?.log("confirmremove question", ("titles", .list(all.map { .hash($0.title) })),
+					("texts", .list(Self.texts(in: content).filter { !$0.isEmpty }.map { .hash($0) })))
+				guard let button = all.first(where: { $0.title == answer }),
+					HarnessInput.mayClick(button.title, allowed: allowed, inFilePanel: window is NSSavePanel, cancel: String(localized: "Cancel")) else {
+					// Without a click the question would wait for ever, so it ends as Cancel does.
+					return NSApp.abortModal()
+				}
+				button.performClick(nil)
+			}
+		}
+		RunLoop.main.add(timer, forMode: .common)
+		DispatchQueue.main.async { [self] in
+			let removed = model.confirmRemove(.category(c.id))
+			log("confirmremove", ("removed", .flag(removed)))
+		}
+	}
+
+	fileprivate func categoryRows(_ name: String) {
+		guard let model, let c = model.ledger.categories.first(where: { $0.name == name }) else { return log("categoryrows not found") }
+		let rows = model.ledger.rows(in: .category(c.id)).rows
+		log("categoryrows", ("", .count(rows.count)), ("names", .list(rows.map { .hash($0.name) })), ("purposes", .list(rows.map { .hash($0.purpose) })))
+	}
+
+	fileprivate func clickButton(_ title: String) {
+		guard let window = topSheet, let content = window.contentView else { return log("button no sheet") }
+		let all = Self.buttons(in: content).filter { !$0.isHidden && !$0.title.isEmpty }
+		log("button", ("titles", .list(all.map { .hash($0.title) })), ("enabled", .list(all.map { .flag($0.isEnabled) })),
+			("texts", .list(Self.texts(in: content).filter { !$0.isEmpty }.map { .hash($0) })))
+		guard !title.isEmpty else { return }
+		let allowed: Set = [String(localized: "Apply only to not yet categorized transactions."), String(localized: "Apply to all transactions."),
+			String(localized: "Not now")]
+		let wanted = String(localized: String.LocalizationValue(title))
+		guard let button = all.first(where: { $0.title == wanted }),
+			HarnessInput.mayClick(button.title, allowed: allowed, inFilePanel: window is NSSavePanel, cancel: String(localized: "Cancel")) else {
+			return log("button refused")
+		}
+		button.performClick(nil)
+		log("button clicked")
+	}
+
+	/// "<count>|<item>|<choice>": the context menu of the first table row with the first <count> rows selected. Only these choose:
+	/// a category or "Add category" in "Assign Category", "Split Amount..." or a VAT entry in "Split Transaction", and "Remove
+	/// Transaction(s) from Category" itself.
+	fileprivate func rowMenu(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard let table = transactionTables().first, let count = Int(parts[0]), (1...max(1, table.numberOfRows)).contains(count), parts.count <= 3 else {
+			return log("rowmenu refused")
+		}
+		table.selectRowIndexes(IndexSet(0..<min(count, table.numberOfRows)), byExtendingSelection: false)
+		guard let menu = contextMenu(row: 0, sidebar: false) else { return log("rowmenu no menu") }
+		menu.update()
+		func logItems(_ event: StaticString, _ items: [NSMenuItem]) {
+			let items = items.filter { !$0.isSeparatorItem && !$0.isHidden }
+			log(event, ("items", .list(items.map { .hash($0.title) })), ("enabled", .list(items.map { .flag($0.isEnabled) })),
+				("checked", .list(items.map { .flag($0.state == .on) })), ("image", .list(items.map { .flag($0.image != nil) })))
+		}
+		logItems("rowmenu", menu.items)
+		guard parts.count > 1 else { return }
+		let cancel = String(localized: "Cancel")
+		let assign = String(localized: "Assign Category"), split = String(localized: "Split Transaction")
+		guard let submenu = menu.items.first(where: { $0.title == parts[1] })?.submenu else {
+			let removal: Set = [String(localized: "Remove Transaction from Category"), String(localized: "Remove Transactions from Category")]
+			guard HarnessInput.mayClick(parts[1], allowed: removal, inFilePanel: false, cancel: cancel),
+				let index = menu.items.firstIndex(where: { $0.title == parts[1] }), menu.items[index].isEnabled else { return log("rowmenu refused") }
+			menu.performActionForItem(at: index)
+			return log("rowmenu chosen")
+		}
+		submenu.update()
+		logItems("rowmenu submenu", submenu.items)
+		guard parts.count > 2 else { return }
+		let choices: Set<String> = switch parts[1] {
+		case assign: Set(model.ledger.categories.map { model.ledger.categoryPath($0.id) } + [String(localized: "Add category")])
+		case split: Set([String(localized: "Split Amount...")] + Preference.rates.map { String(localized: "Split \(String($0.text)) VAT") })
+		default: []
+		}
+		guard HarnessInput.mayClick(parts[2], allowed: choices, inFilePanel: false, cancel: cancel),
+			let index = submenu.items.firstIndex(where: { $0.title == parts[2] }) else { return log("rowmenu refused") }
+		guard submenu.items[index].isEnabled else { return log("rowmenu refused", ("disabled", .flag(true))) }
+		submenu.performActionForItem(at: index)
+		log("rowmenu chosen")
+	}
+
+	/// "<days ago>|<minor units>": whether the euro balance bar of the selected account or group that holds that day shows the
+	/// amount, as the bar chart draws it. The log has only the flags, never the amount of the bar.
+	fileprivate func chartBar(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: "|").map(String.init)
+		guard parts.count == 2, let daysAgo = HarnessInput.day(parts[0]), let expected = Int64(parts[1]) else { return log("chartbar refused") }
+		let ids: Set<UUID> = switch model.selection {
+		case let .account(id): [id]
+		case let .group(id): model.ledger.accountIDs(inGroupTree: id)
+		default: []
+		}
+		let shown = Set(ids.filter { model.ledger.account($0).map { !$0.isClosed && $0.currency == "EUR" } ?? false })
+		let bars = BalanceChart.stripBars(model.ledger, ids: shown, range: model.chartRange, currency: "EUR", monthly: model.balanceMode == .monthlyAverage)
+		let day = Day.today().adding(days: -daysAgo)
+		let bar = bars.first { $0.start <= day && day < $0.end }
+		log("chartbar", ("found", .flag(bar != nil)), ("matches", .flag(bar?.money.minorUnits == expected)), ("bars", .count(bars.count)))
+	}
+
+	/// "<menu>": the items of a menu of the menu bar by the hash of each title, whether each is enabled, and whether it has a checkmark.
+	fileprivate func menuState(_ name: String) {
+		let names: [StaticString] = ["Moneten", "File", "Edit", "View", "Account", "Transaction", "Window", "Help"]
+		guard names.contains(where: { "\($0)" == name }), let menu = NSApp.mainMenu?.items.first(where: { $0.title == name })?.submenu else { return log("menustate refused") }
+		menu.delegate?.menuNeedsUpdate?(menu)
+		menu.update()
+		let items = menu.items.filter { !$0.isSeparatorItem && !$0.isHidden }
+		log("menustate", ("", .choice(name, of: names)), ("items", .list(items.map { .hash($0.title) })), ("enabled", .list(items.map { .flag($0.isEnabled) })),
+			("checked", .list(items.map { .flag($0.state == .on) })))
+	}
+
+	/// "<cmd+i|cmd+k|cmd+1|cmd+2|cmd+3>": that shortcut sent to the main window and then to the menu bar, as the keyboard sends it
+	/// after "mainkey table". It logs who handled it, the sheet, and the view mode.
+	fileprivate func shortcut(_ name: String) {
+		guard let model, let main = transactionTables().first?.window else { return log("shortcut no table") }
+		let keys: [String: (String, UInt16)] = ["cmd+i": ("i", 34), "cmd+k": ("k", 40), "cmd+1": ("1", 18), "cmd+2": ("2", 19), "cmd+3": ("3", 20)]
+		let names: [StaticString] = ["cmd+i", "cmd+k", "cmd+1", "cmd+2", "cmd+3"]
+		guard let key = keys[name], let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0,
+			windowNumber: main.windowNumber, context: nil, characters: key.0, charactersIgnoringModifiers: key.0, isARepeat: false, keyCode: key.1) else {
+			return log("shortcut refused")
+		}
+		let handledBy: StaticString = main.performKeyEquivalent(with: event) ? "window" : NSApp.mainMenu?.performKeyEquivalent(with: event) == true ? "menu" : "-"
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+			self?.log("shortcut", ("", .choice(name, of: names)), ("handled", .word(handledBy)), ("sheet", .state(model.sheet)),
+				("mode", .state(model.viewMode)), ("active", .flag(NSApp.isActive)))
+		}
+	}
+
+	/// "<row>": the context menu of sidebar row n and its submenu "Move to Group", each item by the hash of its title and
+	/// whether it is enabled. "contextmenus <row>|<item>" then chooses an item of the submenu.
+	fileprivate func sidebarMenu(_ argument: String) {
+		guard let row = Int(argument), let list = sidebarList(), (0..<list.numberOfRows).contains(row), let menu = contextMenu(row: row, sidebar: true) else {
+			return log("sidebarmenu refused")
+		}
+		menu.update()
+		let submenu = menu.items.first(where: \.hasSubmenu)?.submenu
+		submenu?.update()
+		log("sidebarmenu", ("items", .list(menu.items.map { .hash($0.title) })), ("enabled", .list(menu.items.map { .flag($0.isEnabled) })),
+			("submenu", .list((submenu?.items ?? []).map { .hash($0.title) })), ("submenuEnabled", .list((submenu?.items ?? []).map { .flag($0.isEnabled) })))
+	}
+
+	/// The view mode of the view on screen.
+	fileprivate func viewMode() {
+		guard let model else { return }
+		log("viewmode", ("", .state(model.viewMode)), ("selection", .state(model.selection)))
+	}
+}
+#endif
 
 /// Made-up accounts and transactions for development and screenshots.
 enum DemoData {
