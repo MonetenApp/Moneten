@@ -156,12 +156,12 @@
       },
       "extractionState" : "manual"
     },
-    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank." : {
+    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen."
+            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen, oder Sie importieren eine Datei mit ihren Umsätzen in ein Offline-Konto."
           }
         }
       },
