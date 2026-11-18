@@ -420,32 +420,32 @@ The app SHALL show a transaction only when it matches the search text and every 
 
 ### Requirement: Hint about active filters
 
-The app SHALL show a line below the list for each active filter, in the order of the filter bar: period, status, amount, category, and account. The line names the kind of filter and says that some entries might be hidden. The search text gets no line, because the search field shows it. A line is text only and does not change a filter. The status line shows no hint of its own.
+The app SHALL show a line below the last row of the list for each active filter, in the order of the filter bar: period, status, amount, category, and account. The line names the kind of filter and says that some entries might be hidden. The search text gets no line, because the search field shows it. A line is text only and does not change a filter. A list without rows shows the lines below the text that says so. The status line shows no hint of its own.
 
 #### Scenario: Date filter
 
 - **GIVEN** the period "30 Days"
 - **WHEN** the user scrolls to the end of the list
-- **THEN** a line below the list says "A date filter is active; some entries might be hidden."
+- **THEN** a line below the last row says "A date filter is active; some entries might be hidden."
 
 #### Scenario: Two filters
 
 - **GIVEN** the period "November 2026" and the category "Groceries" in the account "Giro"
-- **WHEN** the user looks below the list
-- **THEN** the first line says "A date filter is active; some entries might be hidden."
+- **WHEN** the user scrolls to the end of the list
+- **THEN** the first line below the last row says "A date filter is active; some entries might be hidden."
 - **AND** the second line says "A category filter is active; some entries might be hidden."
 
 #### Scenario: Every kind of filter
 
 - **GIVEN** a saved search with "90 Days", "Unchecked", "Withdrawals", "Groceries", and "Giro"
 - **WHEN** the user selects it
-- **THEN** five lines say that a date filter, a status filter, an amount filter, a category filter, and an account filter is active, in this order
+- **THEN** five lines say that a date filter, a status filter, an amount filter, a category filter, and an account filter are active, in this order
 
 #### Scenario: Search text only
 
 - **GIVEN** every filter shows "Show All"
 - **WHEN** the user searches for "amazon"
-- **THEN** no line appears below the list
+- **THEN** no line appears below the last row
 
 #### Scenario: No filter
 

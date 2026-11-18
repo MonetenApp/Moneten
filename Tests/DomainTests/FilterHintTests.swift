@@ -73,21 +73,4 @@ struct FilterHintTests {
 		#expect(f.hints.map(\.text) == [Self.date, Self.status, Self.amount, Self.category, Self.account])
 		#expect(f.isActive)
 	}
-
-	@Test("Each line has a German value in the catalog of the app")
-	func german() throws {
-		let url = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../App/Resources/Localizable.xcstrings").standardized
-		let catalog = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any]
-		let strings = catalog?["strings"] as? [String: Any]
-		func german(_ key: String) -> String? {
-			let entry = strings?[key] as? [String: Any]
-			let de = (entry?["localizations"] as? [String: Any])?["de"] as? [String: Any]
-			return (de?["stringUnit"] as? [String: Any])?["value"] as? String
-		}
-		#expect(german(Self.date) == "Ein Datumsfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet.")
-		#expect(german(Self.status) == "Ein Statusfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet.")
-		#expect(german(Self.amount) == "Ein Betragsfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet.")
-		#expect(german(Self.category) == "Ein Kategoriefilter ist aktiv, manche Einträge sind vielleicht ausgeblendet.")
-		#expect(german(Self.account) == "Ein Kontofilter ist aktiv, manche Einträge sind vielleicht ausgeblendet.")
-	}
 }

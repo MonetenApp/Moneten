@@ -763,7 +763,14 @@ final class DebugHarness {
 				}
 				log("columnwidth", ("widths", .list(table.tableColumns.map { .count(Int($0.width)) })))
 			}
-		case "scrolltable": scrollTables { argument == "end" ? $0 - 1 : min(Int(argument) ?? 0, $0 - 1) }
+		// "end" scrolls past the last row to the lines of the active filters.
+		case "scrolltable":
+			if argument == "end" {
+				scrollTablesToEnd()
+				log("filterhints", ("shown", .flag(filterHintsShown() == true)))
+			} else {
+				scrollTables { min(Int(argument) ?? 0, $0 - 1) }
+			}
 		case "select": if argument.isEmpty { model.selection = nil } else { select(argument) }
 		case "contextmenus": logContextMenus(argument)
 		// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it, so
@@ -1512,6 +1519,27 @@ final class DebugHarness {
 			table.scrollRowToVisible(row(table.numberOfRows))
 			log("scrolltable", ("rows", .count(table.numberOfRows)))
 		}
+	}
+
+	/// Scrolls every transaction table to the end of its list, past the last row to the lines of the active filters.
+	func scrollTablesToEnd() {
+		for table in transactionTables() {
+			guard let scroll = table.enclosingScrollView else { continue }
+			let clip = scroll.contentView
+			var end = clip.bounds
+			end.origin.y = .greatestFiniteMagnitude / 2
+			clip.scroll(to: clip.constrainBoundsRect(end).origin)
+			scroll.reflectScrolledClipView(clip)
+			log("scrolltable", ("rows", .count(table.numberOfRows)))
+		}
+	}
+
+	/// Whether the lines of the active filters below the last row are in view: nil without the lines, false while
+	/// the list does not show its end.
+	func filterHintsShown() -> Bool? {
+		guard let clip = transactionTables().first?.enclosingScrollView?.contentView,
+			let lines = clip.subviews.first(where: { $0 is FilterHintsHost }), !lines.isHidden, lines.frame.height > 0 else { return nil }
+		return clip.bounds.maxY >= lines.frame.maxY - 1
 	}
 
 	/// `extrun <path>|<function>|<fixture>` runs one function of an extension in its own host process.

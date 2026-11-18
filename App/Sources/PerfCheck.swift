@@ -52,7 +52,31 @@ struct PerfScenario {
 				await c.scroll { $0 - 1 }
 			},
 			run: { $0.model.filter.searchText = "" }),
+		// The lines of the active filters below the last row (#475). "Unchecked" keeps all 50,000 rows of "Bulk".
+		// The first scenario draws the table with the lines, the second scrolls to the lines at the end of the list.
+		PerfScenario(name: "filter-hint-first-draw", budget: halfSecond,
+			setUp: { c in
+				await c.select("Account 1")
+				c.model.filter.status = .unchecked
+				await c.settle()
+			},
+			run: { c in
+				await c.select("Bulk")
+				if c.model.visibleTransactions.count != PerfScenario.transactions { c.fail("the filter hid rows of Bulk", ("visible", .count(c.model.visibleTransactions.count))) }
+				if c.harness.filterHintsShown() != false { c.fail("the lines of the filters are in view before the end of the list") }
+			}),
+		PerfScenario(name: "filter-hint-scroll-to-end", budget: halfSecond,
+			run: { c in
+				c.harness.scrollTablesToEnd()
+				await c.settle()
+				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list") }
+			}),
+		// The two scenarios before it leave the status filter on.
 		PerfScenario(name: "large-category", budget: halfSecond,
+			setUp: { c in
+				c.model.filter.status = .all
+				await c.settle()
+			},
 			run: { await $0.select("Uncategorized") }),
 		// The header compares the bank balance with the booked rows on each drawing, over all rows of the ledger.
 		PerfScenario(name: "open-account-with-calibration-proposal", budget: halfSecond,

@@ -37,7 +37,6 @@ struct TransactionsView: View {
 				FilterBar()
 				// The bordered table draws the lines above and below itself.
 				TransactionTable(key: key, holds: model.tableHolds > 0, rows: rows)
-				FilterHints(hints: key.filter.hints)
 				StatusLine(rows: rows, gaveUp: result.gaveUp)
 			}
 		}
@@ -437,6 +436,7 @@ struct TransactionTable: View {
 				Spacer()
 				Text(key.filter.isActive || !key.filter.searchText.isEmpty ? "No matching transactions found." : "No transactions found.")
 					.foregroundStyle(.secondary)
+				FilterHintLines(hints: key.filter.hints).fixedSize()
 				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
 					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
 						.foregroundStyle(.secondary)
@@ -483,6 +483,8 @@ struct TransactionTable: View {
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
+			// One line for each active filter below the last row, on the table and not on its rows.
+			.background(FilterHintsFooter(hints: key.filter.hints))
 			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
 			// only that text, so this runs only without selected text.
 			.onCopyCommand { copiedRows() }
@@ -1043,29 +1045,6 @@ struct TransactionMenu: View {
 		alert.addButton(withTitle: String(localized: "Delete"))
 		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { model.delete(transactions: ids) }
-	}
-}
-
-/// One line below the list for each active filter, in the order of the filter bar. The lines stand outside
-/// the table, so the rows carry no extra view and the table keeps its speed.
-struct FilterHints: View {
-	let hints: [TransactionFilter.Hint]
-
-	var body: some View {
-		if !hints.isEmpty {
-			VStack(alignment: .leading, spacing: 2) {
-				ForEach(hints, id: \.self) { hint in
-					Label(hint.text, systemImage: "line.3.horizontal.decrease.circle")
-						.lineLimit(1)
-						.help(hint.text)
-				}
-			}
-			.font(.system(size: 11))
-			.foregroundStyle(.secondary)
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.padding(.horizontal, 16)
-			.padding(.top, 6)
-		}
 	}
 }
 
