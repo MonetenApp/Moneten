@@ -125,7 +125,8 @@ lines() {
 	{ wc -l <"$LOG"; } 2>/dev/null || echo 0
 }
 
-# Sends the command in $2 and the rest until a line written after the first send matches $1, for up to 30 seconds.
+# Sends the command in $2 and the rest every half second until a line written after the first send matches $1, for up
+# to 30 seconds. The app can get the command more than once, so a press that a repeat would change goes out with send.
 # With $from set to a count of lines from before an earlier send, it looks at the lines after that send instead.
 poll() {
 	pattern=$1
@@ -499,7 +500,9 @@ send vatsettings
 poll "^vatstate rates=2 matches=true error=false$" vatstate "1900,700"
 poll "^focusfield .*position=0 editor=true$" focusfield 0
 send type 20
-poll "^vatbutton handled=true$" vatbutton save
+# Each press of Save goes out once: a second Save finds the field empty and shows the error, and poll sends its
+# command again every half second while a loaded Mac has not yet answered the first.
+send vatbutton save
 poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,700,2000"
 send vatbutton change-1
 poll "^focusfield .*position=0 editor=true$" focusfield 0
