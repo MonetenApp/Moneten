@@ -142,5 +142,3 @@ public struct DayRange: Hashable, Sendable {
 		return true
 	}
 }
-
-// CI router demo, reverted below.

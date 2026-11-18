@@ -35,5 +35,3 @@ Donations and sponsorships are welcome. They do not buy features.
 - No business banking features such as EBICS or approvals by two people.
 - No budgeting method that forces a workflow on you. Categories and charts come first. Budgets may follow.
 - No scraping of bank websites in the core app. Scrapers are extensions, maintained by their authors.
-
-<!-- CI router demo, reverted below. -->
