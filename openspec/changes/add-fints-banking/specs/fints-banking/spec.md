@@ -21,6 +21,34 @@ The app SHALL take the FinTS address of a bank from its bank directory by Bankle
 - **WHEN** the next refresh of an account at "Musterbank" runs
 - **THEN** the app contacts the new address and the user does nothing
 
+### Requirement: Use the current FinTS address of flatexDEGIRO Bank
+
+The app SHALL use the FinTS address `https://banking.flatexdegiro.com/hbci` for the Bankleitzahlen 10130800, 30330800, and 76030800 of flatexDEGIRO Bank. The bank list that the project publishes between releases holds this address for the three Bankleitzahlen, also when the bank list of hbci4java holds an older address, none, or no entry. Every other Bankleitzahl keeps the address of the bank list of hbci4java.
+
+#### Scenario: Older address in the bank list of hbci4java
+
+- **GIVEN** the bank list of hbci4java holds `https://konto.biw-bank.de/hbci/` for 10130800
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds `https://banking.flatexdegiro.com/hbci` for 10130800
+
+#### Scenario: No address or no entry in the bank list of hbci4java
+
+- **GIVEN** the bank list of hbci4java holds 30330800 without a FinTS address and does not list 76030800
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds `https://banking.flatexdegiro.com/hbci` for 30330800 and for 76030800
+
+#### Scenario: Neighbor Bankleitzahl
+
+- **GIVEN** the bank list of hbci4java holds `https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp` for 10130600
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds the same address for 10130600
+
+#### Scenario: Refresh after the bank list arrived
+
+- **GIVEN** an access at 10130800 stored `https://konto.biw-bank.de/hbci/`, and the app installed the published bank list
+- **WHEN** the next refresh of the access runs
+- **THEN** the app contacts `https://banking.flatexdegiro.com/hbci`
+
 ### Requirement: Identify the app as a registered product
 
 The app SHALL send its product registration number and its version in every FinTS dialog.
