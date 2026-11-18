@@ -6,6 +6,7 @@ import Testing
 @testable import Storage
 @testable import Sync
 import StorageTestSupport
+import TestSupport
 
 /// Issue #4: a PIN that the user does not save appears nowhere in the decrypted database or in a backup,
 /// and a saved PIN appears only in the table of saved PINs. scripts/check-debug-log.sh checks the log.

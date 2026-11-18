@@ -39,7 +39,8 @@ struct FileImportTests {
 		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
 		let text = "Buchungstag;Empfänger;Verwendungszweck;IBAN;Betrag\n03.11.2026;Stadtwerke Musterstadt;Abschlag November;\(iban);-89,00\n"
 		let file = try TransactionFileImporter.parse(Data(text.utf8), currency: "EUR").transactions
-		#expect(file.map(\.counterpartyIBAN) == [iban])
+		// A valid IBAN takes its electronic form, so the stored row has no space of any kind.
+		#expect(file.map(\.counterpartyIBAN) == ["DE02120300000000202051"])
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
 		let rules = Categorizer(ledger: Ledger(accounts: [giro]))
 		let now = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 4, hour: 12))!
@@ -549,6 +550,21 @@ struct FileImportTests {
 		#expect(t.endToEndReference == nil)
 		#expect(t.mandateReference == nil)
 		#expect(t.creditorID == nil)
+	}
+
+	@Test("The IBAN of a counterparty loses its spaces only when it is valid, and other text stays as it is", arguments: [
+		("de02 1203 0000 0000 2020 51", "DE02120300000000202051"),
+		("DE03120300000000202051", "DE03120300000000202051"),
+	])
+	func camtCounterpartyAccount(iban: String, stored: String) throws {
+		let xml = """
+		<?xml version="1.0" encoding="UTF-8"?>
+		<Document xmlns="urn:iso:std:iso:20022:tech:xsd:camt.053.001.08"><BkToCstmrStmt><Stmt>
+		<Ntry><Amt Ccy="EUR">800.00</Amt><CdtDbtInd>DBIT</CdtDbtInd><Sts><Cd>BOOK</Cd></Sts><BookgDt><Dt>2026-11-03</Dt></BookgDt>
+		<NtryDtls><TxDtls><RltdPties><Cdtr><Pty><Nm>Vermieter A</Nm></Pty></Cdtr><CdtrAcct><Id><IBAN>\(iban)</IBAN></Id></CdtrAcct></RltdPties></TxDtls></NtryDtls></Ntry>
+		</Stmt></BkToCstmrStmt></Document>
+		"""
+		#expect(try TransactionFileImporter.parse(Data(xml.utf8), currency: "EUR").transactions.map(\.counterpartyIBAN) == [stored])
 	}
 
 	@Test("A batch entry whose details give one name with two IBANs has no counterparty and no shared reference")

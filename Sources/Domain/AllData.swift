@@ -368,7 +368,7 @@ private struct AccountEntry: Codable {
 		kind = a.kind
 		source = a.source
 		currency = a.currency
-		iban = a.iban
+		iban = a.iban?.electronic
 		bic = a.bic
 		accountNumber = a.accountNumber
 		bankCode = a.bankCode
@@ -401,7 +401,7 @@ private struct AccountEntry: Codable {
 		guard Set(others.map(\.currency) + [currency]).count == others.count + 1 else {
 			throw AllData.ReadError.damaged("the other balances of an account repeat a currency or hold the currency of the account")
 		}
-		return Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, iban: iban, bic: bic,
+		var account = Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,
@@ -409,6 +409,9 @@ private struct AccountEntry: Codable {
 			comment: comment, sourceID: sourceID, color: color, accessID: accessID, remoteID: remoteID, refreshedAt: refreshedAt,
 			refreshError: refreshError, refreshInterval: refreshInterval, missesOlderTransactions: missesOlderTransactions ?? false,
 			otherBankBalances: others, bonusPoints: bonusPoints, clearingEntry: try clearingEntry?.mark(currency: currency))
+		// A file of an earlier version can hold an IBAN that the app no longer takes as one.
+		account.takeIBAN(iban)
+		return account
 	}
 }
 

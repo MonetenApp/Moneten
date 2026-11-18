@@ -7,6 +7,7 @@ A user with several banks needs order. Accounts need names that mean something, 
 ## What Changes
 
 - Every account has a type, a name, a currency, bank details, an owner, and an initial balance.
+- The app checks every IBAN of an account when it reads it, and keeps the account of a counterparty as the bank gives it.
 - An account settings window shows and changes these values.
 - An account can be marked as closed. The app then inserts a clearing entry, stops refreshing the account, and keeps its history.
 - Accounts can be put into account groups. A group shows the transactions and the sum of its accounts.
@@ -63,3 +64,5 @@ None.
 - A closed account is left out of every refresh. MoneyMoney's help implies this and does not state it.
 - Removing the last account of an access also removes the saved login data of that access. This was not observed.
 - A removed group passes its accounts to the group above it. The target was not observed.
+- An account keeps an IBAN only when its country code, length, and checksum are valid. Other text from a bank, an extension, a file, or the migration becomes the account number when the account has none. How MoneyMoney stores an invalid IBAN was not observed.
+- The account of a counterparty keeps the text of the bank, because it can be an older account number. The app shows it as an IBAN only when it is a valid one, and a bad IBAN of a counterparty never fails a refresh or an import. This was not observed.

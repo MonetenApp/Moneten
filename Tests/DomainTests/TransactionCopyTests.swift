@@ -185,6 +185,12 @@ struct TransactionCopyTests {
 		t.returnReason = "AC04"
 		#expect(t.details == [.returnReason("AC04"), .mandateReference("M-2026-0042"), .creditorID("DE98ZZZ09999999999"),
 			.valueDate(Day(year: 2026, month: 11, day: 5)), .iban("DE02120300000000202051"), .bic("DEUTDEFFXXX")])
+		for (text, detail) in [("0099887766", TransactionDetail.accountNumber("0099887766")), ("DE03120300000000202051", .accountNumber("DE03120300000000202051"))] {
+			var other = t
+			other.counterpartyIBAN = text
+			#expect(other.details.contains(detail) && !other.details.contains { if case .iban = $0 { true } else { false } })
+			#expect(detail.label == "Account number")
+		}
 		t.bookingText = "Lastschrift"
 		t.endToEndReference = "E2E-9"
 		#expect(t.details.map(\.label) == ["Transaction type", "Return reason", "End-to-end reference", "Mandate reference", "Creditor ID", "Value date", "IBAN", "BIC"])

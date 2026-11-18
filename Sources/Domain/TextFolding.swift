@@ -25,8 +25,12 @@ public enum TextFolding {
 	/// Account numbers and IBANs compare without spaces and without case. Some exports group an IBAN with U+00A0 or
 	/// U+202F, so every space separator of Unicode counts, not only U+0020.
 	public static func accountKey(_ text: String) -> String {
-		// Plain ASCII has no other space, and the search builds this key for every row.
-		if text.utf8.allSatisfy({ $0 < 0x80 }) { return text.replacingOccurrences(of: " ", with: "").uppercased() }
+		// Plain ASCII has no other space, and the search builds this key for every row. An IBAN in its electronic form
+		// is its own key, and a rule reads one for each row.
+		if text.utf8.allSatisfy({ $0 < 0x80 }) {
+			if !text.utf8.contains(where: { $0 == UInt8(ascii: " ") || (UInt8(ascii: "a")...UInt8(ascii: "z")).contains($0) }) { return text }
+			return text.replacingOccurrences(of: " ", with: "").uppercased()
+		}
 		var scalars = String.UnicodeScalarView()
 		scalars.append(contentsOf: text.unicodeScalars.filter { $0.properties.generalCategory != .spaceSeparator })
 		return String(scalars).uppercased()
