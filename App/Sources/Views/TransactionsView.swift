@@ -37,6 +37,7 @@ struct TransactionsView: View {
 				FilterBar()
 				// The bordered table draws the lines above and below itself.
 				TransactionTable(key: key, holds: model.tableHolds > 0, rows: rows)
+				FilterHints(hints: key.filter.hints)
 				StatusLine(rows: rows, gaveUp: result.gaveUp)
 			}
 		}
@@ -1045,6 +1046,29 @@ struct TransactionMenu: View {
 	}
 }
 
+/// One line below the list for each active filter, in the order of the filter bar. The lines stand outside
+/// the table, so the rows carry no extra view and the table keeps its speed.
+struct FilterHints: View {
+	let hints: [TransactionFilter.Hint]
+
+	var body: some View {
+		if !hints.isEmpty {
+			VStack(alignment: .leading, spacing: 2) {
+				ForEach(hints, id: \.self) { hint in
+					Label(hint.text, systemImage: "line.3.horizontal.decrease.circle")
+						.lineLimit(1)
+						.help(hint.text)
+				}
+			}
+			.font(.system(size: 11))
+			.foregroundStyle(.secondary)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.padding(.horizontal, 16)
+			.padding(.top, 6)
+		}
+	}
+}
+
 struct StatusLine: View {
 	/// The height of the status line below the list.
 	static let height: CGFloat = 30
@@ -1057,7 +1081,7 @@ struct StatusLine: View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
 		let sums = MoneySums(of: shown)
-		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
+		// As in MoneyMoney, the count is centered in 11 points. The refresh note takes the leading third
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {
 			if gaveUp {
@@ -1073,11 +1097,6 @@ struct StatusLine: View {
 						.foregroundStyle(.secondary)
 					} else if let problem = model.backgroundProblem {
 						BackgroundProblemButton(problem: problem)
-					} else if model.filter.isActive {
-						Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
-							.foregroundStyle(.secondary)
-							.lineLimit(1)
-							.help("A filter is active; some entries might be hidden.")
 					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)
