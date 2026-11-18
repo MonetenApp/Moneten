@@ -7,11 +7,11 @@
   release-notes.py check-release <version> --build N (--feed FILE | --first-release)
                                              fail when the version cannot be released after the feed
   release-notes.py appcast <version> --build N --min-macos 15.0 --url URL --length N --signature SIG
-                                   (--feed FILE | --first-release [--revision N]) --out FILE
+                                   (--feed FILE | --first-release [--above-feed OLD]) --out FILE
                                              add or replace the item of a version, and rewrite the notes
-                                             of every item from CHANGELOG.md. --revision sets the revision
-                                             of a first feed, which is 1 otherwise: the new feed of a key
-                                             change needs one above the last revision of the old feed
+                                             of every item from CHANGELOG.md. A first feed has revision 1,
+                                             or with --above-feed the revision one above the feed OLD: the
+                                             new feed of a key change starts above the old feed
   release-notes.py remove <version> --feed FILE --public-key KEY --out FILE
                                              take the item of a version out of the feed, after the
                                              checks of check-feed, unless it is the last item
@@ -266,10 +266,18 @@ def write_feed(path, items, sections, revision):
 
 def current_feed(args):
 	"""The items of the current feed and the revision of the next feed."""
+	above = getattr(args, "above_feed", None)
 	if args.first_release:
-		return [], getattr(args, "revision", None) or 1
-	if getattr(args, "revision", None) is not None:
-		raise Failure("--revision is only for a first feed: every other feed gets the revision one above the current feed.")
+		if above is None:
+			return [], 1
+		# Every installed copy keeps the highest revision that it read, so the new feed of a key change
+		# takes the revision of the old feed, never a number typed by hand that could be below it.
+		revision = read_feed(above)[1]
+		if revision is None:
+			raise Failure("the old feed %s has no items, so its revision is unknown." % above)
+		return [], revision + 1
+	if above is not None:
+		raise Failure("--above-feed is only for a first feed: every other feed gets the revision one above the current feed.")
 	items, revision = read_feed(args.feed)
 	if revision is None:
 		raise Failure("the current feed %s has no items, so its revision is unknown." % args.feed)
@@ -388,13 +396,6 @@ def check_newer(path, current):
 			raise Failure("the feed %s misses version %s of the current feed." % (path, item["version"]))
 
 
-def positive(text):
-	"""The revision of a feed: a whole number of 1 or more."""
-	if not text.isdigit() or int(text) < 1:
-		raise argparse.ArgumentTypeError("%s is not a whole number of 1 or more" % text)
-	return int(text)
-
-
 def main():
 	parser = argparse.ArgumentParser(description="Reads CHANGELOG.md and writes the update feed.")
 	parser.add_argument("--changelog", default=CHANGELOG, help=argparse.SUPPRESS)
@@ -417,7 +418,7 @@ def main():
 			command.add_argument("--length", type=int, required=True)
 			command.add_argument("--signature", required=True)
 			command.add_argument("--out", required=True)
-			command.add_argument("--revision", type=positive)
+			command.add_argument("--above-feed")
 	command = commands.add_parser("remove")
 	command.add_argument("version")
 	command.add_argument("--feed", required=True)
