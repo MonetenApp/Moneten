@@ -152,7 +152,7 @@ struct SearchQuery {
 		func holds(_ row: Row) -> Bool {
 			if watch.gaveUp { return false }
 			guard let counterpartyOutcomes else { return reads(row) }
-			let key = row.transaction.counterpartyIBAN
+			let key = row.transaction.counterpartyIBAN.map(ExactText.init)
 			if let known = counterpartyOutcomes.known[key] { return known }
 			let found = reads(row)
 			// A watch that gave up ends the search, and its `false` says nothing about the counterparty.
@@ -533,20 +533,34 @@ private struct AmountBounds {
 	}
 }
 
+/// A text as a key that compares its UTF-8 bytes. Swift calls "é" and "e" with a combining accent equal, but a regular
+/// expression tells them apart, so a key of a regular expression outcome must not.
+private struct ExactText: Hashable {
+	let text: String
+
+	static func == (a: ExactText, b: ExactText) -> Bool { a.text.utf8.elementsEqual(b.text.utf8) }
+
+	func hash(into hasher: inout Hasher) {
+		var text = text
+		text.withUTF8 { hasher.combine(bytes: UnsafeRawBufferPointer($0)) }
+	}
+}
+
 /// The texts that a regular expression reads for each distinct account text, `IBAN.patternTexts(of:)` made once per
 /// search pass. A pass runs on one thread.
 private final class AccountForms {
-	private var forms: [String: [String]] = [:]
+	private var forms: [ExactText: [String]] = [:]
 
 	func of(_ text: String) -> [String] {
-		if let known = forms[text] { return known }
+		let key = ExactText(text: text)
+		if let known = forms[key] { return known }
 		let made = IBAN.patternTexts(of: text)
-		forms[text] = made
+		forms[key] = made
 		return made
 	}
 }
 
 /// Whether a regular expression on `remote_account:` matches each counterparty IBAN that this search pass read.
 private final class CounterpartyOutcomes {
-	var known: [String?: Bool] = [:]
+	var known: [ExactText?: Bool] = [:]
 }

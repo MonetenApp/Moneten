@@ -490,6 +490,25 @@ struct LedgerTests {
 			#expect(l.rows(in: .account(giro.id), filter: f).rows.isEmpty, "\(query)")
 			#expect(!all.contains { rule.matches(RuleSubject($0, account: giro)) }, "\(query)")
 		}
+		// Swift calls "é" and "e" with a combining accent equal, but a regular expression tells them apart, so the
+		// search must not take the forms or the outcome of one account text for the other.
+		let composed = Account(position: 0, name: "Kasse A", kind: .giro, source: .offline, accountNumber: "\u{E9}4711")
+		let decomposed = Account(position: 1, name: "Kasse B", kind: .giro, source: .offline, accountNumber: "e\u{301}4711")
+		let accounts = [composed, decomposed]
+		let accented = accounts.enumerated().map { i, account in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 12 + i), amountMinor: -100, name: "Kunde \(i)",
+				counterpartyIBAN: account.accountNumber)
+		}
+		let accentedLedger = Ledger(accounts: accounts, transactions: accented)
+		for query in ["local_account:/^\u{E9}4711$/", "local_account:/^e\u{301}4711$/", "remote_account:/^\u{E9}4711$/", "remote_account:/^e\u{301}4711$/"] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched = accentedLedger.rows(in: .all, filter: f).rows.map(\.name).sorted()
+			let ruled = accented.filter { t in rule.matches(RuleSubject(t, account: accounts.first { $0.id == t.accountID })) }.map(\.name)
+			#expect(ruled.count == 1, "\(query)")
+			#expect(searched == ruled, "\(query)")
+		}
 	}
 
 	@Test("A regular expression on the counterparty account finds the same rows as the rule when rows share a counterparty")
