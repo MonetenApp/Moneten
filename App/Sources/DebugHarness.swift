@@ -246,12 +246,13 @@ final class DebugHarness {
 			} catch {
 				log("storepassword", ("failed", .type(of: error)))
 			}
+		// Deletes every Keychain entry of this database and leaves the settings in the database, as a Keychain that lost
+		// the entries does. The next unlock with the password turns those settings off.
 		case "removepassword":
 			for entry in Vault.PasswordEntry.allCases {
 				do { try model.vault.removeStoredPassword(for: entry) } catch { log("removepassword", ("failed", .type(of: error))) }
 			}
 			do { try model.vault.removeSharedEntry() } catch { log("removepassword", ("failed", .type(of: error))) }
-			do { try model.loadUnlockSettings() } catch { log("removepassword", ("failed", .type(of: error))) }
 		case "seed": Task { await DemoData.seed(model); log("seed done") }
 		// "<name>" starts a made-up refresh that shows one dialog of SyncDemo.requests.
 		case "syncdemo": SyncDemo.start(argument, in: model.sync)

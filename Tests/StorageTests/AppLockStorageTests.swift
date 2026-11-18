@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import GRDB
 @testable import Storage
 import StorageTestSupport
 
@@ -36,25 +37,25 @@ struct AppLockStorageTests {
 	@Test("A password stored for Touch ID does not unlock at launch")
 	func touchIDEntryIsNotTheLaunchEntry() throws {
 		let (vault, store) = try vaultWithDatabase()
-		defer { removeEntries(vault) }
-		try store.close()
-		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
+		defer { removeEntries(vault); try? store.close() }
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
 		#expect(try vault.storedPassword(for: .touchID) == Self.password)
-		#expect(try vault.unlockSettings() == [.touchID])
+		#expect(try store.unlockMethods() == [.touchID])
+		#expect(try vault.storedEntries() == [.touchID])
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 	}
 
-	@Test("The settings are the entries: turning a setting on or off shows in the toggles, and only an entry unlocks")
-	func settingsFollowEntries() throws {
+	@Test("Turning a setting on or off changes the database and the entry, and only the entry of an offered setting unlocks")
+	func settingsFollowChanges() throws {
 		let (vault, store) = try vaultWithDatabase()
-		defer { removeEntries(vault) }
-		try store.close()
-		#expect(try vault.unlockSettings().isEmpty)
-		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
-		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password))
-		#expect(try vault.unlockSettings() == [.touchID, .appleWatch])
-		#expect(try vault.setUnlockMethod(.touchID, on: false, password: Self.password))
-		#expect(try vault.unlockSettings() == [.appleWatch])
+		defer { removeEntries(vault); try? store.close() }
+		#expect(try store.unlockMethods().isEmpty)
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password, store: store))
+		#expect(try store.unlockMethods() == [.touchID, .appleWatch])
+		#expect(try vault.setUnlockMethod(.touchID, on: false, password: Self.password, store: store))
+		#expect(try store.unlockMethods() == [.appleWatch])
+		#expect(try vault.storedEntries() == [.appleWatch])
 		#expect(try vault.unlockPassword(offered: [.touchID]) == nil)
 		#expect(try vault.unlockPassword(offered: [.touchID, .appleWatch]) == Self.password)
 	}
@@ -63,43 +64,47 @@ struct AppLockStorageTests {
 	func otherDatabaseKeepsEntries() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
+		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password, store: store)) }
 		try store.close()
-		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
 		// A throwaway data folder, as the debug harness and a test launch use, gets a new database and starts.
 		let other = Vault(testing: DataFolder(root: root.appendingPathComponent("Throwaway", isDirectory: true)))
 		defer { removeEntries(other) }
 		try other.create(password: "ein-anderes-passwort", starterCategories: []).close()
 		try other.removeSharedEntry()
-		#expect(try other.unlockSettings().isEmpty)
+		#expect(try other.storedEntries().isEmpty)
 
 		// This database starts again with every setting on.
 		try vault.removeSharedEntry()
-		#expect(try vault.unlockSettings() == Set(Vault.PasswordEntry.allCases))
-		#expect(try vault.storedPassword(for: .automaticUnlock) == Self.password)
+		#expect(try vault.storedEntries() == Set(Vault.PasswordEntry.allCases))
+		let reopened = try vault.open(storedFor: [.automaticUnlock], password: try #require(try vault.storedPassword(for: .automaticUnlock)))
+		defer { try? reopened.close() }
+		#expect(try reopened.unlockMethods() == Set(Vault.PasswordEntry.allCases))
 	}
 
 	@Test("A wrong password changes no entry")
 	func wrongPasswordChangesNothing() throws {
 		let (vault, store) = try vaultWithDatabase()
-		defer { removeEntries(vault) }
-		try store.close()
-		#expect(try !vault.setUnlockMethod(.automaticUnlock, on: true, password: "falsch"))
+		defer { removeEntries(vault); try? store.close() }
+		#expect(try !vault.setUnlockMethod(.automaticUnlock, on: true, password: "falsch", store: store))
 		#expect(try stored(vault).isEmpty)
-		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
-		#expect(try !vault.setUnlockMethod(.touchID, on: false, password: "falsch"))
+		#expect(try store.unlockMethods().isEmpty)
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		#expect(try !vault.setUnlockMethod(.touchID, on: false, password: "falsch", store: store))
 		#expect(try stored(vault) == [.touchID])
+		#expect(try store.unlockMethods() == [.touchID])
 	}
 
 	@Test("Turning a method off deletes only its entry")
 	func turningOffDeletesOnlyItsEntry() throws {
 		let (vault, store) = try vaultWithDatabase()
-		defer { removeEntries(vault) }
-		try store.close()
-		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
-		#expect(try vault.setUnlockMethod(.touchID, on: false, password: Self.password))
+		defer { removeEntries(vault); try? store.close() }
+		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password, store: store)) }
+		#expect(try vault.setUnlockMethod(.touchID, on: false, password: Self.password, store: store))
 		#expect(try stored(vault) == [.automaticUnlock, .appleWatch])
-		#expect(try vault.setUnlockMethod(.automaticUnlock, on: false, password: Self.password))
+		#expect(try store.unlockMethods() == [.automaticUnlock, .appleWatch])
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: false, password: Self.password, store: store))
 		#expect(try stored(vault) == [.appleWatch])
+		#expect(try store.unlockMethods() == [.appleWatch])
 	}
 
 	@Test("The shared entry of earlier builds is removed, so it unlocks nothing")
@@ -108,7 +113,7 @@ struct AppLockStorageTests {
 		defer { removeEntries(vault) }
 		try store.close()
 		try vault.sharedPasswordKeychain.write(Self.password, account: folder.keychainAccount)
-		#expect(try vault.unlockSettings().isEmpty)
+		#expect(try vault.storedEntries().isEmpty)
 		try vault.removeSharedEntry()
 		#expect(try vault.sharedPasswordKeychain.read(account: folder.keychainAccount) == nil)
 	}
@@ -117,18 +122,19 @@ struct AppLockStorageTests {
 	func entriesFollowChanges() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
-		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
-		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password))
+		defer { try? store.close() }
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password, store: store))
 		try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
-		try store.close()
 		#expect(try vault.storedPassword(for: .touchID) == "neu-und-noch-laenger")
 		#expect(try vault.storedPassword(for: .appleWatch) == "neu-und-noch-laenger")
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 
 		try vault.storePassword(Self.password, for: .touchID)
-		try vault.refreshStoredPassword("neu-und-noch-laenger")
+		try vault.refreshStoredPassword("neu-und-noch-laenger", on: store)
 		#expect(try vault.storedPassword(for: .touchID) == "neu-und-noch-laenger")
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
+		#expect(try store.unlockMethods() == [.touchID, .appleWatch])
 	}
 
 	/// A locked keychain file without prompts reads attributes and deletes an entry, but refuses to read a password or
@@ -136,8 +142,8 @@ struct AppLockStorageTests {
 	func vaultWithTwoSettings(refusingWrites file: KeychainFile) throws -> (Vault, Store) {
 		let vault = Vault(testing: folder, keychain: file)
 		let store = try vault.create(password: Self.password, starterCategories: [])
-		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password))
-		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password, store: store))
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
 		try file.lock()
 		return (vault, store)
 	}
@@ -151,16 +157,183 @@ struct AppLockStorageTests {
 			try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
 		}
 		#expect(failure?.passwordChanged == true)
-		#expect(try vault.unlockSettings().isEmpty)
+		#expect(try vault.storedEntries().isEmpty)
+		#expect(try store.unlockMethods().isEmpty)
 	}
 
 	@Test("An unlock whose Keychain cannot read an entry, such as a locked one whose prompt the user canceled, keeps every entry and setting")
 	func unreadableEntryStays() throws {
 		let file = try KeychainFile()
 		let (vault, store) = try vaultWithTwoSettings(refusingWrites: file)
+		defer { try? store.close() }
+		#expect(throws: Vault.Failure.self) { try vault.refreshStoredPassword("neu-und-noch-laenger", on: store) }
+		#expect(try vault.storedEntries() == [.automaticUnlock, .touchID])
+		#expect(try store.unlockMethods() == [.automaticUnlock, .touchID])
+	}
+
+	// Issue #405: the state of each unlock setting comes from the database, never from the Keychain.
+
+	/// A vault on a keychain file of its own, so the test can plant an entry as another program would.
+	func vaultWithPlantingKeychain() throws -> (Vault, KeychainFile, Store) {
+		let file = try KeychainFile()
+		let vault = Vault(testing: folder, keychain: file)
+		return (vault, file, try vault.create(password: Self.password, starterCategories: []))
+	}
+
+	func plant(_ entry: Vault.PasswordEntry, _ value: String, in file: KeychainFile) throws {
+		try file.plant(service: entry.service, account: folder.keychainAccount, value: value)
+	}
+
+	@Test("An entry that another program created for a setting that is off goes at the unlock and never takes the password")
+	func plantedEntryOfOffSettingGoes() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
 		try store.close()
-		#expect(throws: Vault.Failure.self) { try vault.refreshStoredPassword("neu-und-noch-laenger") }
-		#expect(try vault.unlockSettings() == [.automaticUnlock, .touchID])
+		try plant(.automaticUnlock, "geraten", in: file)
+
+		// The user unlocks with the password.
+		let unlocked = try vault.open(password: Self.password)
+		try vault.refreshStoredPassword(Self.password, on: unlocked)
+		#expect(try unlocked.unlockMethods().isEmpty)
+		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
+		#expect(try file.readers(service: Vault.PasswordEntry.automaticUnlock.service, account: folder.keychainAccount) == [])
+		try unlocked.close()
+		// The next launch finds no entry of the automatic unlock, so it asks for the password.
+		#expect(try vault.storedEntries().isEmpty)
+	}
+
+	@Test("An entry of a setting that is off that opens the database at launch closes the database again and goes")
+	func plantedEntryThatOpensIsRefused() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
+		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password, store: store))
+		try store.close()
+		try plant(.automaticUnlock, Self.password, in: file)
+		try plant(.touchID, Self.password, in: file)
+
+		let launch = try #require(try vault.storedPassword(for: .automaticUnlock))
+		#expect(throws: Vault.Failure.unlockMethodOff(on: [.appleWatch])) { try vault.open(storedFor: [.automaticUnlock], password: launch) }
+		// Every entry of a setting that is off is gone, and the one of the Apple Watch stays.
+		#expect(try vault.storedEntries() == [.appleWatch])
+		let watch = try #require(try vault.unlockPassword(offered: [.appleWatch]))
+		try vault.open(storedFor: [.appleWatch], password: watch).close()
+	}
+
+	@Test("Touch ID with an entry that another program created while the setting is off leaves the database closed")
+	func plantedTouchIDEntryIsRefused() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
+		try store.close()
+		try plant(.touchID, Self.password, in: file)
+		// Before the first unlock the lock screen offers what the entries show.
+		#expect(try vault.storedEntries() == [.touchID])
+		let found = try #require(try vault.unlockPassword(offered: [.touchID]))
+		#expect(throws: Vault.Failure.unlockMethodOff(on: [])) { try vault.open(storedFor: [.touchID], password: found) }
+		#expect(try vault.storedEntries().isEmpty)
+	}
+
+	@Test("A request that offered Touch ID and an Apple Watch that is off leaves the database closed, also with the real Touch ID entry")
+	func offeredMethodOffIsRefused() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		try store.close()
+		try plant(.appleWatch, "geraten", in: file)
+		// The first launch offers both, and the user may have confirmed with the watch of the planted entry.
+		#expect(try vault.storedEntries() == [.touchID, .appleWatch])
+		let found = try #require(try vault.unlockPassword(offered: [.touchID, .appleWatch]))
+		#expect(found == Self.password)
+		#expect(throws: Vault.Failure.unlockMethodOff(on: [.touchID])) {
+			try vault.open(storedFor: [.touchID, .appleWatch], password: found)
+		}
+		#expect(try vault.storedEntries() == [.touchID])
+		// The next request offers Touch ID alone and unlocks.
+		try vault.open(storedFor: [.touchID], password: found).close()
+	}
+
+	@Test("An unlock with the automatic unlock deletes the entries of the settings that are off")
+	func automaticUnlockDeletesOffEntries() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password, store: store))
+		try store.close()
+		try plant(.touchID, "geraten", in: file)
+		try vault.open(storedFor: [.automaticUnlock], password: Self.password).close()
+		#expect(try vault.storedEntries() == [.automaticUnlock])
+	}
+
+	@Test("Turning a setting on whose state the database refuses removes the entry again")
+	func refusedStateRemovesEntry() throws {
+		let (vault, store) = try vaultWithDatabase()
+		defer { removeEntries(vault); try? store.close() }
+		try store.queue.write { db in
+			try db.execute(sql: "CREATE TRIGGER refuse BEFORE INSERT ON unlockMethod BEGIN SELECT RAISE(ABORT, 'refused'); END")
+		}
+		#expect(throws: DatabaseError.self) { try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password, store: store) }
+		#expect(try vault.storedEntries().isEmpty)
+		#expect(try store.unlockMethods().isEmpty)
+	}
+
+	@Test("Turning a setting off writes the state before it deletes the entry, so a failed delete leaves the setting off")
+	func offWritesStateFirst() throws {
+		let file = try KeychainFile()
+		let vault = Vault(testing: folder, keychain: file)
+		let store = try vault.create(password: Self.password, starterCategories: [])
+		defer { try? store.close() }
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password, store: store))
+		// A keychain file that is gone refuses every step, also the delete.
+		try file.removeFile()
+		#expect(throws: Vault.Failure.self) { try vault.setUnlockMethod(.automaticUnlock, on: false, password: Self.password, store: store) }
+		#expect(try store.unlockMethods().isEmpty)
+	}
+
+	@Test("A password change never writes the new password into an entry of a setting that is off")
+	func changeSkipsOffEntry() throws {
+		let (vault, file, store) = try vaultWithPlantingKeychain()
+		defer { try? store.close() }
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		try plant(.automaticUnlock, "geraten", in: file)
+		try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
+		#expect(try vault.storedPassword(for: .touchID) == "neu-und-noch-laenger")
+		#expect(try vault.storedPassword(for: .automaticUnlock) == "geraten")
+		#expect(try store.unlockMethods() == [.touchID])
+	}
+
+	@Test("A database from before the unlock state has every setting off, whatever entries the Keychain holds")
+	func databaseBeforeStateStartsOff() throws {
+		let (vault, store) = try vaultWithDatabase()
+		defer { removeEntries(vault) }
+		// A build before migration v30 kept the setting as its entry alone, with the real password.
+		try store.queue.write { db in
+			try db.execute(sql: "DROP TABLE unlockMethod")
+			try db.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'v30'")
+		}
+		try store.close()
+		try vault.storePassword(Self.password, for: .automaticUnlock)
+
+		// The launch tries the entry, and the database says that the setting is off.
+		#expect(throws: Vault.Failure.unlockMethodOff(on: [])) { try vault.open(storedFor: [.automaticUnlock], password: Self.password) }
+		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
+
+		// The same with the entry back at a manual unlock: the setting stays off and the entry goes.
+		try vault.storePassword(Self.password, for: .automaticUnlock)
+		let unlocked = try vault.open(password: Self.password)
+		defer { try? unlocked.close() }
+		try vault.refreshStoredPassword(Self.password, on: unlocked)
+		#expect(try unlocked.unlockMethods().isEmpty)
+		#expect(try vault.storedEntries().isEmpty)
+
+		// The user turns it on again, and the next launch opens without a prompt.
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password, store: unlocked))
+		try unlocked.close()
+		try vault.open(storedFor: [.automaticUnlock], password: try #require(try vault.storedPassword(for: .automaticUnlock))).close()
+	}
+
+	@Test("A setting that is on and whose entry is gone turns off at the unlock")
+	func onSettingWithoutEntryTurnsOff() throws {
+		let (vault, store) = try vaultWithDatabase()
+		defer { removeEntries(vault); try? store.close() }
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password, store: store))
+		#expect(try vault.setUnlockMethod(.appleWatch, on: true, password: Self.password, store: store))
+		try vault.removeStoredPassword(for: .touchID)
+		try vault.refreshStoredPassword(Self.password, on: store)
+		#expect(try store.unlockMethods() == [.appleWatch])
+		#expect(try vault.storedEntries() == [.appleWatch])
 	}
 
 	@Test("A new database removes every entry that a renamed database left")

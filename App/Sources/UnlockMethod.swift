@@ -7,7 +7,7 @@ enum UnlockMethod: CaseIterable {
 	case touchID
 	case appleWatch
 
-	/// The Keychain entry of the method, which is its setting.
+	/// The setting of the method, which names its Keychain entry.
 	var entry: Vault.PasswordEntry {
 		switch self {
 		case .touchID: .touchID

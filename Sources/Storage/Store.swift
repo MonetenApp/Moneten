@@ -326,6 +326,23 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	/// The unlock settings that are on. A name that this version does not know counts as off.
+	public func unlockMethods() throws -> Set<Vault.PasswordEntry> {
+		try queue.read { db in
+			Set(try String.fetchAll(db, sql: "SELECT name FROM unlockMethod").compactMap(Vault.PasswordEntry.init(rawValue:)))
+		}
+	}
+
+	/// Replaces the unlock settings that are on. Only `Vault` calls it, next to the Keychain entries.
+	func saveUnlockMethods(_ methods: Set<Vault.PasswordEntry>) throws {
+		try write { db in
+			try db.execute(sql: "DELETE FROM unlockMethod")
+			for method in methods {
+				try db.execute(sql: "INSERT INTO unlockMethod (name) VALUES (?)", arguments: [method.rawValue])
+			}
+		}
+	}
+
 	public func installedExtensions() throws -> [InstalledExtension] {
 		try queue.read { db in
 			// An origin that this version does not know counts as the catalog, the origin with the stricter rules.
