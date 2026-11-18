@@ -132,7 +132,7 @@ struct NewCategorySheet: View {
 	@State private var name = ""
 	@State private var parentID: UUID?
 
-	private struct Input: Hashable, Sendable {
+	struct Input: Hashable, Sendable {
 		var name: String
 		var parentID: UUID?
 	}
@@ -364,7 +364,8 @@ struct GroupSettingsSheet: View {
 		.keepsInput(group, of: .groupSettings(groupID))
 		.onAppear {
 			group = model.ledger.group(groupID)
-			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)) { group = held }
+			// The input is optional: nil from `heldInput` means that nothing returns, and the group stays as loaded.
+			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)), let held { group = held }
 		}
 	}
 }
@@ -409,17 +410,25 @@ struct TransactionSheet: View {
 	@State private var suggestions: [Transaction] = []
 	@FocusState private var nameHasFocus: Bool
 
-	/// What the lock keeps of the fields.
-	private struct Input: Hashable, Sendable {
+	/// The text of the date fields as the user typed it, also while it is not a date yet.
+	@State private var dateText = ""
+	@State private var valueDateText = ""
+
+	/// What the lock keeps of the fields, and the account that a new transaction goes into.
+	struct Input: Hashable, Sendable {
+		var accountID: UUID?
 		var date: Day?
+		var dateText: String
 		var hasValueDate: Bool
 		var valueDate: Day?
+		var valueDateText: String
 		var draft: TransactionDraft
 		var comment: String
 	}
 
 	private var input: Input {
-		Input(date: date, hasValueDate: hasValueDate, valueDate: valueDate, draft: draft, comment: comment)
+		Input(accountID: account?.id, date: date, dateText: dateText, hasValueDate: hasValueDate, valueDate: valueDate,
+			valueDateText: valueDateText, draft: draft, comment: comment)
 	}
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
@@ -447,7 +456,7 @@ struct TransactionSheet: View {
 			}
 			if editable {
 				Section {
-					DateField(title: "Date", day: $date)
+					DateField(title: "Date", day: $date, typed: $dateText)
 					if existing != nil {
 						LabeledContent("Value date") {
 							HStack {
@@ -458,7 +467,7 @@ struct TransactionSheet: View {
 								.labelsHidden()
 								.accessibilityIdentifier("valuedate-switch")
 								if hasValueDate {
-									DateField(title: "Value date", day: $valueDate, identifier: "valuedate")
+									DateField(title: "Value date", day: $valueDate, identifier: "valuedate", typed: $valueDateText)
 										.labelsHidden()
 								}
 							}
@@ -508,10 +517,13 @@ struct TransactionSheet: View {
 		.keepsInput(input, of: .transaction(transactionID))
 		.onAppear {
 			load()
-			if let held: Input = model.heldInput(for: .transaction(transactionID)) {
+			// A new transaction takes its input only in the account that it was started in.
+			if let held: Input = model.heldInput(for: .transaction(transactionID)), transactionID != nil || held.accountID == account?.id {
 				date = held.date
+				dateText = held.dateText
 				hasValueDate = held.hasValueDate
 				valueDate = held.valueDate
+				valueDateText = held.valueDateText
 				draft = held.draft
 				comment = held.comment
 			}

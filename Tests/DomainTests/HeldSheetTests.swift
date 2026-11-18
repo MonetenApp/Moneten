@@ -15,6 +15,10 @@ struct HeldSheetTests {
 		var color: String
 	}
 
+	/// The database that was open at the lock, and one that a backup put in its place.
+	let database = 1
+	let replacement = 2
+
 	let girokonto = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline)
 	let haushalt = UUID()
 
@@ -26,77 +30,142 @@ struct HeldSheetTests {
 
 	@Test("The lock keeps the open account settings with a changed name and color, and the unlock gives them back once")
 	func lockAndUnlock() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		let sheet = Sheet.accountSettings(girokonto.id)
 		held.record(Settings(account: girokonto, color: "#1565C0"), of: sheet)
 		held.record(changed, of: sheet)
-		held.lock(closing: sheet)
-		#expect(held.unlock() == sheet)
+		held.lock(closing: sheet, database: database)
+		#expect(held.unlock(database: database) == sheet)
 		#expect(held.input(for: sheet) == changed)
 		// The input goes back once. A later opening of the same settings starts from the account.
 		#expect(held.input(for: sheet) == nil)
-		#expect(held.unlock() == nil)
+		#expect(held.unlock(database: database) == nil)
 	}
 
 	@Test("A sheet that opens without a lock before it starts from the stored values")
 	func noLock() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		let sheet = Sheet.accountSettings(girokonto.id)
 		held.record(changed, of: sheet)
 		#expect(held.input(for: sheet) == nil)
-		#expect(held.unlock() == nil)
+		#expect(held.unlock(database: database) == nil)
 	}
 
 	@Test("The lock keeps nothing when no sheet is open, also when a closed sheet left its input")
 	func noSheetOpen() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		held.record(changed, of: .accountSettings(girokonto.id))
-		held.lock(closing: nil)
-		#expect(held.unlock() == nil)
+		held.lock(closing: nil, database: database)
+		#expect(held.unlock(database: database) == nil)
 		#expect(held.input(for: .accountSettings(girokonto.id)) == nil)
 	}
 
 	@Test("The lock keeps nothing for an open sheet whose input it does not know")
 	func otherSheetOpen() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		held.record(changed, of: .accountSettings(girokonto.id))
-		held.lock(closing: .groupSettings(haushalt))
-		#expect(held.unlock() == nil)
+		held.lock(closing: .groupSettings(haushalt), database: database)
+		#expect(held.unlock(database: database) == nil)
 	}
 
-	@Test("Closing the database for good, as a quit or a database that changed on disk does, drops the held input")
+	@Test("Closing the database for good, as after a change on disk, drops the held input")
 	func drop() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		let sheet = Sheet.accountSettings(girokonto.id)
 		held.record(changed, of: sheet)
-		held.lock(closing: sheet)
+		held.lock(closing: sheet, database: database)
 		held.drop()
-		#expect(held.unlock() == nil)
+		#expect(held.unlock(database: database) == nil)
 		#expect(held.input(for: sheet) == nil)
 	}
 
 	@Test("A sheet that the unlock gave back but that never showed drops its input at the next drop")
 	func dropAfterUnlock() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		let sheet = Sheet.accountSettings(girokonto.id)
 		held.record(changed, of: sheet)
-		held.lock(closing: sheet)
-		#expect(held.unlock() == sheet)
+		held.lock(closing: sheet, database: database)
+		#expect(held.unlock(database: database) == sheet)
 		held.drop()
+		#expect(held.returningInput == nil)
 		#expect(held.input(for: sheet) == nil)
 	}
 
 	@Test("The input of the first lock is not given to a second sheet, and the second lock keeps only its own sheet")
 	func secondLock() {
-		var held = HeldSheet<Sheet, Settings>()
+		var held = HeldSheet<Sheet, Settings, Int>()
 		let account = Sheet.accountSettings(girokonto.id)
 		let group = Sheet.groupSettings(haushalt)
 		held.record(changed, of: account)
-		held.lock(closing: account)
-		#expect(held.unlock() == account)
+		held.lock(closing: account, database: database)
+		#expect(held.unlock(database: database) == account)
 		#expect(held.input(for: group) == nil)
 		#expect(held.input(for: account) == changed)
-		held.lock(closing: nil)
-		#expect(held.unlock() == nil)
+		held.lock(closing: nil, database: database)
+		#expect(held.unlock(database: database) == nil)
+	}
+
+	@Test("A database that a backup replaced while the app was locked gets no input of the database before it")
+	func replacedDatabase() {
+		var held = HeldSheet<Sheet, Settings, Int>()
+		let sheet = Sheet.accountSettings(girokonto.id)
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: database)
+		#expect(held.unlock(database: replacement) == nil)
+		#expect(held.input(for: sheet) == nil)
+		// The input is gone, also for a later unlock of the first database.
+		#expect(held.unlock(database: database) == nil)
+	}
+
+	@Test("An opening that is not an unlock of a known database, such as a launch or Try Again, drops the held input")
+	func unknownDatabase() {
+		var held = HeldSheet<Sheet, Settings, Int>()
+		let sheet = Sheet.accountSettings(girokonto.id)
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: database)
+		#expect(held.unlock(database: nil) == nil)
+		#expect(held.unlock(database: database) == nil)
+		// A lock whose database the app could not read keeps nothing either.
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: nil)
+		#expect(held.unlock(database: nil) == nil)
+	}
+
+	@Test("The app can look at the returning input before the sheet shows, and the sheet still takes it")
+	func peek() {
+		var held = HeldSheet<Sheet, Settings, Int>()
+		let sheet = Sheet.accountSettings(girokonto.id)
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: database)
+		#expect(held.returningInput == nil)
+		_ = held.unlock(database: database)
+		#expect(held.returningInput == changed)
+		#expect(held.input(for: sheet) == changed)
+		#expect(held.returningInput == nil)
+	}
+
+	@Test("An optional input reads as nothing when no input returns, never as an input of nil")
+	func optionalInput() {
+		var held = HeldSheet<Sheet, any Sendable, Int>()
+		let sheet = Sheet.groupSettings(haushalt)
+		let group = AccountGroup(name: "Haushalt", position: 0)
+		// A normal opening: nothing returns, so the sheet keeps the group that it loaded.
+		let nothing = held.input(for: sheet, as: AccountGroup?.self)
+		#expect(nothing == nil)
+		held.record(Optional(group), of: sheet)
+		held.lock(closing: sheet, database: database)
+		_ = held.unlock(database: database)
+		let returned = held.input(for: sheet, as: AccountGroup?.self)
+		#expect(returned == .some(.some(group)))
+	}
+
+	@Test("An input of another type reads as nothing")
+	func otherType() {
+		var held = HeldSheet<Sheet, any Sendable, Int>()
+		let sheet = Sheet.groupSettings(haushalt)
+		held.record("Haushalt", of: sheet)
+		held.lock(closing: sheet, database: database)
+		_ = held.unlock(database: database)
+		#expect(held.input(for: sheet, as: Int.self) == nil)
 	}
 }

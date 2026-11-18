@@ -34,8 +34,8 @@ final class DebugHarness {
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
 	#if DEBUG || PERF_HARNESS
-	/// The input of a sheet that "sheetinput mark" remembered.
-	private var markedSheetInput: AnyHashable?
+	/// The account that "noticeopen" opens.
+	private var noticeAccount: UUID?
 	#endif
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
@@ -189,22 +189,45 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
-		// "mark" remembers the input that the open sheet wrote last (`HeldSheet`), and "same" logs whether the input that
-		// a sheet wrote last is the remembered one, for the check that the unlock gives back the input from before the lock.
+		// "mark" remembers the input that the open sheet wrote last (`HeldSheet`), and "same" logs whether the open sheet
+		// wrote the remembered input since the unlock, for the check that the unlock gives back the input from before the
+		// lock. The lock forgets the input that a sheet wrote, so "same" is false when no sheet came back. Both work only
+		// while the app is unlocked, and the close of the database forgets the mark too.
 		case "sheetinput":
 			#if DEBUG || PERF_HARNESS
-			if argument == "mark" { markedSheetInput = model.debugSheetInput }
+			guard model.phase == .unlocked else { return log("sheetinput refused") }
+			if argument == "mark" { model.debugSheetInputMark = model.debugSheetInput }
+			let same = model.sheet != nil && model.debugSheetInput != nil && model.debugSheetInputMark == model.debugSheetInput
 			log("sheetinput", ("", .choice(argument, of: ["mark", "same"])), ("recorded", .presence(model.debugSheetInput != nil)),
-				("same", .flag(markedSheetInput != nil && markedSheetInput == model.debugSheetInput)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+				("same", .flag(same)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 			#endif
 		// "<n>" picks color swatch n of the sheet on top, counted from 0, as a click does.
 		case "swatch":
 			let swatches = sheetAccessibility().filter { ($0 as AnyObject).accessibilityIdentifier?() == "color-swatch" }
 			guard let n = Int(argument), swatches.indices.contains(n) else { return log("swatch", ("count", .count(swatches.count))) }
 			log("swatch", ("handled", .flag((swatches[n] as AnyObject).accessibilityPerformPress?() ?? false)))
-		// "<n>|<text>" logs whether editable text field n of the sheet on top, counted from 0, holds the text.
+		// "<account>" remembers that account while the app is unlocked. Without an argument, it opens the remembered
+		// account as a click on its notification does, also while the app is locked, when no name can be looked up.
+		case "noticeopen":
+			#if DEBUG || PERF_HARNESS
+			if !argument.isEmpty {
+				noticeAccount = model.ledger.accounts.first { $0.name == argument }?.id
+				return log("noticeopen", ("remembered", .presence(noticeAccount != nil)))
+			}
+			guard let noticeAccount else { return log("noticeopen none") }
+			model.notices.onOpen([noticeAccount])
+			log("noticeopen", ("phase", .state(model.phase)))
+			#endif
+		// Puts a made-up alert in line, as a result that arrives while a sheet is open does.
+		case "postalert":
+			#if DEBUG || PERF_HARNESS
+			model.alert = AlertMessage(title: "Made-up alert", message: "")
+			#endif
+		// "<n>|<text>" logs whether editable text field n of the sheet on top, counted from 0, holds the text. Secure
+		// fields do not count, so that no password is read.
 		case "sheetfield":
 			func fields(in view: NSView) -> [NSTextField] {
+				if view is NSSecureTextField { return [] }
 				if let field = view as? NSTextField, field.isEditable { return [field] }
 				return view.subviews.flatMap(fields)
 			}
