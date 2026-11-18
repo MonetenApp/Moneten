@@ -53,7 +53,7 @@
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB, the DKB step for "ohnetan", and the DKB
 # message of a card without jobs for "karteohnejobs". Oberbank (70120700) has its real FinTS address on the server of
 # Bank-Verlag, so the setup shows its note, and its login asks for the TAN method from "smsTAN" and "TAN-Generator", with
-# the Security App that cannot be chosen, and then for the SMS code. The login of every
+# the Security App that cannot be chosen, and then for the SMS code with the note on the Security App. The login of every
 # bank goes to this script.
 # The app starts the helper with an empty environment.
 PATH=/bin:/usr/bin
@@ -125,7 +125,7 @@ case "$cmd" in
 	*'"bankCode":"70120700"'*)
 		echo '{"type":"ask","id":2,"kind":"tanMethod","purpose":"login","methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"972","name":"TAN-Generator"}]}'
 		answer
-		echo '{"type":"ask","id":3,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die xTAN aus der SMS ein."}'
+		echo '{"type":"ask","id":3,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die xTAN aus der SMS ein.","current":"921","methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"972","name":"TAN-Generator"}]}'
 		;;
 	*) echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN aus Ihrer pushTAN-App ein.","current":"921","methods":[{"id":"921","name":"pushTAN","delivery":"push"},{"id":"901","name":"mobileTAN","medium":true,"delivery":"sms"}]}' ;;
 	esac

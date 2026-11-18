@@ -118,7 +118,7 @@ struct Ask: Decodable {
 	let rejected: HelperError?
 	/// The PIN rules of the bank parameters, on a PIN request.
 	let rules: Rules?
-	/// The methods to choose from, and on a challenge the methods that the user can change to.
+	/// The methods to choose from, and on a challenge the methods that the bank allows the user, also a single one.
 	let methods: [Method]?
 	/// The ID of the method of a challenge.
 	let current: String?
@@ -189,16 +189,22 @@ struct Ask: Decodable {
 			// The Deutsche Bank group takes a typed TAN in capitals (#231).
 			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
 				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
-			return secondFactor(challenge, methods: offered, field: field)
+			return secondFactor(challenge, methods: changes, field: field, note: Oberbank.note(offered, bankCode: bankCode))
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return secondFactor(challenge, methods: offered)
+		return secondFactor(challenge, methods: changes)
 	}
 
-	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
+	/// The methods of a challenge that the user can change to: none when the bank allows a single method.
+	private var changes: [TANMethod] {
+		let offered = (methods ?? []).map(\.method)
+		return offered.count < 2 ? [] : offered
+	}
+
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField(), note: String? = nil) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current, field: field, olderTransactions: history == true))
+			method: current, field: field, olderTransactions: history == true, note: note))
 	}
 }
 

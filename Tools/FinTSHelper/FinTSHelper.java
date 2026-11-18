@@ -10,7 +10,7 @@
 // - ask: a request for the user, with id and kind pin, tanMethod, tanMedium, tan, or approve. An
 //   approval gets no answer. The helper sends withdraw with its id when hbci4java goes on. A pin
 //   request carries the PIN rules of the bank parameters, and a tan or approve request the methods
-//   that the user can change to. An answer with "method" in place of "value" to a tan or approve
+//   that the bank allows the user, also a single one, which the user can change to. An answer with "method" in place of "value" to a tan or approve
 //   request changes the TAN method: the helper ends the dialog and starts a new one with that method,
 //   which requests a new challenge. A tan or approve request with "history" comes while the refresh asks
 //   for the full history of an account. An answer with "skip" to it ends the dialog, and the helper starts a
@@ -901,14 +901,16 @@ public class FinTSHelper {
 			if (length != null && length.matches("\\d{1,3}")) request.put("maxLength", Integer.parseInt(length));
 		}
 
-		/// Adds the method of a challenge and the methods that the user can change to, when there are two or more.
+		/// Adds the method of a challenge and the methods that the bank allows the user, also a single one: hbci4java then
+		/// takes it without a request (NEED_PT_SECMECH), and the app learns from it that Oberbank offers no app (#236).
+		/// The app offers a change of the method only from two methods on.
 		static Map<String, Object> choices(HBCIPassport passport, Map<String, Object> request) {
 			if (!(passport instanceof AbstractPinTanPassport p) || p.getTwostepMechanisms() == null) return request;
 			List<Object> methods = new ArrayList<>();
 			for (String id : new TreeSet<>(p.getTwostepMechanisms().keySet())) {
 				if (p.getAllowedTwostepMechanisms().contains(id)) methods.add(method(p, id, p.getTwostepMechanisms().get(id).getProperty("name", id)));
 			}
-			if (methods.size() < 2) return request;
+			if (methods.isEmpty()) return request;
 			request.put("current", p.getCurrentTANMethod(false));
 			request.put("methods", methods);
 			return request;

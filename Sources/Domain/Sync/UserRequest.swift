@@ -182,10 +182,13 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	/// only this request with `OlderTransactionsSkipped`, and the refresh fetches the last 90 days ("The
 	/// first refresh asks for the full history").
 	public let olderTransactions: Bool
+	/// A sentence of the source about the methods, which the dialog shows under the purpose, for example that a method of
+	/// the website of the bank is not offered for finance software. Nil for most requests.
+	public let note: String?
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
 		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = String(localized: "Continue"),
-		olderTransactions: Bool = false) {
+		olderTransactions: Bool = false, note: String? = nil) {
 		self.purpose = purpose
 		self.system = system
 		self.loginOnly = loginOnly
@@ -196,6 +199,7 @@ public struct SecondFactorRequest: Sendable, Equatable {
 		self.method = method
 		self.field = field
 		self.confirmTitle = confirmTitle
+		self.note = note
 	}
 
 	public enum Purpose: Sendable, Equatable {

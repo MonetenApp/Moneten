@@ -22,21 +22,28 @@ enum Oberbank {
 		unavailable: String(localized: "Oberbank offers the Security App only for its internet banking, not for finance software."))
 
 	/// The TAN methods to choose from at Oberbank: those of the FinTS server, and the Security App that cannot be chosen,
-	/// when none of them is an app. A method is an app when the bank parameters mark it as an approval in an app or its
-	/// name has the word "App". Any other bank keeps the methods of its server.
+	/// when none of them is an app. Any other bank keeps the methods of its server.
 	static func methods(_ offered: [TANMethod], bankCode: String?) -> [TANMethod] {
-		guard bankCode == Self.bankCode, !offered.contains(where: isApp) else { return offered }
-		return offered + [securityApp]
+		misses(offered, bankCode: bankCode) ? offered + [securityApp] : offered
 	}
 
+	/// The reason of the Security App for the dialog of a typed TAN at Oberbank, whose server offers no app. hbci4java
+	/// takes a single method without a choice, as xTAN by SMS alone, so this dialog is the only place that can say it.
+	static func note(_ offered: [TANMethod], bankCode: String?) -> String? {
+		misses(offered, bankCode: bankCode) ? securityApp.unavailable : nil
+	}
+
+	private static func misses(_ offered: [TANMethod], bankCode: String?) -> Bool {
+		bankCode == Self.bankCode && !offered.contains(where: isApp)
+	}
+
+	/// A method is an app when the bank parameters mark it as an approval in an app, or a word of its name is "app" or
+	/// ends with "app", with or without "tan" after it: "Security App", "SecurityApp", "appTAN", "SecureAppTAN". A word
+	/// that only starts with "app", such as "Appsecure", does not count, because many words start with these letters and
+	/// say nothing about an app.
 	private static func isApp(_ method: TANMethod) -> Bool {
-		method.delivery == .pushNotification || TextFolding.fold(method.name).split(whereSeparator: { !$0.isLetter }).contains("app")
-	}
-}
-
-extension BankDirectory.Entry {
-	/// The hint of Oberbank, by its Bankleitzahl alone.
-	var oberbankHint: LoginHint? {
-		code == Oberbank.bankCode ? Oberbank.hint : nil
+		method.delivery == .pushNotification || TextFolding.fold(method.name).split(whereSeparator: { !$0.isLetter }).contains { word in
+			word.hasSuffix("app") || word.hasSuffix("apptan")
+		}
 	}
 }

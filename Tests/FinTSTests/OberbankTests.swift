@@ -67,7 +67,68 @@ struct OberbankTests {
 			bankCode: "70120700") == [Self.sms, TANMethod(id: "946", name: "Freigabe", delivery: .pushNotification)])
 	}
 
-	@Test("The fake helper of a debug build asks the Oberbank login for the TAN method with the Security App that cannot be chosen")
+	@Test("Oberbank counts a method as an app by a word that is or ends with \"app\", with or without \"tan\", but not by a word that only starts with it")
+	func appNames() async throws {
+		for name in ["SecurityApp", "appTAN", "Oberbank SecureAppTAN"] {
+			#expect(try await Self.offered(#"[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"946","name":"\#(name)"}]"#, bankCode: "70120700")
+				== [Self.sms, TANMethod(id: "946", name: name)], "\(name)")
+		}
+		#expect(try await Self.offered(#"[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"946","name":"Appsecure"}]"#, bankCode: "70120700")
+			== [Self.sms, TANMethod(id: "946", name: "Appsecure"), Self.securityApp])
+	}
+
+	/// The request of the first challenge, when the helper sends `ask` as hbci4java does after it chose the method by itself
+	/// or after the user chose it, and then runs `then`.
+	static func challenge(_ ask: String, bankCode: String = "70120700", then: String = "read answer") async throws -> SecondFactorRequest? {
+		let access = Access(source: .fints(bankCode: bankCode, url: server), bankName: "Oberbank", loginName: "erika77")
+		let session = Session()
+		_ = try await DKBTests.connector(#"""
+			read cmd
+			echo '\#(ask)'
+			\#(then)
+			echo '{"type":"accounts","accounts":[]}'
+			"""#).listAccounts(of: access, state: nil, session: session)
+		guard case let .asked(.secondFactor(request))? = session.events.first else {
+			Issue.record("no challenge")
+			return nil
+		}
+		return request
+	}
+
+	static let note = "Oberbank offers the Security App only for its internet banking, not for finance software."
+	static let smsChallenge = #"{"type":"ask","id":1,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die xTAN aus der SMS ein.","current":"921","#
+
+	@Test("When the FinTS server of Oberbank offers only smsTAN, hbci4java takes it without a choice, and the TAN dialog names the Security App")
+	func onlySMS() async throws {
+		let request = try #require(try await Self.challenge(Self.smsChallenge + #""methods":[{"id":"921","name":"smsTAN","delivery":"sms"}]}"#))
+		#expect(request.challenge == .enterTAN(prompt: "Bitte geben Sie die xTAN aus der SMS ein.", image: nil))
+		#expect(request.purpose == .login)
+		#expect(request.methods.isEmpty)
+		#expect(request.method == "921")
+		#expect(request.note == Self.note)
+	}
+
+	@Test("The TAN dialog of Oberbank names the Security App after the choice of a method, and not when the server offers an app")
+	func noteAfterChoice() async throws {
+		let afterChoice = try #require(try await Self.challenge(Self.smsChallenge + #""methods":\#(Self.smsAndGenerator)}"#))
+		#expect(afterChoice.methods == [Self.sms, Self.generator])
+		#expect(afterChoice.note == Self.note)
+		let withApp = try #require(try await Self.challenge(Self.smsChallenge
+			+ #""methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"946","name":"SecurityApp"}]}"#))
+		#expect(withApp.note == nil)
+		let approval = try #require(try await Self.challenge(#"{"type":"ask","id":1,"kind":"approve","purpose":"login","prompt":"Bitte freigeben","current":"946","#
+			+ #""methods":[{"id":"946","name":"Freigabe","delivery":"push"}]}"#, then: #"echo '{"type":"withdraw","id":1}'"#))
+		#expect(approval.note == nil)
+	}
+
+	@Test("The TAN dialog of another bank on the FinTS server of Bank-Verlag says nothing about the Security App")
+	func neighborNote() async throws {
+		let request = try #require(try await Self.challenge(Self.smsChallenge + #""methods":[{"id":"921","name":"smsTAN","delivery":"sms"}]}"#, bankCode: "99090000"))
+		#expect(request.note == nil)
+		#expect(request.methods.isEmpty)
+	}
+
+	@Test("The fake helper of a debug build asks the Oberbank login for the TAN method with the Security App that cannot be chosen, and names it in the TAN dialog")
 	func fakeHelper() async throws {
 		let access = Access(source: .fints(bankCode: "70120700", url: Self.server), bankName: "Oberbank", loginName: "erika77")
 		let session = Session()
@@ -77,6 +138,11 @@ struct OberbankTests {
 			return methods
 		}
 		#expect(choices == [[Self.sms, Self.generator, Self.securityApp]])
+		let notes = session.events.compactMap { event -> String? in
+			guard case let .asked(.secondFactor(request)) = event, case .enterTAN = request.challenge else { return nil }
+			return request.note
+		}
+		#expect(notes == [Self.note])
 	}
 
 	@Test("Another bank on the FinTS server of Bank-Verlag shows only the methods of the server")
