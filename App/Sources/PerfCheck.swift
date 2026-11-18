@@ -36,6 +36,14 @@ struct PerfScenario {
 		PerfScenario(name: "group-from-scrolled-account", budget: halfSecond,
 			setUp: { await $0.select("Account 2"); await $0.scroll { $0 / 2 } },
 			run: { await $0.select("Bulk") }),
+		// Each row used to parse its counterparty IBAN to read it also in groups of four. Ten of the 500 counterparties of
+		// `DemoData.bulk` hold "0001 0000 1" in groups. The next scenario sets a search of its own.
+		PerfScenario(name: "search-remote-account-regex", budget: halfSecond,
+			run: { c in
+				c.model.filter.searchText = "remote_account:/0001 0000 1/"
+				await c.settle()
+				if c.model.visibleTransactions.isEmpty { c.fail("the search finds no counterparty IBAN in groups of four") }
+			}),
 		PerfScenario(name: "clear-search-while-scrolled", budget: halfSecond,
 			setUp: { c in
 				c.model.filter.searchText = "Tankstelle"

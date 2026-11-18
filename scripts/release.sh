@@ -213,9 +213,12 @@ symbols() {
 	while read -r f; do
 		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
 		while read -r ID ARCH; do
-			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }')
-			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '$2 ~ /^[Tt]$/ { print $1; exit }')
-			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }')
+			# awk reads to the end and keeps the first match. An awk that exits early closes the pipe
+			# under nm and otool, and the runner of GitHub ignores SIGPIPE, so they print
+			# "LLVM ERROR: IO failure on output stream: Broken pipe".
+			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '!found && $2 ~ /^[Tt]$/ && $3 == "_main" { print $1; found = 1 }')
+			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '!found && $2 ~ /^[Tt]$/ { print $1; found = 1 }')
+			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '!found && $1 == "segname" && $2 == "__TEXT" { getline; print $2; found = 1 }')
 			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
 			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
 		done < "$WORK/ids"
