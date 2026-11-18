@@ -766,8 +766,15 @@ final class DebugHarness {
 		// "end" scrolls past the last row to the lines of the active filters.
 		case "scrolltable":
 			if argument == "end" {
-				scrollTablesToEnd()
-				log("filterhints", ("shown", .flag(filterHintsShown() == true)))
+				Task {
+					await scrollTablesToEnd()
+					// "gap" is the distance from the last row to the lines, "bottom" the inset that holds them.
+					let table = transactionTables().first
+					let lines = table?.enclosingScrollView?.contentView.subviews.first { $0 is FilterHintsHost }
+					let gap = table.flatMap { t in lines.map { filterHintsGap(t, $0) } } ?? 0
+					log("filterhints", ("shown", .flag(filterHintsShown() == true)), ("rows", .count(table?.numberOfRows ?? 0)),
+						("gap", .count(Int(gap.rounded()))), ("bottom", .count(Int(table?.enclosingScrollView?.contentInsets.bottom ?? 0))))
+				}
 			} else {
 				scrollTables { min(Int(argument) ?? 0, $0 - 1) }
 			}
@@ -848,6 +855,8 @@ final class DebugHarness {
 				let visibleTop = clip.convert(clip.bounds, to: nil).maxY - scroll.contentInsets.top
 				let firstRowTop = table.numberOfRows > 0 ? table.convert(table.rect(ofRow: 0), to: nil).maxY : visibleTop
 				log("tableinsets", ("top", .count(Int(scroll.contentInsets.top))), ("bottom", .count(Int(scroll.contentInsets.bottom))),
+					("left", .count(Int(scroll.contentInsets.left))), ("right", .count(Int(scroll.contentInsets.right))),
+					("clipX", .count(Int(clip.bounds.minX))),
 					("automatic", .flag(scroll.automaticallyAdjustsContentInsets)),
 					("underToolbar", .flag(scrollTop > window.contentLayoutRect.maxY + 0.5)),
 					("firstRowAtTop", .flag(abs(firstRowTop - visibleTop) < 0.5)))
@@ -1545,15 +1554,23 @@ final class DebugHarness {
 	}
 
 	/// Scrolls every transaction table to the end of its list, past the last row to the lines of the active filters.
-	func scrollTablesToEnd() {
+	func scrollTablesToEnd() async {
 		for table in transactionTables() {
 			guard let scroll = table.enclosingScrollView else { continue }
 			let clip = scroll.contentView
-			var end = clip.bounds
-			// Beyond the end, which the clip view brings back to the last position. An infinite value it does not.
-			end.origin.y = table.frame.maxY + scroll.contentInsets.bottom
-			clip.scroll(to: clip.constrainBoundsRect(end).origin)
-			scroll.reflectScrolledClipView(clip)
+			// The table estimates the height of a row that it has not drawn and measures it at the end, which makes the
+			// list longer, so the scroll goes to the end again until the end stays, as a user scrolls on. The footer
+			// places the lines on the next turn.
+			for _ in 0..<10 {
+				var end = clip.bounds
+				// Beyond the end, which the clip view brings back to the last position. An infinite value it does not.
+				end.origin.y = table.frame.maxY + scroll.contentInsets.bottom
+				let target = clip.constrainBoundsRect(end).origin
+				if target == clip.bounds.origin { break }
+				clip.scroll(to: target)
+				scroll.reflectScrolledClipView(clip)
+				try? await Task.sleep(for: .milliseconds(100))
+			}
 			log("scrolltable", ("rows", .count(table.numberOfRows)))
 		}
 	}
@@ -1561,9 +1578,14 @@ final class DebugHarness {
 	/// Whether the lines of the active filters below the last row are in view: nil without the lines, false while
 	/// the list does not show its end.
 	func filterHintsShown() -> Bool? {
-		guard let clip = transactionTables().first?.enclosingScrollView?.contentView,
+		guard let table = transactionTables().first, let clip = table.enclosingScrollView?.contentView,
 			let lines = clip.subviews.first(where: { $0 is FilterHintsHost }), !lines.isHidden, lines.frame.height > 0 else { return nil }
-		return clip.bounds.maxY >= lines.frame.maxY - 1
+		return clip.bounds.maxY >= lines.frame.maxY - 1 && abs(filterHintsGap(table, lines)) < 1
+	}
+
+	/// The distance from the bottom of the last row to the top of the lines, zero when the lines follow the last row.
+	private func filterHintsGap(_ table: NSTableView, _ lines: NSView) -> CGFloat {
+		lines.frame.minY - (table.frame.minY + (table.numberOfRows > 0 ? table.rect(ofRow: table.numberOfRows - 1).maxY : 0))
 	}
 
 	/// `extrun <path>|<function>|<fixture>` runs one function of an extension in its own host process.

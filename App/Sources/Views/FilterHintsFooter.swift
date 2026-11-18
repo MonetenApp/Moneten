@@ -115,16 +115,17 @@ final class FilterHintsAnchor: NSView {
 	}
 
 	/// The table beside this view: SwiftUI puts the host of a background in front of the host of its content, in
-	/// the same parent. The search reads the later siblings of each of a few parents, and the frame of the scroll
-	/// view must match this view, so that a table that SwiftUI is about to remove does not count.
+	/// the same parent. The search reads the later siblings of each of a few parents, and the scroll view must
+	/// cover this view with the same top, bottom, and right edge, so that a table that SwiftUI is about to remove
+	/// does not count. The scroll view can reach under the sidebar on the left, so its left edge can differ.
 	private func findTable() -> NSTableView? {
 		guard bounds.width > 0, bounds.height > 0 else { return nil }
 		let frame = convert(bounds, to: nil)
 		func search(_ view: NSView, depth: Int) -> NSTableView? {
 			if let scroll = view as? NSScrollView, let table = scroll.documentView as? NSTableView {
 				let scrollFrame = scroll.convert(scroll.bounds, to: nil)
-				return abs(scrollFrame.minX - frame.minX) < 2 && abs(scrollFrame.minY - frame.minY) < 2
-					&& abs(scrollFrame.width - frame.width) < 2 && abs(scrollFrame.height - frame.height) < 2 ? table : nil
+				return scrollFrame.minX <= frame.minX + 2 && abs(scrollFrame.maxX - frame.maxX) < 2
+					&& abs(scrollFrame.minY - frame.minY) < 2 && abs(scrollFrame.height - frame.height) < 2 ? table : nil
 			}
 			guard depth > 0 else { return nil }
 			for sub in view.subviews { if let found = search(sub, depth: depth - 1) { return found } }
@@ -147,7 +148,9 @@ final class FilterHintsAnchor: NSView {
 		let height = hints.isEmpty ? 0 : host.fittingSize.height
 		let lastRow = rows > 0 ? table.rect(ofRow: rows - 1).maxY : 0
 		host.isHidden = hints.isEmpty
-		let frame = NSRect(x: table.frame.minX, y: table.frame.minY + lastRow, width: clip.bounds.width, height: height)
+		// The clip view can reach under the sidebar, and its insets keep the rows out of that part.
+		let width = clip.bounds.width - scroll.contentInsets.left - scroll.contentInsets.right
+		let frame = NSRect(x: table.frame.minX, y: table.frame.minY + lastRow, width: width, height: height)
 		if host.frame != frame { host.frame = frame }
 		// The table fills the clip view when it has few rows, so the lines need room only below a long list.
 		setRoom(max(0, lastRow + height - table.frame.height), in: scroll)
