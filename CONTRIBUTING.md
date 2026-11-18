@@ -59,6 +59,8 @@ The pull request template asks for each point.
 
 By submitting a contribution, you agree that it is licensed under the GNU General Public License v3.0 or later, the same license as the project. There is no contributor license agreement.
 
+A pull request that adds a dependency, or moves one to a new version, names its license and adds or updates its entry in `Licenses/notices.json`. [docs/releasing.md](docs/releasing.md#license-notices) explains the entry, and `scripts/check.sh` fails without it.
+
 ## Be kind
 
 Treat everyone with respect. The maintainers remove comments that attack people.

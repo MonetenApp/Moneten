@@ -15,6 +15,7 @@ Banks change their servers often, so a banking app that is a few months old stop
 - "Participate in beta tests and display pre-release versions" also offers pre-release versions.
 - The bank list and the BIC directory update between releases, with the same signature check.
 - No request for an update sends personal data.
+- "About Moneten" opens the licenses of the parts that the app ships, and each release carries the source of its GPL and LGPL parts.
 
 ## Capabilities
 
@@ -29,11 +30,11 @@ None.
 ## Impact
 
 - Milestone: v0.1
-- Issues: #25, and #13 for the bank data files
+- Issues: #25, #13 for the bank data files, and #411 for the license notices
 - Modules: `App` owns the update commands, the update window, and the settings. `Domain` chooses the release notes that the window shows. `FinTS` checks the signature of the bank data files. The release pipeline in CI signs and notarizes the app, writes the release notes from the changelog file of the repository, and publishes the update feed.
 - Depends on the change `add-app-settings` for the two settings on the "General" tab.
 - Depends on the change `add-encrypted-database`, which upgrades the database after an update.
-- Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md), [ADR 0011](../../../docs/decisions/0011-app-target-in-an-xcode-project.md) for signing without a private key outside Apple.
+- Decisions: [ADR 0002](../../../docs/decisions/0002-local-first-no-server.md), [ADR 0006](../../../docs/decisions/0006-license-gpl-3.md) and [ADR 0020](../../../docs/decisions/0020-keep-gpl-3-after-hbci4java.md), [ADR 0011](../../../docs/decisions/0011-app-target-in-an-xcode-project.md) for signing without a private key outside Apple.
 
 ## Reference behavior
 
@@ -64,3 +65,4 @@ None.
 - A renamed application file is no obstacle for an update. MoneyMoney requires its original file name.
 - Bank data files are signed with the same key as the app updates, and the app keeps its current files when a download fails the check.
 - There is no App Store edition, so the App Store messages have no counterpart.
+- "About Moneten" links to a page with the licenses of the shipped parts, and each release carries the source of its GPL and LGPL parts. MoneyMoney has "License Agreement..." in its application menu. Whether it lists the licenses of the parts it ships was not observed.

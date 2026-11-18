@@ -376,3 +376,39 @@ The app SHALL show the build number next to the version number in "About Moneten
 
 - **WHEN** the user opens "About Moneten" in version 0.2.0-beta.1
 - **THEN** the window shows "0.2.0-beta.1", the build number, and a mark that this is a pre-release
+
+### Requirement: Show the licenses of shipped parts
+
+The app SHALL carry the license name, the copyright notices, and the full license text of every part of another project that it ships, on a page that "About Moneten" opens. A release that ships a part without a notice SHALL stop before it is built.
+
+#### Scenario: Open the licenses
+
+- **GIVEN** version 0.1.0 ships hbci4java 4.1.17 in its FinTS helper
+- **WHEN** the user chooses "About Moneten" and clicks "Licenses"
+- **THEN** the default browser shows the page "Moneten: Licenses"
+- **AND** the page lists hbci4java 4.1.17 under "LGPL-2.1-or-later" with its copyright lines and a link to the full license text
+- **AND** the page names the folder inside the app that holds the notices of the Java runtime
+
+#### Scenario: German interface
+
+- **GIVEN** the language of macOS is German
+- **WHEN** the user clicks "Lizenzen" in "Über Moneten"
+- **THEN** the page "Moneten: Lizenzen" opens
+- **AND** the license texts on it stay in their original English
+
+#### Scenario: Part without a notice
+
+- **GIVEN** a change adds the jar example-tools 1.0.0 to the FinTS helper without a license notice
+- **WHEN** the release pipeline runs
+- **THEN** the release stops with a message that names example-tools 1.0.0
+
+### Requirement: Offer the source of GPL and LGPL parts
+
+The app SHALL be released with the exact source of each part under the GPL or the LGPL that it ships, as files of the same release, and its license page SHALL link to them.
+
+#### Scenario: Source on the release page
+
+- **GIVEN** version 0.1.0 ships hbci4java 4.1.17 and the Java runtime 17.0.21+9
+- **WHEN** the user opens the release page of version 0.1.0
+- **THEN** the page offers "hbci4j-core-4.1.17-sources.jar" and "OpenJDK17U-jdk-sources_17.0.21_9.tar.gz" for download
+- **AND** the license page of version 0.1.0 names both files with their SHA-256 and links to the release of version 0.1.0

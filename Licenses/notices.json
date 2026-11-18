@@ -1,0 +1,188 @@
+{
+	"app": {
+		"name": "Moneten",
+		"license": "GPL-3.0-or-later",
+		"texts": ["LICENSE"],
+		"home": "https://github.com/MonetenApp/Moneten",
+		"paths": ["MacOS/Moneten", "Helpers/MonetenExtensionHost", "Resources/FinTSHelper/lib/FinTSHelper.jar"]
+	},
+	"parts": [
+		{
+			"id": "maven:com.github.hbci4j:hbci4j-core",
+			"name": "hbci4java",
+			"version": "4.1.17",
+			"license": "LGPL-2.1-or-later",
+			"copyright": [
+				"Copyright (c) 2001-2008 Stefan Palme",
+				"Copyright (c) 2001-2010 Stefan Palme",
+				"Copyright (c) Olaf Willuhn",
+				"Copyright (c) 2018 Olaf Willuhn",
+				"Copyright (c) 2019 Olaf Willuhn",
+				"Copyright (c) 2022 Olaf Willuhn",
+				"Copyright (c) 2026 Olaf Willuhn",
+				"Copyright (c) 2026 Franz Bettag"
+			],
+			"texts": ["Licenses/hbci4java-LGPL-2.1.txt"],
+			"home": "https://github.com/hbci4j/hbci4java",
+			"paths": ["Resources/FinTSHelper/lib/hbci4j-core-{version}.jar"],
+			"source": {
+				"url": "https://repo1.maven.org/maven2/com/github/hbci4j/hbci4j-core/4.1.17/hbci4j-core-4.1.17-sources.jar",
+				"sha256": "c6218dab59afa3ea7a026bddea1521fcea00f0a401db75f28d7c3d51e7b7969c"
+			}
+		},
+		{
+			"id": "maven:jakarta.xml.bind:jakarta.xml.bind-api",
+			"name": "Jakarta XML Binding API",
+			"version": "4.0.2",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2017, 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jakarta.xml.bind-api-LICENSE.txt"],
+			"home": "https://github.com/jakartaee/jaxb-api",
+			"paths": ["Resources/FinTSHelper/lib/jakarta.xml.bind-api-{version}.jar"]
+		},
+		{
+			"id": "maven:jakarta.activation:jakarta.activation-api",
+			"name": "Jakarta Activation API",
+			"version": "2.1.3",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0), chosen from EPL-2.0 OR BSD-3-Clause OR GPL-2.0-only WITH Classpath-exception-2.0",
+			"copyright": ["Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jakarta-activation-LICENSE.txt"],
+			"home": "https://github.com/jakartaee/jaf-api",
+			"paths": ["Resources/FinTSHelper/lib/jakarta.activation-api-{version}.jar"]
+		},
+		{
+			"id": "maven:org.eclipse.angus:angus-activation",
+			"name": "Eclipse Angus Activation",
+			"version": "2.0.2",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jakarta-activation-LICENSE.txt"],
+			"home": "https://github.com/eclipse-ee4j/angus-activation",
+			"paths": ["Resources/FinTSHelper/lib/angus-activation-{version}.jar"]
+		},
+		{
+			"id": "maven:org.glassfish.jaxb:jaxb-runtime",
+			"name": "Eclipse Implementation of JAXB, runtime",
+			"version": "4.0.5",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jaxb-ri-LICENSE.txt"],
+			"home": "https://github.com/eclipse-ee4j/jaxb-ri",
+			"paths": ["Resources/FinTSHelper/lib/jaxb-runtime-{version}.jar"]
+		},
+		{
+			"id": "maven:org.glassfish.jaxb:jaxb-core",
+			"name": "Eclipse Implementation of JAXB, core",
+			"version": "4.0.5",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jaxb-ri-LICENSE.txt"],
+			"home": "https://github.com/eclipse-ee4j/jaxb-ri",
+			"paths": ["Resources/FinTSHelper/lib/jaxb-core-{version}.jar"]
+		},
+		{
+			"id": "maven:org.glassfish.jaxb:txw2",
+			"name": "Eclipse Implementation of JAXB, TXW2",
+			"version": "4.0.5",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2018 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/jaxb-ri-LICENSE.txt"],
+			"home": "https://github.com/eclipse-ee4j/jaxb-ri",
+			"paths": ["Resources/FinTSHelper/lib/txw2-{version}.jar"]
+		},
+		{
+			"id": "maven:com.sun.istack:istack-commons-runtime",
+			"name": "istack common utility code, runtime",
+			"version": "4.1.2",
+			"license": "BSD-3-Clause (Eclipse Distribution License 1.0)",
+			"copyright": ["Copyright (c) 2017 Oracle and/or its affiliates. All rights reserved."],
+			"texts": ["Licenses/istack-commons-LICENSE.txt"],
+			"home": "https://github.com/eclipse-ee4j/jaxb-istack-commons",
+			"paths": ["Resources/FinTSHelper/lib/istack-commons-runtime-{version}.jar"]
+		},
+		{
+			"id": "jdk:temurin-aarch64-mac",
+			"name": "Eclipse Temurin Java runtime (OpenJDK)",
+			"version": "17.0.21+9",
+			"license": "GPL-2.0-only WITH Classpath-exception-2.0, with the OpenJDK Assembly Exception",
+			"copyright": [],
+			"note": {
+				"en": "The FinTS helper runs a runtime that jlink built from this JDK. The copyright notices of the runtime and the licenses of its third-party parts, such as zlib, FreeType, HarfBuzz, libpng, Little CMS, and the Unicode data, are in the folder Contents/Resources/FinTSHelper/runtime/legal of the app, one folder per module.",
+				"de": "Der FinTS-Helfer nutzt eine Laufzeitumgebung, die jlink aus diesem JDK erstellt hat. Die Urheberrechtsvermerke der Laufzeitumgebung und die Lizenzen ihrer Fremdbestandteile, etwa zlib, FreeType, HarfBuzz, libpng, Little CMS und die Unicode-Daten, liegen im Ordner Contents/Resources/FinTSHelper/runtime/legal der App, ein Ordner je Modul."
+			},
+			"texts": ["Licenses/openjdk-LICENSE.txt", "Licenses/openjdk-ASSEMBLY_EXCEPTION.txt"],
+			"home": "https://adoptium.net",
+			"paths": ["Resources/FinTSHelper/runtime/legal/java.base/LICENSE", "Resources/FinTSHelper/java"],
+			"source": {
+				"url": "https://github.com/adoptium/temurin17-binaries/releases/download/jdk-17.0.21%2B9/OpenJDK17U-jdk-sources_17.0.21_9.tar.gz",
+				"sha256": "89a455fa83b19e3a166bca47a465d51712441be607543dd465083ef2437a426d"
+			}
+		},
+		{
+			"id": "swiftpm:grdb.swift",
+			"name": "GRDB",
+			"version": "7.12.0",
+			"license": "MIT",
+			"copyright": ["Copyright (C) 2015-2025 Gwendal Roué"],
+			"texts": ["Licenses/GRDB-LICENSE.txt"],
+			"home": "https://github.com/sqlcipher/GRDB.swift",
+			"paths": ["MacOS/Moneten", "Resources/GRDB_GRDB.bundle"]
+		},
+		{
+			"id": "swiftpm:sqlcipher.swift",
+			"name": "SQLCipher",
+			"version": "4.20.0",
+			"license": "BSD-3-Clause (SQLCipher Community Edition), with SQLite in the public domain",
+			"copyright": ["Copyright (c) 2025, ZETETIC LLC"],
+			"texts": ["Licenses/SQLCipher-LICENSE.txt"],
+			"home": "https://github.com/sqlcipher/SQLCipher.swift",
+			"paths": ["Frameworks/SQLCipher.framework"]
+		},
+		{
+			"id": "swiftpm:sparkle",
+			"name": "Sparkle",
+			"version": "2.10.1",
+			"license": "MIT, with bsdiff under BSD-2-Clause, sais-lite under MIT, ed25519 under the zlib license, and SUSignatureVerifier under BSD-2-Clause",
+			"copyright": [
+				"Copyright (c) 2006-2013 Andy Matuschak.",
+				"Copyright (c) 2009-2013 Elgato Systems GmbH.",
+				"Copyright (c) 2011-2014 Kornel Lesiński.",
+				"Copyright (c) 2015-2017 Mayur Pawashe.",
+				"Copyright (c) 2014 C.W. Betts.",
+				"Copyright (c) 2014 Petroules Corporation.",
+				"Copyright (c) 2014 Big Nerd Ranch.",
+				"Copyright 2003-2005 Colin Percival",
+				"Copyright (c) 2008-2010 Yuta Mori All Rights Reserved.",
+				"Copyright (c) 2015 Orson Peters <orsonpeters@gmail.com>",
+				"Copyright (c) 2011 Mark Hamlin."
+			],
+			"texts": ["Licenses/Sparkle-LICENSE.txt"],
+			"home": "https://github.com/sparkle-project/Sparkle",
+			"paths": ["Frameworks/Sparkle.framework"]
+		},
+		{
+			"id": "vendor:lua",
+			"name": "Lua",
+			"version": "5.4.9",
+			"license": "MIT",
+			"copyright": ["Copyright (C) 1994-2026 Lua.org, PUC-Rio."],
+			"texts": ["Licenses/Lua-LICENSE.txt"],
+			"home": "https://www.lua.org",
+			"paths": ["Helpers/MonetenExtensionHost"]
+		},
+		{
+			"id": "vendor:public-suffix-list",
+			"name": "Public Suffix List",
+			"version": "905c2f8950fc646b8df073321ea567dadefaa3a2",
+			"license": "MPL-2.0",
+			"copyright": [],
+			"notice": "This Source Code Form is subject to the terms of the Mozilla Public\nLicense, v. 2.0. If a copy of the MPL was not distributed with this\nfile, You can obtain one at https://mozilla.org/MPL/2.0/.",
+			"texts": ["Licenses/MPL-2.0.txt"],
+			"home": "https://publicsuffix.org",
+			"paths": ["Helpers/MonetenExtensionHost"],
+			"source": {
+				"url": "https://github.com/publicsuffix/list/blob/905c2f8950fc646b8df073321ea567dadefaa3a2/public_suffix_list.dat"
+			}
+		}
+	]
+}

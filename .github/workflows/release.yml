@@ -1,7 +1,8 @@
 name: Release
 
 # A pushed tag v1.2.3 or v1.2.3-beta.4 builds, signs, and notarizes the app, and creates the GitHub
-# release as a draft with the disk image, the zip of its dSYMs, and the signed update feed.
+# release as a draft with the disk image, the zip of its dSYMs, the signed update feed, and the
+# source archives of its GPL and LGPL parts.
 # scripts/release.sh publish publishes the draft. docs/releasing.md lists the secrets and the steps.
 # A pull request that changes the packaging, and a run by hand, make a dry run that publishes nothing.
 # A run by hand with "notarize" also signs and notarizes with the secrets of the environment build.
@@ -29,6 +30,8 @@ on:
       - scripts/build-tools.sh
       - scripts/hbci4java-jars.sh
       - Tools/FinTSProbeJava/dependencies.lock
+      - Licenses/**
+      - scripts/licenses.py
   workflow_dispatch:
     inputs:
       notarize:

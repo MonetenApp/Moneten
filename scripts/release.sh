@@ -9,11 +9,12 @@
 #                                         With MONETEN_SIGN=1 it also signs and notarizes.
 #   scripts/release.sh preflight <version>  step 1: the changelog section, the tag on main, and the feed
 #   scripts/release.sh package <version>    steps 2 to 4: the signed and notarized app on a notarized
-#                                           disk image in dist/release, and the zip of its dSYMs
+#                                           disk image in dist/release, the zip of its dSYMs, and the
+#                                           source archives of the GPL and LGPL parts in dist/release/sources
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
 #   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with the disk image,
-#                                           the dSYMs, and the feed
+#                                           the dSYMs, the feed, and the source archives
 #   scripts/release.sh publish <version>    step 7, run by the owner: checks the feeds with the committed
 #                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
@@ -133,6 +134,7 @@ check_dmg() {
 	[ -L "$WORK/volume/Applications" ] || unmount_and_fail "The disk image has no link to the Applications folder."
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
+	python3 scripts/licenses.py check-app "$MOUNTED" >/dev/null || unmount_and_fail "The app on the disk image lacks license notices."
 	JDK_VERSION=$(sed -n 's/^jdk:temurin-aarch64-mac:\([^ ]*\) .*/\1/p' Tools/FinTSProbeJava/dependencies.lock)
 	env -i "$MOUNTED/Contents/Resources/FinTSHelper/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
 		|| unmount_and_fail "The FinTS helper on the disk image does not start with the pinned Java runtime $JDK_VERSION."
@@ -231,6 +233,9 @@ package() {
 	MODE=${2:-signed}
 	rm -rf "$OUT"
 	mkdir -p "$OUT"
+	# Every shipped part needs its notice before anything is built, and each GPL or LGPL part its source.
+	python3 scripts/licenses.py check
+	python3 scripts/licenses.py sources "$OUT/sources" >/dev/null
 	# The pinned tools of scripts/build-tools.sh. The jlink runtime of this JDK ships inside the app.
 	JAVA_HOME=$(scripts/build-tools.sh jdk)
 	PATH="$(scripts/build-tools.sh xcodegen):$PATH"
@@ -338,7 +343,7 @@ draft() {
 	notes section "$1" > "$WORK/notes.md"
 	case "$1" in *-*) KIND="--prerelease --latest=false" ;; *) KIND="" ;; esac
 	gh release create "v$1" --repo "$REPO" --draft --verify-tag --title "$(heading "$1")" --notes-file "$WORK/notes.md" $KIND \
-		"$OUT/Moneten-$1.dmg" "$OUT/Moneten-$1-dSYMs.zip" "$OUT/appcast.xml"
+		"$OUT/Moneten-$1.dmg" "$OUT/Moneten-$1-dSYMs.zip" "$OUT/appcast.xml" "$OUT"/sources/*
 	echo "Created the draft of v$1. Check it, then run scripts/release.sh publish $1."
 }
 
@@ -350,6 +355,9 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" && grep -qx "Moneten-$1-dSYMs.zip" "$WORK/draft" \
 		|| fail "The draft of v$1 lacks its disk image, its dSYMs, or appcast.xml."
+	for SOURCE in $(python3 scripts/licenses.py source-names); do
+		grep -qxF "$SOURCE" "$WORK/draft" || fail "The draft of v$1 lacks the source archive $SOURCE."
+	done
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
 	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
 	KEY=$(committed_key)

@@ -12,3 +12,4 @@
 - Keep all data in an encrypted database on your Mac, protected by an optional database password.
 - Refresh accounts automatically and get a notification about new transactions.
 - Check for updates from the application menu, see what changed since your version, and install a new version with one click.
+- Read the licenses of the open source parts inside Moneten from "About Moneten", and download their source from each release.

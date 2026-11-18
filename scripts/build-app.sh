@@ -12,6 +12,8 @@
 # needs the certificate with its private key in the Keychain. docs/releasing.md explains both.
 # MONETEN_VERSION, for example 0.2.0-beta.1, sets the version: 0.2.0 as the marketing version and
 # beta.1 as MonetenPreRelease in Info.plist. Without it the build has the version of App/project.yml.
+# Every build writes the license notices of Licenses/notices.json into Contents/Resources/<language>.lproj/Licenses.html
+# with scripts/licenses.py, and fails when the app ships a jar or a framework without a notice.
 # Every build adds the FinTS helper (ADR 0014) and needs a JDK 17 or later. It takes the FinTS
 # product ID from the file that MONETEN_FINTS_PRODUCT_ID_FILE names, or else from the login
 # Keychain, item "Moneten FinTS product ID", into Info.plist. Without it the app builds, and FinTS
@@ -206,8 +208,11 @@ rm -rf dist/Moneten.app dist/Moneten.dSYMs
 mkdir -p dist
 cp -R "$PRODUCT" dist/
 [ "$CONFIG" = Debug ] || copy_symbols "$SYMBOLS"
+# The license notices of every shipped part (issue #411), before embed_fints_helper signs the app again.
+python3 scripts/licenses.py build dist/Moneten.app "${MONETEN_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/Moneten.app/Contents/Info.plist)}"
 embed_fints_helper dist/Moneten.app
 check_fints_helper dist/Moneten.app
+python3 scripts/licenses.py check-app dist/Moneten.app >/dev/null
 check_extension_host dist/Moneten.app
 [ "$CONFIG" = Debug ] || check_hardened dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
