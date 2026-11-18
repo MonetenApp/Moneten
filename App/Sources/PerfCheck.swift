@@ -70,6 +70,13 @@ struct PerfScenario {
 				c.harness.scrollTablesToEnd()
 				await c.settle()
 				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list") }
+				// SwiftUI writes the insets of the table again when the selection changes, which took the room of the lines.
+				c.model.selectedTransactions = Set(c.model.visibleTransactions.suffix(1).map(\.id))
+				await c.settle()
+				c.harness.scrollTablesToEnd()
+				await c.settle()
+				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list after a selection") }
+				c.model.selectedTransactions = []
 			}),
 		// The two scenarios before it leave the status filter on.
 		PerfScenario(name: "large-category", budget: halfSecond,

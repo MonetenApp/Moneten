@@ -837,6 +837,14 @@ final class DebugHarness {
 			default: model.period = .all
 			}
 		#if DEBUG || PERF_HARNESS
+		// "<width> <height>" sets the size of the content of the main window, for a check of a layout at another width.
+		case "windowsize":
+			let size = argument.split(separator: " ").compactMap { Double($0) }
+			guard size.count == 2, let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else {
+				return log("windowsize rejected")
+			}
+			window.setContentSize(NSSize(width: size[0], height: size[1]))
+			log("windowsize", ("width", .count(Int(window.contentLayoutRect.width))), ("height", .count(Int(window.contentLayoutRect.height))))
 		// "<folder>": opens the MoneyMoney migration, which then reads the exports of that folder, such as the absolute path of
 		// Fixtures/moneymoney. An app started with `open` runs in `/`, so a relative path does not work.
 		case "migrationfixture":
@@ -1527,7 +1535,8 @@ final class DebugHarness {
 			guard let scroll = table.enclosingScrollView else { continue }
 			let clip = scroll.contentView
 			var end = clip.bounds
-			end.origin.y = .greatestFiniteMagnitude / 2
+			// Beyond the end, which the clip view brings back to the last position. An infinite value it does not.
+			end.origin.y = table.frame.maxY + scroll.contentInsets.bottom
 			clip.scroll(to: clip.constrainBoundsRect(end).origin)
 			scroll.reflectScrolledClipView(clip)
 			log("scrolltable", ("rows", .count(table.numberOfRows)))

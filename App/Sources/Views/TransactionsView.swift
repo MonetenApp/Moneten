@@ -484,7 +484,7 @@ struct TransactionTable: View {
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
 			// One line for each active filter below the last row, on the table and not on its rows.
-			.background(FilterHintsFooter(hints: key.filter.hints))
+			.background(FilterHintsFooter(hints: key.filter.hints, rowCount: rows.count))
 			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
 			// only that text, so this runs only without selected text.
 			.onCopyCommand { copiedRows() }
