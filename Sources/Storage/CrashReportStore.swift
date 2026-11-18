@@ -117,7 +117,7 @@ public struct CrashReportStore {
 	public init(folder: DataFolder, keyInFolder: Bool = false) {
 		let keychain: any CrashReportKeychain = keyInFolder
 			? CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
-			: Keychain(service: "Moneten crash report key")
+			: Keychain(service: "Moneten crash report key", path: Keychain.loginKeychainPath)
 		self.init(folder: folder, keychain: keychain)
 	}
 

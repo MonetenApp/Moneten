@@ -1,23 +1,34 @@
 import Foundation
 import Security
 
-/// Generic password entries in the login Keychain of the user. Entries stay on this Mac.
+/// Generic password entries in one keychain file, the login keychain of the user in the app. Entries stay on this Mac.
 struct Keychain: Sendable {
 	let service: String
-	/// A keychain file to use instead of the keychains of the user. Only tests set it, so that they can plant an
-	/// entry of another program without touching the login Keychain. A `SecKeychain` never changes after it is
-	/// opened, so sharing it between threads is safe.
-	nonisolated(unsafe) let file: SecKeychain?
+	/// The keychain file that holds the entries: `loginKeychainPath` in the app, a file in a temporary folder in the
+	/// tests. Every step opens this file and names it, so no entry goes to the default keychain and no read searches
+	/// the search list of the user, which another program of the user can both change without a prompt (issue #419).
+	let path: String
 
-	init(service: String, file: SecKeychain? = nil) {
+	init(service: String, path: String) {
 		self.service = service
-		self.file = file
+		self.path = path
+	}
+
+	/// The login keychain of the user. The home folder comes from the user database of macOS, not from `HOME`, which
+	/// the program that starts the app sets.
+	static var loginKeychainPath: String {
+		let home = NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
+		return URL(fileURLWithPath: home).appendingPathComponent("Library/Keychains/login.keychain-db").path
 	}
 
 	struct Failure: Error, CustomStringConvertible {
 		let status: OSStatus
+		/// The keychain file that could not be opened, or nil when the Keychain refused a step on an entry.
+		var unopened: String? = nil
 		var description: String {
-			(SecCopyErrorMessageString(status, nil) as String?) ?? String(localized: "Keychain error \(status)")
+			let message = (SecCopyErrorMessageString(status, nil) as String?) ?? String(localized: "Keychain error \(status)")
+			guard let unopened else { return message }
+			return String(localized: "Moneten keeps its Keychain entries only in the \"login\" keychain, and the keychain file \(unopened) cannot be opened: \(message)")
 		}
 	}
 
@@ -28,7 +39,8 @@ struct Keychain: Sendable {
 			kSecAttrAccount as String: account,
 			kSecReturnData as String: true,
 			kSecMatchLimit as String: kSecMatchLimitOne,
-		].merging(try searchList()) { $1 }
+			kSecMatchSearchList as String: [try open()],
+		]
 		var item: CFTypeRef?
 		let status = SecItemCopyMatching(query as CFDictionary, &item)
 		if status == errSecItemNotFound { return nil }
@@ -44,7 +56,8 @@ struct Keychain: Sendable {
 			kSecAttrAccount as String: account,
 			kSecReturnAttributes as String: true,
 			kSecMatchLimit as String: kSecMatchLimitOne,
-		].merging(try searchList()) { $1 }
+			kSecMatchSearchList as String: [try open()],
+		]
 		var attributes: CFTypeRef?
 		let status = SecItemCopyMatching(query as CFDictionary, &attributes)
 		if status == errSecItemNotFound { return false }
@@ -59,18 +72,15 @@ struct Keychain: Sendable {
 	/// after the delete, the entry is gone and the error of the add is thrown.
 	func write(_ value: String, account: String) throws {
 		try delete(account: account)
-		var add: [String: Any] = [
+		let add: [String: Any] = [
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
 			kSecAttrAccount as String: account,
 			kSecValueData as String: Data(value.utf8),
 			kSecAttrSynchronizable as String: false,
 			kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+			kSecUseKeychain as String: try open(),
 		]
-		if let file {
-			try checkFile(file)
-			add[kSecUseKeychain as String] = file
-		}
 		let status = SecItemAdd(add as CFDictionary, nil)
 		guard status == errSecSuccess else { throw Failure(status: status) }
 	}
@@ -82,25 +92,32 @@ struct Keychain: Sendable {
 			kSecClass as String: kSecClassGenericPassword,
 			kSecAttrService as String: service,
 			kSecAttrAccount as String: account,
-		].merging(try searchList()) { $1 }
+			kSecMatchSearchList as String: [try open()],
+		]
 		let status = SecItemDelete(query as CFDictionary)
 		guard status == errSecSuccess || status == errSecItemNotFound else { throw Failure(status: status) }
 		return status == errSecSuccess
 	}
 
-	/// The keychain file to search, after `checkFile(_:)`. Without one, the search covers the keychains of the user.
-	private func searchList() throws -> [String: Any] {
-		guard let file else { return [:] }
-		try checkFile(file)
-		return [kSecMatchSearchList as String: [file]]
+	/// Opens the keychain file and throws unless it exists. `SecKeychainOpen` accepts any path, and macOS adds an entry
+	/// for a keychain without a file to the default keychain of the user, so a missing file must stop every step. There is
+	/// no fallback to the default keychain.
+	private func open() throws -> SecKeychain {
+		let (keychain, status) = openKeychain(path)
+		guard let keychain, status == errSecSuccess else { throw Failure(status: status, unopened: path) }
+		return keychain
 	}
+}
 
-	/// Throws unless the keychain file exists. `SecKeychainOpen` accepts any path, and macOS adds an entry for a
-	/// keychain without a file to the default keychain of the user, so a missing file must stop every step.
-	private func checkFile(_ file: SecKeychain) throws {
-		let status = keychainStatus(file)
-		guard status == errSecSuccess else { throw Failure(status: status) }
-	}
+/// Opens a keychain file by its path. `SecKeychainOpen` is deprecated together with the file-based Keychain, but no
+/// other call returns the login keychain: `SecKeychainCopyDomainDefault` returns the default keychain, which is what
+/// another program can change, and the data protection Keychain needs a build signed with a team.
+@available(macOS, deprecated: 10.10)
+private func openKeychain(_ path: String) -> (SecKeychain?, OSStatus) {
+	var keychain: SecKeychain?
+	let status = SecKeychainOpen(path, &keychain)
+	guard status == errSecSuccess, let keychain else { return (nil, status == errSecSuccess ? errSecNoSuchKeychain : status) }
+	return (keychain, keychainStatus(keychain))
 }
 
 /// Whether the file of a keychain exists: `SecKeychainGetStatus` for a path that never existed, and the file at the

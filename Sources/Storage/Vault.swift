@@ -122,16 +122,17 @@ public struct Vault: Sendable {
 	public let folder: DataFolder
 	/// The version of the running app. An upgrade records it in the database, so that an older version can name it.
 	public let version: String
-	/// A keychain file instead of the keychains of the user, for tests. See `Keychain.file`.
-	nonisolated(unsafe) let keychainFile: SecKeychain?
-	var keyKeychain: Keychain { Keychain(service: "Moneten database key", file: keychainFile) }
+	/// The keychain file of every entry: the login keychain of the user in the app, a file in a temporary folder in the
+	/// tests. See `Keychain.path`.
+	let keychainPath: String
+	var keyKeychain: Keychain { Keychain(service: "Moneten database key", path: keychainPath) }
 	/// The entry of the old name (ADR 0013). A read moves it to the new name.
-	var legacyKeyKeychain: Keychain { Keychain(service: "MonetenMoneten database key", file: keychainFile) }
+	var legacyKeyKeychain: Keychain { Keychain(service: "MonetenMoneten database key", path: keychainPath) }
 	/// The entry that builds before the per-setting entries shared between all three unlock settings, under
 	/// the new and the old app name. It unlocks nothing now and is removed.
-	var sharedPasswordKeychain: Keychain { Keychain(service: "Moneten database password", file: keychainFile) }
-	var legacySharedPasswordKeychain: Keychain { Keychain(service: "MonetenMoneten database password", file: keychainFile) }
-	func keychain(_ entry: PasswordEntry) -> Keychain { Keychain(service: entry.service, file: keychainFile) }
+	var sharedPasswordKeychain: Keychain { Keychain(service: "Moneten database password", path: keychainPath) }
+	var legacySharedPasswordKeychain: Keychain { Keychain(service: "MonetenMoneten database password", path: keychainPath) }
+	func keychain(_ entry: PasswordEntry) -> Keychain { Keychain(service: entry.service, path: keychainPath) }
 
 	/// The unlock settings. Each keeps the database password in a Keychain entry of its own, which only
 	/// `setUnlockMethod(_:on:password:store:)` writes after the password check and which turning the setting off
@@ -154,14 +155,14 @@ public struct Vault: Sendable {
 	}
 
 	public init(folder: DataFolder, version: String = Vault.runningVersion) {
-		self.init(folder: folder, version: version, keychainFile: nil)
+		self.init(folder: folder, version: version, keychainPath: Keychain.loginKeychainPath)
 	}
 
-	/// Uses a keychain file instead of the keychains of the user, so that tests never write the login Keychain.
-	package init(folder: DataFolder, version: String = Vault.runningVersion, keychainFile: SecKeychain?) {
+	/// Uses the keychain file at `keychainPath` in place of the login keychain, so that tests never open the login keychain.
+	package init(folder: DataFolder, version: String = Vault.runningVersion, keychainPath: String) {
 		self.folder = folder
 		self.version = version
-		self.keychainFile = keychainFile
+		self.keychainPath = keychainPath
 	}
 
 	/// The version in the bundle of the app.
