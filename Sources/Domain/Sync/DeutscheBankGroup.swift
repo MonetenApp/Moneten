@@ -43,7 +43,7 @@ extension Access {
 	/// The login name for the PIN dialog, the TAN dialog, the progress of a challenge, the account settings, and the
 	/// field of "Edit Login Data...".
 	public var shownLoginName: String {
-		guard case let .fints(_, url) = source else { return loginName }
-		return FinTSServer.shownLoginName(loginName, server: url)
+		guard case let .fints(code, url) = source else { return loginName }
+		return FinTSServer.consorsbankShownLoginName(loginName, bankCode: code, server: url) ?? FinTSServer.shownLoginName(loginName, server: url)
 	}
 }

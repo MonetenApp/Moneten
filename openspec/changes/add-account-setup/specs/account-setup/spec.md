@@ -96,6 +96,13 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Two brands of one bank on one Bankleitzahl
+
+- **GIVEN** the bank directory names the Bankleitzahl 70120400 "BNP Paribas S.A. Niederlassung Deutschland-Consorsbank" in München, and Consorsbank and DAB BNP Paribas are brands of this bank
+- **WHEN** the user enters "dab"
+- **THEN** the list starts with "Consorsbank / DAB BNP Paribas" with "München · 70120400"
+- **AND** "consorsbank" lists it too
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -531,6 +538,58 @@ The app SHALL show a stored login name of exactly 10 digits as the branch number
 - **WHEN** a refresh asks for the PIN
 - **THEN** the dialog shows the user ID "erikamuster"
 
+### Requirement: Send the login name of Consorsbank without spaces
+
+The app SHALL send and store the login name without any space when the FinTS address of the bank is on the host `brokerage-hbci.consorsbank.de`. The login name of this server is the account number followed by the three-digit Berechtigtennummer, and it has no spaces. Two login names that agree without spaces are the same login. A server with a similar name is another server.
+
+#### Scenario: Account number and Berechtigtennummer in groups
+
+- **GIVEN** the user chose Consorsbank with the FinTS address `https://brokerage-hbci.consorsbank.de/hbci`
+- **WHEN** the user enters the login name "1234567890 001" and clicks "Next"
+- **THEN** the app sends "1234567890001" to the bank
+- **AND** the access stores "1234567890001" as its login name
+
+#### Scenario: Same login in groups
+
+- **GIVEN** an access to Consorsbank on `brokerage-hbci.consorsbank.de` stores the login name "1234567890001"
+- **WHEN** the user adds an account of the same bank with the login name "1234567890 001"
+- **THEN** the setup joins the access that the app has
+
+#### Scenario: Another server with a similar name
+
+- **GIVEN** the user chose a bank whose FinTS address is on the host `brokerage-hbci.other.consorsbank.de`
+- **WHEN** the user enters the login name "1234567890 001"
+- **THEN** the app sends "1234567890 001"
+
+### Requirement: Show a login name of Consorsbank as account number and Berechtigtennummer
+
+The app SHALL show a stored login name of 11 to 13 digits as the account number, a space, and the last three digits, which are the Berechtigtennummer, when the access has the Bankleitzahl 76030080 and its FinTS address is on the host `brokerage-hbci.consorsbank.de`. The app sends and stores the login name without the space. An access with another Bankleitzahl on the same server shows its login name as stored.
+
+#### Scenario: Edit Login Data
+
+- **GIVEN** an access to Consorsbank with the Bankleitzahl 76030080 on `brokerage-hbci.consorsbank.de` stores the login name "1234567890001"
+- **WHEN** the user opens "Edit Login Data..."
+- **THEN** the login name field reads "1234567890 001"
+- **AND** saving without a change keeps the login name "1234567890001"
+
+#### Scenario: PIN dialog
+
+- **GIVEN** an access to Consorsbank with the Bankleitzahl 76030080 on `brokerage-hbci.consorsbank.de` stores the login name "90012345001"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "90012345 001"
+
+#### Scenario: Login name of 10 digits
+
+- **GIVEN** an access to Consorsbank with the Bankleitzahl 76030080 on `brokerage-hbci.consorsbank.de` stores the login name "1234567890"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "1234567890"
+
+#### Scenario: Other Bankleitzahl on the same server
+
+- **GIVEN** an access with the Bankleitzahl 70120400 on `brokerage-hbci.consorsbank.de` stores the login name "1234567890001"
+- **WHEN** a refresh asks for the PIN
+- **THEN** the dialog shows the user ID "1234567890001"
+
 ### Requirement: Show what the bank requires before the first login
 
 The app SHALL show a hint in the second step when the app, the bank directory, or the extension holds a note for the bank, for example that the user must apply for the FinTS access first or must set up a TAN method on the bank website first.
@@ -595,6 +654,28 @@ The app SHALL show the message of the bank when the login fails, keep the user o
 
 - **WHEN** the bank rejects the alias "erika.m"
 - **THEN** the app asks for the user ID in place of the alias
+
+### Requirement: Name an access on the FinTS server of Consorsbank after Consorsbank
+
+The app SHALL name a new access "Consorsbank" when the FinTS address of the bank is on the host `brokerage-hbci.consorsbank.de`, whatever name the bank directory gives its Bankleitzahl. The accounts of the access get the same bank name. Both Bankleitzahlen on this server, 76030080 and 70120400, log in to the one server of Consorsbank. Any other bank keeps the name of the bank directory.
+
+#### Scenario: Consorsbank
+
+- **GIVEN** the bank directory names the Bankleitzahl 76030080 "Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank" with the FinTS address `https://brokerage-hbci.consorsbank.de/hbci`
+- **WHEN** the user adds an access with this Bankleitzahl
+- **THEN** the access and its new accounts have the bank name "Consorsbank"
+
+#### Scenario: DAB BNP Paribas on the server of Consorsbank
+
+- **GIVEN** the user chose "Consorsbank / DAB BNP Paribas" with the Bankleitzahl 70120400 and the FinTS address `https://brokerage-hbci.consorsbank.de/hbci`
+- **WHEN** the setup finishes
+- **THEN** the access and its new accounts have the bank name "Consorsbank"
+
+#### Scenario: Another server with a similar name
+
+- **GIVEN** the user chose "Musterbank" with the FinTS address `https://brokerage-hbci.other.consorsbank.de/hbci`
+- **WHEN** the setup finishes
+- **THEN** the access has the bank name "Musterbank"
 
 ### Requirement: Progress and cancel during setup
 

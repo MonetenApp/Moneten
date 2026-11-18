@@ -68,7 +68,7 @@ struct BankDirectoryTests {
 	@Test("Banks with a FinTS address come first")
 	func fintsFirst() {
 		#expect(codes("aareal") == ["10010424"])
-		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "10010424"])
+		#expect(codes("bank") == ["76030080", "12030000", "72140052", "70120400", "30020900", "10010424"])
 	}
 
 	@Test("Finds banks by the start of the Bankleitzahl, and a bank by its full Bankleitzahl")
