@@ -96,6 +96,20 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Brands on the Bankleitzahl of the bank that runs their accounts
+
+- **GIVEN** the bank directory names 50110800 "J.P. Morgan" and 50110801 "J.P. Morgan, Internal Reference", and the bank list of hbci4java lacks 10019000, 11010100, and 11010101
+- **WHEN** the user enters "tide"
+- **THEN** the list shows "Adyen / Tide" with 10019000
+- **AND** "kontist" lists "Solaris / Kontist / Tomorrow / ADAC" with 11010100 and with 11010101
+- **AND** "pleo" lists "J.P. Morgan / Pleo" with 50110800 and with 50110801
+
+#### Scenario: Fintech bank found by its name
+
+- **GIVEN** the bank list of hbci4java lacks 10010123, 10017997, 10018000, 37019000, and 50034200
+- **WHEN** the user enters "qonto", "holvi", "finom", "bunq", or "openbank"
+- **THEN** the list shows "Qonto" with 10010123, "Holvi" with 10017997, "Finom" with 10018000, "bunq" with 37019000, or "Openbank" with 50034200
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -169,6 +183,35 @@ The app SHALL reject a Bankleitzahl that is not in the bank directory, also when
 - **THEN** the app does not say that the IBAN or the Bankleitzahl is outdated
 - **AND** the app does not ask for another IBAN
 
+### Requirement: Name the fintech banks by their Bankleitzahlen
+
+The app SHALL show 10010123 as "Qonto", 10017997 as "Holvi", 10018000 as "Finom", 10019000 as "Adyen / Tide", 11010100 and 11010101 as "Solaris / Kontist / Tomorrow / ADAC", 12070088 as "PayPal", 20220800 as "Banking Circle / TF Bank / Vivid", 37019000 as "bunq", 37021500 and 37021548 as "Ford Bank", 50034200 as "Openbank", and 50110800 and 50110801 as "J.P. Morgan / Pleo", whatever name the bank list of hbci4java gives them.
+
+#### Scenario: IBAN on the Bankleitzahl of a brand
+
+- **GIVEN** the bank directory names 12070088 "Deutsche Bank (Gf intern)" without a FinTS address
+- **WHEN** the user enters "DE20120700881234567890" and clicks "Next"
+- **THEN** the message of a bank without a FinTS server names "PayPal", not "Deutsche Bank (Gf intern)"
+
+### Requirement: Know the fintech banks that the bank list lacks
+
+The app SHALL add each Bankleitzahl of "Name the fintech banks by their Bankleitzahlen" that the bank list of hbci4java lacks to the bank directory, without a FinTS address and without a place. A Bankleitzahl that the bank list has keeps its place, its BIC, and its FinTS address.
+
+#### Scenario: IBAN of a fintech bank
+
+- **GIVEN** the bank list of hbci4java lacks 20220800
+- **WHEN** the user enters "DE74202208001234567890" and clicks "Next"
+- **THEN** the app says that "Banking Circle / TF Bank / Vivid" does not provide a FinTS/HBCI server
+- **AND** the app does not say that the Bankleitzahl is invalid
+- **AND** the assistant stays on the first step
+
+#### Scenario: Bank list with an entry of its own
+
+- **GIVEN** the bank list of hbci4java lists 37019000 in Berlin with a FinTS address
+- **WHEN** the user enters "37019000"
+- **THEN** the app shows "bunq" with "Berlin · 37019000"
+- **AND** "Next" leads to the login data
+
 ### Requirement: Note for the Bankleitzahl of a merged bank
 
 The app SHALL accept a Bankleitzahl that the bank directory lists for a bank that merged, as it accepts any Bankleitzahl with a FinTS address, and SHALL show a note in the first step that the bank merged and the login may need another Bankleitzahl.
@@ -239,7 +282,7 @@ The app SHALL show the access methods that are possible for the bank under "Acce
 
 ### Requirement: Explain why a bank cannot be added
 
-The app SHALL tell the user why no access is possible when it finds the bank and knows no way to reach it. The message names the bank and the ways that would work, which are an extension for that bank or the optional subscription.
+The app SHALL tell the user why no access is possible when it finds the bank and knows no way to reach it. The message names the bank and the ways that would work, which are an extension for that bank, the optional subscription, or a file of its transactions imported into an offline account.
 
 #### Scenario: Bank without a FinTS server
 
@@ -247,6 +290,7 @@ The app SHALL tell the user why no access is possible when it finds the bank and
 - **WHEN** the user enters an IBAN of "Neobank Muster" and clicks "Next"
 - **THEN** the app says that this bank does not provide a FinTS/HBCI server
 - **AND** the app says that an extension can add support for the bank
+- **AND** the app says that an offline account can take a file of its transactions
 - **AND** the assistant stays on the first step
 
 ### Requirement: Ask for the login data in the words of the bank
