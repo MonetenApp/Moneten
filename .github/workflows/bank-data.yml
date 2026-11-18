@@ -67,7 +67,7 @@ jobs:
         run: |
           # MONETEN_UPDATE_PUBLIC_KEY in the base settings of the target Moneten, as scripts/release.sh reads it.
           KEY=$(sed -n 's/^ \{8\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml)
-          TEST_KEY=$(sed -n 's/^ \{10\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml)
+          TEST_KEY=$(awk '/^        [A-Za-z]+:$/ { debug = ($1 == "Debug:") } debug && /^ {10}MONETEN_UPDATE_PUBLIC_KEY:/ { sub(/^ +MONETEN_UPDATE_PUBLIC_KEY: */, ""); print }' App/project.yml)
           case "$KEY" in
             none|"") echo "::error::App/project.yml has no production update key yet."; exit 1 ;;
             "$TEST_KEY") echo "::error::The update key of App/project.yml is the test key."; exit 1 ;;

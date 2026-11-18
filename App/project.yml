@@ -85,10 +85,9 @@ targets:
         CURRENT_PROJECT_VERSION: 1
         # The part of the version after the hyphen, such as beta.1. scripts/build-app.sh sets it from MONETEN_VERSION.
         MONETEN_PRE_RELEASE: ""
-        # The public update key of Sparkle. A release carries the production key, which the owner
-        # commits here in place of the placeholder "none" (docs/releasing.md). Until then a Release
-        # build does not look for updates, and scripts/release.sh refuses to package a release.
-        MONETEN_UPDATE_PUBLIC_KEY: none
+        # The public update key of Sparkle; its private key is the secret SPARKLE_ED_PRIVATE_KEY. Replace it
+        # only as "Replace a leaked update key" in docs/releasing.md describes.
+        MONETEN_UPDATE_PUBLIC_KEY: pBl+BrUbm7aXxu/Fv4ayqMYG2L5N+q0p59fOfop2xcQ=
         PRODUCT_BUNDLE_IDENTIFIER: io.github.alexander-schneider.Moneten
         PRODUCT_NAME: Moneten
         GENERATE_INFOPLIST_FILE: NO
@@ -105,7 +104,9 @@ targets:
         # The public half of the test key in Fixtures/update. A Debug build looks for updates only in MONETEN_FEED_URL.
         Debug:
           MONETEN_UPDATE_PUBLIC_KEY: KCVfr5htNQFhNzFn1PReJQq2egc+Ny8yWsVLI1FEs/g=
+        # The placeholder: a Perf build must not look for updates while scripts/perf-check.sh measures it.
         Perf:
+          MONETEN_UPDATE_PUBLIC_KEY: none
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) PERF_HARNESS
   # The host process of ADR 0015: the main of the package target MonetenExtensionHost, with the app sandbox
   # and only outgoing connections. No base entitlements are added, so a debug build cannot be attached to either.
