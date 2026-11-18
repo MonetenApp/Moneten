@@ -544,7 +544,7 @@ The app SHALL offer a help button next to the rule field that opens a descriptio
 
 ### Requirement: Create a rule from a transaction
 
-The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name with a character other than `*`, `?`, and quotation marks, or a counterparty IBAN.
+The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name with a character other than white space, `*`, `?`, and quotation marks, or a counterparty IBAN.
 
 #### Scenario: One transaction with a counterparty
 
@@ -613,7 +613,7 @@ The app SHALL change no rule and no transaction until the user confirms the sett
 
 ### Requirement: The condition of a created rule
 
-The app SHALL build the condition of "Create Rule" as `name:` with the counterparty name in quotation marks, or as `remote_account:` with the IBAN without spaces when the transaction has no name or a name made only of the wildcards `*` and `?` after each quotation mark became `?`. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
+The app SHALL build the condition of "Create Rule" as `name:` with the counterparty name in quotation marks, or as `remote_account:` with the IBAN without spaces when the transaction has no name or a name made only of white space and the wildcards `*` and `?` after each quotation mark became `?`. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
 
 #### Scenario: Category with a rule
 
