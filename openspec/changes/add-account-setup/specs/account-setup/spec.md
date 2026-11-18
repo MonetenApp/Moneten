@@ -96,6 +96,14 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Brands of flatexDEGIRO Bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 10130800 "biw Bank für Investments und Wertpapiere", and flatex, DEGIRO, and ViTrade are brands of flatexDEGIRO Bank on the Bankleitzahlen 10130800, 30330800, and 76030800
+- **WHEN** the user enters "degiro"
+- **THEN** the list shows 10130800 as "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)"
+- **AND** "flatex" and "vitrade" list it too
+- **AND** the neighbor 10130600 "Isbank AG" keeps its name
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -561,6 +569,14 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
 - **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
+
+#### Scenario: flatexDEGIRO Bank
+
+- **GIVEN** the user chose the bank of 10130800, 30330800, or 76030800
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the FinTS access of flatexDEGIRO Bank serves flatex accounts
+- **AND** the app says that DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS and need an extension
+- **AND** the neighbor 76030080 of Consorsbank shows only its own hint
 
 #### Scenario: Credit card
 
