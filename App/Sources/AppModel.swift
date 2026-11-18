@@ -334,13 +334,15 @@ final class AppModel {
 	/// and it is saved only when the user confirms them.
 	@ObservationIgnored var ruleDraft: (categoryID: UUID, rule: String)?
 
-	/// A message for an alert.
+	/// The alerts of the main window, which show once no sheet is on it.
+	@ObservationIgnored let alerts = SheetAlerts(window: "main")
+	/// A message for an alert of the main window. Nil closes the alert, as its OK button does.
 	var alert: AlertMessage? {
-		didSet { if (alert == nil) != (oldValue == nil) { Trail.log(alert == nil ? "alert closed" : "alert shown") } }
+		get { alerts.message }
+		set { alerts.message = newValue }
 	}
 	/// The file import that runs. There is one at a time, and a lock cancels it.
 	var fileImport: FileImport?
-	@ObservationIgnored var importResult: NSAlert?
 	var sheet: SheetKind? {
 		didSet {
 			guard sheet != oldValue else { return }
@@ -427,6 +429,7 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
+		alerts.hasSheet = { [weak self] in self?.sheet != nil }
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
@@ -684,7 +687,8 @@ final class AppModel {
 		fileImport?.cancel()
 		migrationTask?.cancel()
 		exportTask?.cancel()
-		if let result = importResult { result.window.sheetParent?.endSheet(result.window) }
+		// The alert on screen closes, as the result of an import did. One that waits for a sheet shows after the unlock.
+		if alerts.panel != nil { alert = nil }
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()
