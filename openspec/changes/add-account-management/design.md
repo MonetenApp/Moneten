@@ -41,6 +41,25 @@ A closed account takes no refresh. `AppModel.save(account:)` calls `SyncCoordina
 
 The bar chart of a selected closed account still draws its history. The chart of a group leaves closed accounts out, as the sum of the group does.
 
+### One IBAN type
+
+`IBAN` in `Domain` holds an IBAN whose country code, length, and checksum are valid. It replaces the two checks that the setup entry and the migration had, and it uses the length table of the SWIFT IBAN Registry release 103. `Account.iban` is an `IBAN?`, so no view, rule, or match checks the text again.
+
+The edges make it. `FinTSAccount.account(access:bank:group:)` in `FinTS`, `ListedAccount` in `ExtensionConnector`, `MoneyMoneyMigration.plan` in `Import`, and the import of an export file take the IBAN with `Account.takeIBAN(_:)`. The account of a CAMT or MT940 file is a `FileAccount.iban(IBAN)` only when it is valid, and otherwise a `FileAccount.number`. The setup entry `BankEntry.bankCode(of:)` parses the IBAN and keeps its own error messages.
+
+Text that is not a valid IBAN becomes the account number of an account that has none. A bank or an extension always names an account by a number, so their invalid IBANs are dropped. A migrated account or a file account keeps the number it was known by, and the setup can still find it by account number and Bankleitzahl.
+
+The account of a counterparty stays a `String`. It can be an older account number, and the fingerprint of a transaction reads it, so a refresh must never drop it or fail on it. `IBAN.electronicForm(of:)` stores a valid IBAN without spaces in upper case. The fingerprint, the pending match, and the file identity compare the account through `TextFolding.accountKey(_:)`, which drops only the space separators of Unicode and ignores case. `IBAN(parsing:)` folds exactly that, so `accountKey` of the electronic form equals `accountKey` of the text it came from, and a row stored before the update keeps its identity and its persisted `fileIdentity`. A tab or a line break inside the text is therefore no space of an IBAN: a CAMT, CSV, or extension text with one stays as it is. The MT940 parser joins the lines of `:86:` without line breaks, so it never delivers one. The details of a transaction show "IBAN" in groups of four only for a valid IBAN, and "Account number" for other text. `TransactionDetail` parses the text once, into `iban(IBAN)` or `accountNumber(String)`.
+
+A regular expression of a rule or of the search reads the text of a field as it is. An earlier version stored the IBAN of an account and of a counterparty as the source gave it, often in groups of four, and the app now stores the electronic form. So a regular expression after `local_account:` or `remote_account:` reads the stored text and, for a valid IBAN, also the electronic form and the groups of four. A pattern for either form then finds the old rows and the new ones. A term without slashes already compares through `accountKey` and needs nothing new. A rule makes the forms of a transaction once for all its rules, and a search pass makes them once for each account text and reads each counterparty IBAN once, because parsing an IBAN for each of 50,000 rows took longer than the regular expression.
+
+`Storage` keeps the text column `iban`. `IBAN` encodes its electronic form and refuses invalid text when it decodes, so the migration `v31` rewrites every stored account once. It does not call `IBAN` or `Account.takeIBAN(_:)`: `AccountIBANAtV31` holds a copy of the rule, the table of countries, and the checksum as they shipped, so that a later change of either never makes the same database of v30 migrate differently. Its test inserts the accounts with SQL at v30, so a later column of `Account` does not break it.
+
+The MoneyMoney migration matches an existing account without a source ID by its IBAN. An account whose bank sent an invalid IBAN keeps that text as its account number, and MoneyMoney gives the text as the IBAN or as the account number with the BIC as the bank code. Such text has the shape of an IBAN: after folding only ASCII letters and digits, the country code of an IBAN country, two check digits, and the length of an IBAN of that country, so that only the checksum fails. It matches the account number of an account without an IBAN on its own. Any other text, also "DE4711" or "FR-4711", is an account number of its bank and still needs its bank code. An account that already had an account number lost the invalid IBAN and matches only by its source ID.
+
 ## Risks / Trade-offs
+
+- An IBAN of a country that the registry adds after release 103 is not taken as an IBAN until the table has it. The account keeps the text as its account number. The table must only grow, because a stored IBAN of a country that leaves it no longer loads.
+
 
 Tasks marked as built in part may differ from the spec in the way their note says.

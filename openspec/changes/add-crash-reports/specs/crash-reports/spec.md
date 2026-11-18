@@ -39,7 +39,7 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 #### Scenario: Delayed details
 
 - **GIVEN** a short report for the crash at 10:05 awaits a decision
-- **WHEN** a diagnostic starting after the previous launch at 10:00 and no later than 10:06 arrives later
+- **WHEN** a diagnostic starting at or after the minute of the previous launch at 10:00 and no later than 10:06 arrives later
 - **THEN** the full report replaces the short report
 - **AND** if the user already declined the short report, the diagnostic does not prompt again
 
@@ -55,8 +55,36 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 
 - **GIVEN** the previous launch started at second 1000 and a crash file dated second 1103 supplies the pending short report
 - **WHEN** a diagnostic arrives after another launch
-- **THEN** a start at second 1162 or 1163 replaces the short report
-- **AND** a start at second 1164, 1000, or 999 leaves the short report unchanged
+- **THEN** a start at second 960, 1000, 1162, or 1163 replaces the short report
+- **AND** a start at second 1164 or 959 leaves the short report unchanged
+
+#### Scenario: Diagnostic times in whole minutes
+
+- **GIVEN** the previous launch started at 10:58:21 and the process crashed 17 seconds later
+- **AND** the crash file is dated 10:58:46 and its short report awaits a decision
+- **WHEN** a diagnostic beginning and ending at 10:58:00 arrives on the next launch
+- **THEN** its details replace the short report
+
+#### Scenario: Two launches share a minute
+
+- **GIVEN** launch A started at 10:57:50, crashed at 10:58:05, and its crash file is dated 10:58:06
+- **AND** launch B started at 10:58:21 and crashed at 10:58:38, and its crash file is dated 10:58:46
+- **AND** the short report of B awaits a decision on the next launch
+- **WHEN** a diagnostic beginning and ending at 10:58:00 arrives
+- **THEN** the short report of B stays, because the diagnostic can belong to A or to B
+- **AND** the short report of B also stays when the user already declined the short report or the full report of A
+- **AND** the short report of B also stays when the crash file of A is gone by the next launch
+- **AND** the short report of B also stays when the crash file of A is dated 10:58:24, after launch B started
+- **AND** the short report of B also stays when the crash file of A is dated exactly 10:58:00
+- **AND** if the crash file of A is dated 10:57:55 instead, the diagnostic replaces the short report of B
+
+#### Scenario: Replay of a declined diagnostic in the next minute
+
+- **GIVEN** the launch at second 1000 crashed at second 1202
+- **AND** the launch at second 1205 received its diagnostic from second 1200 to 1200, and the user declined it
+- **AND** the launch at second 1205 crashed, and its crash file is dated second 1290
+- **WHEN** the launch at second 1300 receives the declined diagnostic again
+- **THEN** the short report of the crash at second 1290 stays
 
 #### Scenario: Main window closed
 

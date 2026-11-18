@@ -45,16 +45,16 @@ struct CrashReportTests {
 	@Test("Only the crashed thread is selected, including nested frames")
 	func crashedThread() throws {
 		let data = Data("""
-		{"callStackTree":{"callStacks":[
+		{"callStackPerThread":true,"callStacks":[
 		 {"threadAttributed":false,"callStackRootFrames":[{"binaryName":"Erika Mustermann","binaryUUID":"\(binaryUUID)","offsetIntoBinaryTextSegment":1}]},
 		 {"threadAttributed":true,"callStackRootFrames":[{"binaryName":"Moneten","binaryUUID":"\(binaryUUID)","offsetIntoBinaryTextSegment":4096,
-		 "subFrames":[{"binaryName":"SwiftUI","binaryUUID":"\(binaryUUID)","offsetIntoBinaryTextSegment":42}]}]}]}}
+		 "subFrames":[{"binaryName":"SwiftUI","binaryUUID":"\(binaryUUID)","offsetIntoBinaryTextSegment":42}]}]}]}
 		""".utf8)
 		#expect(try CrashDiagnostic.crashedFrames(in: data) == [
 			.init(binaryName: "Moneten", binaryUUID: binaryUUID, offset: 4096),
 			.init(binaryName: "SwiftUI", binaryUUID: binaryUUID, offset: 42),
 		])
-		#expect(try CrashDiagnostic.crashedFrames(in: Data("{\"callStackTree\":{\"callStacks\":[]}}".utf8)).isEmpty)
+		#expect(try CrashDiagnostic.crashedFrames(in: Data("{\"callStacks\":[]}".utf8)).isEmpty)
 		#expect(throws: (any Error).self) { try CrashDiagnostic.crashedFrames(in: Data("{}".utf8)) }
 	}
 

@@ -350,6 +350,22 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.damaged(expected)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 	}
 
+	@Test("An export of an earlier version with an invalid or a spaced account IBAN imports, and the IBAN moves as from a bank",
+		arguments: [("DE03120300000000202051", nil, "DE03120300000000202051"), ("de02 1203 0000 0000 2020 51", "DE02120300000000202051", nil)] as [(String, String?, String?)])
+	func earlierAccountIBAN(text: String, iban: String?, accountNumber: String?) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var accounts = json["accounts"] as! [[String: Any]]
+		let index = try #require(accounts.firstIndex { $0["name"] as? String == "Haushalt" })
+		#expect(accounts[index]["accountNumber"] is NSNull || accounts[index]["accountNumber"] == nil)
+		accounts[index]["iban"] = text
+		json["accounts"] = accounts
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let haushalt = try #require(try target.loadLedger().accounts.first { $0.name == "Haushalt" })
+		#expect(haushalt.iban?.electronic == iban)
+		#expect(haushalt.accountNumber == accountNumber)
+	}
+
 	@Test("An export without returnReason imports its transactions with no return reason")
 	func missingReturnReason() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]

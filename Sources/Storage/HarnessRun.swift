@@ -18,6 +18,7 @@ public enum HarnessRun {
 	/// throwaway file and turn its unlock settings off. Each value is nil when its environment variable is missing or empty.
 	public static func missing(debugFolder: String?, dataFolder: String?, keychainFile: String?) -> [Missing] {
 		guard debugFolder != nil || keychainFile != nil else { return [] }
-		return (dataFolder == nil ? [.dataFolder] : []) + (debugFolder != nil && keychainFile == nil ? [.keychainFile] : [])
+		// Past the guard, a run without a keychain file is a harness run.
+		return (dataFolder == nil ? [.dataFolder] : []) + (keychainFile == nil ? [.keychainFile] : [])
 	}
 }

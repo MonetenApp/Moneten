@@ -50,20 +50,31 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 	}
 
 	nonisolated func didReceive(_ payloads: [MXDiagnosticPayload]) {
+		var undecodable = 0
 		let diagnostics = payloads.compactMap { payload -> (crash: PendingCrashReport, start: Date)? in
 			guard let crash = payload.crashDiagnostics?.last else { return nil }
-			let frames = (try? CrashDiagnostic.crashedFrames(in: crash.callStackTree.jsonRepresentation())) ?? []
+			// A report without frames still helps, so a stack that cannot be read leaves the frames empty. The log line
+			// holds no content of the payload.
+			let frames: [Domain.CrashDiagnostic.Frame]
+			do { frames = try CrashDiagnostic.crashedFrames(in: crash.callStackTree.jsonRepresentation()) }
+			catch {
+				frames = []
+				undecodable += 1
+				Trail.log("crash frames-undecodable")
+			}
 			let diagnostic = CrashDiagnostic(appVersion: crash.applicationVersion, macOSVersion: crash.metaData.osVersion,
 				exceptionType: crash.exceptionType?.intValue, signal: crash.signal?.intValue, frames: frames)
 			return (PendingCrashReport(date: payload.timeStampEnd, diagnostic: diagnostic), payload.timeStampBegin)
 		}
+		let undecodableCount = undecodable
 		Task { @MainActor [weak self] in
 			guard let self else { return }
 			#if DEBUG || PERF_HARNESS
 			self.receivedCount += diagnostics.count
+			self.failureCount += undecodableCount
 			#endif
 			for item in diagnostics.sorted(by: { $0.crash.date < $1.crash.date }) { self.receive(item.crash, since: item.start) }
-			Trail.log("crash diagnostics=\(diagnostics.count)")
+			Trail.log("crash diagnostics=\(diagnostics.count) undecodable=\(undecodableCount)")
 		}
 	}
 

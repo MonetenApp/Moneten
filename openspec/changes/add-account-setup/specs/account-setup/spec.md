@@ -96,6 +96,14 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Brands of flatexDEGIRO Bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 10130800 "biw Bank für Investments und Wertpapiere", and flatex, DEGIRO, and ViTrade are brands of flatexDEGIRO Bank on the Bankleitzahlen 10130800, 30330800, and 76030800
+- **WHEN** the user enters "degiro"
+- **THEN** the list shows 10130800 as "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)"
+- **AND** "flatex" and "vitrade" list it too
+- **AND** the neighbor 10130600 "Isbank AG" keeps its name
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -317,6 +325,25 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **GIVEN** the user chose norisbank with the Bankleitzahl 10077777, whose FinTS address is on the host `fints.norisbank.de`
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
+
+#### Scenario: Baader Bank and the brokers on it
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Stammnummer"
+- **AND** the line under it says that Baader Bank expects the Stammnummer that the broker gives the user, and links to `https://konto.baaderbank.de/`
+
+#### Scenario: Bank on the FinTS server of Baader Bank with another Bankleitzahl
+
+- **GIVEN** the user chose a bank with the Bankleitzahl 70033199, whose FinTS address is on the host `FINTS.BAADERBANK.DE`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Stammnummer", because the app finds this hint by the host of the FinTS address and compares the host in lower case
+
+#### Scenario: Bank on another host
+
+- **GIVEN** the user chose a bank whose FinTS address is on the host `fints.baaderbank.de.example.com`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint
 
 #### Scenario: Optional customer ID
 
@@ -562,6 +589,20 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
 - **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
 
+#### Scenario: flatexDEGIRO Bank
+
+- **GIVEN** the user chose the bank of 10130800, 30330800, or 76030800
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the FinTS access of flatexDEGIRO Bank serves flatex accounts
+- **AND** the app says that DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS
+- **AND** the neighbor 76030080 of Consorsbank shows only its own hint
+
+#### Scenario: Baader Bank
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user requests the FinTS access and its PIN at `https://konto.baaderbank.de/` first
+
 #### Scenario: Credit card
 
 - **WHEN** the user opens the help of the first step
@@ -590,6 +631,13 @@ The app SHALL show the message of the bank when the login fails, keep the user o
 - **GIVEN** the user chose Commerzbank with the Bankleitzahl 50040000
 - **WHEN** the bank answers the first login with the code 9942 and the text "PIN ungültig"
 - **THEN** the message repeats that Commerzbank expects the 10-digit participant number and must switch on "FinTS/HBCI with photoTAN" for the user
+
+#### Scenario: Baader Bank rejects the first login
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the bank answers the first login with the code 9942 and the text "PIN ungültig"
+- **THEN** the message says that the Stammnummer may not be valid, that Baader Bank expects the Stammnummer from the broker, and that the user requests the FinTS access first
+- **AND** the app stays on the second step
 
 #### Scenario: Login name is an alias that the bank rejects
 
@@ -817,6 +865,19 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
 - **WHEN** the user opens the list and types "Altstadt"
 - **THEN** the list shows "Sparkasse Altstadt -alt-" with "FinTS/HBCI with TAN method" and the note of a merged bank
+
+#### Scenario: flatexDEGIRO Bank in the list
+
+- **GIVEN** the bank directory lists 10130800 with a FinTS address
+- **WHEN** the user opens the list and types "degiro"
+- **THEN** the list shows "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)" with "FinTS/HBCI with TAN method"
+- **AND** its note says that the FinTS access serves flatex accounts, and that DEGIRO and ViTrade accounts cannot be added with FinTS
+
+#### Scenario: Savings bank in the list
+
+- **GIVEN** the bank directory lists 70150000 as "Stadtsparkasse München" on a FinTS server of the savings banks
+- **WHEN** the user opens the list and types "Stadtsparkasse München"
+- **THEN** the note of the bank is the help of its login name, not the note before the first login
 
 #### Scenario: Bank directory that does not load
 

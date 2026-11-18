@@ -40,9 +40,9 @@ struct BankAccessTests {
 
 	// MARK: Do not add an account twice
 
-	static func candidate(_ name: String, iban: String? = nil, number: String, remoteID: String? = nil, group: UUID? = nil) -> Account {
+	static func candidate(_ name: String, iban: IBAN? = nil, number: String, remoteID: String? = nil, group: UUID? = nil) -> Account {
 		Account(groupID: group, position: 0, name: name, kind: .giro, source: .bank, iban: iban, accountNumber: number, bankCode: "12030000",
-			accessID: accessID, remoteID: remoteID ?? iban ?? number)
+			accessID: accessID, remoteID: remoteID ?? iban?.electronic ?? number)
 	}
 
 	@Test("An account with the same IBAN, or the same account number and Bankleitzahl, is present already")

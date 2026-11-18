@@ -10,9 +10,21 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public struct Fallback: Codable, Equatable, Sendable {
 		public let date: Date
 		let launchStart: Date
+		/// True when an earlier crash is known from the whole minute of the launch on: a crash file dated before this
+		/// crash, a short report, or a payload. A payload from before the launch could then belong to that earlier crash.
+		/// ReportCrash can write the file of the earlier crash after the next launch started, so the file counts up to
+		/// the date of this crash, not only up to the launch.
+		let sharesMinute: Bool
 
+		static func minute(of date: Date) -> Date {
+			Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
+		}
+
+		/// MetricKit gives payload times in whole minutes, so a crash in the minute of its launch arrives with a start
+		/// before that launch. The match therefore starts at the whole minute of the launch, unless an earlier crash
+		/// may own that minute.
 		func matches(start: Date) -> Bool {
-			start > launchStart && start <= date.addingTimeInterval(60)
+			start >= (sharesMinute ? launchStart : Self.minute(of: launchStart)) && start <= date.addingTimeInterval(60)
 		}
 	}
 
@@ -78,7 +90,12 @@ public struct CrashReportStore {
 				crash.date > (pending?.date ?? .distantPast) {
 				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
 					exceptionType: nil, signal: nil, frames: [])
-				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date, launchStart: previous.start))
+				let launchMinute = PendingCrashReport.Fallback.minute(of: previous.start)
+				// A decision raises `latest` to the date of its short report, so `latest` also covers decided reports.
+				let earlier = [latest, pending?.date].compactMap { $0 }
+					+ files.filter { CrashReports.isCrashFile($0.name) && $0.date < crash.date }.map(\.date)
+				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date,
+					launchStart: previous.start, sharesMinute: earlier.contains { $0 >= launchMinute }))
 			}
 			self.launch = launch
 		}

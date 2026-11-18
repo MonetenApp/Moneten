@@ -13,34 +13,17 @@ public enum BankEntry {
 			guard text.count == 8 else { throw .bankCodeDigits }
 			return text
 		}
-		let country = String(text.prefix(2))
-		guard country.allSatisfy(\.isASCIIUppercase), let length = ibanLengths[country] else { throw .country }
-		guard text.count == length else { throw .length(country: country, characters: length) }
-		guard hasValidChecksum(text) else { throw .checksum }
-		guard country == "DE" else { throw .notGermany }
-		return String(text.dropFirst(4).prefix(8))
-	}
-
-	/// ISO 7064 MOD 97-10: the first four characters move to the end, letters become 10 to 35, and
-	/// the number must leave the remainder 1.
-	private static func hasValidChecksum(_ iban: String) -> Bool {
-		var remainder = 0
-		for character in iban.dropFirst(4) + iban.prefix(4) {
-			guard let value = character.isASCIIDigit ? character.wholeNumberValue : character.isASCIIUppercase ? Int(character.asciiValue! - 55) : nil else { return false }
-			remainder = (remainder * (value < 10 ? 10 : 100) + value) % 97
+		let iban: IBAN
+		do { iban = try IBAN(parsing: text) } catch {
+			switch error {
+			case .country: throw .country
+			case let .length(country, characters): throw .length(country: country, characters: characters)
+			case .checksum: throw .checksum
+			}
 		}
-		return remainder == 1
+		guard let bankCode = iban.germanBankCode else { throw .notGermany }
+		return bankCode
 	}
-
-	/// The length of an IBAN in each country of the IBAN registry that the app expects.
-	private static let ibanLengths: [String: Int] = [
-		"AD": 24, "AE": 23, "AL": 28, "AT": 20, "AZ": 28, "BA": 20, "BE": 16, "BG": 22, "BH": 22, "BR": 29, "BY": 28, "CH": 21, "CR": 22,
-		"CY": 28, "CZ": 24, "DE": 22, "DK": 18, "DO": 28, "EE": 20, "EG": 29, "ES": 24, "FI": 18, "FO": 18, "FR": 27, "GB": 22, "GE": 22,
-		"GI": 23, "GL": 18, "GR": 27, "GT": 28, "HR": 21, "HU": 28, "IE": 22, "IL": 23, "IQ": 23, "IS": 26, "IT": 27, "JO": 30, "KW": 30,
-		"KZ": 20, "LB": 28, "LC": 32, "LI": 21, "LT": 20, "LU": 20, "LV": 21, "MC": 27, "MD": 24, "ME": 22, "MK": 19, "MR": 27, "MT": 31,
-		"MU": 30, "NL": 18, "NO": 15, "PK": 24, "PL": 28, "PS": 29, "PT": 25, "QA": 29, "RO": 24, "RS": 22, "SA": 24, "SC": 31, "SE": 24,
-		"SI": 19, "SK": 24, "SM": 27, "ST": 25, "SV": 28, "TL": 23, "TN": 24, "TR": 26, "UA": 29, "VA": 22, "VG": 24, "XK": 20,
-	]
 }
 
 public enum BankEntryError: Error, Equatable, Sendable {
@@ -66,7 +49,6 @@ public enum BankEntryError: Error, Equatable, Sendable {
 
 private extension Character {
 	var isASCIIDigit: Bool { isASCII && isNumber }
-	var isASCIIUppercase: Bool { isASCII && isUppercase }
 }
 
 // MARK: Accounts of a new access
@@ -146,10 +128,9 @@ extension Ledger {
 	}
 
 	private static func isSame(_ account: Account, as candidate: Account) -> Bool {
-		func iban(_ a: Account) -> String? { a.iban.map { $0.uppercased().filter { !$0.isWhitespace } } }
 		func number(_ a: Account) -> String? { a.accountNumber.map { String($0.drop { $0 == "0" }) } }
 		guard account.currency == candidate.currency else { return false }
-		if let mine = iban(account), let theirs = iban(candidate) { return mine == theirs }
+		if let mine = account.iban, let theirs = candidate.iban { return mine == theirs }
 		guard account.bankCode == candidate.bankCode, let mine = number(account), mine == number(candidate) else { return false }
 		return account.remoteID.map { $0 == candidate.remoteID } ?? true
 	}
