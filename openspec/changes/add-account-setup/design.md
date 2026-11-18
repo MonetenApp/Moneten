@@ -92,6 +92,14 @@ HypoVereinsbank runs one FinTS server, `hbci-01.hypovereinsbank.de`, for its 182
 - The answer of Baader Bank to an unknown Stammnummer is not known. The help line says to check that the Stammnummer is valid and that Baader Bank activated the FinTS access, so a rejected first login repeats it through `SyncFailure.messageAtFirstLogin(userIDHelp:)`, as at Commerzbank. The app does not claim on its own that the Stammnummer is invalid, because the same answer can mean a wrong PIN. The bank test of issue #11 names the code, and a later change can give it a message of its own.
 - A holding in another currency than the account currency still makes a page without a total fail (task 1.53 of add-fints-banking), until the bank test shows in which currency Baader Bank sends the value of a US share.
 
+### Rules of Oberbank
+
+`Sources/FinTS/Oberbank.swift` holds the rules of Oberbank (#236), apart from the files of the other groups. Oberbank has its German branch on the Bankleitzahl 70120700, whose FinTS address is the server of Bank-Verlag, `https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp`. Many banks share that server, so every rule of Oberbank follows the Bankleitzahl alone, and a bank with another Bankleitzahl on the same server keeps its behavior. `LoginHint.byCode` finds the hint of Oberbank by the Bankleitzahl, as it finds those of the other banks with a list of Bankleitzahlen.
+
+- The guide "HBCI und xTAN" of Oberbank (`https://www.oberbank.de/documents/360322/464931/ipkde_infoxtan_NEU.pdf`) says to ask the customer adviser for xTAN, which a change of the Electronic Banking contract switches on with the mobile number of the user, and to set up the access in the software after the written confirmation of Oberbank. The login step shows this as the note above the fields, and links to the guide.
+- No page of Oberbank names the login name of its HBCI access, so the field keeps "User ID". The line under it says to ask the customer adviser whether the access with xTAN is switched on, if the login fails. A rejected first login repeats that line, as it does for every hint.
+- The bank test of issue #11 records the answer of the server to a login without an access, with its code and text. The message of that answer can then name the access directly.
+
 ### The steps and the keyboard
 
 The line under the title names the step and its number, so that "Back" visibly leaves the login data. The field of the new step takes the keyboard focus: the login name, or the PIN when the login name is filled in. After "Back" to a chosen bank, no field takes it, so a login name typed by mistake does not replace the bank. The login name stays when the user goes back and forth.
