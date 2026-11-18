@@ -465,7 +465,7 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 11), amountMinor: -90, name: "Miete.", purpose: "Mai")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
-			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
+			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000", "remote_account:/^DE89 3704/", "remote_account:/^DE893704/", "local_account:/^DE02 1203/", "local_account:/^DE021203/",
 			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
 			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
 			"true", "NOT false", "comment:strom OR false",

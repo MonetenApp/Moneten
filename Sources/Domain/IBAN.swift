@@ -15,11 +15,12 @@ public struct IBAN: Hashable, Sendable {
 		case checksum
 	}
 
-	/// Spaces and lower case letters do not matter. Every Unicode space counts, such as U+00A0 and U+202F,
-	/// as in `TextFolding.accountKey(_:)`, and so do tabs and line breaks. The checks run in the order country,
-	/// length, checksum, so that the error names the first one that failed.
+	/// Spaces and lower case letters do not matter. Every Unicode space counts, such as U+00A0 and U+202F. A tab or a
+	/// line break does not, because the electronic form folds exactly what `TextFolding.accountKey(_:)` folds: the key
+	/// of a counterparty account stored before this type existed stays the same, and so does the identity of its row.
+	/// The checks run in the order country, length, checksum, so that the error names the first one that failed.
 	public init(parsing text: String) throws(Failure) {
-		let compact = text.uppercased().filter { !$0.isWhitespace }
+		let compact = TextFolding.accountKey(text)
 		let country = String(compact.prefix(2))
 		guard let length = Self.lengths[country] else { throw .country }
 		guard compact.count == length else { throw .length(country: country, characters: length) }
@@ -55,6 +56,17 @@ public struct IBAN: Hashable, Sendable {
 	/// it is, so that a bad IBAN of a counterparty never fails a refresh or an import.
 	public static func electronicForm(of text: String) -> String {
 		IBAN(text)?.electronic ?? text
+	}
+
+	/// The texts that a regular expression of a rule or of the search reads for an account: the text as stored and, for
+	/// a valid IBAN, also its electronic form and its groups of four. An earlier version stored an IBAN as the source
+	/// gave it, often in groups, and the app now stores the electronic form, so a pattern written for either form finds
+	/// the rows of both.
+	static func patternTexts(of text: String) -> [String] {
+		guard let iban = IBAN(text) else { return [text] }
+		var texts = [text]
+		for form in [iban.electronic, iban.formatted] where !texts.contains(form) { texts.append(form) }
+		return texts
 	}
 
 	/// ISO 7064 MOD 97-10: the first four characters move to the end, letters become 10 to 35, and

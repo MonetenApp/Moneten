@@ -58,6 +58,11 @@ public struct RuleSubject: Sendable {
 		}
 	}
 
+	/// The texts that a regular expression reads: an account in each of its forms, any other field as it is.
+	func patternTexts(of field: RuleField) -> [String] {
+		field == .localAccount || field == .remoteAccount ? text(of: field).flatMap(IBAN.patternTexts) : text(of: field)
+	}
+
 	func text(of field: RuleField) -> [String] {
 		switch field {
 		case .name: [name]
@@ -345,7 +350,7 @@ public struct Rule: Sendable {
 		case let .regex(box, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
 			for f in fields {
-				for text in s.text(of: f) where text.isEmpty ? box.matchesEmpty : watch.firstMatch(box, text) { return true }
+				for text in s.patternTexts(of: f) where text.isEmpty ? box.matchesEmpty : watch.firstMatch(box, text) { return true }
 			}
 			return false
 		case let .phrase(patterns, field):

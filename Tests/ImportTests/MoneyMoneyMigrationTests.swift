@@ -762,6 +762,30 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.transactions.filter { $0.accountID == existing.id }.count == 3)
 	}
 
+	@Test("An account that keeps an invalid IBAN of its bank as its account number is matched by that text",
+		arguments: [["iban": "DE03 1203 0000 0000 2020 51"], ["accountNumber": "DE03120300000000202051", "bankCode": "BYLADEM1001"]])
+	func matchByInvalidIBAN(fields: [String: String]) throws {
+		var bank = Account(position: 0, name: "Mein Giro", kind: .giro, source: .bank, bankCode: "12030000")
+		bank.takeIBAN("DE03120300000000202051")
+		#expect(bank.iban == nil && bank.accountNumber == "DE03120300000000202051")
+		var item: [String: Any] = ["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR"]
+		item.merge(fields) { $1 }
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist([item]), categories: try plist(categories),
+			transactions: try plist(["creator": "MoneyMoney", "transactions": [Any]()]), into: Ledger(accounts: [bank]))
+		#expect(p.accounts.isEmpty)
+		#expect(p.sources.map(\.accountID) == [bank.id])
+	}
+
+	@Test("An account number that is no IBAN of a known country matches only with its bank code")
+	func plainNumberNeedsBankCode() throws {
+		let other = Account(position: 0, name: "Other", kind: .giro, source: .offline, accountNumber: "4711", bankCode: "10010010")
+		let item: [String: Any] = ["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR",
+			"accountNumber": "4711", "bankCode": "12030000"]
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist([item]), categories: try plist(categories),
+			transactions: try plist(["creator": "MoneyMoney", "transactions": [Any]()]), into: Ledger(accounts: [other]))
+		#expect(p.accounts.map(\.name) == ["Giro"])
+	}
+
 	@Test("Rules come over with the categories, and the report mentions rules only when the export has none")
 	func rules() throws {
 		let p = try plan()

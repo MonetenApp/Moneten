@@ -55,8 +55,20 @@ import Testing
 		#expect(IBAN.electronicForm(of: "DE03 1203 0000 0000 2020 51") == "DE03 1203 0000 0000 2020 51")
 		#expect(IBAN.electronicForm(of: "0099887766") == "0099887766")
 		#expect(IBAN.electronicForm(of: "") == "")
-		#expect(Format.counterpartyAccount("DE02120300000000202051") == "DE02 1203 0000 0000 2020 51")
-		#expect(Format.counterpartyAccount("DE03120300000000202051") == "DE03120300000000202051")
+	}
+
+	@Test("The electronic form folds what the account key folds, so the identity of a stored row does not change", arguments: [
+		"de02 1203 0000 0000 2020 51", "DE02\u{00A0}1203\u{202F}0000 0000 2020 51", "DE02120300000000\t202051",
+		"DE02120300000000\n202051", "DE02120300000000\r\n202051", "DE03 1203 0000 0000 2020 51", "0099887766",
+	])
+	func electronicFormKeepsTheAccountKey(text: String) {
+		#expect(TextFolding.accountKey(IBAN.electronicForm(of: text)) == TextFolding.accountKey(text))
+	}
+
+	@Test("A tab or a line break inside the text is not a space of an IBAN", arguments: ["DE02120300000000\t202051", "DE02120300000000\n202051"])
+	func tabOrLineBreak(text: String) {
+		#expect(IBAN(text) == nil)
+		#expect(IBAN.electronicForm(of: text) == text)
 	}
 
 	@Test func codableAsItsElectronicForm() throws {

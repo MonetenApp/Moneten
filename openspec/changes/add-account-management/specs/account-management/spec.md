@@ -210,6 +210,44 @@ The app SHALL keep the account of a counterparty as the bank, the extension, or 
 - **WHEN** a file import delivers a transaction whose counterparty has the account "0099887766"
 - **THEN** the details of the transaction show "Account number" with "0099887766"
 
+### Requirement: Identity of a stored counterparty account
+
+The app SHALL find a transaction again by the account of its counterparty when an earlier version stored that account in another form. Spaces and case do not matter. A tab or a line break inside the text is not a space, so such text stays as it is.
+
+#### Scenario: Transaction stored with a spaced IBAN
+
+- **GIVEN** an earlier version imported a CAMT file with the transaction "Abschlag November" of -89.00 EUR whose counterparty has the account "de02 1203 0000 0000 2020 51", and stored that text
+- **WHEN** the user imports the same file again
+- **THEN** the account holds one transaction "Abschlag November"
+
+#### Scenario: Line break inside the account of a counterparty
+
+- **GIVEN** a CAMT file whose transaction "Abschlag November" names the account of the counterparty with a line break between "DE02120300000000" and "202051"
+- **WHEN** the user imports the file twice
+- **THEN** the account holds one transaction "Abschlag November" and keeps the text of the file with the line break
+
+### Requirement: Regular expression on an account
+
+The app SHALL let a regular expression after `local_account:` or `remote_account:` read the account as it is stored and, when it is a valid IBAN, also without spaces and in groups of four. A rule written for the IBAN in either form finds the transactions that an earlier version stored and the ones that the app stores now.
+
+#### Scenario: Grouped pattern on a stored IBAN without spaces
+
+- **GIVEN** a transaction whose counterparty has the account "DE02120300000000202051"
+- **WHEN** a category has the rule `remote_account:/^DE02 1203/`
+- **THEN** the rule matches the transaction
+
+#### Scenario: Pattern without spaces on an IBAN stored in groups
+
+- **GIVEN** a transaction that an earlier version stored with the account of the counterparty "DE02 1203 0000 0000 2020 51"
+- **WHEN** a category has the rule `remote_account:/^DE021203/`
+- **THEN** the rule matches the transaction
+
+#### Scenario: Invalid IBAN reads only as stored
+
+- **GIVEN** a transaction whose counterparty has the account "DE03120300000000202051"
+- **WHEN** a category has the rule `remote_account:/^DE03 1203/`
+- **THEN** the rule does not match the transaction
+
 ### Requirement: Account currency
 
 The app SHALL store the currency that the source reports for an account and show every amount of that account in that currency. The sidebar shows the currency next to the balance.

@@ -1380,7 +1380,7 @@ final class DebugHarness {
 			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
 			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""),
 				.originalAmount(Money(minorUnits: 0, currency: "USD")), .deviatingParty("", recipient: true), .valueDate(Day.today()),
-				.iban("DE02120300000000202051"), .bic("")].map(\.label)
+				.iban(IBAN("DE02120300000000202051")!), .bic("")].map(\.label)
 			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
 			let table = self.transactionTables().first
 			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()

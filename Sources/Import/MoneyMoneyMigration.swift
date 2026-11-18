@@ -379,6 +379,10 @@ public struct MoneyMoneyMigration: Sendable {
 			let bankCode = Self.string(item["bankCode"])
 			let ibanText = Self.string(item["iban"]) ?? number.flatMap { IBAN($0) == nil ? nil : $0 }
 			let iban = ibanText.flatMap(IBAN.init)
+			// An account whose bank sent an invalid IBAN keeps that text as its account number (`Account.takeIBAN(_:)`), and
+			// MoneyMoney gives it as the IBAN or as the account number with the BIC as `bankCode`. Text with the country code of
+			// an IBAN country is no plain account number, so it matches without a bank code.
+			let invalidIBAN: String? = [Self.string(item["iban"]), number].compactMap { $0 }.first(where: Self.isInvalidIBAN).map(TextFolding.accountKey)
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
 			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
@@ -396,6 +400,7 @@ public struct MoneyMoneyMigration: Sendable {
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
 				a.sourceID == nil && (
 					(iban != nil && a.iban == iban)
+						|| (invalidIBAN != nil && a.iban == nil && a.accountNumber.map { TextFolding.accountKey($0) } == invalidIBAN)
 						|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number))
 			}) {
 				map[source] = existing.id
@@ -567,6 +572,16 @@ public struct MoneyMoneyMigration: Sendable {
 		guard value.isFinite else { throw Failure.unreadableAmount(what) }
 		guard let money = Money(fitting: Decimal(value), currency: currency) else { throw Failure.tooLarge(what) }
 		return money
+	}
+
+	/// Text that starts with the country code of an IBAN country but is no valid IBAN.
+	private static func isInvalidIBAN(_ text: String) -> Bool {
+		do {
+			_ = try IBAN(parsing: text)
+			return false
+		} catch {
+			return error != .country
+		}
 	}
 
 	static func isBIC(_ value: String) -> Bool {

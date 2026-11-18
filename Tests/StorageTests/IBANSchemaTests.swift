@@ -11,23 +11,43 @@ extension SchemaTests {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
 		try Schema.migrator.migrate(queue, upTo: "v30")
-		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .migrated)
-		let card = Account(position: 1, name: "Card", kind: .creditCard, source: .bank, accountNumber: "4711")
-		let old = Account(position: 2, name: "Old Giro", kind: .giro, source: .migrated)
-		let cash = Account(position: 3, name: "Cash", kind: .cash, source: .offline)
+		// The name of each account, its IBAN and account number at v30, and both after v31.
+		let cases: [(String, String?, String?, String?, String?)] = [
+			("Giro", "de02\u{00A0}1203 0000 0000 2020 51", nil, "DE02120300000000202051", nil),
+			("Trimmed", " DE02120300000000202051\n", "202051", "DE02120300000000202051", "202051"),
+			("Card", "DE03120300000000202051", "4711", nil, "4711"),
+			("Old Giro", "DE03120300000000202051", nil, nil, "DE03120300000000202051"),
+			("Empty Number", "XX02120300000000202051", "", nil, "XX02120300000000202051"),
+			("Line Break", "DE02120300000000\n202051", nil, nil, "DE02120300000000\n202051"),
+			("Cash", "", nil, nil, nil),
+			("Space", " ", "4711", nil, "4711"),
+			("No IBAN", nil, "4711", nil, "4711"),
+		]
 		try queue.write { db in
-			for (account, iban) in [(giro, "de02\u{00A0}1203 0000 0000 2020 51"), (card, "DE03120300000000202051"), (old, "DE03120300000000202051"), (cash, "")] {
-				try account.insert(db)
-				try db.execute(sql: "UPDATE account SET iban = ? WHERE id = ?", arguments: [iban, account.id])
+			for (position, (name, iban, number, _, _)) in cases.enumerated() {
+				try db.execute(sql: """
+					INSERT INTO account (id, position, name, kind, source, currency, iban, accountNumber, initialBalanceMinor, isClosed)
+					VALUES (?, ?, ?, 'giro', 'migrated', 'EUR', ?, ?, 0, 0)
+					""", arguments: [UUID(), position, name, iban, number])
 			}
 		}
 		try Schema.migrator.migrate(queue)
-		let accounts = Dictionary(uniqueKeysWithValues: try Store(queue: queue).loadLedger().accounts.map { ($0.name, $0) })
-		#expect(accounts["Giro"]?.iban?.electronic == "DE02120300000000202051")
-		#expect(accounts["Card"]?.iban == nil && accounts["Card"]?.accountNumber == "4711")
-		#expect(accounts["Old Giro"]?.iban == nil && accounts["Old Giro"]?.accountNumber == "DE03120300000000202051")
-		#expect(accounts["Cash"]?.iban == nil && accounts["Cash"]?.accountNumber == nil)
-		#expect(try queue.read { try String.fetchOne($0, sql: "SELECT iban FROM account WHERE name = 'Giro'") } == "DE02120300000000202051")
+		for (name, _, _, iban, number) in cases {
+			let row = try queue.read { try Row.fetchOne($0, sql: "SELECT iban, accountNumber FROM account WHERE name = ?", arguments: [name]) }
+			#expect(row?["iban"] as String? == iban, "\(name)")
+			#expect(row?["accountNumber"] as String? == number, "\(name)")
+		}
+		#expect(try Store(queue: queue).loadLedger().accounts.count == cases.count)
+	}
+
+	@Test("The frozen rule of v31 takes valid IBANs of several countries and refuses the rest", arguments: [
+		("DE02120300000000202051", "DE02120300000000202051"), ("de02 1203 0000 0000 2020 51", "DE02120300000000202051"),
+		("GB82WEST12345698765432", "GB82WEST12345698765432"), ("NO9386011117947", "NO9386011117947"),
+		("MT84MALT011000012345MTLCAST001S", "MT84MALT011000012345MTLCAST001S"), ("DE03120300000000202051", nil), ("DEAB120300000000202051", nil),
+		("XX02120300000000202051", nil), ("DE0212030000000020205", nil), ("DE02120300000000\t202051", nil), ("DE02120300000000202O51", nil), ("", nil),
+	])
+	func frozenRule(text: String, electronic: String?) {
+		#expect(AccountIBANAtV31.electronicForm(text) == electronic)
 	}
 
 	@Test("An account stores its IBAN as plain text in its electronic form, not as JSON, and loads it again")

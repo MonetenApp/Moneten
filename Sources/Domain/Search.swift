@@ -73,7 +73,7 @@ struct SearchQuery {
 		let account: () -> Account?
 		let categoryName: () -> String?
 
-		/// The values of a field as a rule reads them.
+		/// The values of a field as a regular expression of a rule reads them, an account in each of its forms.
 		func forEachText(of field: RuleField, _ body: (String) -> Void) {
 			let t = transaction
 			switch field {
@@ -84,8 +84,8 @@ struct SearchQuery {
 			case .mandate: body(t.mandateReference ?? "")
 			case .creditorID: body(t.creditorID ?? "")
 			case .comment: body(t.comment ?? "")
-			case .localAccount: if let a = account() { a.iban.map { body($0.electronic) }; a.accountNumber.map(body) }
-			case .remoteAccount: t.counterpartyIBAN.map(body)
+			case .localAccount: if let a = account() { [a.iban?.electronic, a.accountNumber].compactMap { $0 }.flatMap(IBAN.patternTexts).forEach(body) }
+			case .remoteAccount: t.counterpartyIBAN.map(IBAN.patternTexts)?.forEach(body)
 			case .currency: body(t.currency)
 			}
 		}
