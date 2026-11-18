@@ -993,6 +993,14 @@ struct TransactionMenu: View {
 			Menu("Assign Category") {
 				CategoryChoices(model: model, ids: ids)
 			}
+			if ids.count == 1, let condition = Rule.condition(for: first) {
+				Menu("Create Rule") {
+					ForEach(model.ledger.categoriesInSidebarOrder.filter { !$0.isGroup && !$0.isDefault }) { c in
+						Button(model.ledger.categoryPath(c.id)) { model.createRule(condition, in: c.id) }
+							.disabled(!model.ledger.canAssign(c, to: [first]))
+					}
+				}
+			}
 			if case let .category(id) = model.selection, model.ledger.defaultCategory?.id != id {
 				Button("Remove Transaction from Category") { model.assign(category: nil, to: ids) }
 			}

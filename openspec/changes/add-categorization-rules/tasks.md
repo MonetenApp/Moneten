@@ -14,7 +14,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.8 Amount comparisons. Verified by RuleTests "Amount comparisons", "Amount not equal", and "Amount equal with :=".
 - [x] 1.9 Regular expressions. Verified by RuleTests "Regular expressions".
 - [x] 1.10 Invalid rules are rejected. Verified by RuleTests "Missing parenthesis is reported at the end" and "Sign after a field operator"; the settings sheet shows the message and disables OK.
-- [x] 1.11 Rules run on new transactions. Verified by CategorizerTests "Refresh brings a transaction into its category"; file import and manual entry call the categorizer.
+- [x] 1.11 Rules run on new transactions. Verified by CategorizerTests "Refresh brings a transaction into its category" and MergeTests "A refresh puts a new row into the category of its rule, leaves a row without a match uncategorized, and keeps a category set by hand"; file import and manual entry call the categorizer.
 - [x] 1.12 The first matching category wins. Verified by CategorizerTests "The first category in sidebar order wins".
 - [x] 1.13 Rules respect the account restriction of a category. Verified by CategorizerTests "Rules respect the account restriction".
 - [x] 1.14 Rules run again when a pending transaction is booked. Verified by ReconcileTests "The rules run again on a booked row" and "A category that the user set by hand stays at the booking".
@@ -33,6 +33,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.26 A stopped rule matches nothing in its run. Verified by CategorizerTests "A rule that stops matches no row of the refresh, in either order of the rows" and MergeTests "A rule that stops during a merge matches no row of it, in either order of the rows", which go through `Store.merge`.
 - [x] 1.27 A stopped rule never moves a transaction that a rule sorted. Verified by CategorizerTests "A stopped rule never moves a row that a rule sorted, also when the bank books it", in both orders of the rows.
 - [x] 1.28 The rules of one run stop together after 3 seconds of slow calls. Verified by CategorizerTests "The rules of one batch stop together when they spend 3 seconds in all" and "Twelve rules that stop leave a normal regular expression its rows, which it tests once, and the batch stays bounded", and by PerformanceTests "A regular expression in a rule categorizes and counts 50,000 rows within budget, and never reaches its limit", where twelve rules that stop leave `/Haendler1/` its 7,865 of 50,000 rows in 2.5 to 2.8 s in a release build, under a budget of 4 s.
+- [ ] 1.29 Create a rule from a transaction. The condition of each scenario is verified by RuleFromTransactionTests, which did not compile before `Rule.condition(for:)` and `Rule.adding(_:to:)` existed. Still open: a check in a debug build of the context menu, the disabled restricted category, and the match count in the settings, with the harness command `createrule`, once Debug builds can use a throwaway keychain (#421).
 
 ## 2. Changes to the first build
 

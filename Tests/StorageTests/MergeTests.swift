@@ -42,6 +42,30 @@ struct MergeTests {
 		#expect(try store.loadLedger().transactions.map(\.categoryID) == [other.id, other.id])
 	}
 
+	@Test("A refresh puts a new row into the category of its rule, leaves a row without a match uncategorized, and keeps a category set by hand")
+	func refreshRunsRules() throws {
+		let store = try makeStore()
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let salary = Domain.Category(position: 0, name: "Salary", rule: #""Gehalt""#)
+		let gifts = Domain.Category(position: 1, name: "Gifts")
+		var bonus = row(3, 50_000, "Arbeitgeber", "Gehalt Bonus")
+		bonus.sourceID = "TX-1"
+		bonus.isFetched = true
+		bonus.categoryID = gifts.id
+		bonus.categorizedBy = .manual
+		try store.save(categories: [salary, gifts], transactions: [bonus])
+		var corrected = fresh(bonus)
+		corrected.sourceID = "TX-1"
+		corrected.purpose = "Gehalt Bonus 2026"
+		_ = try store.merge(refresh([corrected, row(4, 300_000, "Arbeitgeber", "Gehalt 11/2026"), row(5, -1_000, "Kiosk", "Zeitung")]), into: giro.id)
+		let rows = Dictionary(uniqueKeysWithValues: try store.loadLedger().transactions(ofAccount: giro.id).map { ($0.purpose, $0) })
+		#expect(rows["Gehalt 11/2026"]?.categoryID == salary.id)
+		#expect(rows["Gehalt 11/2026"]?.categorizedBy == .rule)
+		#expect(rows["Zeitung"]?.categoryID == nil)
+		#expect(rows["Gehalt Bonus 2026"]?.categoryID == gifts.id)
+		#expect(rows["Gehalt Bonus 2026"]?.categorizedBy == .manual)
+	}
+
 	@Test("A merge writes new rows, review marks, and drops at once, and the ledger of the app matches the database after it")
 	func writesEverything() throws {
 		let store = try makeStore()
