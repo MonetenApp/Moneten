@@ -5,7 +5,9 @@ job of CI."""
 import contextlib
 import importlib.util
 import io
+import json
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -174,6 +176,45 @@ def release_ext_filter():
 	return [line.strip()[2:] for line in block.group(1).splitlines()]
 
 
+def dumped_package():
+	"""The evaluated Package.swift as JSON from `swift package dump-package`, or None when no swift is on PATH."""
+	if shutil.which("swift") is None:
+		return None
+	out = subprocess.run(["swift", "package", "dump-package"], cwd=ROOT, check=True, capture_output=True)
+	return json.loads(out.stdout)
+
+
+def ext_folders_from_dump(package):
+	"""The source folders of ext and of every local target and local package that it reaches, from the evaluated
+	manifest. A product of a remote package is pinned by Package.resolved. A dependency that names neither a local
+	target nor a product of a known package fails, so no form of the manifest can hide a dependency."""
+	targets = {t["name"]: t for t in package["targets"]}
+	local = {d["fileSystem"][0]["identity"]: d["fileSystem"][0]["path"] for d in package["dependencies"] if "fileSystem" in d}
+	remote = {next(iter(d.values()))[0]["identity"] for d in package["dependencies"] if "fileSystem" not in d}
+	folders, seen, todo = set(), set(), ["ext"]
+	while todo:
+		name = todo.pop()
+		if name in seen:
+			continue
+		seen.add(name)
+		target = targets[name]
+		folders.add(target.get("path") or f"Sources/{name}")
+		for dependency in target["dependencies"]:
+			kind, value = next(iter(dependency.items()))
+			if kind in ("byName", "target") and value[0] in targets:
+				todo.append(value[0])
+			elif kind == "product" and value[1] in local:
+				folders.add(local[value[1]])
+			elif kind == "product" and value[1] in remote:
+				continue
+			elif kind == "byName" and remote and not local:
+				# A bare name that is no local target is a product of the remote packages, which Package.resolved pins.
+				continue
+			else:
+				raise ValueError(f"{name} depends on {dependency}, which this check cannot place")
+	return folders
+
+
 def ext_folders(manifest=None):
 	"""The source folders of the product ext and of every target that it depends on, as Package.swift declares them.
 
@@ -221,8 +262,12 @@ def script_reads(text, files):
 	for line in text.splitlines():
 		if COMMENT.match(line):
 			continue
-		for token in TOKEN.findall(line):
-			token = re.sub(r"^(\./)+", "", token).rstrip("/")
+		for token in re.findall(r"[\w./${}-]+", line):
+			# A path behind a variable such as $ROOT/ or ${ROOT}/, or behind ../ after a cd, counts as the
+			# repository path it names, so that a hidden prefix never hides a read.
+			token = re.sub(r"^(\$\{?\w+\}?/|\.{1,2}/)+", "", token).rstrip("/")
+			if "$" in token:
+				continue
 			read |= {f for f in files if f and (f == token or f.startswith(token + "/"))}
 	return read
 
@@ -236,7 +281,9 @@ class ReleaseExtFilter(unittest.TestCase):
 	"""The dry run of release-ext.yml starts for every input of ext, and for nothing else."""
 
 	def test_the_filter_names_exactly_the_inputs_of_ext(self):
-		folders = ext_folders()
+		package = dumped_package()
+		folders = ext_folders_from_dump(package) if package is not None else ext_folders()
+		print(f"ext inputs from {'swift package dump-package' if package is not None else 'the line reader'}", file=sys.stderr)
 		self.assertEqual(folders, {"Tools/ext", "Sources/Domain", "Sources/CLua", "Sources/ExtensionHost", "Sources/ExtensionConnector"})
 		patterns = release_ext_filter()
 		self.assertEqual(len(patterns), len(set(patterns)), "a path appears twice")
@@ -265,6 +312,37 @@ class ReleaseExtFilter(unittest.TestCase):
 		line = '.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),'
 		nested = manifest.replace(line, '.target(name: "ExtensionConnector", dependencies: [.target(name: "Domain", condition: .when(platforms: [.macOS])), "ExtensionHost", "Sync"]),')
 		self.assertIn("Sources/Sync", ext_folders(nested))
+
+	def test_the_evaluated_manifest_gives_the_same_inputs_as_the_line_reader(self):
+		package = dumped_package()
+		if package is None:
+			self.skipTest("no swift on PATH")
+		self.assertEqual(ext_folders_from_dump(package), ext_folders())
+
+	def test_the_evaluated_manifest_follows_any_form_of_a_dependency(self):
+		package = {
+			"dependencies": [],
+			"targets": [
+				{"name": "ext", "path": "Tools/ext", "dependencies": [{"byName": ["Domain", None]}, {"target": ["Sync", None]}]},
+				{"name": "Domain", "path": None, "dependencies": []},
+				{"name": "Sync", "path": None, "dependencies": [{"byName": ["Domain", None]}]},
+			],
+		}
+		self.assertEqual(ext_folders_from_dump(package), {"Tools/ext", "Sources/Domain", "Sources/Sync"})
+		package["dependencies"] = [{"fileSystem": [{"identity": "kit", "path": "Packages/Kit"}]}]
+		package["targets"][0]["dependencies"].append({"product": ["Kit", "kit", None, None]})
+		self.assertEqual(ext_folders_from_dump(package), {"Tools/ext", "Sources/Domain", "Sources/Sync", "Packages/Kit"})
+		# With a local package, a bare name that is no local target could come from it, so it fails.
+		package["targets"][2]["dependencies"].append({"byName": ["Kit", None]})
+		with self.assertRaises(ValueError):
+			ext_folders_from_dump(package)
+
+	def test_a_path_behind_a_variable_or_a_parent_folder_counts_as_read(self):
+		files = ["Sources/Sync/SyncCoordinator.swift"]
+		for line in ['cat "$ROOT/Sources/Sync/SyncCoordinator.swift"', "cat ${ROOT}/Sources/Sync/SyncCoordinator.swift",
+				"cd Tools && cat ../Sources/Sync/SyncCoordinator.swift"]:
+			with self.subTest(line=line):
+				self.assertEqual(script_reads(line, files), {"Sources/Sync/SyncCoordinator.swift"})
 
 	def test_a_path_written_with_dot_slash_counts_as_read(self):
 		files = ["Sources/Sync/SyncCoordinator.swift", "Sources/Domain/Money.swift"]
