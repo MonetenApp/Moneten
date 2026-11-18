@@ -82,6 +82,12 @@ The app SHALL, in a release build, keep its data folder in `Library/Application 
 - **THEN** the app shows that it cannot find the home folder of the user and quits
 - **AND** the app opens no database
 
+#### Scenario: The user database names no home folder while the app runs
+
+- **GIVEN** a release build that opened the database in `/Users/beispiel/Library/Application Support/Moneten`
+- **WHEN** the user database of macOS names no home folder for a moment, for example while the directory service restarts, and the user then installs an extension
+- **THEN** the app keeps running and installs the extension in `/Users/beispiel/Library/Application Support/Moneten/Extensions`
+
 ### Requirement: A copy of the data folder is a complete backup
 
 The app SHALL make it possible to back up everything by copying the data folder while the app is closed. The app does not exclude the folder from Time Machine. A copy that is put back in place restores accounts, categories, rules, transactions, extensions, and statements.

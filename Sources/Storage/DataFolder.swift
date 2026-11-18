@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// The folder that holds all data of the app: "Database", "Extensions", "Statements", and "Bank Data".
 public struct DataFolder: Sendable {
@@ -93,5 +94,34 @@ public struct DataFolder: Sendable {
 	/// The identifier that the Keychain entries had before ADR 0013.
 	var legacyKeychainAccount: String {
 		legacyRoot.appendingPathComponent("Database", isDirectory: true).appendingPathComponent("\(Self.legacyName).sqlite").standardizedFileURL.path
+	}
+}
+
+/// The data folder of one run of the app. The first lookup that finds the folder decides it for the rest of the run, and
+/// no later read looks it up again. The directory service of macOS can name no home folder for a moment, for example
+/// while it restarts or while the directory of a network account is offline, and a running session keeps its data
+/// folder through that. The move of the folder of the old name (ADR 0013) runs with that one lookup. A lookup that finds
+/// no folder is not kept, but the app quits at launch in that case anyway.
+public final class DataFolderOfRun: Sendable {
+	private let found = Mutex<DataFolder?>(nil)
+	private let lookup: @Sendable () -> DataFolder?
+
+	/// The data folder of `DataFolder.standard(override:)`.
+	public convenience init(override path: String?) {
+		self.init { DataFolder.standard(override: path) }
+	}
+
+	init(lookup: @escaping @Sendable () -> DataFolder?) {
+		self.lookup = lookup
+	}
+
+	/// The folder of this run, or nil while no lookup has found one. The lookup runs inside the lock, so two first
+	/// reads at the same time move the folder of the old name only once.
+	public var folder: DataFolder? {
+		found.withLock { found in
+			if let found { return found }
+			found = lookup()
+			return found
+		}
 	}
 }
