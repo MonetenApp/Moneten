@@ -264,7 +264,7 @@ The app SHALL assign the column "Account" or "Konto" to the counterparty account
 
 ### Requirement: CSV account and bank columns by their values
 
-The app SHALL assign an account or bank column of an exported file only when more than half of its filled cells fit. An account fits as an IBAN with a valid checksum or as five or more digits. A bank fits as eight digits, as a BIC whose letters 5 and 6 are the IBAN country of the row, or, in a row without an IBAN, as a BIC of 11 characters whose letters 5 and 6 are a country. The import keeps the cells as written.
+The app SHALL assign an account or bank column of an exported file only when more than half of its filled cells fit. A bank cell counts only in a row with a filled account cell. An account fits as an IBAN with a valid checksum or as five or more digits. A bank fits as eight digits, as a BIC whose letters 5 and 6 are the IBAN country of the row, or, in a row without an IBAN, as a BIC of 11 characters whose letters 5 and 6 are a country. The import keeps the cells as written.
 
 #### Scenario: A bank name in capitals under Bank
 
@@ -298,6 +298,14 @@ The app SHALL assign an account or bank column of an exported file only when mor
 - **THEN** no transaction has a counterparty BIC
 - **AND** the same rows with "BYLADEM1001", "COBADEFFXXX", and "12030000" under Bank give these three as the counterparty BIC
 - **AND** bank codes of 7 or 9 digits, such as "1203000" and "120300000", give no counterparty BIC
+
+#### Scenario: A BIC in a row without an account
+
+- **GIVEN** a file with the nine headers of the export
+- **AND** one row with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank
+- **AND** two rows with an empty Account and "PBNKDEFF" and "COBADEFF" under Bank
+- **WHEN** the file is imported
+- **THEN** the transactions have the counterparty BIC BYLADEM1001, PBNKDEFF, and COBADEFF
 
 #### Scenario: A header that differs from the export in one name
 
