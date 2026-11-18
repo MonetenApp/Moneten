@@ -33,6 +33,8 @@ One task per requirement of the spec, and the tasks of the design before them. A
 - [ ] 2.20 Light and dark appearance. Verify a switch of macOS while the app runs.
 - [x] 2.21 Booking dates do not move with the time zone. Verify with a test that a `Day` gives the same date in the time zones of Berlin and Auckland. Verified by DayBridgeTests "A booking date stored in Berlin shows the same date with the Mac in Auckland, because the date is read in GMT": 9 November 2026 shows as "09.11.2026" in German through `Day.calendar(like:)` with the Mac in either time zone, while the calendar of the Mac in Auckland itself shows noon GMT as "10.11.2026". The test fails when `Format.day` does not read the date in the time zone of its calendar. `Format.day(_:calendar:locale:)` moved from the app to `Sources/Domain/Format.swift` for this test, with the locale as a parameter. DayBridgeTests "Every day of 2011 and 2026 goes through noon GMT and back unchanged" covers both time zones for every day of the two years.
 
+- [ ] 2.22 Error of a refresh after a switch of the language. Store the error of a refresh as data, as the design "The error of a refresh is stored as data" says, and test first that a stored failure keeps its case and the answer of the bank and no text of the app (#310).
+
 ## 3. Starter categories
 
 - [x] 3.1 The German starter categories of the change `add-categories` (task 1.20) appear in a database that the app creates with a German interface. Verify it in the debug harness. Verified in #268: a database created with `-AppleLanguages (de)` has Einnahmen, Wohnen, Mobilität, Freizeit, Versicherungen, Umbuchungen, and Unkategorisiert in the sidebar snapshot.

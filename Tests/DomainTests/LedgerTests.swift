@@ -788,7 +788,7 @@ struct LedgerTests {
 		notSetYet.initialBalanceIsSet = false
 		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today, refresh: .idle) == nil)
 		var failed = unexplained
-		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
+		failed.refreshError = RefreshError(failure: .network("The transactions could not be fetched."), date: Date())
 		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today, refresh: .idle) == nil)
 	}
 

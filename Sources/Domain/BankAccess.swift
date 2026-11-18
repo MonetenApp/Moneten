@@ -288,11 +288,11 @@ extension Account {
 // MARK: Status of an account
 
 /// The error of the last refresh of an account: the sidebar shows the message in place of the
-/// balance, and the error popover shows all of it.
+/// balance, and the error popover shows all of it. It stores the failure as data and no text of the app, so the app
+/// words it in the language that it has when it shows it (#310).
 public struct RefreshError: Codable, Hashable, Sendable {
-	public var message: String
-	/// The return code of the bank, for example "9010".
-	public var code: String?
+	/// Why the refresh failed, with the answer of the bank as the bank sent it.
+	public var failure: SyncFailure
 	public var date: Date
 	/// The notices of the bank from the same session.
 	public var notices: [String]
@@ -313,10 +313,9 @@ public struct RefreshError: Codable, Hashable, Sendable {
 	/// app stops at 2.
 	public static let lockedLoginLimit = 2
 
-	public init(message: String, code: String? = nil, date: Date, notices: [String] = [], waitsForUser: Bool = false,
-		suggestsEditLoginData: Bool = false, lockedLogins: Int? = nil) {
-		self.message = message
-		self.code = code
+	public init(failure: SyncFailure, date: Date, notices: [String] = [], waitsForUser: Bool = false, suggestsEditLoginData: Bool = false,
+		lockedLogins: Int? = nil) {
+		self.failure = failure
 		self.date = date
 		self.notices = notices
 		self.waitsForUser = waitsForUser
@@ -324,16 +323,43 @@ public struct RefreshError: Codable, Hashable, Sendable {
 		self.lockedLogins = lockedLogins
 	}
 
-	/// An error stored before `waitsForUser`, `suggestsEditLoginData`, or `lockedLogins` existed has no such key.
+	/// The text of the failure, in the language of the app at the time it is read.
+	public var message: String { failure.message }
+
+	/// The return code of the bank, for example "9010".
+	public var code: String? { failure.bankMessage?.code }
+
+	private enum CodingKeys: String, CodingKey {
+		case failure, date, notices, waitsForUser, suggestsEditLoginData, lockedLogins
+		/// The text of an error stored before #310, in the language of the app at that time, and its return code.
+		case message, code
+	}
+
+	/// An error stored before `waitsForUser`, `suggestsEditLoginData`, or `lockedLogins` existed has no such key. One
+	/// stored before #310 has `message` and `code` in place of `failure`. It reads as a message of the bank, which
+	/// shows the stored text and the code as before, until the next refresh replaces it.
 	public init(from decoder: Decoder) throws {
 		let c = try decoder.container(keyedBy: CodingKeys.self)
-		message = try c.decode(String.self, forKey: .message)
-		code = try c.decodeIfPresent(String.self, forKey: .code)
+		if c.contains(.failure) {
+			failure = try c.decode(SyncFailure.self, forKey: .failure)
+		} else {
+			failure = .bank(BankMessage(code: try c.decodeIfPresent(String.self, forKey: .code), text: try c.decode(String.self, forKey: .message)))
+		}
 		date = try c.decode(Date.self, forKey: .date)
 		notices = try c.decode([String].self, forKey: .notices)
 		waitsForUser = try c.decodeIfPresent(Bool.self, forKey: .waitsForUser) ?? false
 		suggestsEditLoginData = try c.decodeIfPresent(Bool.self, forKey: .suggestsEditLoginData) ?? false
 		lockedLogins = try c.decodeIfPresent(Int.self, forKey: .lockedLogins)
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var c = encoder.container(keyedBy: CodingKeys.self)
+		try c.encode(failure, forKey: .failure)
+		try c.encode(date, forKey: .date)
+		try c.encode(notices, forKey: .notices)
+		try c.encode(waitsForUser, forKey: .waitsForUser)
+		try c.encode(suggestsEditLoginData, forKey: .suggestsEditLoginData)
+		try c.encodeIfPresent(lockedLogins, forKey: .lockedLogins)
 	}
 }
 
@@ -457,7 +483,7 @@ extension SyncState {
 	/// tell it apart, so the command is a suggestion.
 	public func accountRefreshes(of accounts: [UUID], notices: [BankMessage], at date: Date) -> [UUID: AccountRefresh] {
 		func error(_ failure: SyncFailure, at date: Date, ofAccess: Bool = false) -> AccountRefresh {
-			.failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: date, notices: notices.map(\.text),
+			.failed(RefreshError(failure: failure, date: date, notices: notices.map(\.text),
 				waitsForUser: failure.waitsForUser, suggestsEditLoginData: ofAccess && failure.mayAskForNewSetup,
 				lockedLogins: failure.isWebsiteLoginNeeded ? 0 : nil))
 		}

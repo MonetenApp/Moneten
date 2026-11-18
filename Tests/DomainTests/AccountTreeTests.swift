@@ -148,7 +148,7 @@ struct AccountTreeTests {
 	func markers() {
 		let privat = AccountGroup(name: "Private", position: 0, isExpanded: false)
 		let family = AccountGroup(name: "Family", parentID: privat.id, position: 1)
-		let error = RefreshError(message: "The PIN is wrong.", code: "9931", date: Date(timeIntervalSince1970: 1_800_000_000))
+		let error = RefreshError(failure: .pinRejected(BankMessage(code: "9931", text: "The PIN is wrong.")), date: Date(timeIntervalSince1970: 1_800_000_000))
 		let giro = Account(groupID: privat.id, position: 0, name: "Girokonto", kind: .giro, source: .bank, refreshError: error)
 		let savings = Account(groupID: family.id, position: 0, name: "Tagesgeld", kind: .savings, source: .offline)
 		let outside = Account(position: 1, name: "Bargeld", kind: .cash, source: .offline)

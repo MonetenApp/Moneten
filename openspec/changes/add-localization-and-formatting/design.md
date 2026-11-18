@@ -69,6 +69,16 @@ A localized text is never data otherwise. A key, a value that the app compares, 
 
 Alternative: store an empty name and word it at display. Every view, the export, and the search would then need the rule, for one name that the user can change in one step.
 
+### The error of a refresh is stored as data
+
+The error of the last refresh of an account is not a default that the user may change, so the app stores no text of its own for it. `RefreshError.failure` holds the `SyncFailure` with its values: the case, such as `pinRejected`, and the code and the text that the bank sent, as the bank sent them. `RefreshError.message` and `RefreshError.shownMessage` build the text when a view shows it, so a switch of the language and a restart show the error in the new language. The column `account.refreshError` keeps its JSON. `SyncFailure` encodes `reason` with the name of its case, `code`, `text`, and `accountName` for the answer of the bank, `request` for the request that an automatic refresh could not ask, and `detail` for the text of a network failure, an unsupported request, or a failed save. `noTANMethodOfBank` stores the next step as a value of `SyncFailure.NextStep`, such as `dkbApp`, and no longer as a sentence.
+
+An error stored before #310 has `message` and `code` in place of `failure`. The app reads it as a message of the bank with that code and text, which shows the stored text as before and the code beside it, until the next refresh replaces it. The database needs no migration, because the decoder reads both forms, and "Import All Data" reads an older export file the same way.
+
+The text in `detail` comes from the source of the failure: the FinTS helper, an extension, macOS, or the database. Some of these texts are sentences of a connector, such as the timeout of the FinTS helper, which the connector writes in the language of the refresh. They stay as stored until the next refresh, because turning each of them into a value would move the sentences of every connector into `Domain`.
+
+Alternative: a migration that clears the old errors. That would also clear `waitsForUser` and `lockedLogins`, so an access whose PIN the bank rejected, or whose login ING locked, would join the automatic refresh again.
+
 ### A pure completion function in `Domain`
 
 The completion is a function in `Domain`. It takes the typed text, today as a `Day`, the order of day, month, and year from the region, and whether the field expects a future date. It returns a `Day`, or nothing when the text is not a date. The date field in `App` calls it while the user types and when the user leaves the field. A pure function lets the tests set today to 9 November 2026 or 15 February 2027 without a clock. It is `Day(typed:today:order:expectsFuture:)` in `Sources/Domain/DateCompletion.swift`, and `DateOrder(locale:)` gives the order of a region.
@@ -134,7 +144,7 @@ The time is the short time of the locale without seconds. The weekday comes from
 ## Risks / Trade-offs
 
 - [A text that a library builds as a `String` without `String(localized:)` stays English.] → The check sees only literals that are looked up. Review a new message of a library for `String(localized:)`, as for any text of the app.
-- [A text stored in the database, such as the error of the last refresh, keeps the language in which it was written.] → It changes with the next refresh.
+- [The text of a network failure, an unsupported request, or a failed save keeps the language of the refresh.] → It changes with the next refresh. Every other part of the error of a refresh follows the language of the app.
 - [A day typed more than two days ahead lands in the previous month.] → The field shows the full date at once, and the user can type the month as well.
 - [Near the end of a month, a day of the next month needs the month typed.] → The field shows the full date at once, so the user sees 01.11.2026 and can type "1.12" instead.
 
