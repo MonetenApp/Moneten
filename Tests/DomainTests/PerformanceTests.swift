@@ -71,6 +71,9 @@ struct PerformanceTests {
 		// Every row holds " kunden", so every row reads its fields.
 		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
+		// An amount word compares the exact amounts of the rows that hold its digits, here those of -49,98 €. No row is
+		// exactly 49,99, and the KWD rows of 49,985 to 49,994 only round to it.
+		let (amountWordOverAll, amountWordCount) = overAll("49,98")
 		let (noSearch, noSearchCount) = overAll("")
 		let category = fastest { _ = ledger.rows(in: .category(categories[3].id)).rows }
 		var range = TransactionFilter()
@@ -91,12 +94,12 @@ struct PerformanceTests {
 		let categorizer = Categorizer(ledger: ledger)
 		let rules = fastest { for t in ts.prefix(5_000) { _ = categorizer.category(for: t) } }
 		func found(_ count: Int?) -> String { count.map { "\($0) rows" } ?? "gave up" }
-		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(found(wildcardCount))), field \(field) (\(found(fieldCount))), amount \(amount) (\(found(amountCount))), regex \(regex) (\(found(regexCount))), over 50,000: name:Haendler* \(fieldOverAll) (\(found(fullScanCount))), name:Haendler1* \(rareFieldOverAll) (\(found(rareFieldCount))), Kunden* \(prefixOverAll) (\(found(prefixCount))), purpose:Rech* \(purposeOverAll) (\(found(purposeCount))), regex \(regexOverAll) (\(found(regexOverAllCount))), regex every row reads \(slowRegexOverAll) (\(found(slowRegexCount))), plain \(plainOverAll) (\(found(plainOverAllCount))), no search \(noSearch) (\(found(noSearchCount))), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
+		print("build \(build), import of 2,000 and check of 100 \(update), search \(search) (\(count) rows), wildcard \(wildcard) (\(found(wildcardCount))), field \(field) (\(found(fieldCount))), amount \(amount) (\(found(amountCount))), regex \(regex) (\(found(regexCount))), over 50,000: name:Haendler* \(fieldOverAll) (\(found(fullScanCount))), name:Haendler1* \(rareFieldOverAll) (\(found(rareFieldCount))), Kunden* \(prefixOverAll) (\(found(prefixCount))), purpose:Rech* \(purposeOverAll) (\(found(purposeCount))), regex \(regexOverAll) (\(found(regexOverAllCount))), regex every row reads \(slowRegexOverAll) (\(found(slowRegexCount))), plain \(plainOverAll) (\(found(plainOverAllCount))), amount word \(amountWordOverAll) (\(found(amountWordCount))), no search \(noSearch) (\(found(noSearchCount))), category \(category), amount range \(amountRange) (\(rangeCount) rows), sidebar \(sidebar) (\(amounts.count) amounts, budget \(budget(.milliseconds(20)))), 5,000 categorizations \(rules)")
 		#expect(count > 0)
 		#expect(rangeCount == 15_355)
 		// Only a regular expression can give up. A search that gave up says nothing about its rows, and in a release
 		// build it fails its time budget below. A search that finished must find its rows.
-		#expect([wildcardCount, fieldCount, amountCount, fullScanCount, prefixCount, purposeCount, plainOverAllCount, rareFieldCount].allSatisfy { ($0 ?? 0) > 0 })
+		#expect([wildcardCount, fieldCount, amountCount, fullScanCount, prefixCount, purposeCount, plainOverAllCount, rareFieldCount, amountWordCount].allSatisfy { ($0 ?? 0) > 0 })
 		let regexCounts = [("/Haendler1/", regexCount), ("/Rechnung 1/", regexOverAllCount), (#"/\d{5} Kunden/"#, slowRegexCount)]
 		for (search, count) in regexCounts {
 			if let count { #expect(count > 0, "\(search)") }
@@ -121,6 +124,7 @@ struct PerformanceTests {
 		#expect(regexOverAll < budget(.milliseconds(200)))
 		#expect(slowRegexOverAll < budget(.milliseconds(600)))
 		#expect(plainOverAll < budget(.milliseconds(150)))
+		#expect(amountWordOverAll < budget(.milliseconds(150)))
 		#expect(amount < budget(.milliseconds(150)))
 		// A regular expression reads the fields as they are, so the search text rules out only the rows without its plain text.
 		#expect(regex < budget(.milliseconds(200)))

@@ -17,6 +17,7 @@
 # file is named after a person, a catalog folder under a path with a name, and a name as the argument of
 # "key", "mainkey", and "filterbar". The log names an extension by the first 8 hex digits of the SHA-256
 # of its name, which `digest` computes here, so the check compares the hash and never the name.
+# Issue #300 added three exports right after a sheet closes, whose alerts close at once.
 # The check also opens CSV previews, one that fails and one whose rows go to another account that the import
 # asks about, and reads their state and rows. The handoff compares the sums of the stored amounts and days with
 # the sums the check expects, so the log says "ok" or "differs" and never holds an amount.
@@ -201,6 +202,19 @@ poll "^importall done$" importall "$DATA/access.json"
 poll "^ext access 0 source=extension state=idle$" extstate
 poll "^exportall " exportall "$DATA/missing/export.json"
 poll "^alert " alert
+# An export right after a sheet closes, and its alert closed as fast as the harness can. The alert waits until the
+# sheet has slid out, so the close never meets the slide in AppKit (issue #300). The last run waits for the alert.
+for run in 1 2 3; do
+	send sheet exportAllData
+	poll "^topsheet shown=true$" topsheet
+	start=$(lines)
+	send sheet ""
+	send exportall "$WORK/fast.json"
+	from=$start
+	poll "^exportall done$" alertstate
+	[ "$run" = 3 ] && poll "^alertstate title=[0-9a-f]* shown=true$" alertstate
+	poll "^alert title=[0-9a-f]" alert
+done
 send sheet newAccount
 send setup "entry 12030000"
 send setup next

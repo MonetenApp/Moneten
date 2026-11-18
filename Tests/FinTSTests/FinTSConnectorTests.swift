@@ -696,7 +696,8 @@ struct FinTSConnectorTests {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
-		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326"].map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326", "7654328", "7654329", "7654330", "7654331"]
+			.map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
 		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
 
@@ -740,6 +741,31 @@ struct FinTSConnectorTests {
 			.bank(BankMessage(code: "9160", text: "Erforderliche Auftragsreferenz fehlt")),
 			.unsupported("Moneten can't read this securities account at this bank yet."),
 		])
+		// Holdings without a value count with their quantity times their price, and each row shows the value that the balance counts.
+		guard case let .fetched(computed) = report.outcomes[depots[6].accountID] else { Issue.record("depot with computed values not fetched"); return }
+		#expect(computed.balance == Money(minorUnits: 223_000, currency: "EUR"))
+		#expect(computed.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 120_000, currency: "EUR"), Money(minorUnits: 5_000, currency: "EUR"),
+			Money(minorUnits: 98_000, currency: "EUR")])
+		#expect(computed.holdings?.last?.isNominal == true && computed.holdings?.last?.nominalCurrency == "EUR")
+		// Holdings in two currencies count with the values in the currency of the account, and each row shows the value in euro that the balance counts.
+		guard case let .fetched(converted) = report.outcomes[depots[7].accountID] else { Issue.record("depot in two currencies not fetched"); return }
+		#expect(converted.balance == Money(minorUnits: 142_000, currency: "EUR"))
+		#expect(converted.holdings?.map(\.marketValue) == [Money(minorUnits: 92_000, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR")])
+		// The accrued interest of 0,0015 € rounds to 0,00 € in the row, so 3 times 0,3345 € shows 1,00 €, and the balance is the 2,00 € of the rows.
+		guard case let .fetched(fractions) = report.outcomes[depots[8].accountID] else { Issue.record("depot with fractions of a cent not fetched"); return }
+		#expect(fractions.balance == Money(minorUnits: 200, currency: "EUR"))
+		#expect(fractions.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 100, currency: "EUR"), Money(minorUnits: 100, currency: "EUR")])
+		// The row shows the second value and the second accrued interest, both in euro.
+		guard case let .fetched(interest) = report.outcomes[depots[9].accountID] else { Issue.record("depot with accrued interest in two currencies not fetched"); return }
+		#expect(interest.balance == Money(minorUnits: 142_920, currency: "EUR"))
+		#expect(interest.holdings?.first?.marketValue == Money(minorUnits: 92_000, currency: "EUR"))
+		#expect(interest.holdings?.first?.accruedInterest == Money(minorUnits: 920, currency: "EUR"))
+		#expect(interest.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 92_920, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR")])
+		// On a page without a total, the balance is the sum of the values that the rows show.
+		for result in [computed, converted, fractions, interest] {
+			let rows = (result.holdings ?? []).compactMap { $0.value(in: "EUR")?.minorUnits }
+			#expect(rows.count == result.holdings?.count && result.balance.map { [$0.minorUnits] } == [rows.reduce(0, +)])
+		}
 
 		guard case let .fetched(giro) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not fetched"); return }
 		#expect(giro.balance == Money(minorUnits: 109_620, currency: "EUR"))
@@ -977,7 +1003,7 @@ struct FinTSConnectorTests {
 		(#"{"type":"failed","kind":"approvalDeclined","code":"9941","text":"Freigabe abgelehnt"}"#, .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
 		// The access has the Bankleitzahl of DKB, so the next step names the DKB app (DKBTests).
 		(#"{"type":"failed","kind":"noTANMethod","code":"9075","text":"Starke Kundenauthentifizierung notwendig"}"#,
-			.noTANMethodOfBank(BankMessage(code: "9075", text: "Starke Kundenauthentifizierung notwendig"), nextStep: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")),
+			.noTANMethodOfBank(BankMessage(code: "9075", text: "Starke Kundenauthentifizierung notwendig"), nextStep: .dkbApp)),
 		(#"{"type":"failed","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}"#, .bank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"))),
 	])
 	func errors(line: String, expected: SyncFailure) async throws {
@@ -1041,7 +1067,7 @@ struct FinTSConnectorTests {
 	@Test("The fake helper of a debug build fails the refresh of each login of an error with that error", arguments: [
 		("gesperrt", blocked),
 		("deaktiviert", deactivated),
-		("ohnetan", .noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")),
+		("ohnetan", .noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: .dkbApp)),
 		("falschetan", .tanRejected(BankMessage(code: "9941", text: "TAN ungültig"))),
 		("abgelehnt", .approvalDeclined(BankMessage(code: "9941", text: "Freigabe abgelehnt"))),
 		("ersetzt", .loginReplaced(BankMessage(code: "9940", text: "Bitte melden Sie sich im Online-Banking an oder kontaktieren den Support."))),
