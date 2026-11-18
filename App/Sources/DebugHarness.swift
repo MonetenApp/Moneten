@@ -987,6 +987,31 @@ final class DebugHarness {
 				("selected", .count(model.visibleSelection.count)), ("checked", .count(originals.filter(\.isChecked).count)),
 				("review", originals.first?.review.map { .state($0) } ?? .word("none")), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
+		// "account" or "category": "Go to" from the first row of the list to its account or category, with the last row of that
+		// view selected, so that the table must scroll to it. "reveal" then logs whether the table shows the selected row.
+		case "goto":
+			guard let first = model.visibleTransactions.first else { return log("goto no rows") }
+			let target: SidebarSelection? = switch argument {
+			case "account": .account(first.accountID)
+			case "category": model.ledger.effectiveCategoryID(of: first).map { .category($0) }
+			default: nil
+			}
+			guard let target, let last = model.rows(for: TableKey(selection: target, filter: model.filter)).rows.last else { return log("goto no target") }
+			model.go(to: target, selecting: last.id)
+			log("goto", ("", .choice(argument, of: ["account", "category"])))
+		case "reveal":
+			guard let table = transactionTables().first else { return log("reveal no table") }
+			let shown = table.rows(in: table.visibleRect)
+			log("reveal", ("selected", .count(model.visibleSelection.count)), ("row", .position(table.selectedRow >= 0 ? table.selectedRow : nil)),
+				("rows", .count(table.numberOfRows)), ("shown", .flag(table.selectedRow >= 0 && NSLocationInRange(table.selectedRow, shown))))
+		// "<n>": searches for the name of row n, which hides the selected rows with another name.
+		case "searchrow":
+			guard let n = Int(argument), model.visibleTransactions.indices.contains(n) else { return log("searchrow no row") }
+			model.filter.searchText = TransactionFilter.searchText(for: model.visibleTransactions[n].name)
+			log("searchrow", ("selected", .count(model.selectedTransactions.count)), ("shown", .count(model.visibleSelection.count)))
+		// "menu" runs "Add Comment..." of the Account menu, "row" the comment item of the context menu of the first row. Each logs
+		// how many rows the comment sheet would change. The rows that a search hides must never be among them.
+		case "comment": comment(argument)
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
 		case "droprows":
@@ -1882,6 +1907,30 @@ final class DebugHarness {
 		}
 		log("menuexport item", ("title", .hash(menu.items[index].title)))
 		menu.performActionForItem(at: index)
+	}
+
+	private func comment(_ argument: String) {
+		guard let model else { return }
+		let titles = [String(localized: "Add Comment..."), String(localized: "Edit Comment...")]
+		let menu: NSMenu? = switch argument {
+		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
+		case "menu": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } }
+		case "row": contextMenu(row: 0, sidebar: false)
+		default: nil
+		}
+		menu?.update()
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else { return log("comment no item") }
+		let enabled = menu.items[index].isEnabled
+		// SwiftUI enables the commands of the menu bar only while the app is active, which a harness run is not. The check then runs
+		// the action of the item, as `menuexport` does.
+		if argument == "menu", !enabled { model.openCommentSheet() } else { menu.performActionForItem(at: index) }
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+			guard let model = self?.model else { return }
+			var ids: Set<UUID> = []
+			if case let .comment(s) = model.sheet { ids = s }
+			self?.log("comment", ("", .choice(argument, of: ["menu", "row"])), ("enabled", .flag(enabled)), ("sheet", .flag(!ids.isEmpty)),
+				("rows", .count(ids.count)), ("hidden", .count(ids.count - model.shown(ids).count)))
+		}
 	}
 
 	/// "Create Rule" in the context menu of the transaction table, as a right click builds it. Each item of the menu by

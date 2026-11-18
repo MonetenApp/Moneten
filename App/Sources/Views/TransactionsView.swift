@@ -487,9 +487,11 @@ struct TransactionTable: View {
 				// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
 				// only that text, so this runs only without selected text.
 				.onCopyCommand { copiedRows() }
+				// The table hands over its selection, which keeps the rows that a search hides, so both take the shown rows.
 				.contextMenu(forSelectionType: UUID.self) { ids in
-					TransactionMenu(ids: ids)
+					TransactionMenu(ids: model.shown(ids))
 				} primaryAction: { ids in
+					let ids = model.shown(ids)
 					if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
 				}
 				.background(RowReveal(proxy: proxy, key: key))

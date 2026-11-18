@@ -185,13 +185,13 @@ struct AppCommands: Commands {
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedManualAccount == nil)
-			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
+			// A bank dialog shows only while no other sheet is open, so ⌘K or ⌘⇧K would close it and drop a half-typed PIN.
 			Button("Assign Category...") { model.openCategoryPicker() }
 				.keyboardShortcut("k")
 				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
-			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
+			Button("Add Comment...") { model.openCommentSheet() }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
-				.disabled(!unlocked || model.selectedTransactions.isEmpty)
+				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
 				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)

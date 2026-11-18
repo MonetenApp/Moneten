@@ -871,7 +871,11 @@ final class AppModel {
 
 	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
 	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
-	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
+	var visibleSelection: Set<UUID> { shown(selectedTransactions) }
+
+	/// The rows of `ids` that the table shows. A command acts only on these, so that it never changes a row that a
+	/// search hides, such as the row that "Go to" selected before the user typed a search.
+	func shown(_ ids: Set<UUID>) -> Set<UUID> { ids.intersection(visibleTransactions.map(\.id)) }
 
 	/// The rows of a transaction table with the view and the filters of `key`.
 	func rows(for key: TableKey) -> TransactionSearchResult {
@@ -938,6 +942,12 @@ final class AppModel {
 	func openCategoryPicker() {
 		let ids = visibleSelection
 		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
+	}
+
+	/// What ⌘⇧K does: the comment of the selected rows on screen.
+	func openCommentSheet() {
+		let ids = visibleSelection
+		if !ids.isEmpty { sheet = .comment(ids) }
 	}
 
 	/// What "Create Rule" in the context menu of a transaction does: the settings of the category, with
