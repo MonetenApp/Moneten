@@ -156,7 +156,7 @@ Every part of another project that ships inside the app needs an entry in `Licen
 1. Read the license of the new version in its upstream repository or in its jar.
 2. Copy the license text unchanged into `Licenses/`, and copy its copyright lines unchanged into the entry. Never write a copyright line from memory.
 3. Set the version, the license, and the paths of the part inside the app.
-4. For a part under the GPL or the LGPL, set `source` to the URL template of the complete source of the version, with its build scripts, and to its SHA-256. The template must hold the version as `{version}`, `{version_url}` (with `+` as `%2B`), `{version_file}` (with `+` as `_`), or `{major}`, so the URL follows the version. `file` can name the attached file the same way. A release downloads it, checks it, and attaches it to the GitHub release. After a new version, the download fails until the SHA-256 of the new source is set.
+4. For a part under the GPL or the LGPL, set `source` to the URL template of the complete source of the version, with its build scripts, and to its SHA-256. The template must hold the version as `{version}`, `{version_url}` (with `+` as `%2B`), `{version_file}` (with `+` as `_`), or `{major}`, so the URL follows the version. `file` can name the attached file the same way. A release downloads it, checks it, and attaches it to the GitHub release. After a new version, the download fails until the SHA-256 of the new source is set. GitHub does not promise the same bytes for the archive of a tag forever, so the check of the SHA-256 can also fail without a new version. It fails closed, and the remedy is to check the new archive and set its SHA-256.
 
 ## Symbolicate a crash report
 

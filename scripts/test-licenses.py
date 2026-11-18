@@ -13,8 +13,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SCRIPT = REPO / "scripts/licenses.py"
-FILES = ["Licenses", "LICENSE", "Tools/FinTSProbeJava/dependencies.lock", "Package.resolved", "scripts/sparkle-tools.sh",
-	"App/project.yml", "Sources/CLua/VERSION", "Sources/ExtensionHost/PublicSuffix/VERSION"]
+# The files that licenses.py reads, as it lists them for the check at a tag.
+FILES = subprocess.run([sys.executable, str(SCRIPT), "inputs"], capture_output=True, text=True, check=True).stdout.split()
 MACH_O = b"\xcf\xfa\xed\xfe" + bytes(28)
 
 
@@ -56,7 +56,7 @@ class LicensesTests(unittest.TestCase):
 		for module in ("java.base", "java.desktop"):
 			(runtime / "legal" / module).mkdir(parents=True)
 			(runtime / "legal" / module / "LICENSE").touch()
-		(runtime / "lib").mkdir()
+		(runtime / "lib").mkdir(exist_ok=True)
 		(runtime / "lib/libjava.dylib").write_bytes(MACH_O)
 		self.assertEqual(self.run_script("build", str(app), "0.1.0").returncode, 0)
 		return app
@@ -158,6 +158,22 @@ class LicensesTests(unittest.TestCase):
 		self.assertEqual(self.add(app, "Resources/FinTSHelper/runtime/lib/server/libjvm.dylib", MACH_O).returncode, 0)
 		self.assertEqual(self.add(app, "Resources/notes.txt", b"text").returncode, 0)
 
+	def test_jar_inside_a_claimed_bundle_fails(self):
+		for path in ("Frameworks/Sparkle.framework/Versions/B/Resources/example-tools-1.0.0.jar",
+				"Resources/FinTSHelper/runtime/lib/example-tools-1.0.0.jar"):
+			with self.subTest(path=path):
+				app = self.app()
+				result = self.add(app, path)
+				self.assertIn(f"the jar Contents/{path}, which no entry", result.stderr)
+				shutil.rmtree(app)
+
+	def test_fat_64_binary_without_extension_fails(self):
+		for magic in (b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"):
+			with self.subTest(magic=magic.hex()):
+				app = self.app()
+				self.assertIn("Contents/Resources/example-tool, which no entry", self.add(app, "Resources/example-tool", magic + bytes(28)).stderr)
+				shutil.rmtree(app)
+
 	def test_debug_library_of_the_app_passes(self):
 		self.assertEqual(self.add(self.app(), "MacOS/Moneten.debug.dylib", MACH_O).returncode, 0)
 
@@ -198,7 +214,24 @@ class LicensesTests(unittest.TestCase):
 	def test_other_package_in_the_project_fails(self):
 		project = self.root / "App/project.yml"
 		project.write_text(project.read_text().replace("packages:\n", "packages:\n  Example:\n    url: https://example.com/example\n    exactVersion: 1.0.0\n"))
-		self.assertIn("App/project.yml adds the packages Example", self.run_script("check").stderr)
+		self.assertIn("App/project.yml adds the packages Example:", self.run_script("check").stderr)
+
+	def test_other_package_in_inline_form_fails(self):
+		project = self.root / "App/project.yml"
+		inline = '  Example: {url: "https://example.com/example", exactVersion: "1.0.0"}\n'
+		project.write_text(project.read_text().replace("packages:\n", "packages:\n" + inline))
+		self.assertIn("App/project.yml adds the packages Example: {url", self.run_script("check").stderr)
+
+	def test_unreachable_source_fails_with_its_name(self):
+		part = self.part("maven:com.github.hbci4j:hbci4j-core")
+		part["source"]["url"] = (Path(self.folder.name) / "missing").as_uri() + "/hbci4java-{version}.tar.gz"
+		part["license"] = "MIT"
+		del self.part("jdk:temurin-aarch64-mac")["source"]["sha256"]
+		self.part("jdk:temurin-aarch64-mac")["license"] = "MIT"
+		self.save()
+		result = self.run_script("sources", str(Path(self.folder.name) / "out"))
+		self.assertIn("of maven:com.github.hbci4j:hbci4j-core 4.1.17 cannot be downloaded", result.stderr)
+		self.assertNotIn("Traceback", result.stderr)
 
 	def test_test_only_package_needs_no_path(self):
 		resolved = json.loads((self.root / "Package.resolved").read_text())

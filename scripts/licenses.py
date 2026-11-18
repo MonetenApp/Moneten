@@ -25,7 +25,7 @@ never keeps the source of an old one. Only the SHA-256 of an attached archive is
 
 --root DIR runs on a copy of the repository: scripts/test-licenses.py, and publish in scripts/release.sh.
 """
-import argparse, hashlib, html, json, os, re, shutil, sys, urllib.parse, urllib.request
+import argparse, hashlib, html, json, os, re, shutil, sys, urllib.error, urllib.parse, urllib.request
 from pathlib import Path
 
 NOTICES = "Licenses/notices.json"
@@ -36,7 +36,8 @@ PROJECT_PACKAGES = {"MonetenKit", "Sparkle"}
 # Inside the app, a directory with one of these suffixes or a file with one of the next is one part.
 BUNDLES = (".framework", ".bundle", ".app", ".xpc", ".appex", ".plugin", ".kext", ".systemextension")
 LIBRARIES = (".jar", ".dylib", ".so", ".jnilib", ".a")
-MACH_O = {b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}
+MACH_O = {b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",
+	b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca"}
 LANGUAGES = ("en", "de")
 RELEASES = "https://github.com/MonetenApp/Moneten/releases/tag/v"
 
@@ -99,9 +100,13 @@ def pins(root):
 	found["vendor:public-suffix-list"] = (root / "Sources/ExtensionHost/PublicSuffix/VERSION").read_text().splitlines()[0]
 	project = (root / "App/project.yml").read_text()
 	block = re.search(r"^packages:\n((?:[ #].*\n|\n)*)", project, re.M)
-	others = set(re.findall(r"^  ([^ #:][^:]*):\s*$", block.group(1), re.M)) - PROJECT_PACKAGES if block else set()
+	# A key line of a package has an indent of two spaces, and its settings have more. Any other line,
+	# such as a package in the inline form, is a package that this check cannot read.
+	keys = "|".join(sorted(PROJECT_PACKAGES))
+	others = [line.strip() for line in (block.group(1) if block else "").splitlines()
+		if line.strip() and not line.strip().startswith("#") and not line.startswith("    ") and not re.fullmatch(rf"  ({keys}):\s*", line)]
 	if others:
-		raise Failure(f"App/project.yml adds the packages {', '.join(sorted(others))}, whose pins this check cannot read. "
+		raise Failure(f"App/project.yml adds the packages {'; '.join(others)}, whose pins this check cannot read. "
 			"Pin them in Package.resolved, or teach scripts/licenses.py their pin.")
 	return found
 
@@ -266,6 +271,8 @@ def check_app(root, app):
 			errors += legal_folders(contents / part["runtime"], part["id"])
 	for path in unclaimed(contents, contents, claimed):
 		errors.append(f"The app ships Contents/{path}, which no entry of {NOTICES} claims.")
+	for path in stray_jars(contents, claimed):
+		errors.append(f"The app ships the jar Contents/{path}, which no entry of {NOTICES} names. Jars come only from the pins.")
 	if errors:
 		raise Failure("\n".join(errors))
 
@@ -295,6 +302,16 @@ def unclaimed(contents, folder, claimed):
 			yield relative
 
 
+def stray_jars(contents, claimed):
+	"""Every jar that is not a claimed path, also inside a claimed bundle or folder."""
+	for folder, _, files in os.walk(contents):
+		for name in sorted(files):
+			path = Path(folder) / name
+			relative = str(path.relative_to(contents))
+			if name.endswith(".jar") and not path.is_symlink() and relative not in claimed:
+				yield relative
+
+
 def is_mach_o(path):
 	if path.suffix == ".class":
 		return False
@@ -317,8 +334,13 @@ def sources(root, folder):
 		if not cached.is_file() or sha256(cached) != part["source"]["sha256"]:
 			partial = cache / (name + ".part")
 			request = urllib.request.Request(source_url(part), headers={"User-Agent": "Moneten release"})
-			with urllib.request.urlopen(request, timeout=300) as response, open(partial, "wb") as out:
-				shutil.copyfileobj(response, out)
+			try:
+				with urllib.request.urlopen(request, timeout=300) as response, open(partial, "wb") as out:
+					shutil.copyfileobj(response, out)
+			except (urllib.error.URLError, OSError) as error:
+				partial.unlink(missing_ok=True)
+				raise Failure(f"The source archive {source_url(part)} of {part['id']} {part['version']} cannot be downloaded: {error}. "
+					f"Check its URL and the version, then set its SHA-256 in {NOTICES}.")
 			if sha256(partial) != part["source"]["sha256"]:
 				partial.unlink()
 				raise Failure(f"The source archive {source_url(part)} of {part['id']} {part['version']} has a wrong SHA-256. "
