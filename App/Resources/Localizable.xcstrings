@@ -2256,6 +2256,17 @@
         }
       }
     },
+    "Baader Bank expects the Stammnummer that your broker gives you. If the bank rejects the login, check that the Stammnummer is valid and that Baader Bank activated the FinTS access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Baader Bank erwartet die Stammnummer, die Ihnen Ihr Broker gibt. Lehnt die Bank die Anmeldung ab, prüfen Sie, ob die Stammnummer gültig ist und ob die Baader Bank den FinTS-Zugang freigeschaltet hat."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Back" : {
       "localizations" : {
         "de" : {
@@ -3797,6 +3808,17 @@
           }
         }
       }
+    },
+    "Customer portal of Baader Bank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kundenportal der Baader Bank"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "D" : {
       "localizations" : {
@@ -8350,6 +8372,17 @@
         }
       }
     },
+    "Request the FinTS access and its PIN at https://konto.baaderbank.de/ before the first login. Your broker gives you the Stammnummer." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beantragen Sie vor der ersten Anmeldung den FinTS-Zugang und seine PIN unter https://konto.baaderbank.de/. Die Stammnummer gibt Ihnen Ihr Broker."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Requesting the challenge of the bank..." : {
       "localizations" : {
         "de" : {
@@ -9175,6 +9208,17 @@
           }
         }
       }
+    },
+    "Stammnummer" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stammnummer"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Standing orders were not migrated, because the AppleScript export of MoneyMoney does not contain them. Your bank keeps them, so they continue as before." : {
       "localizations" : {
