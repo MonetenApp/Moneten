@@ -573,11 +573,13 @@ struct AmountWord {
 
 	private func matches(_ amount: UnsafeBufferPointer<UInt8>) -> Bool {
 		let isNegative = amount.first == UInt8(ascii: "-")
+		let digits = isNegative ? UnsafeBufferPointer(rebasing: amount.dropFirst()) : amount
+		// Zero has no sign, so -0 and +0 find it, as `amount=-0` does in a rule.
+		let isZero = digits.allSatisfy { $0 == UInt8(ascii: "0") || $0 == UInt8(ascii: ".") || $0 == UInt8(ascii: ",") }
 		switch sign {
-		case .minus where !isNegative, .plus where isNegative: return false
+		case .minus where !isNegative && !isZero, .plus where isNegative && !isZero: return false
 		default: break
 		}
-		let digits = isNegative ? UnsafeBufferPointer(rebasing: amount.dropFirst()) : amount
 		return readings.contains { $0.bytes.elementsEqual(digits) }
 	}
 

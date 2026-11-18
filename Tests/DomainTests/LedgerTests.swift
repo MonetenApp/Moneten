@@ -729,6 +729,7 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: day.adding(days: -1), amountMinor: 1_234, currency: "KWD", name: "Souk"),
 			Transaction(accountID: giro.id, bookingDate: day.adding(days: -2), amountMinor: -99, name: "Kiosk"),
 			Transaction(accountID: giro.id, bookingDate: day.adding(days: -3), amountMinor: -14_999, name: "Elektromarkt"),
+			Transaction(accountID: giro.id, bookingDate: day.adding(days: -4), amountMinor: 0, name: "Nullbuchung"),
 		]
 		let l = Ledger(accounts: [giro], transactions: rows)
 		func found(_ text: String) -> [String] {
@@ -750,7 +751,12 @@ struct LedgerTests {
 		#expect(found("149,990") == ["Elektromarkt"])
 
 		// The search with a sign finds the rows of the rule with the same amount.
-		for (word, amount) in [("+1.23", "1.23"), ("+1.2340", "1.2340"), ("-0,99", "-0,99"), ("-149,990", "-149,99")] {
+		// Zero has no sign: -0 and +0 find it under either sign, as amount=-0 does in a rule.
+		#expect(found("-0") == ["Nullbuchung"])
+		#expect(found("-0,00") == ["Nullbuchung"])
+		#expect(found("+0") == ["Nullbuchung"])
+		for (word, amount) in [("+1.23", "1.23"), ("+1.2340", "1.2340"), ("-0,99", "-0,99"), ("-149,990", "-149,99"),
+				("-0", "-0"), ("-0,00", "-0,00"), ("+0", "0")] {
 			let rule = try Rule(parsing: "amount=\(amount)")
 			#expect(found(word) == rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name), "\(word)")
 		}
