@@ -932,17 +932,20 @@ struct OpeningTests {
 		let vault = Vault(testing: folder)
 		defer { try? vault.removeStoredPassword(for: .automaticUnlock) }
 		let store = try vault.create(password: "alt-und-lang-genug", starterCategories: [])
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: "alt-und-lang-genug", store: store))
 		let backup = root.appendingPathComponent("Moneten-2026-11-09.sqlite")
 		try store.backup(to: backup)
-		try vault.storePassword("alt-und-lang-genug", for: .automaticUnlock)
 		try vault.changePassword(current: "alt-und-lang-genug", new: "neu-und-noch-laenger", on: store)
 		#expect(try vault.storedPassword(for: .automaticUnlock) == "neu-und-noch-laenger")
 		try store.close()
 
 		_ = try FileManager.default.replaceItemAt(folder.databaseFile, withItemAt: backup)
-		#expect(throws: Vault.Failure.incorrectPassword) { try vault.open(password: try #require(try vault.storedPassword(for: .automaticUnlock))) }
-		try vault.open(password: "alt-und-lang-genug").close()
-		try vault.refreshStoredPassword("alt-und-lang-genug")
+		#expect(throws: Vault.Failure.incorrectPassword) {
+			try vault.open(storedFor: .automaticUnlock, password: try #require(try vault.storedPassword(for: .automaticUnlock)))
+		}
+		let restored = try vault.open(password: "alt-und-lang-genug")
+		try vault.refreshStoredPassword("alt-und-lang-genug", on: restored)
+		try restored.close()
 		#expect(try vault.storedPassword(for: .automaticUnlock) == "alt-und-lang-genug")
 	}
 

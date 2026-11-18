@@ -29,9 +29,9 @@ struct SecurityChangeFailure: Error, CustomStringConvertible {
 
 extension AppModel {
 	/// Applies a change of the "Security" tab after the database password. Returns false for a wrong password,
-	/// which changes nothing. The lock settings go to the database. An unlock setting writes or deletes its own
-	/// Keychain entry through `Vault.setUnlockMethod(_:on:password:)`, and `unlockSettings` then follows it.
-	/// A failure is thrown and leaves the setting as it was.
+	/// which changes nothing. The lock settings go to the database. An unlock setting changes its state in the database
+	/// and writes or deletes its own Keychain entry through `Vault.setUnlockMethod(_:on:password:store:)`, and
+	/// `unlockSettings` then follows the database. A failure is thrown and leaves the setting as it was.
 	func changeSecurity(_ change: SecurityChange, password: String) throws -> Bool {
 		switch change {
 		case let .lockOnClose(on):
@@ -45,14 +45,20 @@ extension AppModel {
 			settings.lockAfterMinutes = minutes
 			try saveLockSettings(settings)
 		case let .unlock(entry, on):
+			guard let store else { throw SecurityChangeFailure(description: String(localized: "Unlock Moneten to change this setting.")) }
 			do {
-				guard try vault.setUnlockMethod(entry, on: on, password: password) else { return false }
+				guard try vault.setUnlockMethod(entry, on: on, password: password, store: store) else { return false }
 			} catch {
+				// The vault reports a failure of the Keychain as `Vault.Failure`, and one of the database as it came.
+				guard error is Vault.Failure else {
+					try? loadUnlockSettings()
+					throw SecurityChangeFailure(description: String(localized: "The setting could not be saved in the database. \(String(describing: error))"))
+				}
 				throw SecurityChangeFailure(description: on
 					? String(localized: "The database password could not be stored in the Keychain. \(String(describing: error))")
 					: String(localized: "The database password could not be deleted from the Keychain, so the setting stays on. \(String(describing: error))"))
 			}
-			if on { unlockSettings.insert(entry) } else { unlockSettings.remove(entry) }
+			try loadUnlockSettings()
 		}
 		return true
 	}

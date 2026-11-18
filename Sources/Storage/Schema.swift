@@ -430,6 +430,14 @@ enum Schema {
 				t.add(column: "deviatingParty", .text)
 			}
 		}
+		// The unlock settings that are on, one row each by the raw value of `Vault.PasswordEntry` (add-app-lock, issue
+		// #405). Before it, a setting was on while its Keychain entry existed, which another program can create. The table
+		// starts empty and takes nothing from the Keychain, so every setting of an existing database is off. It comes after v29.
+		m.registerMigration("v30") { db in
+			try db.create(table: "unlockMethod") { t in
+				t.column("name", .text).primaryKey()
+			}
+		}
 		return m
 	}
 

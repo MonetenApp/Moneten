@@ -11322,6 +11322,17 @@
       },
       "extractionState" : "manual"
     },
+    "The Keychain held a password for an unlock setting that is off for this database, and Moneten deleted it. Enter the database password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Schlüsselbund enthielt ein Passwort für eine Entsperr-Einstellung, die für diese Datenbank aus ist, und Moneten hat es gelöscht. Geben Sie das Datenbankpasswort ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The Keychain reported an error: %@" : {
       "localizations" : {
         "de" : {
@@ -11946,6 +11957,17 @@
           }
         }
       }
+    },
+    "The setting could not be saved in the database. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellung konnte nicht in der Datenbank gespeichert werden. %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The split transactions cannot be restored." : {
       "localizations" : {

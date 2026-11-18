@@ -41,6 +41,8 @@ public struct Vault: Sendable {
 		/// The Keychain has no key for a database without a password, or did not return it.
 		case keyNotInKeychain(String?)
 		case keychain(String)
+		/// The Keychain held the password of an unlock setting that the database has off. The vault deleted it.
+		case unlockMethodOff
 		/// The database has the new password, but the random key or its marker could not be removed.
 		case passwordSetWithLeftover(String)
 		/// The database has the new password, but the Keychain still holds the earlier one. `copies` are the
@@ -93,6 +95,7 @@ public struct Vault: Sendable {
 				String(localized: "No database password is set, and the key of the database could not be read from the Keychain. Another program may have removed the entry, or a new build of the app may have a different signature than the build that created the database. In the second case, open the database with that build and set a database password.")
 					+ (detail.map { "\n\n" + String(localized: "Keychain: \($0)") } ?? "")
 			case let .keychain(detail): String(localized: "The Keychain reported an error: \(detail)")
+			case .unlockMethodOff: String(localized: "The Keychain held a password for an unlock setting that is off for this database, and Moneten deleted it. Enter the database password.")
 			case let .passwordSetWithLeftover(detail):
 				String(localized: "The database password has been set, but Moneten could not remove the random key of the database: \(detail)")
 			case let .keychainNotUpdated(detail, copies):
@@ -130,10 +133,11 @@ public struct Vault: Sendable {
 	func keychain(_ entry: PasswordEntry) -> Keychain { Keychain(service: entry.service, file: keychainFile) }
 
 	/// The unlock settings. Each keeps the database password in a Keychain entry of its own, which only
-	/// `setUnlockMethod(_:on:password:)` writes after the password check and which turning the setting off
-	/// deletes. The entry is the setting: a setting is on exactly while its entry exists. Nothing of it is in the
-	/// user defaults, because any program of the user can write the settings file, and because all data folders
-	/// share that file while each database has its own entries. The raw value names the setting in the debug harness.
+	/// `setUnlockMethod(_:on:password:store:)` writes after the password check and which turning the setting off
+	/// deletes. Whether a setting is on lives in the encrypted database (`Store.unlockMethods()`), never in the
+	/// Keychain, because any program of the user can create an entry (issue #405), and never in the user defaults,
+	/// because any program of the user can write the settings file. The raw value names the setting in the database and
+	/// in the debug harness.
 	public enum PasswordEntry: String, Sendable, CaseIterable {
 		case automaticUnlock = "unlockAutomatically"
 		case touchID = "unlockWithTouchID"
@@ -312,7 +316,7 @@ public struct Vault: Sendable {
 	/// "Change the password" in the design of add-encrypted-database.
 	public func changePassword(current: String, new: String, on store: Store) throws {
 		try connect(folder.databaseFile, key: current).close()
-		let keptEntries = try unlockSettings()
+		let keptEntries = try store.unlockMethods()
 		try removeWorkFilesFirst()
 		let plan = try planRekey(from: current)
 		// Nobody could tell later whether a copy that cannot be read now still opens with the current password.
@@ -323,6 +327,8 @@ public struct Vault: Sendable {
 		try rekeyDatabase(store, from: current, to: new, restoringList: earlier)
 		let notUpdated = rekeyCopies(plan.toRekey, from: current, to: new, removingFailures: true)
 		if let failure = writeEach(new, to: keptEntries) {
+			// A setting whose entry the failed write removed is off now, as the message says.
+			try? turnOffMissing(keptEntries, on: store)
 			throw Failure.keychainNotUpdated(String(describing: failure), copies: notUpdated)
 		}
 		if !notUpdated.isEmpty { throw Failure.copiesNotUpdated(notUpdated) }
@@ -612,26 +618,36 @@ public struct Vault: Sendable {
 	}
 
 	/// Turns an unlock setting on or off after checking the database password. Returns false for a wrong
-	/// password, which changes nothing. On stores the password in the entry of this setting; off deletes
-	/// exactly that entry, so the other settings keep theirs and this one cannot come back without the password.
-	public func setUnlockMethod(_ entry: PasswordEntry, on: Bool, password: String) throws -> Bool {
+	/// password, which changes nothing. The database holds whether the setting is on, and the entry holds the
+	/// password. On writes the entry and then the state, and deletes the entry again when the state fails. Off deletes
+	/// exactly the entry of this setting and then the state, so a failed delete leaves the setting on.
+	public func setUnlockMethod(_ entry: PasswordEntry, on: Bool, password: String, store: Store) throws -> Bool {
 		guard verify(password: password) else { return false }
+		var methods = try store.unlockMethods()
 		if on {
 			try storePassword(password, for: entry)
+			methods.insert(entry)
+			do { try store.saveUnlockMethods(methods) } catch {
+				try? removeStoredPassword(for: entry)
+				throw error
+			}
 		} else {
 			try removeStoredPassword(for: entry)
+			methods.remove(entry)
+			try store.saveUnlockMethods(methods)
 		}
 		return true
 	}
 
-	/// The unlock settings of this database that are on: the ones whose entry exists. It reads no password.
-	public func unlockSettings() throws -> Set<PasswordEntry> {
+	/// The settings whose entry exists. Before the first unlock of a launch only the entries can be read, so the lock
+	/// screen offers these methods. The entries are no proof: `open(storedFor:password:upgrading:)` checks the
+	/// database. It reads no password.
+	public func storedEntries() throws -> Set<PasswordEntry> {
 		try keychain { try Set(PasswordEntry.allCases.filter { try keychain($0).contains(account: folder.keychainAccount) }) }
 	}
 
 	/// Writes the password into the entry of each setting, also after a write failed, and returns the first failure.
-	/// A failed write may have removed its entry, which turns that setting off, but no entry keeps an earlier password
-	/// because a later write did not run.
+	/// A failed write may have removed its entry, but no entry keeps an earlier password because a later write did not run.
 	private func writeEach(_ password: String, to entries: Set<PasswordEntry>) -> (any Error)? {
 		var first: (any Error)?
 		for entry in PasswordEntry.allCases where entries.contains(entry) {
@@ -640,29 +656,63 @@ public struct Vault: Sendable {
 		return first
 	}
 
-	/// The password after macOS confirmed the user for a request that offered `offered`. A request that offers
-	/// Touch ID and the Apple Watch does not say which one the user used, so the entry of the first offered
+	/// Turns off each setting of `methods` whose entry is gone, such as after a write that the Keychain refused, so the
+	/// toggle shows what works. An entry whose existence cannot be read counts as there.
+	private func turnOffMissing(_ methods: Set<PasswordEntry>, on store: Store) throws {
+		let missing = methods.filter { (try? keychain($0).contains(account: folder.keychainAccount)) == false }
+		guard !missing.isEmpty else { return }
+		try store.saveUnlockMethods(try store.unlockMethods().subtracting(missing))
+	}
+
+	/// The setting and its password after macOS confirmed the user for a request that offered `offered`. A request
+	/// that offers Touch ID and the Apple Watch does not say which one the user used, so the entry of the first offered
 	/// setting that has one counts. The entry of the automatic unlock is never read here.
-	public func unlockPassword(offered: [PasswordEntry]) throws -> String? {
+	public func unlockPassword(offered: [PasswordEntry]) throws -> (entry: PasswordEntry, password: String)? {
 		for entry in offered where entry != .automaticUnlock {
-			if let password = try storedPassword(for: entry) { return password }
+			if let password = try storedPassword(for: entry) { return (entry, password) }
 		}
 		return nil
 	}
 
-	/// Replaces each password in the Keychain that differs from the one that just opened the database, such as
-	/// the newer password of a database that the user replaced with a backup. The next unlock without the
-	/// password then works again. It rewrites an entry only after it read the entry: a read that fails, such as the
-	/// one of a locked Keychain whose prompt the user canceled, throws before anything changes, because a delete would
-	/// work there but the add would not. It never creates an entry: only `setUnlockMethod(_:on:password:)` does.
-	/// Every entry is written before the first failure is thrown, and a failed write may have removed its entry, so
-	/// the caller reads `unlockSettings()` again.
-	public func refreshStoredPassword(_ password: String) throws {
-		let stale = try unlockSettings().filter { entry in
+	/// Opens the database with the password from the entry of `entry`, and keeps it open only when the database says
+	/// that this setting is on. Another program can create the entry, so the entry alone proves nothing. When the
+	/// setting is off, every entry of a setting that is off goes, the database closes, and `unlockMethodOff` is thrown.
+	public func open(storedFor entry: PasswordEntry, password: String, upgrading: @Sendable () -> Void = {}) throws -> Store {
+		let store = try open(password: password, upgrading: upgrading)
+		let methods: Set<PasswordEntry>
+		do { methods = try store.unlockMethods() } catch {
+			try? store.close()
+			throw error
+		}
+		guard methods.contains(entry) else {
+			try? store.close()
+			for off in PasswordEntry.allCases where !methods.contains(off) { try? removeStoredPassword(for: off) }
+			throw Failure.unlockMethodOff
+		}
+		return store
+	}
+
+	/// Brings the entries in line with the settings in the database after an unlock with the password. The entry of a
+	/// setting that is off goes without being read, so it never counts and never receives the password. The entry of
+	/// a setting that is on and holds another password, such as the newer password of a database that the user replaced
+	/// with a backup, takes this one, so the next unlock without the password works again. It rewrites an entry only
+	/// after it read the entry: a read that fails, such as the one of a locked Keychain whose prompt the user canceled,
+	/// throws before any rewrite, because a delete would work there but the add would not. It never creates an entry:
+	/// only `setUnlockMethod(_:on:password:store:)` does. A setting whose entry is gone turns off. Every step runs
+	/// before the first failure is thrown.
+	public func refreshStoredPassword(_ password: String, on store: Store) throws {
+		let methods = try store.unlockMethods()
+		var first: (any Error)?
+		for entry in PasswordEntry.allCases where !methods.contains(entry) {
+			do { try removeStoredPassword(for: entry) } catch { first = first ?? error }
+		}
+		let stale = try methods.filter { entry in
 			guard let stored = try storedPassword(for: entry) else { return false }
 			return stored != password
 		}
-		if let failure = writeEach(password, to: stale) { throw Failure.keychain(String(describing: failure)) }
+		if let failure = writeEach(password, to: stale) { first = first ?? Failure.keychain(String(describing: failure)) }
+		try turnOffMissing(methods, on: store)
+		if let first { throw first }
 	}
 
 	/// Removes the entry that earlier builds shared between the three unlock settings.
@@ -691,7 +741,7 @@ public struct Vault: Sendable {
 	public func explanation(of error: any Error) -> String {
 		let text = String(describing: error)
 		switch error as? Failure {
-		case .incorrectPassword?, .newerVersion?, .keyNotInKeychain?, .keychain?, .folderNotWritable?, .writeProtected?: return text
+		case .incorrectPassword?, .newerVersion?, .keyNotInKeychain?, .keychain?, .unlockMethodOff?, .folderNotWritable?, .writeProtected?: return text
 		default: break
 		}
 		guard FileManager.default.fileExists(atPath: automaticBackup.path) else { return text }

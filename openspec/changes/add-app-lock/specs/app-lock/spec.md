@@ -170,7 +170,7 @@ The app SHALL accept the database password on the lock screen in every state, al
 
 ### Requirement: Unlock settings keep the password in the Keychain
 
-The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. A setting is on exactly while its own entry for this database exists, and only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
+The app SHALL store the database password in a Keychain entry of its own for each unlock setting that is turned on, and it SHALL delete exactly that entry when the setting is turned off. The entry holds only the password. Whether a setting is on is kept in the database. Only the launch reads the entry of "Unlock automatically at application start". The entries stay on this Mac and are not synced to other devices.
 
 #### Scenario: Turn on the first setting
 
@@ -206,6 +206,43 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 - **AND** the user starts the app with the data folder "Moneten"
 - **THEN** the main window shows the accounts without a prompt
 - **AND** "Unlock with Touch ID" is still on
+
+### Requirement: The database holds the state of each unlock setting
+
+The app SHALL keep whether each unlock setting is on in the encrypted database, where another program cannot write it. A Keychain entry of a setting that is off never unlocks the app and never receives the password, and the app deletes it at the next unlock. A database without this state has every unlock setting off, whatever entries the Keychain holds.
+
+#### Scenario: Another program creates the entry of a setting that is off
+
+- **GIVEN** "Unlock automatically at application start" is off
+- **WHEN** another program creates the Keychain entry "Moneten database password for automatic unlock" for this database with the text "geraten"
+- **AND** the user starts the app and unlocks it with the database password
+- **THEN** "Unlock automatically at application start" is still off
+- **AND** the Keychain holds no entry "Moneten database password for automatic unlock"
+- **AND** the next launch asks for the database password
+
+#### Scenario: The entry of a setting that is off opens the database at launch
+
+- **GIVEN** "Unlock automatically at application start" is off
+- **AND** another program created the Keychain entry "Moneten database password for automatic unlock" for this database with the database password
+- **WHEN** the user starts the app
+- **THEN** the lock screen asks for the database password and says that Moneten deleted a password of an unlock setting that is off
+- **AND** the Keychain holds no entry "Moneten database password for automatic unlock"
+
+#### Scenario: The entry of Touch ID while Touch ID is off
+
+- **GIVEN** "Unlock with Touch ID" is off
+- **AND** another program created the Keychain entry "Moneten database password for Touch ID" for this database with the database password
+- **WHEN** the user starts the app and confirms a Touch ID request with a registered finger
+- **THEN** the app stays locked and asks for the database password
+- **AND** the Keychain holds no entry "Moneten database password for Touch ID"
+
+#### Scenario: A database from before this state
+
+- **GIVEN** a database that a build before this change created, with "Unlock automatically at application start" on and its Keychain entry
+- **WHEN** the user starts the app of this change
+- **THEN** the lock screen asks for the database password
+- **AND** after the unlock "Unlock automatically at application start" shows off and its Keychain entry is gone
+- **AND** the user turns it on again on the "Security" tab, and the next launch opens without a prompt
 
 ### Requirement: A secret goes only into a Keychain entry of the app
 
