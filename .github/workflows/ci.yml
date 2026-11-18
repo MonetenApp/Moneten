@@ -42,19 +42,19 @@ jobs:
       - run: scripts/vendor-lua.sh --check
       - run: scripts/vendor-lua.sh --self-test
 
-  test:
+  # The macOS checks run as five jobs at once. One job of all of them took about 33 minutes, nearly all of it
+  # builds and tests that do not need each other. Each job builds what it checks, so none waits for another.
+  unit:
     runs-on: macos-15
-    # A green run takes about 30 minutes. A hung test then ends the job instead of holding a runner for six hours.
-    timeout-minutes: 90
+    # A hung test ends the job instead of holding a runner for six hours.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - run: swift --version
-      - run: brew install xcodegen
       # The made-up bank of the ext record tests. macOS 15 does not resolve names under localhost.
       - run: echo "127.0.0.1 bank.localhost" | sudo tee -a /etc/hosts
       - name: Tests
-        # The performance tests run below, alone and in a release build. Here they would keep the three
-        # cores of the runner busy while the FinTS tests measure how fast a helper ends.
+        # The performance tests run in the job performance, alone on their runner.
         run: scripts/test.sh --skip PerformanceTests
       - name: Export durability
         run: scripts/check-export-sync.sh
@@ -68,10 +68,24 @@ jobs:
             folder="Fixtures/extensions/${extension%%/*}"
             swift run --disable-keychain ext test "Fixtures/extensions/$extension" "$folder/fixture.json" "$folder/expected.json"
           done
+
+  performance:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "127.0.0.1 bank.localhost" | sudo tee -a /etc/hosts
       - name: Performance
         # The budgets of the performance tests hold for a release build only. See CONTRIBUTING.md.
         # The tests run one after another, so that no test measures the load of another one.
         run: scripts/test.sh -c release -Xswiftc -enable-testing --filter 'PerformanceTests|SessionTests/testHosts' --no-parallel
+
+  app:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -86,16 +100,32 @@ jobs:
         run: python3 scripts/check-localization.py .build/xcode
       - name: No personal data in the debug log
         run: scripts/check-debug-log.sh
-      - name: UI performance
-        run: scripts/perf-check.sh
       - name: FinTS probe with hbci4java
         # Downloads the jars of Tools/FinTSProbeJava/dependencies.lock, checks their SHA-256, and compiles the probe.
         run: scripts/fints-probe-java.sh --build-only
+
+  ui-performance:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - name: UI performance
+        run: scripts/perf-check.sh
+
+  unused-code:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: scripts/generate-project.sh
       - name: Unused code
         # The Periphery repository is archived, and Homebrew drops its formula in August 2027.
         # CI uses the last release, checked against its hash.
         run: |
           curl -sSL -o periphery.zip https://github.com/peripheryapp/periphery/releases/download/3.8.0/periphery-3.8.0.zip
           echo "07d4e286e31dd79164df39097e0b59f533c94badbe18158464a455ea88a166d7  periphery.zip" | shasum -a 256 -c
+          mkdir -p .build
           unzip -q periphery.zip -d .build/periphery-tool
           .build/periphery-tool/periphery scan
