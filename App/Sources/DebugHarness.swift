@@ -33,6 +33,8 @@ final class DebugHarness {
 	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
+	/// Set by "backup": answers the warning of "Backup Database..." without a database password and logs it.
+	var alertAnswer: ((NSAlert) -> NSApplication.ModalResponse)?
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
 	private static var requestedPath: String? {
@@ -185,6 +187,49 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// The buttons and switches of the sheet on top, or without a sheet of the main window, such as the lock screen and the
+		// first launch: each label by its hash, whether it is enabled, and the value of a switch. "press <n>" first clicks
+		// control number n, counted from 0.
+		case "controls":
+			let controls = { (self.fieldWindow.map(self.accessibility) ?? []).filter {
+				let role = ($0 as AnyObject).accessibilityRole?()
+				return role == .button || role == .checkBox || role == .link || role?.rawValue == "AXSwitch" || role?.rawValue == "AXToggle"
+			} }
+			let parts = argument.split(separator: " ")
+			if parts.count == 2, parts[0] == "press", let n = Int(parts[1]), controls().indices.contains(n) {
+				_ = (controls()[n] as AnyObject).accessibilityPerformPress?()
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+				let all = controls()
+				self?.log("controls", ("roles", .list(all.map { .choice(($0 as AnyObject).accessibilityRole?()?.rawValue ?? "", of: ["AXButton", "AXCheckBox", "AXLink", "AXSwitch", "AXToggle"]) })), ("labels", .list(all.map { .hash(($0 as AnyObject).accessibilityLabel?() ?? ($0 as AnyObject).accessibilityTitle?() ?? "") })),
+					("enabled", .list(all.map { .flag(($0 as AnyObject).isAccessibilityEnabled?() ?? false) })),
+					("values", .list(all.map { .flag(($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false) })))
+			}
+		// Puts a mouse move into the event queue of the app, as the pointer does over a window of the app, for the inactivity lock.
+		case "activity":
+			if let event = NSEvent.mouseEvent(with: .mouseMoved, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+				windowNumber: fieldWindow?.windowNumber ?? 0, context: nil, eventNumber: 0, clickCount: 0, pressure: 0) {
+				NSApp.postEvent(event, atStart: false)
+			}
+		// "<text>": whether the alert, the window that says why the database did not open, or the notice of the lock screen
+		// contains the text, such as the path of a file. The log holds only the answers, never the text.
+		case "says":
+			var failure = ""
+			if case let .failed(message) = model.phase { failure = message }
+			log("says", ("alert", .flag(model.alert.map { "\($0.title)\n\($0.message)".contains(argument) } ?? false)),
+				("failure", .flag(failure.contains(argument))), ("notice", .flag(model.lockNotice?.contains(argument) ?? false)))
+		// Presses ⌃⌘L, as the keyboard does, and logs the phase.
+		case "lockshortcut":
+			if let menu = NSApp.mainMenu?.items.first?.submenu {
+				menu.delegate?.menuNeedsUpdate?(menu)
+				menu.update()
+			}
+			guard let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command, .control], timestamp: 0, windowNumber: 0, context: nil,
+				characters: "l", charactersIgnoringModifiers: "l", isARepeat: false, keyCode: 37) else { return }
+			log("lockshortcut", ("handled", .flag(NSApp.mainMenu?.performKeyEquivalent(with: event) ?? false)), ("phase", .state(model.phase)))
+		// "<path>" chooses "Backup Database..." and answers its save panel with the path. "<path>|<button>" first answers the
+		// warning without a database password with button number n, counted from 0. Logs each text that the user would see by its hash.
+		case "backup": backup(argument)
 		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
 		case "update": update(argument, model: model)
 		// "Try Again" of the window that shows why the database did not open.
@@ -317,13 +362,14 @@ final class DebugHarness {
 				sheet.sendEvent(event)
 				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
-		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. The log rejects any other key.
+		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, or without a sheet to the main window, such as
+		// the lock screen, as the keyboard does. The log rejects any other key.
 		case "key":
 			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
 			let command = argument.hasPrefix("cmd")
 			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; case "tab": "\t"; default: String(argument.dropFirst(3)) }
-			if let sheet = topSheet, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
+			if let sheet = fieldWindow, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : argument == "tab" ? 48 : 24) {
 				let handled = sheet.performKeyEquivalent(with: event)
@@ -335,12 +381,14 @@ final class DebugHarness {
 		// Whether a sheet window is on screen. The window shows a moment after the state of the model, and a closing one
 		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
+		// "<n>" focuses editable field number n, counted from 0, of the sheet on top, or without a sheet of the main window,
+		// such as the field of the lock screen or of the first launch.
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
 				return view.subviews.flatMap(fields)
 			}
-			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
+			guard let sheet = fieldWindow, let view = sheet.contentView, let position = Int(argument) else { return }
 			let editable = fields(in: view)
 			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
 			// The field editor of the sheet takes the text of "type" while the app stays behind.
@@ -494,7 +542,8 @@ final class DebugHarness {
 			log("menucommands", ("enabled", .flag(AppCommands(model: model).unlocked)), ("transferring", .flag(model.isTransferringTransactions)),
 				("migration", .flag(model.isStoringMigration)))
 		// The settings window. "open" presses ⌘, as the keyboard does, "force" shows the window of an earlier "open" past the
-		// menu item, "tab <general|security>" selects a tab, and "press <n>" clicks switch number n of the open tab, counted from 0.
+		// menu item, "tab <general|security>" selects a tab, "close" closes the window as its close button does, and "press <n>"
+		// clicks switch number n of the open tab, counted from 0.
 		// Each logs whether the window is open, whether a sheet is attached to it, whether any window of the settings or of their
 		// sheet is visible, its tab, the switches that are on, the stored values of the switches of "General", and the stored language.
 		case "settings": settings(argument)
@@ -1142,6 +1191,11 @@ final class DebugHarness {
 		NSApp.windows.compactMap(\.attachedSheet).flatMap { sequence(first: $0) { $0.attachedSheet } }.last
 	}
 
+	/// The sheet on top, or the visible main window when no sheet is open, for "focusfield" and "key".
+	private var fieldWindow: NSWindow? {
+		topSheet ?? NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+	}
+
 	/// Logs the class, the content type, and the AutoFill hints of the first secure field in a sheet,
 	/// after it has the focus for two seconds, and the windows of the app then, so that an AutoFill
 	/// panel of macOS would show in the list.
@@ -1337,6 +1391,7 @@ final class DebugHarness {
 			}
 			hidden.orderFrontRegardless()
 		case "tab": model.settingsTab = parts.count > 1 && parts[1] == "security" ? .security : .general
+		case "close": window()?.performClose(nil)
 		case "press":
 			guard let number, switches().indices.contains(number) else { return log("settings press", ("count", .count(switches().count))) }
 			_ = (switches()[number] as AnyObject).accessibilityPerformPress?()
@@ -1836,6 +1891,26 @@ final class DebugHarness {
 				return
 			}
 		}
+	}
+
+	private func backup(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		defer {
+			savePanelAnswer = nil
+			alertAnswer = nil
+		}
+		alertAnswer = { [weak self] alert in
+			self?.log("backup warning", ("title", .hash(alert.messageText)), ("message", .hash(alert.informativeText)),
+				("buttons", .list(alert.buttons.map { .hash($0.title) })))
+			return NSApplication.ModalResponse(rawValue: NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + (parts.count > 1 ? Int(parts[1]) ?? 0 : 0))
+		}
+		savePanelAnswer = { [weak self] panel in
+			self?.log("backup panel", ("title", .hash(panel.title ?? "")), ("message", .hash(panel.message ?? "")), ("name", .hash(panel.nameFieldStringValue)))
+			return URL(filePath: parts[0])
+		}
+		model.backupDatabase()
+		log("backup", ("alert", model.alert.map { .hash($0.title) } ?? .presence(false)), ("sheet", .state(model.sheet)))
 	}
 
 	private func menuExport(_ argument: String) {
