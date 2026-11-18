@@ -76,7 +76,7 @@ struct SupportedBanksList: View {
 			name = bank.bank.name
 			detail = [bank.city, bank.code].filter { !$0.isEmpty }.joined(separator: " · ")
 			method = SupportedBanks.fintsMethod
-			note = bank.mergerNote ?? bank.loginHint?.help
+			note = SupportedBanks.note(of: bank)
 		}
 	}
 
