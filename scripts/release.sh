@@ -393,7 +393,11 @@ check_unchanged_feed() {
 # or a withdrawal replaced that asset after the comparison, and the upload without --clobber fails when
 # one of them uploaded a feed after the delete. So of a publish and a withdrawal at the same time, only
 # one replaces the feed that both read, and the other one stops without overwriting it. When the
-# upload fails, it uploads the feed that it deleted again. It prints why it failed.
+# upload fails, it tries to upload the feed that it deleted again. It prints why it failed, and returns
+# 1 when the feed of $1 is the one it read, and 2 when that try failed too. The release then holds no
+# feed, an asset that a failed upload left half written, the new feed whose upload reported an error
+# but arrived, or the feed of a command at the same time. The exit trap deletes $WORK, so it keeps
+# both feeds in $OUT and prints how to recover.
 replace_feed() {
 	if ! gh api -X DELETE "repos/$REPO/releases/assets/$2" > /dev/null; then
 		echo "The feed of $1 changed after it was read: a publish or a withdrawal ran at the same time. Nothing was uploaded." >&2
@@ -404,29 +408,67 @@ replace_feed() {
 	cp "$WORK/current.xml" "$WORK/restore/appcast.xml"
 	if gh release upload "$1" --repo "$REPO" "$WORK/restore/appcast.xml"; then
 		echo "The upload of the new feed to $1 failed, so the feed that was there before is back." >&2
-	else
-		echo "The upload of the new feed to $1 failed, and so did the upload of the feed that was there before. A publish or a withdrawal at the same time may have uploaded its own. Check that $FEED_URL answers." >&2
+		return 1
 	fi
-	return 1
+	KEPT="$OUT/feeds-$1"
+	mkdir -p "$KEPT/before" "$KEPT/new" && KEPT=$(cd "$KEPT" && pwd) \
+		&& cp "$WORK/current.xml" "$KEPT/before/appcast.xml" && cp "$3" "$KEPT/new/appcast.xml" \
+		|| echo "The copies of both feeds could not be written to $KEPT." >&2
+	cat >&2 <<-EOF
+	The upload of the new feed to $1 failed, and so did the try to upload the feed that was there before.
+	The release may hold no appcast.xml, an asset that a failed upload left half written, the new feed
+	if its upload arrived in spite of the error, or the feed of a publish or a withdrawal at the same time.
+	The folder of this run is deleted when it ends, so both feeds are kept here:
+	  the feed before:  $KEPT/before/appcast.xml
+	  the new feed:     $KEPT/new/appcast.xml
+	To recover:
+	1. List the feed of $1:
+	   gh api repos/$REPO/releases/tags/$1 -q '.assets[] | select(.name == "appcast.xml") | "\(.id) \(.state)"'
+	2. An asset in the state "uploaded" is a whole feed. Compare it with both copies, for example:
+	   gh api -H 'Accept: application/octet-stream' repos/$REPO/releases/assets/<id> | cmp - $KEPT/new/appcast.xml
+	   If it is the new feed, its upload arrived. If it is the feed before, the try to upload it again
+	   arrived. Any other feed comes from a publish or a withdrawal at the same time: leave it in place.
+	3. An asset in another state is the rest of a failed upload. Delete it, so that it frees the name:
+	   gh api -X DELETE repos/$REPO/releases/assets/<id>
+	4. When $1 holds no appcast.xml, upload one of the two copies, never with --clobber. The new feed
+	   finishes this command, and the feed before returns to the state before it:
+	   gh release upload $1 --repo $REPO $KEPT/new/appcast.xml
+	5. Check that $FEED_URL answers.
+	EOF
+	return 2
+}
+
+# Fails unless the feed at the feed URL no longer lists $1, carries the signature of the public update
+# key $3, and comes from the release $2, whose feed the withdrawal replaced. A stable version published
+# at the same time makes another release the newest, and its feed may list $1 again, while the feed
+# URL can still lead to the feed of $2 for a while. So the latest release must still be $2.
+check_withdrawn() {
+	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
+	LATEST=$(gh api "repos/$REPO/releases/latest" -q .tag_name) \
+		|| fail "GitHub does not answer for the latest release, so withdraw cannot tell whether a publish at the same time listed $1 again. Check that $FEED_URL no longer lists $1."
+	[ "$LATEST" = "$2" ] || fail "The latest release is ${LATEST:-none}, not $2: a publish at the same time made another release the newest, and its feed may list $1 again. Run withdraw again."
+	check_feed "$WORK/published.xml" "$3" || fail "The feed at $FEED_URL failed its check."
+	! grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" "$WORK/published.xml" \
+		|| fail "The feed at $FEED_URL still lists $1."
 }
 
 # The check of the signed result with the committed key stops a wrong key in the login Keychain: a
 # feed that no installed app can check would stop every update. check_unchanged_feed and replace_feed
 # stop the withdrawal when a pre-release was published at the same time, before it overwrites the
 # feed of the pre-release. A stable version published at the same time makes another release the
-# newest: check_unchanged_feed stops the withdrawal when that came first, the check after the upload
-# when it came before that check, and publish checks the old feed again after the change.
+# newest: check_unchanged_feed stops the withdrawal when that came first, check_withdrawn when it came
+# before that check, and publish checks the old feed again after the change.
 withdraw() {
 	KEY=$(committed_key)
 	check_production_key "$KEY"
 	withdrawn_feed "$1" "$KEY"
 	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
 	check_unchanged_feed "$STABLE" || fail "The feed of $STABLE is not the feed that withdraw read: a publish ran at the same time, or GitHub did not answer. Nothing was uploaded. Run withdraw again."
-	replace_feed "$STABLE" "$ASSET" "$WORK/withdrawn/appcast.xml" || fail "$1 is still in the feed. Run withdraw again."
-	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
-	check_feed "$WORK/published.xml" "$KEY" || fail "The feed at $FEED_URL failed its check."
-	! grep -q "<sparkle:shortVersionString>$1</sparkle:shortVersionString>" "$WORK/published.xml" \
-		|| fail "The feed at $FEED_URL still lists $1."
+	replace_feed "$STABLE" "$ASSET" "$WORK/withdrawn/appcast.xml" || case $? in
+		2) fail "Withdraw stopped, and the feed of $STABLE is unknown. Follow the steps above, then run withdraw again if $FEED_URL still lists $1." ;;
+		*) fail "$1 is still in the feed. Run withdraw again." ;;
+	esac
+	check_withdrawn "$1" "$STABLE" "$KEY"
 	echo "Took $1 out of the feed at $FEED_URL. Mark its release page as withdrawn, and release the fixed version."
 }
 
@@ -494,8 +536,10 @@ publish() {
 		[ -n "$STABLE" ] || fail "A pre-release needs a stable release that carries the feed."
 		gh release edit "v$1" --repo "$REPO" --draft=false --prerelease --latest=false
 		# Replacing the asset takes a few seconds, in which a check for updates fails and is tried again later.
-		replace_feed "$STABLE" "$ASSET" "$WORK/draft-feed/appcast.xml" \
-			|| fail "v$1 is public as a pre-release, but the feed of $STABLE does not list it. Turn v$1 back into a draft with gh release edit v$1 --repo $REPO --draft, then run publish again."
+		replace_feed "$STABLE" "$ASSET" "$WORK/draft-feed/appcast.xml" || case $? in
+			2) fail "v$1 is public as a pre-release, and the feed of $STABLE is unknown. Follow the steps above, then decide by the feed that $STABLE holds. The new feed lists v$1, so keep v$1 public, and update the texts of earlier releases with gh release edit as publish does. With the feed from before, turn v$1 back into a draft with gh release edit v$1 --repo $REPO --draft, then run publish again." ;;
+			*) fail "v$1 is public as a pre-release, but the upload of its feed to $STABLE failed. An upload that reports an error can still arrive, so check $FEED_URL first. If it lists $1, keep v$1 public, and update the texts of earlier releases with gh release edit as publish does. Otherwise turn v$1 back into a draft with gh release edit v$1 --repo $REPO --draft, then run publish again." ;;
+		esac
 		;;
 	*)
 		gh release edit "v$1" --repo "$REPO" --draft=false --latest
@@ -559,6 +603,7 @@ check_feeds() {
 	grep -q '<moneten:revision>3</moneten:revision>' "$WORK/withdrawn/appcast.xml" && ! grep -q '>0\.0\.2<' "$WORK/withdrawn/appcast.xml" \
 		|| fail "The withdrawal did not take 0.0.2 out of the feed with a revision one above the current one."
 	check_feed_race
+	check_withdrawn_rule "$KEY"
 	for CASE in "unsigned.xml:has no signature" "http.xml:has a disk image outside"; do
 		CURRENT="$WORK/${CASE%%:*}"
 		rm -rf "$WORK/withdrawn"
@@ -574,9 +619,11 @@ check_feeds() {
 # appcast.xml of v0.0.2 in $WORK/release: its id in the file "id" and its bytes in "feed". The file
 # "race" names the call of the withdrawal before which the publish uploads its feed: the read of the
 # id, the read of the asset, the first write after both, or the upload. "broken" is an upload of the
-# withdrawal that fails for another reason. A publish uses the same functions.
+# withdrawal that fails for another reason, and "both" fails the try to upload the old feed again too,
+# so the release holds no feed and both feeds must be kept in $OUT. A publish uses the same functions.
 check_feed_race() { (
 	R="$WORK/release"
+	OUT="$WORK/out"
 	gh() {
 		CALL=$*
 		case "$CALL" in
@@ -588,7 +635,10 @@ check_feed_race() { (
 			[ "$(cat "$R/id" 2>/dev/null)" = "${CALL##*/}" ] || { echo "gh: Not Found (HTTP 404)" >&2; return 1; }
 			rm "$R/id" "$R/feed" ;;
 		"release upload v0.0.2 --repo $REPO "*) race write; race upload
-			[ "$(cat "$R/race")" != broken ] || { echo broken-done > "$R/race"; echo "gh: Bad Gateway (HTTP 502)" >&2; return 1; }
+			case "$(cat "$R/race")" in
+			broken) echo broken-done > "$R/race"; echo "gh: Bad Gateway (HTTP 502)" >&2; return 1 ;;
+			both) echo "gh: Bad Gateway (HTTP 502)" >&2; return 1 ;;
+			esac
 			case "$CALL" in *" --clobber "*) ;; *) [ ! -e "$R/id" ] || { echo "gh: asset under the same name already exists" >&2; return 1; } ;; esac
 			upload "${CALL##* }" ;;
 		*) echo "gh: the stub knows no call $CALL" >&2; return 1 ;;
@@ -597,20 +647,62 @@ check_feed_race() { (
 	upload() { echo $(($(cat "$R/count") + 1)) > "$R/count"; cp "$R/count" "$R/id"; cp "$1" "$R/feed"; }
 	race() { [ "$(cat "$R/race")" != "$1" ] || { echo done > "$R/race"; upload "$WORK/two/3.xml"; }; }
 	cp "$WORK/two/2.xml" "$WORK/current.xml"
-	for CASE in none:withdrawn id:3 read:3 write:3 upload:3 broken:2; do
-		rm -rf "$R"
+	for CASE in none:withdrawn id:3 read:3 write:3 upload:3 broken:2 both:none; do
+		rm -rf "$R" "$OUT"
 		mkdir "$R"
 		echo 0 > "$R/count"
 		upload "$WORK/two/2.xml"
 		echo "${CASE%%:*}" > "$R/race"
-		if [ "${CASE#*:}" = withdrawn ]; then WANT="$WORK/withdrawn/appcast.xml"; else WANT="$WORK/two/${CASE#*:}.xml"; fi
+		case "${CASE#*:}" in
+		withdrawn) WANT="$WORK/withdrawn/appcast.xml" ;;
+		none) WANT="" ;;
+		*) WANT="$WORK/two/${CASE#*:}.xml" ;;
+		esac
 		STATUS=0
 		(check_unchanged_feed v0.0.2 && replace_feed v0.0.2 "$ASSET" "$WORK/withdrawn/appcast.xml") 2>"$WORK/error" || STATUS=$?
 		[ "$STATUS" = 0 ] && [ "${CASE%%:*}" != none ] && fail "A withdrawal succeeded although a publish replaced the feed at the step ${CASE%%:*}."
 		[ "$STATUS" = 0 ] || [ "${CASE%%:*}" != none ] || fail "A withdrawal without a publish at the same time failed: $(cat "$WORK/error")"
-		cmp -s "$R/feed" "$WANT" || fail "In the case ${CASE%%:*}, the release holds another feed than ${WANT#"$WORK"/}."
+		if [ -n "$WANT" ]; then
+			cmp -s "$R/feed" "$WANT" || fail "In the case ${CASE%%:*}, the release holds another feed than ${WANT#"$WORK"/}."
+		else
+			[ ! -e "$R/feed" ] || fail "In the case ${CASE%%:*}, the release still holds a feed."
+		fi
 	done
-	echo "Of a withdrawal and a publish at the same time, only one replaces the feed that both read, and the other one stops."
+	# The last case left the release without a feed, so the run must keep both feeds and name them.
+	[ "$STATUS" = 2 ] || fail "A withdrawal whose two uploads failed returned $STATUS, not 2."
+	cmp -s "$OUT/feeds-v0.0.2/before/appcast.xml" "$WORK/two/2.xml" && cmp -s "$OUT/feeds-v0.0.2/new/appcast.xml" "$WORK/withdrawn/appcast.xml" \
+		|| fail "A withdrawal whose two uploads failed did not keep both feeds in $OUT/feeds-v0.0.2."
+	KEPT=$(cd "$OUT/feeds-v0.0.2" && pwd)
+	grep -qF "$KEPT/before/appcast.xml" "$WORK/error" && grep -qF "$KEPT/new/appcast.xml" "$WORK/error" \
+		|| fail "A withdrawal whose two uploads failed did not name the kept feeds: $(cat "$WORK/error")"
+	echo "Of a withdrawal and a publish at the same time, only one replaces the feed that both read, and the other one stops. When both uploads fail, both feeds stay in the output folder."
+); }
+
+# check_withdrawn with stubs of curl and gh: it passes only when the latest release is still v0.0.2,
+# whose feed the withdrawal of 0.0.2 replaced, and the feed URL leads to a feed without 0.0.2 that the
+# public update key $1 signed. STUB_LATEST is the tag of the latest release, or "!" for no answer.
+check_withdrawn_rule() { (
+	curl() { [ "$2" = -o ] && [ "$4" = "$FEED_URL" ] || return 7; cp "$STUB_FEED" "$3"; }
+	gh() {
+		[ "$*" = "api repos/$REPO/releases/latest -q .tag_name" ] || { echo "gh: the stub knows no call $*" >&2; return 1; }
+		[ "$STUB_LATEST" != "!" ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; return 1; }
+		echo "$STUB_LATEST"
+	}
+	while IFS='|' read -r STUB_LATEST STUB_FEED WANT; do
+		CASE="latest $STUB_LATEST, feed ${STUB_FEED#"$WORK"/}"
+		if (check_withdrawn 0.0.2 v0.0.2 "$1") 2>"$WORK/error"; then
+			[ -z "$WANT" ] || fail "The check after a withdrawal passed in the case $CASE."
+		else
+			[ -n "$WANT" ] || fail "The check after a withdrawal failed in the case $CASE: $(cat "$WORK/error")"
+			grep -qF "$WANT" "$WORK/error" || fail "The check after a withdrawal failed in the case $CASE with another message: $(cat "$WORK/error")"
+		fi
+	done <<-EOF
+	v0.0.2|$WORK/withdrawn/appcast.xml|
+	v0.0.3|$WORK/withdrawn/appcast.xml|The latest release is v0.0.3, not v0.0.2
+	!|$WORK/withdrawn/appcast.xml|GitHub does not answer for the latest release
+	v0.0.2|$WORK/two/2.xml|still lists 0.0.2
+	EOF
+	echo "The check after a withdrawal fails when another release became the newest, or the feed still lists the version."
 ); }
 
 # The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the
