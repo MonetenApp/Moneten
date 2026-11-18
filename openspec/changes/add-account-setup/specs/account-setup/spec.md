@@ -362,6 +362,25 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
 
+#### Scenario: Baader Bank and the brokers on it
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Stammnummer"
+- **AND** the line under it says that Baader Bank expects the Stammnummer that the broker gives the user, and links to `https://konto.baaderbank.de/`
+
+#### Scenario: Bank on the FinTS server of Baader Bank with another Bankleitzahl
+
+- **GIVEN** the user chose a bank with the Bankleitzahl 70033199, whose FinTS address is on the host `FINTS.BAADERBANK.DE`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Stammnummer", because the app finds this hint by the host of the FinTS address and compares the host in lower case
+
+#### Scenario: Bank on another host
+
+- **GIVEN** the user chose a bank whose FinTS address is on the host `fints.baaderbank.de.example.com`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -606,6 +625,12 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
 - **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
 
+#### Scenario: Baader Bank
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user requests the FinTS access and its PIN at `https://konto.baaderbank.de/` first
+
 #### Scenario: Credit card
 
 - **WHEN** the user opens the help of the first step
@@ -634,6 +659,13 @@ The app SHALL show the message of the bank when the login fails, keep the user o
 - **GIVEN** the user chose Commerzbank with the Bankleitzahl 50040000
 - **WHEN** the bank answers the first login with the code 9942 and the text "PIN ungültig"
 - **THEN** the message repeats that Commerzbank expects the 10-digit participant number and must switch on "FinTS/HBCI with photoTAN" for the user
+
+#### Scenario: Baader Bank rejects the first login
+
+- **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
+- **WHEN** the bank answers the first login with the code 9942 and the text "PIN ungültig"
+- **THEN** the message says that the Stammnummer may not be valid, that Baader Bank expects the Stammnummer from the broker, and that the user requests the FinTS access first
+- **AND** the app stays on the second step
 
 #### Scenario: Login name is an alias that the bank rejects
 
