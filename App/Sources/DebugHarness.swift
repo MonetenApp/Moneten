@@ -335,19 +335,26 @@ final class DebugHarness {
 		// Whether a sheet window is on screen. The window shows a moment after the state of the model, and a closing one
 		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
+		// "<n>" puts the focus in editable field n of the sheet on top, counted from 0. Then it logs the count of editable
+		// fields, the field that has the focus, and whether a field editor has it. Without an argument it only logs, so that
+		// a check can wait for the field and the focus without moving the focus again.
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
 				return view.subviews.flatMap(fields)
 			}
-			guard let sheet = topSheet, let view = sheet.contentView, let position = Int(argument) else { return }
+			guard let sheet = topSheet, let view = sheet.contentView else { return log("focusfield", ("count", .count(0))) }
 			let editable = fields(in: view)
-			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
-			// The field editor of the sheet takes the text of "type" while the app stays behind.
-			sheet.makeKeyAndOrderFront(nil)
-			sheet.makeFirstResponder(editable[position])
-			editable[position].selectText(nil)
-			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
+			if let position = Int(argument) {
+				guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
+				// The field editor of the sheet takes the text of "type" while the app stays behind.
+				sheet.makeKeyAndOrderFront(nil)
+				sheet.makeFirstResponder(editable[position])
+				editable[position].selectText(nil)
+			}
+			let editor = sheet.firstResponder as? NSTextView
+			let focused = editable.firstIndex { field in editor != nil && field.currentEditor() === editor }
+			log("focusfield", ("count", .count(editable.count)), ("position", .position(focused)), ("editor", .flag(editor != nil)))
 		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
 		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
 		case "type": ((topSheet ?? NSApp.keyWindow ?? NSApp.orderedWindows.first { $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?
@@ -841,6 +848,9 @@ final class DebugHarness {
 			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }
 			MigrationSheet.simulatedFailure = failure
 			model.sheet = .migration
+		// The step that the migration sheet shows, or "none" without the sheet. A check waits for a step before it presses
+		// Return, because a Return that comes twice confirms the next step too.
+		case "migrationstate": log("migrationstate", ("step", MigrationSheet.shownStep ?? .word("none")))
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
