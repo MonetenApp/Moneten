@@ -64,11 +64,8 @@ def decide(argv):
 	if event != "pull_request":
 		run = True
 	else:
-		try:
-			paths = changed_paths(argv[2], argv[3])
-		except (IndexError, subprocess.CalledProcessError) as error:
-			print(f"No diff ({error}), so every job runs.", file=sys.stderr)
-			paths = []
+		# A missing argument or a diff that git cannot compute raises, and main runs everything.
+		paths = changed_paths(argv[2], argv[3])
 		for path in paths:
 			print(f"{'docs ' if is_doc(path) else 'other'} {path!r}", file=sys.stderr)
 		run = needs_macos(paths)

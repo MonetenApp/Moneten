@@ -23,20 +23,21 @@ spec.loader.exec_module(ci)
 CONSUMERS = ["Tests", "Sources", "App", "Tools", "scripts", "Package.swift", ".github/workflows/ci.yml"]
 UBUNTU_ONLY = ["scripts/check-docs.py", "scripts/check-ui.py", "scripts/roadmap.py", "scripts/ci-changes.py", "scripts/test-ci-changes.py"]
 
-# Lines outside comments that name a file on the list but do not read it, as (file, part of the line). A
+# Lines outside comments that name a file on the list but do not read it, as (file, listed path, part of the
+# line), so that a second read on the same line still counts. A
 # new line that names one fails the test, even in a file listed here: then either the file leaves the list,
 # or the line goes here with its reason.
 MENTIONS = {
 	# A README.md inside an extension package, not the one of the repository.
-	("App/Sources/PerfCheck.swift", '"README.md", "manifest.json"].map'),
-	("Tests/ExtensionCatalogTests/FileInstallTests.swift", '"README.md": "# Broker'),
-	("Tests/ExtensionCatalogTests/InstallerTests.swift", '"LICENSE", "README.md", "manifest.json"])'),
-	("Tests/ExtensionCatalogTests/Support.swift", '"README.md": Data("# Example Bank'),
+	("App/Sources/PerfCheck.swift", "README.md", '"README.md", "manifest.json"].map'),
+	("Tests/ExtensionCatalogTests/FileInstallTests.swift", "README.md", '"README.md": "# Broker'),
+	("Tests/ExtensionCatalogTests/InstallerTests.swift", "README.md", '"LICENSE", "README.md", "manifest.json"])'),
+	("Tests/ExtensionCatalogTests/Support.swift", "README.md", '"README.md": Data("# Example Bank'),
 	# Error messages that send the reader to the page.
-	("scripts/build-app.sh", 'private key in the Keychain. See docs/releasing.md."'),
-	("scripts/release.sh", 'docs/releasing.md explains how the owner adds it."'),
-	("scripts/release.sh", 'no FinTS product ID. See docs/releasing.md."'),
-	("scripts/check-localization.py", 'CONTRIBUTING.md explains it.")'),
+	("scripts/build-app.sh", "docs/releasing.md", 'private key in the Keychain. See docs/releasing.md."'),
+	("scripts/release.sh", "docs/releasing.md", 'docs/releasing.md explains how the owner adds it."'),
+	("scripts/release.sh", "docs/releasing.md", 'no FinTS product ID. See docs/releasing.md."'),
+	("scripts/check-localization.py", "CONTRIBUTING.md", 'CONTRIBUTING.md explains it.")'),
 }
 
 # A comment line of Swift, Java, Lua, YAML, and the scripts. "#expect(" in Swift is code.
@@ -97,12 +98,20 @@ class Routing(unittest.TestCase):
 
 	def test_events(self):
 		def run(*args):
-			return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+			out = subprocess.run([sys.executable, str(SCRIPT), *args], cwd=ROOT, capture_output=True, text=True)
+			self.assertEqual(out.returncode, 0, out.stderr)
+			return out.stdout.strip()
 		self.assertEqual(run("push"), "macos=true")
 		self.assertEqual(run("workflow_dispatch"), "macos=true")
 		# A diff that git cannot compute runs everything.
 		self.assertEqual(run("pull_request", "0" * 40, "HEAD"), "macos=true")
 		self.assertEqual(run("pull_request"), "macos=true")
+
+
+def known_by(mention, item):
+	"""Whether a found (file, path, line) is the mention (file, path, part of the line)."""
+	(f, p, part), (file, path, text) = mention, item
+	return (file, path) == (f, p) and part in text
 
 
 class Readers(unittest.TestCase):
@@ -112,10 +121,9 @@ class Readers(unittest.TestCase):
 		self.assertIn("openspec/config.yaml", listed)
 		self.assertNotIn("docs/export-format.md", listed)
 		found = set(references(listed))
-		known = lambda file, text: any(file == f and part in text for f, part in MENTIONS)
-		unknown = {(file, path) for file, path, text in found if not known(file, text)}
+		unknown = {(file, path) for file, path, text in found if not any(known_by(m, (file, path, text)) for m in MENTIONS)}
 		self.assertEqual(unknown, set(), "a file on the list is read by the macOS job: drop it from the list in ci-changes.py")
-		gone = {(f, part) for f, part in MENTIONS if not any(file == f and part in text for file, _, text in found)}
+		gone = {mention for mention in MENTIONS if not any(known_by(mention, item) for item in found)}
 		self.assertEqual(gone, set(), "a mention is gone: remove it from MENTIONS")
 
 	def test_the_scan_finds_a_reader(self):
@@ -140,7 +148,7 @@ class Failures(unittest.TestCase):
 	def test_the_macos_job_skips_only_on_an_explicit_docs_only_decision(self):
 		# A failed, cancelled, or silent router leaves the output empty, and != 'false' then runs the job.
 		workflow = (ROOT / ".github/workflows/ci.yml").read_text()
-		self.assertIn("if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' }}", workflow)
+		self.assertIn("if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.macos != 'false') }}", workflow)
 
 
 class Diff(unittest.TestCase):
@@ -152,7 +160,7 @@ class Diff(unittest.TestCase):
 		self.git("init", "-q", "-b", "main")
 		self.git("config", "user.email", "ci@example.invalid")
 		self.git("config", "user.name", "CI")
-		for name in ["docs/old.md", "docs/gone.md", "README.md"]:
+		for name in ["docs/old.md", "docs/gone.md", "README.md", "Sources/notes.md"]:
 			(self.repo / name).parent.mkdir(parents=True, exist_ok=True)
 			(self.repo / name).write_text("text\n")
 		self.git("add", "-A")
@@ -168,8 +176,10 @@ class Diff(unittest.TestCase):
 	def route(self):
 		self.git("add", "-A")
 		self.git("commit", "-q", "-m", "change")
-		return subprocess.run([sys.executable, str(SCRIPT), "pull_request", "main", "HEAD"], cwd=self.repo,
-			capture_output=True, text=True).stdout.strip()
+		out = subprocess.run([sys.executable, str(SCRIPT), "pull_request", "main", "HEAD"], cwd=self.repo,
+			capture_output=True, text=True)
+		self.assertEqual(out.returncode, 0, out.stderr)
+		return out.stdout.strip()
 
 	def test_a_rename_and_a_deletion_of_docs_skip(self):
 		self.git("mv", "docs/old.md", "docs/new.md")
@@ -177,8 +187,12 @@ class Diff(unittest.TestCase):
 		self.assertEqual(self.route(), "macos=false")
 
 	def test_a_doc_renamed_out_of_the_docs_runs(self):
-		(self.repo / "Sources").mkdir()
 		self.git("mv", "docs/old.md", "Sources/old.md")
+		self.assertEqual(self.route(), "macos=true")
+
+	def test_a_file_renamed_into_the_docs_runs(self):
+		# Without --no-renames, git would name only the new path, docs/notes.md, and the router would skip.
+		self.git("mv", "Sources/notes.md", "docs/notes.md")
 		self.assertEqual(self.route(), "macos=true")
 
 	def test_an_odd_name_in_the_docs_skips(self):
@@ -193,6 +207,7 @@ class Diff(unittest.TestCase):
 			cwd=self.repo, check=True, capture_output=True)
 		self.git("commit", "-q", "-m", "change")
 		out = subprocess.run([sys.executable, str(SCRIPT), "pull_request", "main", "HEAD"], cwd=self.repo, capture_output=True, text=True)
+		self.assertEqual(out.returncode, 0, out.stderr)
 		self.assertEqual(out.stdout.strip(), "macos=true")
 
 
