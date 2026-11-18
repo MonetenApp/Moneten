@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Tests of scripts/ci-changes.py, run by scripts/check.sh and by the specs job of CI."""
+"""Tests of scripts/ci-changes.py and of the path filter of release-ext.yml, run by scripts/check.sh and by the specs
+job of CI."""
 
 import contextlib
 import importlib.util
@@ -24,8 +25,8 @@ CONSUMERS = ["Tests", "Sources", "App", "Tools", "scripts", "Package.swift", ".g
 UBUNTU_ONLY = ["scripts/check-docs.py", "scripts/check-ui.py", "scripts/roadmap.py", "scripts/ci-changes.py", "scripts/test-ci-changes.py"]
 
 # Lines outside comments that name a file on the list but do not read it, as (file, listed path, part of the
-# line), so that a second read on the same line still counts. A
-# new line that names one fails the test, even in a file listed here: then either the file leaves the list,
+# line), so that a second read on the same line still counts.
+# A new line that names one fails the test, even in a file listed here: then either the file leaves the list,
 # or the line goes here with its reason.
 MENTIONS = {
 	# A README.md inside an extension package, not the one of the repository.
@@ -146,9 +147,101 @@ class Failures(unittest.TestCase):
 		self.assertEqual(out.getvalue().strip(), "macos=true")
 
 	def test_the_macos_job_skips_only_on_an_explicit_docs_only_decision(self):
-		# A failed, cancelled, or silent router leaves the output empty, and != 'false' then runs the job.
+		# A router that did not succeed runs the job through its result, even when it wrote macos=false before it
+		# failed. A successful router that wrote nothing leaves the output empty, and != 'false' then runs the job.
 		workflow = (ROOT / ".github/workflows/ci.yml").read_text()
 		self.assertIn("if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.macos != 'false') }}", workflow)
+
+
+RELEASE_EXT = ROOT / ".github/workflows/release-ext.yml"
+# The inputs of the ext dry run besides the folders of the targets that ext builds.
+EXT_INPUTS = {
+	# The dry run itself, and the script that builds, packages, and checks the binary.
+	".github/workflows/release-ext.yml",
+	"scripts/release-ext.sh",
+	# The package graph and the pinned dependencies.
+	"Package.swift",
+	"Package.resolved",
+	# The example extension that the check of the script replays with the packaged binary.
+	"Extensions/Example/**",
+	"Fixtures/example/**",
+}
+
+
+def release_ext_filter():
+	"""The paths of the pull_request trigger of release-ext.yml."""
+	block = re.search(r"^  pull_request:\n    paths:\n((?:      - .+\n)+)", RELEASE_EXT.read_text(), re.M)
+	return [line.strip()[2:] for line in block.group(1).splitlines()]
+
+
+def ext_folders():
+	"""The source folders of the product ext and of every target that it depends on, as Package.swift declares them.
+
+	Each target of Package.swift stands on one line. A dependency on a product of another package is pinned by
+	Package.resolved, so only local targets count.
+	"""
+	targets = {}
+	declaration = re.compile(r'^\s*\.(?:target|executableTarget|testTarget)\(name: "(\w+)"(.*)$', re.M)
+	for name, rest in declaration.findall((ROOT / "Package.swift").read_text()):
+		dependencies = re.search(r"dependencies: \[(.*?)\]", rest)
+		local = re.sub(r"\.product\([^)]*\)", "", dependencies.group(1)) if dependencies else ""
+		path = re.search(r'path: "([^"]+)"', rest)
+		targets[name] = (path.group(1) if path else f"Sources/{name}", re.findall(r'"(\w+)"', local))
+	seen, todo = set(), ["ext"]
+	while todo:
+		name = todo.pop()
+		if name not in seen:
+			seen.add(name)
+			todo.extend(targets[name][1])
+	return {targets[name][0] for name in seen}
+
+
+def in_filter(patterns, path):
+	"""Whether a path of a pull request starts the dry run. The filter uses exact paths and folder/** only."""
+	return any(path.startswith(p[:-2]) if p.endswith("/**") else path == p for p in patterns)
+
+
+class ReleaseExtFilter(unittest.TestCase):
+	"""The dry run of release-ext.yml starts for every input of ext, and for nothing else."""
+
+	def test_the_filter_names_exactly_the_inputs_of_ext(self):
+		folders = ext_folders()
+		self.assertEqual(folders, {"Tools/ext", "Sources/Domain", "Sources/CLua", "Sources/ExtensionHost", "Sources/ExtensionConnector"})
+		patterns = release_ext_filter()
+		self.assertEqual(len(patterns), len(set(patterns)), "a path appears twice")
+		self.assertEqual(set(patterns), {f"{folder}/**" for folder in folders} | EXT_INPUTS)
+		for pattern in patterns:
+			with self.subTest(pattern=pattern):
+				self.assertNotRegex(pattern.removesuffix("/**"), r"[*?\[\]!+]", "in_filter knows exact paths and folder/** only")
+
+	def test_every_file_that_the_script_reads_is_in_the_filter(self):
+		files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout.decode().split("\0")
+		patterns = release_ext_filter()
+		read = set()
+		for text in (ROOT / "scripts/release-ext.sh").read_text().splitlines():
+			if COMMENT.match(text):
+				continue
+			for token in TOKEN.findall(text):
+				read |= {f for f in files if f and (f == token or f.startswith(token.rstrip("/") + "/"))}
+		self.assertTrue({"Tools/ext/Ext.swift", "Sources/ExtensionHost/Manifest.swift", "Fixtures/example/fixture.json"} <= read)
+		self.assertEqual({path for path in read if not in_filter(patterns, path)}, set())
+
+	def test_a_change_outside_the_inputs_skips(self):
+		patterns = release_ext_filter()
+		for path in ["Sources/Storage/Vault.swift", "Sources/FinTS/FinTSConnector.swift", "Sources/ExtensionCatalog/Installer.swift",
+				"Sources/MonetenExtensionHost/main.swift", "Sources/Sync/SyncCoordinator.swift", "App/Sources/AppModel.swift",
+				"Tests/ExtToolTests/CommandTests.swift", "Fixtures/extensions/monzo/Monzo.lua", "docs/releasing-ext.md",
+				"scripts/release.sh", ".github/workflows/ci.yml", "Tools/FinTSHelper/build.gradle"]:
+			with self.subTest(path=path):
+				self.assertFalse(in_filter(patterns, path))
+
+	def test_a_change_to_an_input_runs(self):
+		patterns = release_ext_filter()
+		for path in ["Tools/ext/Ext.swift", "Sources/ExtensionHost/Manifest.swift", "Sources/Domain/Money.swift", "Sources/CLua/lvm.c",
+				"Sources/ExtensionConnector/ExtensionConnector.swift", "Package.swift", "Package.resolved", "scripts/release-ext.sh",
+				".github/workflows/release-ext.yml", "Extensions/Example/Example.lua", "Fixtures/example/expected.json"]:
+			with self.subTest(path=path):
+				self.assertTrue(in_filter(patterns, path))
 
 
 class Diff(unittest.TestCase):
