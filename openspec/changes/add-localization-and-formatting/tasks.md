@@ -42,7 +42,7 @@ One task per requirement of the spec, and the tasks of the design before them. A
 
 ## 4. Integration
 
-- [ ] 4.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 4.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 and 19 November 2026 (owner decision), with the language and region as launch arguments: 42 of 49 scenarios passed, among them every typed-date scenario as written, with `datefield today` setting the day. Failed: "German", because the remove command of the Account menu stays English (#463), and "Withdrawal and deposit", because the list shows "−89,00" without "€" (#464). Not checkable in the harness: "Refresh after today" and "Calendar days, not hours" (RelativeDayTests), "Travel" (DayBridgeTests), the copy of an IBAN, and a switch of the macOS appearance. Open: the fixes and the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 
