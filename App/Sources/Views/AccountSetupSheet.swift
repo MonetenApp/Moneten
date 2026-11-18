@@ -590,7 +590,7 @@ struct AccountSetupSheet: View {
 				}
 			}
 		}
-		if let note = setup.loginHint?.note {
+		if let note = setup.chosenBank?.loginNote {
 			Section {
 				Label(note, systemImage: "info.circle")
 					.fixedSize(horizontal: false, vertical: true)

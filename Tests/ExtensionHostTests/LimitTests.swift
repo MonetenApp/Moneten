@@ -11,22 +11,33 @@ import Testing
 	/// Answers every request with a new body of 8 MB and a header of `header` bytes, which Swift pushes
 	/// after the body, and counts the bodies that were freed.
 	final class LargeBodies: Transport, Sendable {
+		/// The `<meta>` tag at the start of a body that `html` sends.
+		static let meta = #"<meta charset="ISO-8859-1">"#
 		let header: Int
+		let html: Bool
 		let freed = Mutex(0)
 
-		init(header: Int = 0) {
+		/// With `html`, the body has no `Content-Type` and starts with a `<meta>` tag but has no end of
+		/// the head, so the host reads all 8 MB for the tags of the head.
+		init(header: Int = 0, html: Bool = false) {
 			self.header = header
+			self.html = html
 		}
 
 		func send(_ request: HTTPRequest) throws -> HTTPResponse {
 			let count = 8 * 1_048_576
 			let bytes = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
 			bytes.initializeMemory(as: UInt8.self, repeating: 0x41, count: count)
+			if html { bytes.copyMemory(from: Array(Self.meta.utf8), byteCount: Self.meta.utf8.count) }
 			let body = Data(bytesNoCopy: bytes, count: count, deallocator: .custom { [self] pointer, _ in
 				pointer.deallocate()
 				freed.withLock { $0 += 1 }
 			})
-			return HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: body)
+			// A binary type keeps the host from reading 8 MB for the `<meta>` tags of an HTML head on
+			// every request. The memory that the tests follow does not change.
+			var headers = html ? [:] : ["Content-Type": "application/octet-stream"]
+			if header > 0 { headers["X-Padding"] = String(repeating: "p", count: header) }
+			return HTTPResponse(status: 200, headers: headers, body: body)
 		}
 	}
 
@@ -55,6 +66,24 @@ import Testing
 		// A memory error that jumps over the Swift frames of a request leaks its body. The footprint of
 		// the process would show it too, but the other tests of the process change the footprint.
 		#expect(bodies.freed.withLock { $0 } == 40)
+	}
+
+	/// An answer of 8 MB without a `Content-Type` counts as HTML, so the host reads all of it for the
+	/// `<meta>` tags of its head. The request completes under the memory limit, finds the tag, and frees
+	/// the body afterwards.
+	@Test func largeHTMLAnswerIsReadForMetaTags() {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Fetch()
+				local content, charset = Connection():request("GET", "https://api.bank.example/statement")
+				return {#content, charset}
+			end
+			""", hosts: ["api.bank.example"])
+		let bodies = LargeBodies(html: true)
+		let session = HostSession(package: package, transport: bodies, memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fetch")) }
+		#expect(result == .success(.array([.integer(8 * 1_048_576), .string("ISO-8859-1")])))
+		#expect(bodies.freed.withLock { $0 } == 1)
 	}
 
 	/// A finalizer that fills the memory runs while a request pushes its body. No memory error may
