@@ -19,4 +19,13 @@ struct ForeignAmountTests {
 		#expect(Format.foreignAmount(Money(minorUnits: -1_500, currency: "JPY"), locale: de) == "\u{2212}1.500 JPY")
 		#expect(Format.foreignAmount(Money(minorUnits: 12_345, currency: "KWD"), locale: de) == "12,345 KWD")
 	}
+
+	@Test("The amount of a list row and the original amount share one format with a minus sign, the original amount adds the code")
+	func sameFormat() {
+		let de = Locale(identifier: "de_DE")
+		let money = Money(minorUnits: -4_250, currency: "USD")
+		#expect(Format.amount(money, locale: de) == "\u{2212}42,50")
+		#expect(Format.foreignAmount(money, locale: de) == Format.amount(money, locale: de) + " USD")
+		#expect(Format.minus("-1,00 €") == "\u{2212}1,00 €")
+	}
 }

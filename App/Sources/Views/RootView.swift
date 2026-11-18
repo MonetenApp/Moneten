@@ -28,6 +28,7 @@ struct RootView: View {
 			model.openMainWindow = { [openWindow] in openWindow(id: "main") }
 			model.openNoticeWindow = { [openWindow] in openWindow(id: "notice") }
 			model.showNotices()
+			model.mainWindowOpened()
 		}
 		.onChange(of: appearsActive) { _, active in
 			if active { model.showNotices() }

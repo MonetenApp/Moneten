@@ -12,11 +12,20 @@ public enum Format {
 		return d.noon.formatted(style)
 	}
 
+	/// An amount without its currency, such as "−42,50", for a list in one currency: the marks of the region and the
+	/// decimal places of the currency.
+	public static func amount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		minus(m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces))))
+	}
+
 	/// An amount in a currency other than the one of its row, such as the original amount of a card payment abroad:
-	/// "−12.345,00 USD". The code names the currency without doubt, where a symbol such as "$" stands for several. The
-	/// minus sign is the one of the amounts in the list.
+	/// "−12.345,00 USD". The code names the currency without doubt, where a symbol such as "$" stands for several.
 	public static func foreignAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
-		let number = m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces)))
-		return number.replacingOccurrences(of: "-", with: "\u{2212}") + " " + m.currency
+		amount(m, locale: locale) + " " + m.currency
+	}
+
+	/// A formatted amount with the minus sign of the amounts on screen in place of the hyphen of the formatter.
+	public static func minus(_ text: String) -> String {
+		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 }

@@ -30,7 +30,11 @@ Two values stand in the row without a line of their own. A card payment abroad s
 
 ### New marks stay while the view is open
 
-Opening the view of an account counts its new transactions as seen: `Store.markSeen` writes it, then the ledger takes it, so the number on the sidebar row goes. `NewMarks` in `Domain` keeps the IDs of the rows that were new when the view opened, and the row draws the mark when `NewMarks.shows` holds. A change of the view and the lock empty it, so the marks are gone when the user returns. Checking a row ends its mark, as `Transaction.markChecked()` ends the mark of a row that is still new.
+Opening the view of an account counts its new transactions as seen: `Store.markSeen` writes it, then the ledger takes it, so the number on the sidebar row goes. `NewMarks` in `Domain` keeps the IDs of the rows that were new when the view opened, and the row draws the mark when `NewMarks.shows` holds. An account without new transactions leaves `NewMarks` as it is, so opening it redraws no date cell. A row that a refresh adds while the view is open is still new and draws the mark from its own flag.
+
+A change of the view, the lock, and closing the main window end the visit. `NewMarks.leave(account:in:)` empties the marks and returns the rows that are still new in the account of the visit, which are the rows that a refresh added during it. The app writes them through `Store.markSeen` like the rows of the opening, so a row counts as seen after the first visit in which it stood in the list. Opening the main window again, and the unlock, start a new visit of the selected account. Checking a row ends its mark, as `Transaction.markChecked()` ends the mark of a row that is still new.
+
+The original amount and its help tag share one amount format with the list: `Format.amount` in `Domain` writes the number with the decimal places of the currency and a minus sign, and `Format.foreignAmount` adds the code. The help tag names the label "Original amount" only while the pointer is on the amount, as `DetailsHelp` does for the purpose.
 
 ### Copied rows are text with tabs
 

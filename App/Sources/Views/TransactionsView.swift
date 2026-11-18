@@ -525,13 +525,12 @@ struct TransactionTable: View {
 							// It gives way to the amount when the column is narrow, and its help tag has it whole.
 							if let original = t.originalAmount {
 								let text = Format.foreignAmount(original)
-								let tip = "\(TransactionDetail.originalAmount(original).label): \(text)"
 								Text(text)
 									.font(.system(size: 11))
 									.monospacedDigit()
 									.foregroundStyle(Palette.detail)
 									.lineLimit(1)
-									.help(tip)
+									.modifier(OriginalAmountHelp(original: original, text: text))
 							}
 							AmountText(money: t.amount, showsCurrency: t.currency != currency)
 								.font(.system(size: 18))
@@ -682,6 +681,20 @@ struct DetailsHelp: ViewModifier {
 		content
 			.onHover { hovered = $0 }
 			.help(hovered ? TransactionCell.helpText(transaction) : transaction.purpose)
+	}
+}
+
+/// The help tag of the original amount, "Original amount: −12.345,00 USD". As `DetailsHelp`, it looks up the label only
+/// when the pointer enters the amount, so a cell that SwiftUI builds while the list scrolls looks up no label.
+struct OriginalAmountHelp: ViewModifier {
+	let original: Money
+	let text: String
+	@State private var hovered = false
+
+	func body(content: Content) -> some View {
+		content
+			.onHover { hovered = $0 }
+			.help(hovered ? "\(TransactionDetail.originalAmount(original).label): \(text)" : text)
 	}
 }
 

@@ -600,6 +600,14 @@ final class DebugHarness {
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
+		// "<name>|<comment>" gives the newest row with that name the comment, as "Add Comment..." saves it.
+		case "comment":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 2, let t = model.ledger.transactions.filter({ $0.name == parts[0] }).max(by: { $0.bookingDate < $1.bookingDate }) else {
+				return log("comment refused", ("needs", .word("name|comment")))
+			}
+			model.setComment(parts[1], for: [t.id])
+			log("comment done", ("set", .flag(model.ledger.transaction(t.id)?.comment != nil)))
 		// "<name>|<purpose>" gives the newest row with that name the purpose, as "Edit Transaction..." saves it.
 		// "check <name>|<purpose>" logs how many rows have the name and whether each has the purpose.
 		case "edit":
@@ -2179,6 +2187,8 @@ enum DemoData {
 		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
 		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
 		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
+		// A card payment abroad of -11.400,00 € that the bank converted from -12.345,00 US dollars.
+		case "card": known + [{ var t = row(0, -1_140_000, "Karte", "Kartenzahlung"); t.originalAmount = Money(minorUnits: -1_234_500, currency: "USD"); return t }()]
 		default: known
 		}
 		let result = RefreshResult(balance: Money(minorUnits: 1_234_56, currency: "EUR"),

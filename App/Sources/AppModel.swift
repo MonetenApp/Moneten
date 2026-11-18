@@ -199,12 +199,15 @@ final class AppModel {
 	var bankHistories: [UUID: BankHistory] = [:]
 	/// The rows that keep the mark of new transactions while the view of their account stays open.
 	private(set) var newMarks = NewMarks()
+	/// The account whose view the user opened, where `markSeen` counted the new transactions as seen. Not observed, so
+	/// that opening an account without new transactions redraws no row.
+	@ObservationIgnored private var visitedAccount: UUID?
 
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
 			// The user left the view, so its rows lose the mark of new transactions ("New transactions are marked").
-			if !newMarks.isEmpty { newMarks.leave() }
+			leaveVisit()
 			UserDefaults.standard.set(selection?.preferenceValue, forKey: Preference.selectedRow)
 			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
 			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
@@ -671,11 +674,14 @@ final class AppModel {
 			notifiedAccounts = nil
 			select(notified: notified)
 		}
+		// The selected view shows again after the lock, a new visit.
+		mainWindowOpened()
 		autoRefresh.isUnlocked = true
 	}
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
+		leaveVisit()
 		closeDatabase(then: .locked)
 	}
 
@@ -717,6 +723,7 @@ final class AppModel {
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
 				self.newMarks = NewMarks()
+				self.visitedAccount = nil
 				self.savedSearches = []
 				self.selectedTransactions = []
 			}
@@ -791,7 +798,15 @@ final class AppModel {
 	}
 
 	func mainWindowClosed() {
+		// Closing the window ends the visit of the view as leaving it does, also when the app stays unlocked.
+		leaveVisit()
 		if lockSettings.lockOnClose { lock() }
+	}
+
+	/// The main window opened again, or the app was unlocked: the user sees the selected view anew.
+	func mainWindowOpened() {
+		guard phase == .unlocked else { return }
+		afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
 	}
 
 	/// Writes the lock settings to the database first, as every change does.
@@ -870,9 +885,26 @@ final class AppModel {
 			afterDraw { [weak self] in Task { @MainActor in self?.markSeen() } }
 			return
 		}
-		guard case let .account(id) = selection, let store else { return }
-		let seen = newMarks.open(account: id, in: ledger)
-		guard !seen.isEmpty, (try? store.markSeen(account: id)) != nil else { return }
+		guard case let .account(id) = selection, store != nil else { return }
+		visitedAccount = id
+		// Without new transactions `newMarks` stays as it is, so that no date cell of the list draws again.
+		guard ledger.newTransactionCounts[id, default: 0] > 0 else { return }
+		storeSeen(newMarks.open(account: id, in: ledger), of: id)
+	}
+
+	/// Ends the visit of a view: its marks go, and the transactions that a refresh added to the visited account while
+	/// its view was open count as seen now (`NewMarks.leave(account:in:)`).
+	private func leaveVisit() {
+		let visited = visitedAccount
+		visitedAccount = nil
+		guard visited != nil || !newMarks.isEmpty else { return }
+		let seen = newMarks.leave(account: visited, in: ledger)
+		if let visited, !isStoringMigration { storeSeen(seen, of: visited) }
+	}
+
+	/// Writes that the new transactions of an account are seen, through the store first, then into the ledger.
+	private func storeSeen(_ seen: [Transaction], of id: UUID) {
+		guard !seen.isEmpty, let store, (try? store.markSeen(account: id)) != nil else { return }
 		ledgerChange = "seen"
 		ledger.update(seen)
 	}
