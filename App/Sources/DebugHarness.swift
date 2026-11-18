@@ -1759,7 +1759,9 @@ final class DebugHarness {
 		case "group": model.filter.account = model.ledger.groups.first { $0.name == value }.map { .group($0.id) }
 		case "custom":
 			let days = value.split(separator: " ").compactMap { Int($0) }.map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
-			if days.count == 2 { model.choose(period: .custom(days[0], days[1])) }
+			// As the popover does: an end before the start is not applied.
+			guard days.count == 2, let period = PeriodChoice.custom(from: days[0], to: days[1]) else { return log("filterbar rejected") }
+			model.choose(period: period)
 		case "pin": model.isFilterBarPinned = value == "on"
 		default: return log("filterbar rejected")
 		}

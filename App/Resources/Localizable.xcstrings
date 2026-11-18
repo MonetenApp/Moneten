@@ -10777,6 +10777,16 @@
       },
       "extractionState" : "manual"
     },
+    "The end lies before the start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ende liegt vor dem Anfang"
+          }
+        }
+      }
+    },
     "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten." : {
       "localizations" : {
         "de" : {
