@@ -13,6 +13,8 @@ public struct DatabaseStamp: Equatable, Sendable {
 		values = [Int64(info.st_dev), Int64(bitPattern: info.st_ino), info.st_size, Int64(info.st_mtimespec.tv_sec), Int64(info.st_mtimespec.tv_nsec),
 			Int64(info.st_ctimespec.tv_sec), Int64(info.st_ctimespec.tv_nsec)]
 	}
+
+	public static func == (a: DatabaseStamp, b: DatabaseStamp) -> Bool { a.values == b.values }
 }
 
 extension Vault {
