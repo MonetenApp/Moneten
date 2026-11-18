@@ -7,19 +7,25 @@ struct Keychain: Sendable {
 	/// The keychain file that holds the entries: `loginKeychainPath` in the app, a file in a temporary folder in the
 	/// tests. Every step opens this file and names it, so no entry goes to the default keychain and no read searches
 	/// the search list of the user, which another program of the user can both change without a prompt (issue #419).
-	let path: String
+	/// Nil when the home folder of the user is unknown: then every step throws.
+	let path: String?
 
-	init(service: String, path: String) {
+	init(service: String, path: String?) {
 		self.service = service
 		self.path = path
 	}
 
-	/// The login keychain of the user. The home folder comes from the user database of macOS, not from `HOME`, which
-	/// the program that starts the app sets.
-	static var loginKeychainPath: String {
-		let home = NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
-		return URL(fileURLWithPath: home).appendingPathComponent("Library/Keychains/login.keychain-db").path
+	/// The login keychain of the user, or nil when the user database of macOS names no home folder. The home folder
+	/// comes from `getpwuid_r`, never from Foundation: `NSHomeDirectory()` and `NSHomeDirectoryForUser(_:)` follow the
+	/// environment variable `CFFIXED_USER_HOME`, which the program that starts the app sets, and would lead to a
+	/// keychain file of that program.
+	static var loginKeychainPath: String? {
+		guard let home = userDatabaseHome() else { return nil }
+		return URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("Library/Keychains/login.keychain-db").path
 	}
+
+	/// The path that a failure names when the home folder is unknown.
+	static let loginKeychainName = "~/Library/Keychains/login.keychain-db"
 
 	struct Failure: Error, CustomStringConvertible {
 		let status: OSStatus
@@ -103,21 +109,35 @@ struct Keychain: Sendable {
 	/// for a keychain without a file to the default keychain of the user, so a missing file must stop every step. There is
 	/// no fallback to the default keychain.
 	private func open() throws -> SecKeychain {
-		let (keychain, status) = openKeychain(path)
-		guard let keychain, status == errSecSuccess else { throw Failure(status: status, unopened: path) }
-		return keychain
+		guard let path else { throw Failure(status: errSecNoSuchKeychain, unopened: Self.loginKeychainName) }
+		return try openKeychain(path)
 	}
 }
 
-/// Opens a keychain file by its path. `SecKeychainOpen` is deprecated together with the file-based Keychain, but no
-/// other call returns the login keychain: `SecKeychainCopyDomainDefault` returns the default keychain, which is what
-/// another program can change, and the data protection Keychain needs a build signed with a team.
+/// The home folder of the user in the user database of macOS, which neither `HOME` nor `CFFIXED_USER_HOME` changes.
+private func userDatabaseHome() -> String? {
+	var record = passwd()
+	var result: UnsafeMutablePointer<passwd>?
+	var buffer = [CChar](repeating: 0, count: 16_384)
+	guard getpwuid_r(getuid(), &record, &buffer, buffer.count, &result) == 0, result != nil, let directory = record.pw_dir else { return nil }
+	let home = String(cString: directory)
+	return home.hasPrefix("/") ? home : nil
+}
+
+/// Opens a keychain file by its path and throws unless the file exists. `SecKeychainOpen` is deprecated together with
+/// the file-based Keychain, but no other call returns the login keychain: `SecKeychainCopyDomainDefault` returns the
+/// default keychain, which is what another program can change, and the data protection Keychain needs a build signed
+/// with a team.
 @available(macOS, deprecated: 10.10)
-private func openKeychain(_ path: String) -> (SecKeychain?, OSStatus) {
+private func openKeychain(_ path: String) throws -> SecKeychain {
 	var keychain: SecKeychain?
 	let status = SecKeychainOpen(path, &keychain)
-	guard status == errSecSuccess, let keychain else { return (nil, status == errSecSuccess ? errSecNoSuchKeychain : status) }
-	return (keychain, keychainStatus(keychain))
+	guard status == errSecSuccess, let keychain else {
+		throw Keychain.Failure(status: status == errSecSuccess ? errSecNoSuchKeychain : status, unopened: path)
+	}
+	let fileStatus = keychainStatus(keychain)
+	guard fileStatus == errSecSuccess else { throw Keychain.Failure(status: fileStatus, unopened: path) }
+	return keychain
 }
 
 /// Whether the file of a keychain exists: `SecKeychainGetStatus` for a path that never existed, and the file at the

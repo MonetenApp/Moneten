@@ -39,6 +39,14 @@ struct KeychainTests {
 		try expectRefused(Keychain(service: "Moneten test without keychain file", path: KeychainFile.missingPath()))
 	}
 
+	@Test("Without a home folder in the user database every step refuses and names the login keychain")
+	func unknownHomeFailsClosed() throws {
+		let keychain = Keychain(service: "Moneten test without keychain file", path: nil)
+		try expectRefused(keychain)
+		let refusal = try #require(throws: Keychain.Failure.self) { try keychain.read(account: Self.account) }
+		#expect(refusal.description.contains("~/Library/Keychains/login.keychain-db"))
+	}
+
 	@Test("A keychain file that was deleted after it was opened refuses every step")
 	func removedFileFailsClosed() throws {
 		let file = try KeychainFile()

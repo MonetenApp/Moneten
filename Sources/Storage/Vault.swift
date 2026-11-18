@@ -124,7 +124,7 @@ public struct Vault: Sendable {
 	public let version: String
 	/// The keychain file of every entry: the login keychain of the user in the app, a file in a temporary folder in the
 	/// tests. See `Keychain.path`.
-	let keychainPath: String
+	let keychainPath: String?
 	var keyKeychain: Keychain { Keychain(service: "Moneten database key", path: keychainPath) }
 	/// The entry of the old name (ADR 0013). A read moves it to the new name.
 	var legacyKeyKeychain: Keychain { Keychain(service: "MonetenMoneten database key", path: keychainPath) }
@@ -159,7 +159,7 @@ public struct Vault: Sendable {
 	}
 
 	/// Uses the keychain file at `keychainPath` in place of the login keychain, so that tests never open the login keychain.
-	package init(folder: DataFolder, version: String = Vault.runningVersion, keychainPath: String) {
+	package init(folder: DataFolder, version: String = Vault.runningVersion, keychainPath: String?) {
 		self.folder = folder
 		self.version = version
 		self.keychainPath = keychainPath
