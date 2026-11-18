@@ -370,8 +370,9 @@ struct PerformanceTests {
 		// Mac about 0.34 s to search, 0.43 s to count, and 0.51 s to categorize in release. A rule now takes about 0.15 s to
 		// count and 0.21 s to categorize, nearly all of it the regular expression on two forms of each IBAN, and the search
 		// reads each counterparty once. At a load average of 15 to 34, five release runs took at most 0.26 s to count and
-		// 0.38 s to categorize, so the count budget catches a return to the old speed on a Mac, and the categorize budget
-		// only catches a large slowdown: one near 0.5 s would fail at random under load.
+		// 0.38 s to categorize, so the count budget catches a return to the old speed on a quiet Mac, and the categorize budget
+		// only catches a large slowdown: one near 0.5 s would fail at random under load. Above a load average of about 57,
+		// 3 of 8 local runs broke 400 ms to count, so the count budget holds on a quiet Mac; on a GitHub runner it is 600 ms.
 		#if !DEBUG
 		#expect(search < budget(.milliseconds(200)))
 		#expect(counting < budget(.milliseconds(400)))

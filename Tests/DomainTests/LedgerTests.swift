@@ -509,6 +509,28 @@ struct LedgerTests {
 			#expect(ruled.count == 1, "\(query)")
 			#expect(searched == ruled, "\(query)")
 		}
+		// A bridged text with an unpaired UTF-16 surrogate has the UTF-8 bytes of a replacement character in Swift, but
+		// a regular expression reads the surrogate. So the search must not share the forms or the outcome of the two.
+		let surrogate = NSString(characters: [0xD800, 0x34, 0x37, 0x31, 0x31], length: 5) as String
+		for numbers in [[surrogate, "\u{FFFD}4711"], ["\u{FFFD}4711", surrogate]] {
+			let kassen = numbers.enumerated().map { i, number in
+				Account(position: i, name: "Kasse \(i)", kind: .giro, source: .offline, accountNumber: number)
+			}
+			let rows = kassen.enumerated().map { i, account in
+				Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 12 + i), amountMinor: -100, name: "Kunde \(i)",
+					counterpartyIBAN: account.accountNumber)
+			}
+			let surrogateLedger = Ledger(accounts: kassen, transactions: rows)
+			for query in ["local_account:/^\u{FFFD}4711$/", "remote_account:/^\u{FFFD}4711$/"] {
+				var f = TransactionFilter()
+				f.searchText = query
+				let rule = try Rule(parsing: query)
+				let searched = surrogateLedger.rows(in: .all, filter: f).rows.map(\.name).sorted()
+				let ruled = rows.filter { t in rule.matches(RuleSubject(t, account: kassen.first { $0.id == t.accountID })) }.map(\.name)
+				#expect(ruled.count == 1, "\(query)")
+				#expect(searched == ruled, "\(query)")
+			}
+		}
 	}
 
 	@Test("A regular expression on the counterparty account finds the same rows as the rule when rows share a counterparty")
