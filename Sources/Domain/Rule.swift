@@ -385,17 +385,19 @@ extension Rule {
 	/// when it has no name. Nil when it has neither.
 	///
 	/// The rule language has no escape inside a term, and a quotation mark ends it, so each one becomes the
-	/// wildcard `?`, which matches it.
+	/// wildcard `?`, which matches it. A name made only of wildcards would match nearly every transaction, so it
+	/// counts as no name.
 	public static func condition(for t: Transaction) -> String? {
-		func quoted(_ text: String) -> String { "\"" + String(text.map { quotationMarks.contains($0) ? "?" : $0 }) + "\"" }
-		let name = t.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-		if !name.isEmpty { return "name:" + quoted(name) }
+		func quoted(_ text: String) -> String { "\"" + text + "\"" }
+		let name = t.name.split(whereSeparator: \.isWhitespace).joined(separator: " ").map { quotationMarks.contains($0) ? "?" : $0 }
+		if name.contains(where: { $0 != "*" && $0 != "?" && $0 != " " }) { return "name:" + quoted(String(name)) }
 		guard let iban = t.counterpartyIBAN.map(TextFolding.accountKey), !iban.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
-		return "remote_account:" + quoted(iban)
+		return "remote_account:" + quoted(String(iban.map { quotationMarks.contains($0) ? "?" : $0 }))
 	}
 
 	/// `rule` with `condition` as one more alternative. `OR` binds weakest, so the rule keeps every transaction
-	/// that it found before.
+	/// that it found before, without parentheses that would nest deeper with each created rule. A saved rule that
+	/// does not read stays unreadable after the join, so the settings show its error.
 	public static func adding(_ condition: String, to rule: String) -> String {
 		let old = rule.trimmingCharacters(in: .whitespacesAndNewlines)
 		return old.isEmpty ? condition : "\(old) OR \(condition)"

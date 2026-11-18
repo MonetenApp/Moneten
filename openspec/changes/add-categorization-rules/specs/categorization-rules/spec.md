@@ -544,15 +544,13 @@ The app SHALL offer a help button next to the rule field that opens a descriptio
 
 ### Requirement: Create a rule from a transaction
 
-The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name or a counterparty IBAN. The command lists every category that can have a rule and can take the transaction. A chosen category opens its settings with a condition for the counterparty added to its rule, and the settings show how many transactions the new rule matches. Nothing changes until the user confirms the settings.
+The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name or a counterparty IBAN.
 
-#### Scenario: Category without a rule
+#### Scenario: One transaction with a counterparty
 
-- **GIVEN** the category "Energy" without a rule, and 3 transactions from the counterparty "Stadtwerke Musterstadt"
-- **WHEN** the user chooses "Create Rule" and then "Energy" in the context menu of one of these transactions
-- **THEN** the settings of "Energy" open with the rule `name:"Stadtwerke Musterstadt"`
-- **AND** they show "The rule matches 3 transactions."
-- **AND** no transaction changes its category until the user clicks OK and chooses how to apply the rule
+- **GIVEN** a transaction from the counterparty "Stadtwerke Musterstadt"
+- **WHEN** the user opens its context menu
+- **THEN** the menu has "Create Rule"
 
 #### Scenario: No counterparty
 
@@ -560,15 +558,62 @@ The app SHALL offer "Create Rule" in the context menu of one selected transactio
 - **WHEN** the user opens its context menu
 - **THEN** the menu has no "Create Rule"
 
+#### Scenario: Several transactions
+
+- **GIVEN** two selected transactions from the counterparty "Stadtwerke Musterstadt"
+- **WHEN** the user opens the context menu of the selection
+- **THEN** the menu has no "Create Rule"
+
+### Requirement: The categories of a created rule
+
+The app SHALL list in "Create Rule" every category that can have a rule, and SHALL disable a category that cannot take the transaction.
+
+#### Scenario: Groups and Uncategorized
+
+- **GIVEN** the group "Living" with the category "Energy"
+- **WHEN** the user opens "Create Rule" for a transaction
+- **THEN** the list has "Energy"
+- **AND** it has neither the group "Living" nor "Uncategorized"
+
 #### Scenario: Restricted category
 
 - **GIVEN** the category "Car" restricted to the account "Savings"
 - **WHEN** the user opens "Create Rule" for a transaction of the account "Giro"
-- **THEN** "Car" is disabled
+- **THEN** the list has "Car", and "Car" is disabled
+
+### Requirement: The settings of a created rule
+
+The app SHALL open the settings of the chosen category with the condition for the counterparty added to its rule, and the settings SHALL show how many transactions the new rule matches.
+
+#### Scenario: Category without a rule
+
+- **GIVEN** the category "Energy" without a rule, and 3 transactions from the counterparty "Stadtwerke Musterstadt"
+- **WHEN** the user chooses "Create Rule" and then "Energy" in the context menu of one of these transactions
+- **THEN** the settings of "Energy" open with the rule `name:"Stadtwerke Musterstadt"`
+- **AND** they show "The rule matches 3 transactions."
+
+### Requirement: Confirm a created rule
+
+The app SHALL change no rule and no transaction until the user confirms the settings of a created rule.
+
+#### Scenario: OK
+
+- **GIVEN** the settings of "Energy" with the created rule `"Abschlag" OR name:"Stadtwerke Musterstadt"`
+- **WHEN** the user clicks OK
+- **THEN** "Energy" has the new rule
+- **AND** the app asks how to apply it to the existing transactions
+- **AND** no transaction changes its category until the user chooses how to apply the rule
+
+#### Scenario: Cancel
+
+- **GIVEN** the settings of "Energy" with the created rule `"Abschlag" OR name:"Stadtwerke Musterstadt"`
+- **WHEN** the user clicks Cancel
+- **THEN** "Energy" keeps the rule `"Abschlag"`
+- **AND** no transaction changes its category
 
 ### Requirement: The condition of a created rule
 
-The app SHALL build the condition of "Create Rule" as `name:` with the counterparty name in quotation marks, or as `remote_account:` with the IBAN without spaces when the transaction has no name. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
+The app SHALL build the condition of "Create Rule" as `name:` with the counterparty name in quotation marks, or as `remote_account:` with the IBAN without spaces when the transaction has no name or a name made only of the wildcards `*` and `?`. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
 
 #### Scenario: Category with a rule
 
@@ -601,3 +646,36 @@ The app SHALL build the condition of "Create Rule" as `name:` with the counterpa
 - **WHEN** the user creates a rule for "Shopping" from it
 - **THEN** the settings show the rule `name:"AMAZON* MKTP DE"`
 - **AND** the rule matches the transaction
+
+#### Scenario: Name made only of wildcards
+
+- **GIVEN** a transaction from the counterparty "* ?" with the counterparty IBAN "DE02 1203 0000 0000 2020 51"
+- **WHEN** the user creates a rule for "Energy" from it
+- **THEN** the settings show the rule `remote_account:"DE02120300000000202051"`
+
+#### Scenario: Name made only of wildcards and no IBAN
+
+- **GIVEN** a transaction from the counterparty "*" without a counterparty IBAN
+- **WHEN** the user opens its context menu
+- **THEN** the menu has no "Create Rule"
+
+#### Scenario: Rule syntax in the name
+
+- **GIVEN** a transaction from the counterparty `Acme" OR name:"*`
+- **WHEN** the user creates a rule for "Shopping" from it
+- **THEN** the settings show the rule `name:"Acme? OR name:?*"`
+- **AND** the rule matches the transaction and not a transaction from "Stadtwerke Musterstadt"
+
+#### Scenario: Rule with parentheses and NOT
+
+- **GIVEN** the category "Streaming" with the rule `("Netflix" OR "Spotify") AND NOT purpose:"Erstattung"`
+- **WHEN** the user creates a rule for "Streaming" from a transaction of "Stadtwerke Musterstadt" with the purpose "Erstattung"
+- **THEN** the settings show the rule `("Netflix" OR "Spotify") AND NOT purpose:"Erstattung" OR name:"Stadtwerke Musterstadt"`
+- **AND** the rule matches that transaction and a transaction with the purpose "Spotify Abo", and not one with the purpose "Spotify Erstattung"
+
+#### Scenario: Saved rule that does not read
+
+- **GIVEN** the category "Energy" with the saved rule `name:`, which does not read
+- **WHEN** the user creates a rule for "Energy" from a transaction of "Stadtwerke Musterstadt"
+- **THEN** the settings show the rule `name: OR name:"Stadtwerke Musterstadt"` with its error
+- **AND** OK is disabled

@@ -901,11 +901,17 @@ final class DebugHarness {
 				await model.apply(rule: rule, of: c, mode: .all)
 				log("applyrule done")
 			}
-		// "<category>": what "Create Rule" in the context menu of the first selected row does with that category.
-		case "createrule":
-			guard let t = model.visibleSelection.first.flatMap(model.ledger.row), let condition = Rule.condition(for: t),
-				let c = model.ledger.categories.first(where: { $0.name == argument }) else { return log("createrule not found") }
-			model.createRule(condition, in: c.id)
+		// "<category>" selects the first row of the table, opens its context menu, and chooses that category in "Create Rule".
+		// "<n>" selects the first n rows and only opens the menu. Both log whether the menu has "Create Rule", and its items.
+		case "createrule": createRule(argument)
+		// "<category>|<account>" restricts the category to that account, as "Restrict to" in its settings does.
+		case "restrict":
+			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+			guard parts.count == 2, var c = model.ledger.categories.first(where: { $0.name == parts[0] }),
+				let a = model.ledger.accounts.first(where: { $0.name == parts[1] }) else { return log("restrict not found") }
+			c.restrictedToID = a.id
+			model.save(category: c)
+			log("restrict done")
 		// What "Add category" in "Assign Category" does with the selected rows.
 		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
@@ -1876,6 +1882,29 @@ final class DebugHarness {
 		}
 		log("menuexport item", ("title", .hash(menu.items[index].title)))
 		menu.performActionForItem(at: index)
+	}
+
+	/// "Create Rule" in the context menu of the transaction table, as a right click builds it. Each item of the menu by
+	/// the hash of its title, which names a category, and whether it is enabled.
+	private func createRule(_ argument: String) {
+		guard let model, let table = transactionTables().first else { return log("createrule no table") }
+		let count = Int(argument) ?? 1
+		table.selectRowIndexes(IndexSet(0..<min(count, table.numberOfRows)), byExtendingSelection: false)
+		guard let menu = contextMenu(row: 0, sidebar: false) else { return log("createrule no menu") }
+		menu.update()
+		// SwiftUI gives the item no identifier, so the harness finds it by the text that the user reads, in the language of this run.
+		guard let submenu = menu.items.first(where: { $0.title == String(localized: "Create Rule") })?.submenu else {
+			return log("createrule", ("rows", .count(count)), ("item", .presence(false)))
+		}
+		submenu.update()
+		log("createrule", ("rows", .count(count)), ("item", .presence(true)), ("categories", .list(submenu.items.map { .hash($0.title) })),
+			("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
+		guard Int(argument) == nil else { return }
+		guard let c = model.ledger.categories.first(where: { $0.name == argument }),
+			let index = submenu.items.firstIndex(where: { $0.title == model.ledger.categoryPath(c.id) }) else { return log("createrule not found") }
+		guard submenu.items[index].isEnabled else { return log("createrule refused", ("position", .position(index))) }
+		submenu.performActionForItem(at: index)
+		log("createrule chosen", ("position", .position(index)), ("sheet", .state(model.sheet)))
 	}
 
 	/// The sidebar: the leftmost list of the main window. The transaction table is a list too.
