@@ -38,7 +38,7 @@ Read [architecture](docs/architecture.md) for the modules and the data model, an
 
 The app keeps all your data in one data folder with the subfolders "Database", "Extensions", and "Statements". "Show Database in Finder..." in the Help menu opens it.
 
-- A copy of the whole data folder is a complete backup. Time Machine or any other backup of your Mac covers it.
+- A copy of the whole data folder holds all your data. Time Machine or any other backup of your Mac covers it. To open it on another Mac, set a database password first, because without one the key of the database stays in the Keychain of this Mac (see below).
 - "Backup Database..." in the Tools menu saves a copy of the database while the app runs. The copy holds the database only: statements and extensions are not part of it. So the command does not replace a regular backup of your Mac.
 - A backup opens with the database password that was valid when you made it, on any Mac. A backup made without a database password opens only on the same Mac and user account, with the key in the Keychain.
 
