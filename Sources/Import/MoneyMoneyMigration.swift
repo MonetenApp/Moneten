@@ -356,23 +356,26 @@ public struct MoneyMoneyMigration: Sendable {
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
 			if isCanceled() { throw CancellationError() }
-			guard let source = item["uuid"] as? String, let name = item["name"] as? String else { continue }
+			guard let source = item["uuid"] as? String, let listedName = item["name"] as? String else { continue }
 			let indentation = (item["indentation"] as? Int) ?? 0
 			let parent = indentation > 0 ? parents[indentation - 1] : nil
 			let position = positions[parent, default: 0]
 			positions[parent] = position + 1
 			if (item["group"] as? Bool) == true {
-				let id = ledger.groups.first(where: { $0.name == name && $0.parentID == parent })?.id
+				let id = ledger.groups.first(where: { $0.name == listedName && $0.parentID == parent })?.id
 				if let id {
 					parents[indentation] = id
 				} else {
-					let g = AccountGroup(name: name, parentID: parent, position: position)
+					let g = AccountGroup(name: listedName, parentID: parent, position: position)
 					plan.groups.append(g)
 					parents[indentation] = g.id
 				}
 				continue
 			}
 			let isPortfolio = (item["portfolio"] as? Bool) == true || Self.kind(item["type"] as? String) == .portfolio
+			let kind = isPortfolio ? .portfolio : Self.kind(item["type"] as? String)
+			// The plan, its report, and the error of a balance name the account as it is stored ("Account name").
+			let name = Account.name(from: listedName, kind: kind)
 			if isPortfolio { plan.portfolios.append((name, false)) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
@@ -421,8 +424,7 @@ public struct MoneyMoneyMigration: Sendable {
 				if changed { plan.updatedAccounts.append(existing) }
 				continue
 			}
-			var account = Account(groupID: parent, position: position, name: name,
-				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
+			var account = Account(groupID: parent, position: position, name: name, kind: kind,
 				source: .migrated, currency: currency, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
 				bankBalanceMinor: balanceMinor, bankBalanceDate: balanceDate,

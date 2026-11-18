@@ -1369,11 +1369,11 @@ final class AppModel {
 	func remove(group id: UUID) async {
 		guard let store else { return }
 		do {
-			try store.deleteGroup(id)
+			// The accounts and subgroups take the place of the group in the group above it ("Remove an account group").
+			let change = ledger.removal(ofGroup: id)
+			try store.deleteGroup(id, moving: change)
 			await replacingTable {
-				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
-				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
-				ledger.replace(groups: groups, accounts: accounts)
+				ledger.remove(group: id, moving: change)
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
@@ -1562,6 +1562,7 @@ final class AppModel {
 
 	// MARK: Categories
 
+	/// `name` is the accepted name of `Ledger.checkCategoryName(_:in:renaming:)`, which the sheet checks before it calls this.
 	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) async {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
 		let c = Domain.Category(parentID: parentID, position: position, name: name, isGroup: isGroup)

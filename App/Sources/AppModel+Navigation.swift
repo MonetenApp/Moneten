@@ -113,7 +113,11 @@ extension AppModel {
 		case let .group(id):
 			guard let g = ledger.group(id) else { return false }
 			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
-			question.informativeText = String(localized: "The accounts and groups in it are kept and move to the top level.")
+			question.informativeText = if let parent = g.parentID.flatMap(ledger.group) {
+				String(localized: "The accounts and groups in it are kept with their transactions and move to the group \(parent.name).")
+			} else {
+				String(localized: "The accounts and groups in it are kept with their transactions and move to the top level.")
+			}
 		case let .category(id):
 			guard let c = ledger.category(id), !c.isDefault else { return false }
 			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")

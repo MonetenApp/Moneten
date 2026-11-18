@@ -9767,12 +9767,22 @@
         }
       }
     },
-    "The accounts and groups in it are kept and move to the top level." : {
+    "The accounts and groups in it are kept with their transactions and move to the group %@." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Konten und Gruppen darin bleiben erhalten und rücken auf die oberste Ebene."
+            "value" : "Die Konten und Gruppen darin bleiben mit ihren Umsätzen erhalten und rücken in die Gruppe %@."
+          }
+        }
+      }
+    },
+    "The accounts and groups in it are kept with their transactions and move to the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Konten und Gruppen darin bleiben mit ihren Umsätzen erhalten und rücken auf die oberste Ebene."
           }
         }
       }
@@ -12431,6 +12441,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac hat keinen Touch ID-Sensor."
+          }
+        }
+      }
+    },
+    "This name is taken at the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Name ist auf der obersten Ebene bereits vergeben."
+          }
+        }
+      }
+    },
+    "This name is taken in the group %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Name ist in der Gruppe %@ bereits vergeben."
           }
         }
       }

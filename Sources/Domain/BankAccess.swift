@@ -440,6 +440,13 @@ extension Account {
 		}
 	}
 
+	/// The name as an account keeps it, without the white space around it, or nil when nothing is left.
+	/// An account always has a name ("Account name"), and a name of only white space counts as empty.
+	public static func acceptedName(_ typed: String) -> String? {
+		let name = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+		return name.isEmpty ? nil : name
+	}
+
 	/// Takes the fields that the account settings edit from `edited`, the account as the settings showed
 	/// it. The balance and the status of a refresh that ended while the settings were open stay. The type
 	/// changes only when the user changed it from the type of `opened`, the account as the settings
