@@ -5,60 +5,51 @@ import Domain
 /// network, or a real bank. The rules live here so that a test checks them. The app passes the English titles that
 /// the commands name, before it looks them up in the localized menus.
 public enum HarnessGuard {
-	/// The menu bar items that "menuitem" may choose, by menu and item. Each acts only inside the app and on the
+	/// The menu bar items that "menuitem" may choose, as "<menu>|<item>". Each acts only inside the app and on the
 	/// database of the run. Left out are the items that open a file panel, read or write a file outside the data
 	/// folder, open a page in the browser, look for an update, or change the database key.
-	static let localMenuItems: Set<MenuItem> = [
-		MenuItem("Moneten", "About Moneten"),
-		MenuItem("File", "Mark All Transactions as Checked"),
-		MenuItem("File", "Cancel Refresh"),
-		MenuItem("View", "Back"),
-		MenuItem("View", "Forward"),
-		MenuItem("View", "List"),
-		MenuItem("View", "Bar Chart"),
-		MenuItem("View", "Pie Chart"),
-		MenuItem("View", "Daily Balance"),
-		MenuItem("View", "Checkmarks"),
-		MenuItem("Account", "Add Account Group"),
-		MenuItem("Account", "Add Category"),
-		MenuItem("Account", "Add Category Group"),
-		MenuItem("Account", "Add Transaction..."),
-		MenuItem("Account", "Assign Category..."),
-		MenuItem("Account", "Add Comment..."),
-		MenuItem("Account", "Remove Account..."),
-		MenuItem("Account", "Remove Account Group..."),
-		MenuItem("Account", "Remove Category..."),
-		MenuItem("Account", "Account Settings..."),
-		MenuItem("Account", "Account Group Settings..."),
-		MenuItem("Account", "Category Settings..."),
-		MenuItem("Account", "Rename Search..."),
-		MenuItem("Window", "Main Window"),
+	static let localMenuItems: Set<String> = [
+		"Moneten|About Moneten",
+		"File|Mark All Transactions as Checked",
+		"File|Cancel Refresh",
+		"View|Back",
+		"View|Forward",
+		"View|List",
+		"View|Bar Chart",
+		"View|Pie Chart",
+		"View|Daily Balance",
+		"View|Checkmarks",
+		"Account|Add Account Group",
+		"Account|Add Category",
+		"Account|Add Category Group",
+		"Account|Add Transaction...",
+		"Account|Assign Category...",
+		"Account|Add Comment...",
+		"Account|Remove Account...",
+		"Account|Remove Account Group...",
+		"Account|Remove Category...",
+		"Account|Account Settings...",
+		"Account|Account Group Settings...",
+		"Account|Category Settings...",
+		"Account|Rename Search...",
+		"Window|Main Window",
 	]
 
 	/// The items that refresh accounts or set up a bank access. They reach a bank, so "menuitem" chooses them only
 	/// when the FinTS connector runs the made-up bank of `scripts/fake-fints-helper.sh`.
-	static let bankMenuItems: Set<MenuItem> = [
-		MenuItem("File", "Refresh All Accounts"),
-		MenuItem("Account", "Refresh Account"),
-		MenuItem("Account", "Refresh Accounts"),
-		MenuItem("Account", "Add Account..."),
-		MenuItem("Account", "Edit Login Data..."),
-		MenuItem("Account", "Look for New Accounts..."),
+	static let bankMenuItems: Set<String> = [
+		"File|Refresh All Accounts",
+		"Account|Refresh Account",
+		"Account|Refresh Accounts",
+		"Account|Add Account...",
+		"Account|Edit Login Data...",
+		"Account|Look for New Accounts...",
 	]
-
-	struct MenuItem: Hashable {
-		let menu: String
-		let item: String
-		init(_ menu: String, _ item: String) {
-			self.menu = menu
-			self.item = item
-		}
-	}
 
 	/// Whether "menuitem" may choose the item. `fintsHelper` is the helper that the FinTS connector of the run uses
 	/// in place of the real one, or nil when it uses the real one.
 	public static func allowsMenuItem(menu: String, item: String, fintsHelper: String?) -> Bool {
-		let key = MenuItem(menu, item)
+		let key = menu + "|" + item
 		if localMenuItems.contains(key) { return true }
 		return bankMenuItems.contains(key) && usesFakeBank(fintsHelper)
 	}
