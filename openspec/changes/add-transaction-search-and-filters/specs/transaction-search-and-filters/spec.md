@@ -191,13 +191,49 @@ The app SHALL stop a regular expression in the search that reads one text for ab
 
 ### Requirement: The search finds exact amounts
 
-The app SHALL find a transaction by its amount when the user enters the amount with its decimals, with a decimal comma or a decimal point, and with or without a sign.
+The app SHALL find a transaction by its amount when the user enters the amount with its decimals, with a decimal comma or a decimal point, with or without thousands separators, and with or without a sign. A search word that reads as an amount finds only the exact value of an amount. Without a sign it finds either sign, and with a sign only that sign. In the other searched fields the word still finds text inside words.
 
 #### Scenario: Amount with decimals
 
 - **GIVEN** one transaction of -49,99 € and one of -149,99 €
 - **WHEN** the user searches for "49,99"
 - **THEN** the list shows the transaction of -49,99 € and not the one of -149,99 €
+
+#### Scenario: Amount with a sign
+
+- **GIVEN** one transaction of -49,99 € and one of 49,99 €
+- **WHEN** the user searches for "-49,99"
+- **THEN** the list shows only the transaction of -49,99 €
+- **WHEN** the user searches for "49.99"
+- **THEN** the list shows both transactions
+
+#### Scenario: Amount with thousands separators
+
+- **GIVEN** one transaction of -1.249,99 €
+- **WHEN** the user searches for "1.249,99" or "1,249.99"
+- **THEN** the list shows the transaction
+- **WHEN** the user searches for "249,99"
+- **THEN** the list shows no transaction
+
+#### Scenario: Amount with three decimals
+
+- **GIVEN** one transaction of 1,230 KWD and one of 1,234 KWD
+- **WHEN** the user searches for "1,23" or "1,230"
+- **THEN** the list shows only the transaction of 1,230 KWD
+- **WHEN** the user searches for "1,2340"
+- **THEN** the list shows only the transaction of 1,234 KWD
+
+#### Scenario: Amount without the integer part
+
+- **GIVEN** one transaction of -0,99 € and one of -149,99 €
+- **WHEN** the user searches for ",99"
+- **THEN** the list shows only the transaction of -0,99 €
+
+#### Scenario: Amount as text in the purpose
+
+- **GIVEN** a transaction of -10,00 € with the purpose "Rechnung 149,99"
+- **WHEN** the user searches for "49,99"
+- **THEN** the list shows the transaction
 
 ### Requirement: Count and sum of the results
 
@@ -264,6 +300,12 @@ The app SHALL open a date range with a start date and an end date when the user 
 
 - **WHEN** the user enters an end date that lies before the start date
 - **THEN** the app does not apply the range and marks the end date
+
+#### Scenario: Saved range with the end before the start
+
+- **GIVEN** a saved filter bar or a saved search holds the custom period 31.03.2026 to 01.04.2025
+- **WHEN** the app restores it
+- **THEN** the period is 01.04.2025 to 31.03.2026
 
 ### Requirement: The filter bar applies to every view
 
