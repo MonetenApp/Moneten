@@ -11,8 +11,11 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 		public let date: Date
 		let launchStart: Date
 
+		/// MetricKit gives payload times in whole minutes, so a crash in the minute of its launch arrives with a start
+		/// before that launch. The match therefore starts at the whole minute of the launch.
 		func matches(start: Date) -> Bool {
-			start > launchStart && start <= date.addingTimeInterval(60)
+			let launchMinute = Date(timeIntervalSince1970: (launchStart.timeIntervalSince1970 / 60).rounded(.down) * 60)
+			return start >= launchMinute && start <= date.addingTimeInterval(60)
 		}
 	}
 

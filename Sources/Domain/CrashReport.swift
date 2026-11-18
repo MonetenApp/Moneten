@@ -28,7 +28,7 @@ public struct CrashDiagnostic: Codable, Equatable, Sendable {
 	}
 
 	public static func crashedFrames(in data: Data) throws -> [Frame] {
-		let tree = try JSONDecoder().decode(StackEnvelope.self, from: data).callStackTree
+		let tree = try JSONDecoder().decode(StackTree.self, from: data)
 		var pending = Array((tree.callStacks.first { $0.threadAttributed == true }?.callStackRootFrames ?? []).reversed())
 		var frames: [Frame] = []
 		while let frame = pending.popLast() {
@@ -39,10 +39,6 @@ public struct CrashDiagnostic: Codable, Equatable, Sendable {
 		}
 		return frames
 	}
-}
-
-private struct StackEnvelope: Decodable {
-	let callStackTree: StackTree
 }
 
 private struct StackTree: Decodable {

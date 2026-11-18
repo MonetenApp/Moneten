@@ -39,7 +39,7 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 #### Scenario: Delayed details
 
 - **GIVEN** a short report for the crash at 10:05 awaits a decision
-- **WHEN** a diagnostic starting after the previous launch at 10:00 and no later than 10:06 arrives later
+- **WHEN** a diagnostic starting at or after the minute of the previous launch at 10:00 and no later than 10:06 arrives later
 - **THEN** the full report replaces the short report
 - **AND** if the user already declined the short report, the diagnostic does not prompt again
 
@@ -55,8 +55,15 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 
 - **GIVEN** the previous launch started at second 1000 and a crash file dated second 1103 supplies the pending short report
 - **WHEN** a diagnostic arrives after another launch
-- **THEN** a start at second 1162 or 1163 replaces the short report
-- **AND** a start at second 1164, 1000, or 999 leaves the short report unchanged
+- **THEN** a start at second 960, 1000, 1162, or 1163 replaces the short report
+- **AND** a start at second 1164 or 959 leaves the short report unchanged
+
+#### Scenario: Diagnostic times in whole minutes
+
+- **GIVEN** the previous launch started at 10:58:21 and the process crashed 17 seconds later
+- **AND** the crash file is dated 10:58:46 and its short report awaits a decision
+- **WHEN** a diagnostic beginning and ending at 10:58:00 arrives on the next launch
+- **THEN** its details replace the short report
 
 #### Scenario: Main window closed
 

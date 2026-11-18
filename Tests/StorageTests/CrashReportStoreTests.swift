@@ -187,8 +187,25 @@ struct CrashReportStoreTests {
 		#expect(try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_100), since: Date(timeIntervalSince1970: 1_100)) == nil)
 	}
 
-	@Test("Fallback correlation uses the crashed launch and includes at most 60 seconds of file delay",
-		arguments: [999.0, 1_000, 1_001, 1_100, 1_162, 1_163, 1_164])
+	/// MetricKit gives payload times in whole minutes. A crash 17 seconds after a launch at 10:58:21 arrived as a
+	/// payload from 10:58:00 to 10:58:00, which begins before the launch it belongs to.
+	@Test("A payload in whole minutes replaces the short report of a crash in the minute of its launch")
+	func wholeMinutePayload() throws {
+		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
+		defer { try? FileManager.default.removeItem(at: folder.root) }
+		let store = CrashReportStore(folder: folder, keyInFolder: true)
+		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_221), appVersion: "0.1.0", macOSVersion: "15.2", files: [])
+		let fallback = try store.startLaunch(at: Date(timeIntervalSince1970: 1_267), appVersion: "0.1.0", macOSVersion: "15.2",
+			files: [("Moneten-a.ips", Date(timeIntervalSince1970: 1_246))])
+		#expect(fallback?.fallback?.date == Date(timeIntervalSince1970: 1_246))
+		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
+		let pending = try store.receive(diagnostic, at: Date(timeIntervalSince1970: 1_200), since: Date(timeIntervalSince1970: 1_200))
+		#expect(pending?.fallback == nil)
+		#expect(pending?.diagnostic.signal == 5)
+	}
+
+	@Test("Fallback correlation starts at the minute of the crashed launch and includes at most 60 seconds of file delay",
+		arguments: [959.0, 960, 999, 1_000, 1_001, 1_100, 1_162, 1_163, 1_164])
 	func fallbackTiming(start: TimeInterval) throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenCrashTests-\(UUID())"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
@@ -199,7 +216,7 @@ struct CrashReportStoreTests {
 		_ = try store.startLaunch(at: Date(timeIntervalSince1970: 1_400), appVersion: "0.1.1", macOSVersion: "15.3", files: [])
 		let diagnostic = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 6, frames: [])
 		let pending = try CrashReportStore(folder: folder, keyInFolder: true).receive(diagnostic, at: Date(timeIntervalSince1970: 1_300), since: Date(timeIntervalSince1970: start))
-		if start > 1_000 && start <= 1_163 { // time-ok: a timestamp that picks the case, not a time limit
+		if start >= 960 && start <= 1_163 { // time-ok: a timestamp that picks the case, not a time limit
 			#expect(pending?.diagnostic.signal == 6)
 			#expect(pending?.fallback?.date == nil)
 		} else {
