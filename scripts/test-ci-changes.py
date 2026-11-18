@@ -174,17 +174,36 @@ def release_ext_filter():
 	return [line.strip()[2:] for line in block.group(1).splitlines()]
 
 
-def ext_folders():
+def ext_folders(manifest=None):
 	"""The source folders of the product ext and of every target that it depends on, as Package.swift declares them.
 
-	Each target of Package.swift stands on one line. A dependency on a product of another package is pinned by
-	Package.resolved, so only local targets count.
+	Each target of Package.swift stands on one line. A target whose declaration or dependency list does not close
+	on its line fails the test, so a form this reader does not know never drops a dependency. A dependency on a
+	product of another package is pinned by Package.resolved, so only local targets count.
 	"""
+	text = manifest if manifest is not None else (ROOT / "Package.swift").read_text()
 	targets = {}
-	declaration = re.compile(r'^\s*\.(?:target|executableTarget|testTarget)\(name: "(\w+)"(.*)$', re.M)
-	for name, rest in declaration.findall((ROOT / "Package.swift").read_text()):
-		dependencies = re.search(r"dependencies: \[(.*?)\]", rest)
-		local = re.sub(r"\.product\([^)]*\)", "", dependencies.group(1)) if dependencies else ""
+	start = re.compile(r"^\s*\.(?:target|executableTarget|testTarget)\(")
+	declaration = re.compile(r'^\s*\.(?:target|executableTarget|testTarget)\(name: "(\w+)"(.*)$')
+	for line in text.splitlines():
+		if not start.match(line):
+			continue
+		found = declaration.match(line)
+		if not found or line.count("(") != line.count(")"):
+			raise ValueError(f"Package.swift declares a target that does not stand on one line: {line.strip()}")
+		name, rest = found.groups()
+		local = ""
+		if "dependencies: [" in rest:
+			begin = rest.index("dependencies: [") + len("dependencies: [")
+			depth, end = 1, begin
+			while end < len(rest) and depth:
+				depth += {"[": 1, "]": -1}.get(rest[end], 0)
+				end += 1
+			if depth:
+				raise ValueError(f"the dependencies of {name} do not close on their line")
+			local = re.sub(r"\.product\([^)]*\)", "", rest[begin:end - 1])
+		elif "dependencies:" in rest:
+			raise ValueError(f"the dependencies of {name} are not a list on their line")
 		path = re.search(r'path: "([^"]+)"', rest)
 		targets[name] = (path.group(1) if path else f"Sources/{name}", re.findall(r'"(\w+)"', local))
 	seen, todo = set(), ["ext"]
@@ -194,6 +213,18 @@ def ext_folders():
 			seen.add(name)
 			todo.extend(targets[name][1])
 	return {targets[name][0] for name in seen}
+
+
+def script_reads(text, files):
+	"""The tracked files that the lines of a script name, a path written with ./ included."""
+	read = set()
+	for line in text.splitlines():
+		if COMMENT.match(line):
+			continue
+		for token in TOKEN.findall(line):
+			token = re.sub(r"^(\./)+", "", token).rstrip("/")
+			read |= {f for f in files if f and (f == token or f.startswith(token + "/"))}
+	return read
 
 
 def in_filter(patterns, path):
@@ -217,14 +248,28 @@ class ReleaseExtFilter(unittest.TestCase):
 	def test_every_file_that_the_script_reads_is_in_the_filter(self):
 		files = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, check=True, capture_output=True).stdout.decode().split("\0")
 		patterns = release_ext_filter()
-		read = set()
-		for text in (ROOT / "scripts/release-ext.sh").read_text().splitlines():
-			if COMMENT.match(text):
-				continue
-			for token in TOKEN.findall(text):
-				read |= {f for f in files if f and (f == token or f.startswith(token.rstrip("/") + "/"))}
+		read = script_reads((ROOT / "scripts/release-ext.sh").read_text(), files)
 		self.assertTrue({"Tools/ext/Ext.swift", "Sources/ExtensionHost/Manifest.swift", "Fixtures/example/fixture.json"} <= read)
 		self.assertEqual({path for path in read if not in_filter(patterns, path)}, set())
+
+	def test_a_dependency_list_that_does_not_close_on_its_line_fails(self):
+		manifest = (ROOT / "Package.swift").read_text()
+		line = '.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),'
+		self.assertIn(line, manifest)
+		several = manifest.replace(line, '.target(name: "ExtensionConnector", dependencies: [\n\t\t\t"Domain", "ExtensionHost", "Sync",\n\t\t]),')
+		with self.assertRaises(ValueError):
+			ext_folders(several)
+
+	def test_a_nested_list_keeps_the_dependencies_after_it(self):
+		manifest = (ROOT / "Package.swift").read_text()
+		line = '.target(name: "ExtensionConnector", dependencies: ["Domain", "ExtensionHost"]),'
+		nested = manifest.replace(line, '.target(name: "ExtensionConnector", dependencies: [.target(name: "Domain", condition: .when(platforms: [.macOS])), "ExtensionHost", "Sync"]),')
+		self.assertIn("Sources/Sync", ext_folders(nested))
+
+	def test_a_path_written_with_dot_slash_counts_as_read(self):
+		files = ["Sources/Sync/SyncCoordinator.swift", "Sources/Domain/Money.swift"]
+		self.assertEqual(script_reads("cat ./Sources/Sync/SyncCoordinator.swift", files), {"Sources/Sync/SyncCoordinator.swift"})
+		self.assertEqual(script_reads("cat Sources/Sync/SyncCoordinator.swift", files), {"Sources/Sync/SyncCoordinator.swift"})
 
 	def test_a_change_outside_the_inputs_skips(self):
 		patterns = release_ext_filter()
