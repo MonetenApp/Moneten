@@ -62,6 +62,18 @@ struct RuleFromTransactionTests {
 		#expect(try !matches(#require(Rule.condition(for: transaction("Müller OR Söhne"))), transaction("Müller")))
 	}
 
+	@Test("* and ? in the name stay wildcards, and the rule still matches the transaction, as for a card payment")
+	func wildcards() throws {
+		let amazon = transaction("AMAZON* MKTP DE")
+		let condition = try #require(Rule.condition(for: amazon))
+		#expect(condition == #"name:"AMAZON* MKTP DE""#)
+		#expect(try matches(condition, amazon))
+		for name in ["PAYPAL *SPOTIFY", "Wer? Was? GmbH", "*", "?"] {
+			let t = transaction(name)
+			#expect(try matches(#require(Rule.condition(for: t)), t), "\(name)")
+		}
+	}
+
 	@Test("White space in the name, such as a line break, becomes one space")
 	func whiteSpace() throws {
 		let t = transaction("  Stadtwerke\n Musterstadt ")

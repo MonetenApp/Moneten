@@ -546,8 +546,6 @@ The app SHALL offer a help button next to the rule field that opens a descriptio
 
 The app SHALL offer "Create Rule" in the context menu of one selected transaction that has a counterparty name or a counterparty IBAN. The command lists every category that can have a rule and can take the transaction. A chosen category opens its settings with a condition for the counterparty added to its rule, and the settings show how many transactions the new rule matches. Nothing changes until the user confirms the settings.
 
-The condition is `name:` with the counterparty name in quotation marks, or `remote_account:` with the IBAN without spaces when the transaction has no name. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
-
 #### Scenario: Category without a rule
 
 - **GIVEN** the category "Energy" without a rule, and 3 transactions from the counterparty "Stadtwerke Musterstadt"
@@ -555,6 +553,22 @@ The condition is `name:` with the counterparty name in quotation marks, or `remo
 - **THEN** the settings of "Energy" open with the rule `name:"Stadtwerke Musterstadt"`
 - **AND** they show "The rule matches 3 transactions."
 - **AND** no transaction changes its category until the user clicks OK and chooses how to apply the rule
+
+#### Scenario: No counterparty
+
+- **GIVEN** a transaction without a counterparty name and without a counterparty IBAN
+- **WHEN** the user opens its context menu
+- **THEN** the menu has no "Create Rule"
+
+#### Scenario: Restricted category
+
+- **GIVEN** the category "Car" restricted to the account "Savings"
+- **WHEN** the user opens "Create Rule" for a transaction of the account "Giro"
+- **THEN** "Car" is disabled
+
+### Requirement: The condition of a created rule
+
+The app SHALL build the condition of "Create Rule" as `name:` with the counterparty name in quotation marks, or as `remote_account:` with the IBAN without spaces when the transaction has no name. A quotation mark in the name becomes the wildcard `?`. The condition joins an existing rule with `OR`.
 
 #### Scenario: Category with a rule
 
@@ -581,14 +595,9 @@ The condition is `name:` with the counterparty name in quotation marks, or `remo
 - **WHEN** the user creates a rule for "Craftsmen" from it
 - **THEN** the rule `name:"Müller OR Söhne"` matches the transaction and not a transaction from "Müller"
 
-#### Scenario: No counterparty
+#### Scenario: Wildcard characters in the name
 
-- **GIVEN** a transaction without a counterparty name and without a counterparty IBAN
-- **WHEN** the user opens its context menu
-- **THEN** the menu has no "Create Rule"
-
-#### Scenario: Restricted category
-
-- **GIVEN** the category "Car" restricted to the account "Savings"
-- **WHEN** the user opens "Create Rule" for a transaction of the account "Giro"
-- **THEN** "Car" is disabled
+- **GIVEN** a card payment from the counterparty "AMAZON* MKTP DE"
+- **WHEN** the user creates a rule for "Shopping" from it
+- **THEN** the settings show the rule `name:"AMAZON* MKTP DE"`
+- **AND** the rule matches the transaction
