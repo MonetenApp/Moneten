@@ -297,6 +297,10 @@ final class AppModel {
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
 	}
+	#if DEBUG || PERF_HARNESS
+	/// Set by the debug harness: the next `save(account:)` fails, as a full disk would.
+	@ObservationIgnored var failsNextAccountSave = false
+	#endif
 	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
 	/// The view mode of the selected view. Account views and category views each keep their own.
 	var viewMode: ViewMode {
@@ -1161,6 +1165,12 @@ final class AppModel {
 		guard let store else { return }
 		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
+			#if DEBUG || PERF_HARNESS
+			if failsNextAccountSave {
+				failsNextAccountSave = false
+				throw CocoaError(.fileWriteOutOfSpace)
+			}
+			#endif
 			var saved = account
 			var entry: Transaction?
 			var removed: UUID?
