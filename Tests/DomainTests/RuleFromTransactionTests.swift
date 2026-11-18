@@ -94,6 +94,18 @@ struct RuleFromTransactionTests {
 		#expect(try !matches(rule, transaction("Streaming", purpose: "Netflix")))
 	}
 
+	@Test("The join keeps a character that the rule reads as part of a term, such as a zero-width space, at either end of the old rule", arguments: [
+		"Netflix\u{200B}", "\u{200B}Netflix", "\u{FEFF}Netflix\u{200B}\n",
+	])
+	func addingKeepsWhatTheRuleReads(old: String) throws {
+		let rule = Rule.adding(#"name:"Stadtwerke Musterstadt""#, to: old)
+		for name in ["Netflix", "Netflix\u{200B}", "\u{200B}Netflix", "\u{FEFF}Netflix\u{200B}"] {
+			let t = transaction("Streaming", purpose: name)
+			#expect(try matches(rule, t) == matches(old, t), "\(name.unicodeScalars.map { String($0.value, radix: 16) })")
+		}
+		#expect(try matches(rule, transaction("Stadtwerke Musterstadt")))
+	}
+
 	@Test("A name made only of the wildcards * and ? and of quotation marks gives way to the IBAN, or to no condition", arguments: ["*", "?", "* ?", "**", "\"", "„“"])
 	func wildcardsOnly(name: String) throws {
 		#expect(Rule.condition(for: transaction(name, iban: "DE02 1203 0000 0000 2020 51")) == #"remote_account:"DE02120300000000202051""#)

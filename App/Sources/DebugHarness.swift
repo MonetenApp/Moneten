@@ -1889,7 +1889,7 @@ final class DebugHarness {
 	private func createRule(_ argument: String) {
 		guard let model, let table = transactionTables().first else { return log("createrule no table") }
 		let count = Int(argument) ?? 1
-		table.selectRowIndexes(IndexSet(0..<min(count, table.numberOfRows)), byExtendingSelection: false)
+		table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false)
 		guard let menu = contextMenu(row: 0, sidebar: false) else { return log("createrule no menu") }
 		menu.update()
 		// SwiftUI gives the item no identifier, so the harness finds it by the text that the user reads, in the language of this run.
