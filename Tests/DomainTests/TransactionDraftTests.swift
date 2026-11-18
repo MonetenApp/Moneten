@@ -25,6 +25,14 @@ struct TransactionDraftTests {
 		#expect(draft(amount: "-1.250,00 €").amountMinor(in: "EUR", region: .comma) == .success(-125_000))
 	}
 
+	@Test("A typed Arabic decimal separator is the decimal mark, never a group of thousands")
+	func arabicSeparator() {
+		#expect(draft(amount: "-89\u{066B}50").amountMinor(in: "EUR", region: .comma) == .success(-8_950))
+		#expect(draft(amount: "1\u{066B}234").amountMinor(in: "EUR", region: .point) == .failure(.tooManyDecimals))
+		#expect(draft(amount: "1\u{066B}234").amountMinor(in: "KWD", region: .point) == .success(1_234))
+		#expect(draft(amount: "1\u{066B}234.56").amountMinor(in: "EUR", region: .point) == .failure(.notANumber))
+	}
+
 	@Test("An amount of zero, text that is not a number, an empty field, and an amount beyond the limit are refused")
 	func refusedAmounts() {
 		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma) == .failure(.zero))

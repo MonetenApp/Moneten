@@ -35,6 +35,10 @@ MENUS = """struct ProbeCommands: Commands {
 			Button(menuTitle) { open() } // probe: pass
 			ForEach(RefreshInterval.allCases, id: \\.self) { Button($0.title) { choose($0) } } // probe: pass
 			ForEach(kinds, id: \\.self) { Button($0.label) { choose($0) } } // probe: verbatim
+			Button(model.groupedTitle) { open() } // probe: verbatim
+			Button(model.upperTitle) { open() } // probe: verbatim
+			ForEach(Kind.allCases, id: \\.self) { Button($0.title) { choose($0) } } // probe: verbatim
+			ForEach(model.kinds, id: \\.self) { kind in Button(kind.title) { choose(kind) } } // probe: pass
 		}
 	}
 
@@ -58,6 +62,15 @@ MODEL = """extension AppModel {
 
 	var removeTitle: String? {
 		String(localized: "Remove Account...")
+	}
+
+	/// A literal in parentheses that only group it is the title, and so is one whose method gives a String.
+	var groupedTitle: String {
+		return ("Open")
+	}
+
+	var upperTitle: String {
+		return "Open".uppercased()
 	}
 
 	/// A literal in a condition or in an argument is no title.
@@ -86,9 +99,11 @@ LIBRARY = """public enum RefreshInterval: CaseIterable {
 	}
 }
 
-enum Kind {
+enum Kind: CaseIterable {
 	case giro
 	var label: String { "Giro" }
+	/// A plain title of another type than RefreshInterval, which the menu of the refresh intervals does not show.
+	var title: String { "Giro" }
 }
 """
 

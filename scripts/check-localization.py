@@ -277,21 +277,54 @@ def properties(sources, name):
 	return found
 
 
+# A word before "(" that opens a group, not a call: `return ("Open")` returns the literal.
+KEYWORDS = {"return", "if", "guard", "case", "in", "else", "where", "while", "switch", "throw", "try", "await", "let", "var"}
+
+
+def in_call(before):
+	"""Whether the end of `before`, code with masked literals, lies inside the arguments of a call."""
+	openers = []
+	for i, c in enumerate(before):
+		if c in "([{":
+			word = re.search(r"([\w)\]?!>]*)\s*$", before[:i]).group(1)
+			openers.append(c == "(" and bool(word) and word not in KEYWORDS)
+		elif c in ")]}" and openers:
+			openers.pop()
+	return any(openers)
+
+
 def returned_literals(body):
 	"""The literals that a property body gives as its value, such as `case .account: "Remove Account..."`.
 
-	A literal inside parentheses or brackets is an argument, such as `of: "-"` of replacingOccurrences, and one
-	after ==, !=, or case, or before {, is a condition. Neither is the title.
+	A literal among the arguments of a call, such as `of: "-"` of replacingOccurrences, and one after ==, !=, or
+	case, or before {, is no title. One in parentheses that only group it, such as `return ("Open")`, and one whose
+	method gives a String, such as `"Open".uppercased()`, is.
 	"""
 	code = without_localized(without_comments(body))
+	masked = STRING_LITERAL.sub(lambda m: '"' + "x" * (len(m.group(0)) - 2) + '"', code)
 	literals = []
 	for match in STRING_LITERAL.finditer(code):
-		before, after = code[:match.start()], code[match.end():]
-		depth = sum(before.count(c) for c in "([") - sum(before.count(c) for c in ")]")
-		if depth > 0 or re.search(r"(?:==|!=|~=|\bcase|,)\s*$", before) or re.match(r"\s*(?:\{|==|!=|\.)", after):
+		before, after = masked[:match.start()], code[match.end():]
+		if in_call(before) or re.search(r"(?:==|!=|~=|\bcase|,)\s*$", before) or re.match(r"\s*(?:\{|==|!=)", after):
 			continue
 		literals.append(match.group(0))
 	return literals
+
+
+def collection_type(code, position):
+	"""The type of the innermost ForEach around `position` when it runs over `Type.allCases`, else None."""
+	found = None
+	for match in re.finditer(r"\bForEach\(", code[:position]):
+		end = call_end(code, match.end())
+		# The arguments of the call end at its closing parenthesis.
+		while end < len(code) and code[end] == ",":
+			end = call_end(code, end + 1)
+		block = code.find("{", end)
+		if block < 0 or block > position or block_end(code, block + 1) <= position:
+			continue
+		of = re.match(r"\s*([A-Z]\w*)\.allCases\b", code[match.end():])
+		found = of.group(1) if of else None
+	return found
 
 
 def menu_title_problems(sources):
@@ -303,8 +336,9 @@ def menu_title_problems(sources):
 	so it comes from String(localized:). A literal after ?? next to such a title is a String too. A title that names
 	a property, such as Button(model.removeTitle), passes when every literal that the property returns is the key of
 	a String(localized:). The property of `model.` is one of AppModel, a bare name one of the type that holds the
-	menu, and `$0.title` one of any type that declares it. "Remove Account Group..." stayed English for both
-	reasons (issue #463).
+	menu, and `$0.title` one of the type of `Type.allCases` in the ForEach around it. When no ForEach names the
+	type, every type that declares the property counts, and the title fails only when all of them return a plain
+	literal. "Remove Account Group..." stayed English for both reasons (issue #463).
 	"""
 	problems = []
 	for path, text in sorted(sources.items()):
@@ -334,11 +368,18 @@ def menu_title_problems(sources):
 				candidates = [c for c in candidates if c[1] == "AppModel"]
 			elif receiver in (None, "self"):
 				candidates = [c for c in candidates if c[1] in types_at(code, match.start())]
+			elif element := collection_type(code, match.start()):
+				candidates = [c for c in candidates if c[1] == element]
 			if not candidates:
 				problems.append(f"{where}: the menu title {argument!r} is neither a literal nor a String property of the app, "
 					"so this check cannot see its text. Use a literal or a property that returns String(localized: ...).")
 				continue
-			for source, _, body in candidates:
+			plain = [(source, body) for source, _, body in candidates if returned_literals(body)]
+			# The type of an element that no ForEach names stays open: then the title shows verbatim only when every type
+			# that has a property of its name returns a plain literal.
+			if len(candidates) > 1 and len(plain) < len(candidates):
+				continue
+			for source, body in plain:
 				for literal in returned_literals(body):
 					problems.append(f"{source}: {title.group('name')} returns the literal {literal} for the menu title at {where}, "
 						f"which shows verbatim. Write String(localized: {literal}).")
