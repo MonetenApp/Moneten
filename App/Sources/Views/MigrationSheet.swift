@@ -107,20 +107,7 @@ struct MigrationSheet: View {
 				} footer: {
 					Text(MoneyMoneyMigration.Report.balanceRule).foregroundStyle(.secondary)
 				}
-				if !report.notes.isEmpty {
-					Section("Notes") {
-						ScrollView {
-							VStack(alignment: .leading, spacing: 10) {
-								ForEach(Array(report.notes.enumerated()), id: \.offset) { i, note in
-									if i > 0 { Divider() }
-									Text(note).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-								}
-							}
-						}
-						// About 70 characters fit on a line of the sheet.
-						.frame(height: min(report.notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
-					}
-				}
+				notes(report.notes)
 			case let .failed(message, _):
 				Section {
 					Label(message, systemImage: "exclamationmark.triangle")
@@ -224,6 +211,10 @@ struct MigrationSheet: View {
 			LabeledContent("Categories", value: plan.categories.count.formatted())
 			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 			LabeledContent("Transactions", value: plan.transactions.count.formatted())
+			if let days = plan.transactionDays {
+				LabeledContent("Oldest transaction", value: Format.day(days.lowerBound))
+				LabeledContent("Newest transaction", value: Format.day(days.upperBound))
+			}
 			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
 				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 			}
@@ -231,8 +222,29 @@ struct MigrationSheet: View {
 			Text("This will be imported")
 		} footer: {
 			if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
-				Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
+				// Built as a String, so its numbers take the format of the region, as the counts above do.
+				Text(verbatim: String(localized: "Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions) transactions."))
 					.foregroundStyle(.secondary)
+			}
+		}
+		notes(plan.notes)
+	}
+
+	/// What cannot be migrated and what the user should check, before the import and in the report after it.
+	@ViewBuilder
+	private func notes(_ notes: [String]) -> some View {
+		if !notes.isEmpty {
+			Section("Notes") {
+				ScrollView {
+					VStack(alignment: .leading, spacing: 10) {
+						ForEach(Array(notes.enumerated()), id: \.offset) { i, note in
+							if i > 0 { Divider() }
+							Text(note).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+						}
+					}
+				}
+				// About 70 characters fit on a line of the sheet.
+				.frame(height: min(notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
 			}
 		}
 	}
