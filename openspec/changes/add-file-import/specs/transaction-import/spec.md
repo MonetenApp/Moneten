@@ -1100,7 +1100,7 @@ The app SHALL recompute the balance of an offline account and the balance histor
 
 ### Requirement: Progress and cancel
 
-The app SHALL show progress while it imports and let the user cancel. Cancellation during reading or storing leaves no transaction or new category of the current file. Files stored before cancellation stay. The app stops the following files and reports "Import canceled. N files were imported before.", with N replaced by the number of files stored.
+The app SHALL show progress while it imports and let the user cancel. Cancellation during reading or storing leaves no transaction or new category of the current file. Files stored before cancellation stay. The app stops the following files and reports "Import canceled. N files were imported before.", with N replaced by the number of files stored. The window keeps drawing while the app stores a file, and a cancel stops the storing at the next transaction.
 
 #### Scenario: Cancel a large file
 
@@ -1121,6 +1121,15 @@ The app SHALL show progress while it imports and let the user cancel. Cancellati
 - **WHEN** the user cancels reading and then cancels while the first file is stored
 - **THEN** no transaction or new category of the first file remains
 - **AND** the second file is not stored
+- **AND** the result starts with "Import canceled. 0 files were imported before."
+
+#### Scenario: Cancel while a large file is stored
+
+- **GIVEN** an account with 5,000 transactions
+- **AND** the app stores a CSV file with 50,000 new transactions into it
+- **WHEN** the user cancels while the app stores them
+- **THEN** the import ends within 2 seconds
+- **AND** the account has 5,000 transactions
 - **AND** the result starts with "Import canceled. 0 files were imported before."
 
 ### Requirement: Persist the original file identity

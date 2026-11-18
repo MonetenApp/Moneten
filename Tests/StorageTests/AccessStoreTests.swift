@@ -43,10 +43,30 @@ struct AccessStoreTests {
 		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
 		#expect(try store.loadLedger().account(giro.id)?.refreshedAt == Date(timeIntervalSince1970: 1_793_534_400))
 
-		giro.record(.failed(RefreshError(message: "Zugang vorübergehend gesperrt", date: Date(timeIntervalSince1970: 1_793_538_000))))
+		giro.record(.failed(RefreshError(failure: .bank(BankMessage(text: "Zugang vorübergehend gesperrt")), date: Date(timeIntervalSince1970: 1_793_538_000))))
 		try store.recordRefresh(of: Self.access.id, state: nil, accounts: [giro])
 		#expect(try store.state(of: Self.access.id) == AccessState(Data([2])))
 		#expect(try store.loadLedger().account(giro.id)?.refreshError?.message == "Zugang vorübergehend gesperrt")
+	}
+
+	@Test("A refresh error stores the failure and the answer of the bank, so it shows in the language of the app after the database opens again")
+	func errorWithoutLanguage() throws {
+		let vault = Vault(testing: folder)
+		let store = try vault.create(password: Self.password, starterCategories: [])
+		var giro = giro()
+		try store.add(Self.access, state: nil, accounts: [giro])
+		let failure = SyncFailure.pinRejected(BankMessage(code: "9931", text: "PIN falsch"))
+		giro.record(.failed(RefreshError(failure: failure, date: Date(timeIntervalSince1970: 1_793_538_000), waitsForUser: true)))
+		try store.recordRefresh(of: Self.access.id, state: nil, accounts: [giro])
+		let stored = try #require(try store.queue.read { try String.fetchOne($0, sql: "SELECT refreshError FROM account WHERE id = ?", arguments: [giro.id]) })
+		#expect(stored.contains("PIN falsch"))
+		#expect(!stored.contains(failure.message))
+		try store.close()
+
+		let error = try #require(try vault.open(password: Self.password).loadLedger().account(giro.id)?.refreshError)
+		#expect(error.failure == failure)
+		#expect(error.code == "9931")
+		#expect(error.shownMessage == failure.message)
 	}
 
 	@Test("Edit Login Data stores the new login name, the state of the new login, and the saved PIN at once, and the accounts keep their access")
@@ -180,7 +200,7 @@ struct AccessStoreTests {
 		#expect(giro.refreshError?.waitsForUser == false)
 
 		giro.refreshInterval = .onlyManually
-		giro.refreshError = RefreshError(message: SyncFailure.needsUser(.pin).message, date: Date(timeIntervalSince1970: 1_793_534_400), waitsForUser: true)
+		giro.refreshError = RefreshError(failure: .needsUser(.pin), date: Date(timeIntervalSince1970: 1_793_534_400), waitsForUser: true)
 		try store.save(giro)
 		#expect(try store.loadLedger().account(giroID) == giro)
 	}
