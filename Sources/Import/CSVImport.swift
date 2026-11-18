@@ -304,9 +304,10 @@ public struct CSVFile: Sendable {
 				}
 			}
 			if Self.exportHeaders.contains(where: { normalized.starts(with: $0) }) {
-				for (field, column) in [(CSVField.iban, Self.exportAccount), (.bic, Self.exportBank)]
-					where layout.columns[field] == nil && !layout.columns.values.contains(column) {
-					if try exportColumnFits(field, column: column, layout: layout) { layout.columns[field] = column }
+				let fits = try exportColumnsFit(layout)
+				for (field, column, fit) in [(CSVField.iban, Self.exportAccount, fits.account), (.bic, Self.exportBank, fits.bank)]
+					where fit && layout.columns[field] == nil && !layout.columns.values.contains(column) {
+					layout.columns[field] = column
 				}
 			}
 		}
@@ -324,19 +325,18 @@ public struct CSVFile: Sendable {
 	static let exportAccount = 5
 	static let exportBank = 6
 
-	/// Whether the account or bank column of an export holds the field: more than half of its filled cells in the dated
-	/// rows fit, and they are not one value in more than two rows, such as the own IBAN in a file of several accounts.
-	private func exportColumnFits(_ field: CSVField, column: Int, layout: CSVLayout) throws -> Bool {
-		var fitting = 0, other = 0
-		var values = Set<String>()
+	/// Whether the account and the bank column of an export hold their field: more than half of the filled cells of
+	/// each in the dated rows fit. The header already shows that these columns hold the counterparty, so one value in
+	/// every row, such as the reference account of a savings account, is kept.
+	private func exportColumnsFit(_ layout: CSVLayout) throws -> (account: Bool, bank: Bool) {
+		var account = 0, bank = 0
 		for row in try dataRows(layout) {
 			try Task.checkCancellation()
-			guard let cell = Self.cell(row.cells, column) else { continue }
-			if values.count < 2 { values.insert(cell) }
-			let fits = field == .iban ? Self.isAccount(cell) : Self.isBank(cell, iban: Self.cell(row.cells, Self.exportAccount))
-			if fits { fitting += 1 } else { other += 1 }
+			let iban = Self.cell(row.cells, Self.exportAccount)
+			if let iban { account += Self.isAccount(iban) ? 1 : -1 }
+			if let cell = Self.cell(row.cells, Self.exportBank) { bank += Self.isBank(cell, iban: iban) ? 1 : -1 }
 		}
-		return fitting > other && (values.count > 1 || fitting + other <= 2)
+		return (account > 0, bank > 0)
 	}
 
 	/// An IBAN with a valid checksum, or an account number of five digits or more. Shorter numbers are ledger
@@ -346,8 +346,9 @@ public struct CSVFile: Sendable {
 		return MoneyMoneyMigration.isIBAN(value) || (value.count >= 5 && value.allSatisfy { $0.isASCII && $0.isNumber })
 	}
 
-	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row,
-	/// or any country when the row has no IBAN, so that a bank name such as "POSTBANK" does not pass as one.
+	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row.
+	/// A row without an IBAN takes only a BIC of 11 characters with any country, because bank names of eight capitals
+	/// such as "POSTBANK" and "RABOBANK" have a country in letters 5 and 6.
 	static func isBank(_ cell: String, iban: String?) -> Bool {
 		let value = cell.filter { !$0.isWhitespace }
 		if value.count == 8, value.allSatisfy({ $0.isASCII && $0.isNumber }) { return true }
@@ -355,7 +356,7 @@ public struct CSVFile: Sendable {
 			value.prefix(6).allSatisfy(\.isLetter) else { return false }
 		let country = String(value.dropFirst(4).prefix(2))
 		if let iban, MoneyMoneyMigration.isIBAN(iban) { return TextFolding.accountKey(iban).hasPrefix(country) }
-		return countries.contains(country)
+		return value.count == 11 && countries.contains(country)
 	}
 
 	private static let countries = Set(Locale.Region.isoRegions.map(\.identifier).filter { $0.count == 2 && $0.allSatisfy(\.isLetter) })

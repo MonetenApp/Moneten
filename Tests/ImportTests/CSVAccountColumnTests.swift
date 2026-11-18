@@ -117,15 +117,61 @@ struct CSVAccountColumnTests {
 		#expect(ibans == (fits ? accounts : accounts.map { _ in nil }))
 	}
 
-	@Test("One value in every row of more than two holds no field, as the own IBAN of a file with several accounts")
-	func repeatedValue() throws {
-		let iban = "DE02120300000000202051"
-		let three = try Self.counterparties(Self.export([(iban, "BYLADEM1001"), (iban, "BYLADEM1001"), (iban, "BYLADEM1001")]))
-		#expect(three.layout.columns[.iban] == nil && three.layout.columns[.bic] == nil)
-		#expect(three.ibans == [nil, nil, nil] && three.bics == [nil, nil, nil])
-		// Empty cells do not count, and two rows with the same counterparty are kept.
-		let two = try Self.counterparties(Self.export([(iban, "BYLADEM1001"), ("", ""), (iban, "BYLADEM1001")]))
-		#expect(two.ibans == [iban, nil, iban] && two.bics == ["BYLADEM1001", nil, "BYLADEM1001"])
+	/// A savings account books only with its reference account, and a file filtered to "Miete" holds one landlord, so
+	/// one counterparty in every row is common and must keep its IBAN and BIC.
+	@Test("One counterparty in every row of an exported file keeps its IBAN and BIC", arguments: ["de_DE", "en_US"])
+	func oneCounterparty(locale: String) throws {
+		let savings = Account(position: 0, name: "Tagesgeld", kind: .savings, source: .offline)
+		let interest = (1...3).map { month in
+			Transaction(accountID: savings.id, bookingDate: Day(year: 2026, month: month, day: 1), amountMinor: 50_000, name: "Max Mustermann",
+				purpose: "Sparen", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "BYLADEM1001")
+		}
+		let giro = Account(position: 1, name: "Giro", kind: .giro, source: .offline)
+		let rent = (1...12).map { month in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: month, day: 3), amountMinor: -125_000, name: "Erika Mustermann",
+				purpose: "Miete", counterpartyIBAN: "DE02120300000000202051", counterpartyBIC: "BYLADEM1001")
+		}
+		for (account, rows) in [(savings, interest), (giro, rent)] {
+			let ledger = Ledger(accounts: [account], transactions: rows)
+			let data = try TransactionCSV.data(rows, ledger: ledger, locale: Locale(identifier: locale))
+			let parsed = try TransactionFileImporter.parse(data, currency: "EUR").transactions
+			#expect(parsed.count == rows.count)
+			#expect(parsed.allSatisfy { $0.counterpartyIBAN == "DE02120300000000202051" && $0.counterpartyBIC == "BYLADEM1001" })
+		}
+	}
+
+	@Test("A bank name of eight capitals in a row without an IBAN gives no BIC, and a BIC of 11 characters or a bank code does")
+	func bicWithoutIBAN() throws {
+		let names = try Self.counterparties(Self.export([("0000202051", "POSTBANK"), ("0000202052", "RABOBANK"), ("0000202053", "12030000")]))
+		#expect(names.layout.columns[.bic] == nil)
+		#expect(names.bics == [nil, nil, nil])
+		let codes = try Self.counterparties(Self.export([("0000202051", "BYLADEM1001"), ("0000202052", "COBADEFFXXX"), ("0000202053", "12030000")]))
+		#expect(codes.bics == ["BYLADEM1001", "COBADEFFXXX", "12030000"])
+		// A BIC of 8 characters does not count without an IBAN, but the column keeps it as written.
+		let short = try Self.counterparties(Self.export([("0000202051", "PBNKDEFF"), ("0000202052", "12030000"), ("", "12030000")]))
+		#expect(short.bics == ["PBNKDEFF", "12030000", "12030000"])
+	}
+
+	@Test("Bank codes of 7 or 9 digits in an exported file give no bank code")
+	func bankCodeLength() throws {
+		let (layout, _, bics) = try Self.counterparties(Self.export([("0000202051", "1203000"), ("0000202052", "120300000"), ("0000202053", "1203000")]))
+		#expect(layout.columns[.bic] == nil)
+		#expect(bics == [nil, nil, nil])
+	}
+
+	@Test("A header that differs from the export in one name holds no field under Account and Bank", arguments: [
+		"Date;Value date;Category;Payee;Purpose;Account;Bank;Amount;Currency",
+		"Date;Value date;Category;Name;Memo;Account;Bank;Amount;Currency",
+		"Datum;Wertstellung;Kategorie;Empfänger;Verwendungszweck;Konto;Bank;Betrag;Währung",
+		"Datum;Valuta;Kategorie;Name;Verwendungszweck;Konto;Bank;Betrag;Währung",
+	])
+	func nearlyExportHeader(header: String) throws {
+		let text = header + "\n"
+			+ "03.11.2026;03.11.2026;;Stadtwerke Musterstadt;Abschlag;DE02120300000000202051;BYLADEM1001;-89,00;EUR\n"
+			+ "04.11.2026;04.11.2026;;Erika Mustermann;Miete;DE72120300000000202052;BYLADEM1001;-10,00;EUR\n"
+		let (layout, ibans, bics) = try Self.counterparties(text)
+		#expect(layout.columns[.iban] == nil && layout.columns[.bic] == nil)
+		#expect(ibans == [nil, nil] && bics == [nil, nil])
 	}
 
 	@Test("A value that is not an account among most that are is kept as written, as in a column Kontonummer")
