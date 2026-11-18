@@ -883,6 +883,8 @@ final class DebugHarness {
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			// What "Add Comment..." and ⇧⌘K do with the selected rows.
+			case "comment": model.sheet = .comment(model.visibleSelection)
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
@@ -1043,6 +1045,22 @@ final class DebugHarness {
 		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
 		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
 		case "savedsearch": savedSearch(argument)
+		// "<account>|<day>|<minor units>|<name>|<purpose>|<flags>" adds a made-up transaction, as a delivery would store it.
+		// The day is yyyymmdd or a number of days from today, such as -3. The flags, separated by commas, are pending,
+		// review, new, checked, manual, and key=value for currency, comment, iban, bic, booking, e2e, mandate, creditor,
+		// return, category, and original (minor units and a currency, such as -2000USD).
+		case "row": addRow(argument)
+		// "<row>|<count>" opens the context menu of table row <row> as a right click does, after it selects the first <count>
+		// rows, or with "-" the selection as it is. "<row>|<count>|<item>" also chooses that item by its English title, and
+		// "<row>|<count>|<item>|<n>" the item number n of its submenu. It logs each item and submenu item by its hash and
+		// whether it is enabled.
+		case "rowmenu": rowMenu(argument)
+		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
+		// its buttons by their hashes. "<button>" clicks the button with that English title.
+		case "modal": modal(argument)
+		// "<menu>|<item>" chooses the item of the menu bar by their English titles, as a click does, also while the app in the
+		// background shows the item disabled. It logs whether the item is enabled after an update of the menu.
+		case "menuitem": menuItem(argument)
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -1760,6 +1778,112 @@ final class DebugHarness {
 		values += [("canBack", .flag(model.canGoBack)), ("canForward", .flag(model.canGoForward)), ("visible", .count(model.visibleTransactions.count))]
 		values += [("filters", filters), ("period", .state(model.period))]
 		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
+	}
+
+	private func addRow(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 5, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }), let raw = Int(parts[1]),
+			let minor = Int64(parts[2]) else { return log("row refused") }
+		let day = parts[1].count == 8 ? Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100) : Day.today().adding(days: raw)
+		var t = Transaction(accountID: account.id, bookingDate: day, amountMinor: minor, currency: account.currency, name: parts[3], purpose: parts[4].replacingOccurrences(of: "\\n", with: "\n"))
+		for flag in (parts.count > 5 ? parts[5] : "").split(separator: ",").map(String.init) {
+			let pair = flag.split(separator: "=", maxSplits: 1).map(String.init)
+			let value = pair.count == 2 ? pair[1] : ""
+			switch pair[0] {
+			case "pending": t.isPending = true
+			case "review": t.review = .unclearBooking
+			case "new": t.isNew = true
+			case "checked": t.isChecked = true
+			case "manual": t.isManual = true
+			case "currency": t.currency = value
+			case "comment": t.comment = value
+			case "iban": t.counterpartyIBAN = value
+			case "bic": t.counterpartyBIC = value
+			case "booking": t.bookingText = value
+			case "e2e": t.endToEndReference = value
+			case "mandate": t.mandateReference = value
+			case "creditor": t.creditorID = value
+			case "return": t.returnReason = value
+			case "valuedate": t.valueDate = Int(value).map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
+			case "category":
+				t.categoryID = model.ledger.categories.first { $0.name == value }?.id
+				t.categorizedBy = .manual
+			case "original":
+				t.originalAmountMinor = Int64(value.prefix { $0 == "-" || $0.isNumber })
+				t.originalCurrency = String(value.drop { $0 == "-" || $0.isNumber })
+			default: return log("row refused")
+			}
+		}
+		model.save(transaction: t, adding: true)
+		log("row added", ("day", .day(day)))
+	}
+
+	private func rowMenu(_ argument: String) {
+		guard let model, let table = transactionTables().first else { return log("rowmenu no table") }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 2, let row = Int(parts[0]) else { return log("rowmenu refused") }
+		if let count = Int(parts[1]) { table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false) }
+		guard let menu = contextMenu(row: row, sidebar: false) else { return log("rowmenu no menu") }
+		menu.update()
+		let items = menu.items.filter { !$0.isSeparatorItem }
+		log("rowmenu", ("items", .list(items.map { .hash($0.title) })), ("enabled", .list(items.map { .flag($0.isEnabled) })),
+			("selected", .count(model.visibleSelection.count)))
+		for (n, item) in items.enumerated() {
+			guard let submenu = item.submenu else { continue }
+			submenu.update()
+			log("rowmenu submenu", ("item", .position(n)), ("items", .list(submenu.items.map { .hash($0.title) })), ("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
+		}
+		guard parts.count >= 3 else { return }
+		guard let item = menu.items.first(where: { $0.title.hasPrefix(String(localized: String.LocalizationValue(parts[2]))) }), let owner = item.menu else { return log("rowmenu no item") }
+		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
+		nonisolated(unsafe) let choose: () -> Void
+		if parts.count == 4, let n = Int(parts[3]), let submenu = item.submenu {
+			guard submenu.items.indices.contains(n), submenu.items[n].isEnabled else { return log("rowmenu refused") }
+			log("rowmenu chosen", ("subitem", .position(n)))
+			choose = { submenu.performActionForItem(at: n) }
+		} else {
+			guard item.isEnabled else { return log("rowmenu refused") }
+			log("rowmenu chosen")
+			choose = { owner.performActionForItem(at: owner.index(of: item)) }
+		}
+		// After this command returns: an alert of the item runs a modal session, which takes the next commands, such as
+		// "modal", only outside the block of the main queue that delivers this one.
+		RunLoop.main.perform(inModes: [.common]) {
+			MainActor.assumeIsolated {
+				choose()
+				self.log("rowmenu done", ("sheet", .state(model.sheet)), ("selection", .state(model.selection)), ("visible", .count(model.visibleTransactions.count)))
+			}
+		}
+	}
+
+	private func menuItem(_ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2 else { return log("menuitem refused") }
+		let localized = { (text: String) in String(localized: String.LocalizationValue(text)) }
+		guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == localized(parts[0]) })?.submenu else { return log("menuitem no menu") }
+		menu.delegate?.menuNeedsUpdate?(menu)
+		menu.update()
+		guard let index = menu.items.firstIndex(where: { $0.title == localized(parts[1]) }) else { return log("menuitem no item") }
+		log("menuitem", ("enabled", .flag(menu.items[index].isEnabled)))
+		// After this command returns, so that an alert of the item runs its modal session outside the block that delivers this one.
+		nonisolated(unsafe) let owner = menu
+		RunLoop.main.perform(inModes: [.common]) {
+			owner.performActionForItem(at: index)
+			MainActor.assumeIsolated { self.log("menuitem done") }
+		}
+	}
+
+	private func modal(_ argument: String) {
+		guard let window = NSApp.modalWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
+		func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
+		let all = window.contentView.map(views) ?? []
+		let buttons = all.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
+		let texts = all.compactMap { $0 as? NSTextField }.map(\.stringValue).filter { !$0.isEmpty }
+		log("modal", ("texts", .list(texts.map { .hash($0) })), ("buttons", .list(buttons.map { .hash($0.title) })))
+		guard !argument.isEmpty else { return }
+		guard let button = buttons.first(where: { $0.title == String(localized: String.LocalizationValue(argument)) }) else { return log("modal no button") }
+		button.performClick(nil)
 	}
 
 	private func csvPreview(_ argument: String) {

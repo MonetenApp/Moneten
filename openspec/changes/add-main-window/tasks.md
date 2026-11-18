@@ -38,7 +38,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision): 31 passed, 1 failed, 16 not checkable. Failed: "Add a category group", which asks in a sheet instead of adding a row in edit mode (#480). Not checkable in the harness: the slate blue selection with the accent color "Multicolor" (needs the key window), "All features installed" and the action button (Dashboard, Payments, and Documents come later, task 1.13), collapsing the section "Categories", dragging rows (task 1.9), the refresh button below the sidebar, the toolbar (the snapshot does not draw its glass), "View without charts" (no Outbox yet), "Copy Sum" in the context menu of the sum, the keys ⌘I and ⌘0 (the menu items work), full screen, ⌘Z in a text field, and VoiceOver (task 1.26). Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 

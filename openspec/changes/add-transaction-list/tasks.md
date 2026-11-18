@@ -30,7 +30,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision), the edits with a scripted bank delivery and the new mark with the made-up bank of a Debug build: 54 passed, 4 failed, 5 not checkable. Failed: "Card payment abroad" and "Add a comment" (#470), "After a refresh" of the new mark (#472), and "From a category to the account" (#471). Not checkable in the harness: the triple click, a range with Shift and a row with Command (real clicks with modifier keys), "Move a future transaction from a file into the past" (needs a bank delivery of chosen rows), and the Services submenu (task 1.18; macOS lists no service for an app in the background). Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 

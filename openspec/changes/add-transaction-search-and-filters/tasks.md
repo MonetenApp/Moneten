@@ -40,7 +40,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision): 52 passed, 4 failed, 3 not checkable. Failed: "Amount with decimals" (#473), "End before start" (#474), "Date filter" of the hint (#475), and "Ten years of history", where typing one more letter over 50,000 names took 150 ms on a busy Mac (perf scenario type-name-over-50000-names, #51). Not checkable in the harness: ⌘F, Escape in the search field, and the menu entry of last month (the harness picks only the current month). Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 
