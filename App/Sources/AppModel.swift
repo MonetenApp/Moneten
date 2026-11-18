@@ -336,8 +336,8 @@ final class AppModel {
 	/// The input of the open sheet, which the lock keeps in memory so that the sheet shows again after the unlock.
 	/// The input belongs to the database file that was open at the lock (`DatabaseStamp`).
 	@ObservationIgnored var heldSheet = HeldSheet<SheetKind, any Sendable, DatabaseStamp>()
-	/// The stamp of the database file that an unlock with the password opens, taken before it opens the file.
-	@ObservationIgnored private var unlockingStamp: DatabaseStamp?
+	/// True while an unlock with the password opens the database, the only open that can give the held sheet back.
+	@ObservationIgnored private var isUnlocking = false
 	/// The sheet that the unlock gives back, from the unlock until `showHeldSheet()` opens it. The alerts wait for it.
 	@ObservationIgnored var returningSheet: SheetKind?
 	#if DEBUG || PERF_HARNESS
@@ -606,8 +606,8 @@ final class AppModel {
 	func unlock(password: String, offered: Set<Vault.PasswordEntry> = []) async -> UnlockResult {
 		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
 		// Only an unlock of the file that was locked gets the held sheet back (`open`).
-		unlockingStamp = vault.databaseStamp()
-		defer { unlockingStamp = nil }
+		isUnlocking = true
+		defer { isUnlocking = false }
 		do {
 			try await openAway { vault, upgrading in
 				offered.isEmpty
@@ -683,10 +683,13 @@ final class AppModel {
 				?? firstSidebarRow
 		}
 		lastActivity = Date()
-		// The held sheet returns only when this open is the unlock of the database file that was locked. A launch, a
-		// new database, and a file that changed while the app was locked drop it.
-		returningSheet = heldSheet.unlock(database: unlockingStamp)
-		unlockingStamp = nil
+		// The held sheet returns only when this open is the unlock of the database file that was locked. The stamp is
+		// taken now that the store is open, so it names the file that the store reads, also when another file took the
+		// place of the database between the start of the unlock and the open. A launch, a new database, and a file
+		// that changed while the app was locked drop it. A change after this stamp is a change on disk of the open
+		// store, which closes the database and drops the input (`checkDisk`).
+		returningSheet = heldSheet.unlock(database: isUnlocking ? vault.databaseStamp() : nil)
+		isUnlocking = false
 		phase = .unlocked
 		watchDisk()
 		extensions.open(store)
