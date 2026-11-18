@@ -151,7 +151,7 @@ public struct MoneyMoneyMigration: Sendable {
 				valueDate: (raw["valueDate"] as? Date).map { Day($0, calendar: calendar) },
 				amountMinor: amount.minorUnits, currency: currency,
 				name: Self.string(raw["name"]) ?? "", purpose: Self.string(raw["purpose"]) ?? "",
-				counterpartyIBAN: Self.string(raw["accountNumber"]), counterpartyBIC: Self.string(raw["bankCode"]),
+				counterpartyIBAN: Self.string(raw["accountNumber"]).map(IBAN.electronicForm), counterpartyBIC: Self.string(raw["bankCode"]),
 				bookingText: Self.string(raw["bookingText"]), endToEndReference: Self.string(raw["endToEndReference"]),
 				mandateReference: Self.string(raw["mandateReference"]), creditorID: Self.string(raw["creditorId"]),
 				comment: Self.string(raw["comment"]), isChecked: (raw["checkmark"] as? Bool) ?? false, isPending: pending,
@@ -247,24 +247,6 @@ public struct MoneyMoneyMigration: Sendable {
 		return plan
 	}
 
-	// ISO 13616, SWIFT IBAN Registry release 103 (September 2026).
-	// https://www.swift.com/sites/default/files/files/iban-registry_4.pdf
-	private static let ruleIBANLengths = [
-		"AD": 24, "AE": 23, "AL": 28, "AT": 20, "AZ": 28, "BA": 20, "BE": 16,
-		"BG": 22, "BH": 22, "BI": 27, "BR": 29, "BY": 28, "CH": 21, "CR": 22,
-		"CY": 28, "CZ": 24, "DE": 22, "DJ": 27, "DK": 18, "DO": 28, "EE": 20,
-		"EG": 29, "ES": 24, "FI": 18, "FK": 18, "FO": 18, "FR": 27, "GB": 22,
-		"GE": 22, "GI": 23, "GL": 18, "GR": 27, "GT": 28, "HN": 28, "HR": 21,
-		"HU": 28, "IE": 22, "IL": 23, "IQ": 23, "IS": 26, "IT": 27, "JO": 30,
-		"KW": 30, "KZ": 20, "LB": 28, "LC": 32, "LI": 21, "LT": 20, "LU": 20,
-		"LV": 21, "LY": 25, "MC": 27, "MD": 24, "ME": 22, "MK": 19, "MN": 20,
-		"MR": 27, "MT": 31, "MU": 30, "NI": 28, "NL": 18, "NO": 15, "OM": 23,
-		"PK": 24, "PL": 28, "PS": 29, "PT": 25, "QA": 29, "RO": 24, "RS": 22,
-		"RU": 33, "SA": 24, "SC": 31, "SD": 18, "SE": 24, "SI": 19, "SK": 24,
-		"SM": 27, "SO": 23, "ST": 25, "SV": 28, "TL": 23, "TN": 24, "TR": 26,
-		"UA": 29, "VA": 22, "VG": 24, "XK": 20, "YE": 30,
-	]
-
 	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
 		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
 		let chars = Array(category.rule)
@@ -277,8 +259,7 @@ public struct MoneyMoneyMigration: Sendable {
 				let number = TextFolding.accountKey(term)
 				let groups = term.split(separator: " ", omittingEmptySubsequences: false)
 				let grouped = groups.count == 1 || (groups.dropLast().allSatisfy { $0.count == 4 } && (1...4).contains(groups.last!.count))
-				let iban = term.utf8.allSatisfy { $0 < 128 } && grouped
-					&& Self.ruleIBANLengths[String(number.prefix(2))] == number.count && Self.isIBAN(number)
+				let iban = term.utf8.allSatisfy { $0 < 128 } && grouped && IBAN(number) != nil
 				let knownNumber = !number.isEmpty && number.allSatisfy { $0.isASCII && $0.isNumber } && accountNumbers.contains(number)
 				if iban || knownNumber {
 					notes.append(String(localized: "The rule of \"\(name)\" has an account term at position \(entry.position + 1) that does not search account fields. Use remote_account:\(number) to search the account of the counterparty."))
@@ -396,7 +377,13 @@ public struct MoneyMoneyMigration: Sendable {
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
 			let bankCode = Self.string(item["bankCode"])
-			let iban = Self.string(item["iban"]) ?? number.flatMap { Self.isIBAN($0) ? $0 : nil }
+			let ibanText = Self.string(item["iban"]) ?? number.flatMap { IBAN($0) == nil ? nil : $0 }
+			let iban = ibanText.flatMap(IBAN.init)
+			// An account whose bank sent an invalid IBAN keeps that text as its account number (`Account.takeIBAN(_:)`), and
+			// MoneyMoney gives it as the IBAN or as the account number with the BIC as `bankCode`. Text in the shape of an IBAN
+			// whose check digits fail is no plain account number, so it matches without a bank code. Any other text matches only
+			// with its bank code.
+			let invalidIBAN: String? = [Self.string(item["iban"]), number].compactMap { $0 }.first(where: Self.isInvalidIBAN).map(TextFolding.accountKey)
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
 			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
@@ -413,7 +400,8 @@ public struct MoneyMoneyMigration: Sendable {
 			// so that two MoneyMoney accounts with the same IBAN stay apart.
 			if var existing = ledger.accounts.first(where: { $0.sourceID == source }) ?? ledger.accounts.first(where: { a in
 				a.sourceID == nil && (
-					(iban != nil && a.iban.map(TextFolding.accountKey) == iban.map(TextFolding.accountKey))
+					(iban != nil && a.iban == iban)
+						|| (invalidIBAN != nil && a.iban == nil && a.accountNumber.map { TextFolding.accountKey($0) } == invalidIBAN)
 						|| (bankCode != nil && number != nil && a.bankCode == bankCode && a.accountNumber == number))
 			}) {
 				map[source] = existing.id
@@ -433,12 +421,13 @@ public struct MoneyMoneyMigration: Sendable {
 				if changed { plan.updatedAccounts.append(existing) }
 				continue
 			}
-			let account = Account(groupID: parent, position: position, name: name,
+			var account = Account(groupID: parent, position: position, name: name,
 				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
-				source: .migrated, currency: currency, iban: iban, bic: bic,
+				source: .migrated, currency: currency, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
 				bankBalanceMinor: balanceMinor, bankBalanceDate: balanceDate,
 				comment: Self.string(item["comment"]), sourceID: source, color: color)
+			account.takeIBAN(ibanText)
 			plan.accounts.append(account)
 			map[source] = account.id
 		}
@@ -586,16 +575,21 @@ public struct MoneyMoneyMigration: Sendable {
 		return money
 	}
 
-	static func isIBAN(_ value: String) -> Bool {
-		let s = TextFolding.accountKey(value)
-		guard s.count >= 15, s.count <= 34, s.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber) }),
-			s.prefix(2).allSatisfy(\.isLetter), s.dropFirst(2).prefix(2).allSatisfy(\.isNumber) else { return false }
-		var remainder = 0
-		for ch in s.dropFirst(4) + s.prefix(4) {
-			let digits = ch.isNumber ? String(ch) : String(Int(ch.asciiValue!) - 55)
-			for d in digits { remainder = (remainder * 10 + Int(String(d))!) % 97 }
+	/// Text in the shape of an IBAN whose check digits do not fit: after folding only ASCII letters and digits, the country
+	/// code of an IBAN country, two digits, and the length of an IBAN of that country. Text that merely starts with a
+	/// country code, such as "DE4711" or "FR-4711", is an account number of its bank and matches only with its bank code.
+	private static func isInvalidIBAN(_ text: String) -> Bool {
+		do {
+			_ = try IBAN(parsing: text)
+			return false
+		} catch {
+			// The error `checksum` means that the country and the length fit.
+			guard error == .checksum else { return false }
+			let compact = TextFolding.accountKey(text).utf8
+			let isDigit = { (c: UInt8) in c >= UInt8(ascii: "0") && c <= UInt8(ascii: "9") }
+			return compact.allSatisfy { isDigit($0) || ($0 >= UInt8(ascii: "A") && $0 <= UInt8(ascii: "Z")) }
+				&& compact.dropFirst(2).prefix(2).allSatisfy(isDigit)
 		}
-		return remainder == 1
 	}
 
 	static func isBIC(_ value: String) -> Bool {

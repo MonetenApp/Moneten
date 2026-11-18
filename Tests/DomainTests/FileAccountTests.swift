@@ -95,9 +95,9 @@ struct FileAccountTests {
 		#expect(file.destination(selected: cash, accounts: [portfolio, cash], currency: "EUR") == .selected)
 	}
 
-	@Test("A German IBAN matches the bank code and account number of an account whose IBAN is empty")
-	func emptyIBAN() {
-		let listed = Account(position: 6, name: "Listed", kind: .giro, source: .offline, iban: "", accountNumber: "202051", bankCode: "12030000")
+	@Test("A German IBAN matches the bank code and account number of an account without an IBAN")
+	func noIBAN() {
+		let listed = Account(position: 6, name: "Listed", kind: .giro, source: .offline, accountNumber: "202051", bankCode: "12030000")
 		#expect(FileAccount.iban("DE02120300000000202051").destination(selected: listed, accounts: [listed], currency: "EUR") == .selected)
 	}
 
