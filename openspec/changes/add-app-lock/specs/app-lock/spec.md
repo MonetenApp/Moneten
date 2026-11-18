@@ -209,7 +209,7 @@ The app SHALL store the database password in a Keychain entry of its own for eac
 
 ### Requirement: The database holds the state of each unlock setting
 
-The app SHALL keep whether each unlock setting is on in the encrypted database, where another program cannot write it. A Keychain entry of a setting that is off never unlocks the app and never receives the password, and the app deletes it at the next unlock. A database without this state has every unlock setting off, whatever entries the Keychain holds.
+The app SHALL keep whether each unlock setting is on in the encrypted database, where another program cannot write it. Turning a setting off writes "off" there before the app deletes the Keychain entry of the setting.
 
 #### Scenario: Another program creates the entry of a setting that is off
 
@@ -220,12 +220,23 @@ The app SHALL keep whether each unlock setting is on in the encrypted database, 
 - **AND** the Keychain holds no entry "Moneten database password for automatic unlock"
 - **AND** the next launch asks for the database password
 
+#### Scenario: The Keychain refuses to delete the entry
+
+- **GIVEN** "Unlock automatically at application start" is on
+- **WHEN** the user turns it off and the Keychain refuses to delete its entry
+- **THEN** the setting shows off, and the app says that the password could not be deleted from the Keychain
+- **AND** the next launch asks for the database password
+
+### Requirement: An entry of a setting that is off never unlocks
+
+The app SHALL unlock with a password from the Keychain only when the database has every unlock setting on that the request offered. Otherwise it closes the database again, asks for the database password, and offers only the settings that are on. Each unlock deletes the Keychain entries of the settings that are off.
+
 #### Scenario: The entry of a setting that is off opens the database at launch
 
 - **GIVEN** "Unlock automatically at application start" is off
 - **AND** another program created the Keychain entry "Moneten database password for automatic unlock" for this database with the database password
 - **WHEN** the user starts the app
-- **THEN** the lock screen asks for the database password and says that Moneten deleted a password of an unlock setting that is off
+- **THEN** the lock screen asks for the database password and says that the Keychain holds a password for an unlock setting that is off
 - **AND** the Keychain holds no entry "Moneten database password for automatic unlock"
 
 #### Scenario: The entry of Touch ID while Touch ID is off
@@ -235,6 +246,27 @@ The app SHALL keep whether each unlock setting is on in the encrypted database, 
 - **WHEN** the user starts the app and confirms a Touch ID request with a registered finger
 - **THEN** the app stays locked and asks for the database password
 - **AND** the Keychain holds no entry "Moneten database password for Touch ID"
+
+#### Scenario: An Apple Watch that is off next to Touch ID that is on
+
+- **GIVEN** "Unlock with Touch ID" is on and "Unlock with Apple Watch" is off
+- **AND** another program created the Keychain entry "Moneten database password for Apple Watch" for this database with the text "geraten"
+- **WHEN** the user starts the app, and the request offers "Touch ID or Apple Watch" and the user confirms it on the watch
+- **THEN** the app stays locked and asks for the database password
+- **AND** the Keychain holds no entry "Moneten database password for Apple Watch"
+- **AND** the lock screen offers Touch ID alone, and a registered finger unlocks the app
+
+#### Scenario: Automatic unlock with an entry of a setting that is off
+
+- **GIVEN** "Unlock automatically at application start" is on and "Unlock with Touch ID" is off
+- **AND** another program created the Keychain entry "Moneten database password for Touch ID" for this database
+- **WHEN** the user starts the app
+- **THEN** the main window shows the accounts without a prompt
+- **AND** the Keychain holds no entry "Moneten database password for Touch ID"
+
+### Requirement: A database without the unlock state has every unlock setting off
+
+The app SHALL treat every unlock setting of a database that holds no state for it as off, whatever entries the Keychain holds.
 
 #### Scenario: A database from before this state
 

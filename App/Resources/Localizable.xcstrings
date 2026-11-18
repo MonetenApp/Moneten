@@ -10542,16 +10542,6 @@
         }
       }
     },
-    "The database password could not be deleted from the Keychain, so the setting stays on. %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Datenbankpasswort konnte nicht aus dem Schlüsselbund gelöscht werden, daher bleibt die Einstellung an. %@"
-          }
-        }
-      }
-    },
     "The database password could not be stored in the Keychain." : {
       "localizations" : {
         "de" : {
@@ -11322,12 +11312,12 @@
       },
       "extractionState" : "manual"
     },
-    "The Keychain held a password for an unlock setting that is off for this database, and Moneten deleted it. Enter the database password." : {
+    "The Keychain holds a password for an unlock setting that is off for this database, so the password does not unlock Moneten. Enter the database password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der Schlüsselbund enthielt ein Passwort für eine Entsperr-Einstellung, die für diese Datenbank aus ist, und Moneten hat es gelöscht. Geben Sie das Datenbankpasswort ein."
+            "value" : "Der Schlüsselbund enthält ein Passwort für eine Entsperr-Einstellung, die für diese Datenbank aus ist. Deshalb entsperrt das Passwort Moneten nicht. Geben Sie das Datenbankpasswort ein."
           }
         }
       },
@@ -11640,15 +11630,16 @@
         }
       }
     },
-    "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again." : {
+    "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Passwort im Schlüsselbund öffnet diese Datenbank nicht, etwa weil eine Sicherungskopie an ihre Stelle gelegt wurde. Geben Sie das Datenbankpasswort ein. Moneten speichert es dann wieder im Schlüsselbund."
+            "value" : "Das Passwort im Schlüsselbund öffnet diese Datenbank nicht, etwa weil eine Sicherungskopie an ihre Stelle gelegt wurde. Geben Sie das Datenbankpasswort ein."
           }
         }
-      }
+      },
+      "extractionState" : "manual"
     },
     "The password is stored in the Keychain of this Mac." : {
       "localizations" : {
@@ -11964,6 +11955,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Einstellung konnte nicht in der Datenbank gespeichert werden. %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The setting is off, but its password could not be deleted from the Keychain. The password no longer unlocks Moneten, and Moneten deletes it at the next unlock with the database password. %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Einstellung ist aus, aber ihr Passwort konnte nicht aus dem Schlüsselbund gelöscht werden. Das Passwort entsperrt Moneten nicht mehr, und Moneten löscht es beim nächsten Entsperren mit dem Datenbankpasswort. %@"
           }
         }
       },

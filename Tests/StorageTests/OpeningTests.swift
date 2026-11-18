@@ -941,7 +941,7 @@ struct OpeningTests {
 
 		_ = try FileManager.default.replaceItemAt(folder.databaseFile, withItemAt: backup)
 		#expect(throws: Vault.Failure.incorrectPassword) {
-			try vault.open(storedFor: .automaticUnlock, password: try #require(try vault.storedPassword(for: .automaticUnlock)))
+			try vault.open(storedFor: [.automaticUnlock], password: try #require(try vault.storedPassword(for: .automaticUnlock)))
 		}
 		let restored = try vault.open(password: "alt-und-lang-genug")
 		try vault.refreshStoredPassword("alt-und-lang-genug", on: restored)

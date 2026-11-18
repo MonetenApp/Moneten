@@ -501,12 +501,12 @@ final class AppModel {
 					return
 				}
 				do {
-					try await openAway { vault, upgrading in try vault.open(storedFor: .automaticUnlock, password: stored, upgrading: upgrading) }
+					try await openAway { vault, upgrading in try vault.open(storedFor: [.automaticUnlock], password: stored, upgrading: upgrading) }
 				} catch Vault.Failure.incorrectPassword {
 					lockNotice = Self.staleKeychainNotice
 					phase = .locked
-				} catch Vault.Failure.unlockMethodOff {
-					refuseOffEntry()
+				} catch Vault.Failure.unlockMethodOff(let on) {
+					refuseOffEntry(on: on)
 				}
 			}
 		} catch is OpenOvertaken {
@@ -529,7 +529,7 @@ final class AppModel {
 	}
 
 	private static var staleKeychainNotice: String {
-		String(localized: "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password. Moneten then stores it in the Keychain again.")
+		String(localized: "The password in the Keychain does not open this database, for example after a backup was put in its place. Enter the database password.")
 	}
 
 	/// Opens the database away from the main thread, so that the window can show what happens.
@@ -567,31 +567,31 @@ final class AppModel {
 		}
 	}
 
-	/// The database said that the setting of the entry that opened it is off, so the vault closed it again and deleted
-	/// the entry. The lock screen asks for the password and offers no method whose entry is gone.
-	private func refuseOffEntry() {
-		lockNotice = String(describing: Vault.Failure.unlockMethodOff)
-		unlockSettings = (try? vault.storedEntries()) ?? []
+	/// The database has a setting off that the password from the Keychain was offered for, so the vault closed it again.
+	/// The lock screen asks for the password and offers only the settings that are on and still have their entry.
+	private func refuseOffEntry(on: Set<Vault.PasswordEntry>) {
+		lockNotice = String(describing: Vault.Failure.unlockMethodOff(on: on))
+		unlockSettings = on.intersection((try? vault.storedEntries()) ?? [])
 		phase = .locked
 	}
 
 	/// A different password in the Keychain, such as the newer one of a database that the user replaced with
 	/// a backup, is replaced after the unlock, and the entry of a setting that is off goes. A second unlock while one
-	/// runs returns `.busy`, so the lock screen keeps the typed password. `entry` names the setting whose entry gave
-	/// the password, and the open then checks that the database has it on.
+	/// runs returns `.busy`, so the lock screen keeps the typed password. `offered` names the settings of a password
+	/// from the Keychain, and the open then needs each of them on in the database.
 	@discardableResult
-	func unlock(password: String, from entry: Vault.PasswordEntry? = nil) async -> UnlockResult {
+	func unlock(password: String, offered: Set<Vault.PasswordEntry> = []) async -> UnlockResult {
 		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
 		do {
-			if let entry {
-				try await openAway { vault, upgrading in try vault.open(storedFor: entry, password: password, upgrading: upgrading) }
-			} else {
-				try await openAway { vault, upgrading in try vault.open(password: password, upgrading: upgrading) }
+			try await openAway { vault, upgrading in
+				offered.isEmpty
+					? try vault.open(password: password, upgrading: upgrading)
+					: try vault.open(storedFor: offered, password: password, upgrading: upgrading)
 			}
 		} catch Vault.Failure.incorrectPassword {
 			return .incorrectPassword
-		} catch Vault.Failure.unlockMethodOff {
-			refuseOffEntry()
+		} catch Vault.Failure.unlockMethodOff(let on) {
+			refuseOffEntry(on: on)
 			return .failed
 		} catch is OpenOvertaken {
 			return phase == .unlocked ? .unlocked : .busy
@@ -628,8 +628,9 @@ final class AppModel {
 			Task { @MainActor in
 				guard ok else { return }
 				do {
-					guard let found = try self.vault.unlockPassword(offered: methods.map(\.entry)) else { return }
-					if await self.unlock(password: found.password, from: found.entry) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
+					let offered = Set(methods.map(\.entry))
+					guard let pw = try self.vault.unlockPassword(offered: offered) else { return }
+					if await self.unlock(password: pw, offered: offered) == .incorrectPassword { self.lockNotice = Self.staleKeychainNotice }
 				} catch {
 					self.lockNotice = String(describing: error)
 				}

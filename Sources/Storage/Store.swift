@@ -337,7 +337,7 @@ public final class Store: SavedPINStore {
 	func saveUnlockMethods(_ methods: Set<Vault.PasswordEntry>) throws {
 		try write { db in
 			try db.execute(sql: "DELETE FROM unlockMethod")
-			for method in Vault.PasswordEntry.allCases where methods.contains(method) {
+			for method in methods {
 				try db.execute(sql: "INSERT INTO unlockMethod (name) VALUES (?)", arguments: [method.rawValue])
 			}
 		}
