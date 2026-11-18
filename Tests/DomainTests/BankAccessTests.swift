@@ -165,6 +165,33 @@ struct BankAccessTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [second.id: migrated.id]).map(\.id) == [first.id, migrated.id])
 	}
 
+	@Test("A migrated account starts the assistant with its IBAN, else its Bankleitzahl")
+	func setupEntry() {
+		#expect(Self.migrated("Giro").setupEntry == "DE02120300000000202051")
+		let numbered = Account(position: 0, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		#expect(numbered.setupEntry == "12030000")
+		#expect(Account(position: 0, name: "Bar", kind: .cash, source: .migrated).setupEntry == "")
+		#expect(Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, accountNumber: "9", bankCode: "DEUTDEFFXXX").setupEntry == "")
+	}
+
+	@Test("Connect chooses the account in the one row with a choice that it matches, and in none when it matches several")
+	func connectFromAccount() {
+		let giro = Self.migrated("Giro")
+		let household = Self.migrated("Haushalt")
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		let shared = SetupListing([listed], in: Ledger(accounts: [giro, household]))
+		#expect(shared.connecting(household.id) == [listed.id: household.id])
+		#expect(Ledger(accounts: [giro, household]).accountsToAdd([listed], listed: [listed], connecting: shared.connecting(household.id)).map(\.id) == [household.id])
+		// An account that the setup connects on its own, and an account that no row matches, need no choice.
+		#expect(SetupListing([listed], in: Ledger(accounts: [giro])).connecting(giro.id) == [:])
+		#expect(shared.connecting(UUID()) == [:])
+
+		let savings = Account(position: 0, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		let first = Self.candidate("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = Self.candidate("Sparkonto 02", number: "9", remoteID: "9/02")
+		#expect(SetupListing([first, second], in: Ledger(accounts: [savings])).connecting(savings.id) == [:])
+	}
+
 	@Test("Look for New Accounts shows only the new subaccount, and matches it against every subaccount that the bank listed")
 	func newSubaccountBesideMigrated() {
 		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",

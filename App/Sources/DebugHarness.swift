@@ -286,6 +286,12 @@ final class DebugHarness {
 			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("", .word("no account"))) }
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
 			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
+		// "<account name>": "Connect..." in the header of the migrated account, which "setup" then drives.
+		case "connectmigrated":
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.source == .migrated }) else { return log("connectmigrated", ("", .word("no account"))) }
+			model.navigate(to: .account(account.id))
+			model.addAccount(group: account.groupID, connecting: account)
+			log("connectmigrated", ("setup", .flag(model.setup != nil)), ("entry", .flag(model.setup?.entry == account.setupEntry)))
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -1140,7 +1146,12 @@ final class DebugHarness {
 			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
 			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
 			("kinds", .list(setup.candidates.map { .state($0.account.kind) })), ("matches", .list(setup.candidates.map { .state($0.match) })),
-			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) }))]))
+			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) })),
+			// For each row, the position in its choice of the account that it connects, or "-" for a new account.
+			("connecting", .list(setup.candidates.map { row in
+				guard case let .choice(accounts) = row.match else { return .position(nil) }
+				return .position(accounts.firstIndex { $0.id == setup.connecting[row.account.id] })
+			}))]))
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.

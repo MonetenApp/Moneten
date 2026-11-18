@@ -84,6 +84,8 @@ final class AccountSetup {
 	private(set) var saveError: String?
 	private var access: Access?
 	private var state: AccessState?
+	/// The migrated account whose "Connect..." opened the assistant. The account step chooses it where it is a choice.
+	private let connectingAccount: UUID?
 
 	var offlineName = ""
 	var offlineKind = AccountKind.cash
@@ -91,10 +93,11 @@ final class AccountSetup {
 
 	private var task: Task<Void, Never>?
 
-	init(model: AppModel, groupID: UUID?, purpose: Purpose = .add) {
+	init(model: AppModel, groupID: UUID?, purpose: Purpose = .add, connecting account: Account? = nil) {
 		self.model = model
 		self.groupID = groupID
 		self.purpose = purpose
+		connectingAccount = account?.id
 		lookup = BankLookup { [fints = model.fints] in try await fints.bankDirectory() }
 		switch purpose {
 		case .add:
@@ -110,6 +113,8 @@ final class AccountSetup {
 			savePIN = model.sync.broker.savedPINs.contains(access.id)
 			Task { await lookUpBank(of: access) }
 		}
+		// The bank step looks up the entry as soon as it shows.
+		if let account { lookup.entry = account.setupEntry }
 	}
 
 	/// Takes the bank of the access from the bank directory, with its BIC and place, and returns it. Until the
@@ -238,8 +243,10 @@ final class AccountSetup {
 				}
 				self.access = access
 				state = list.state
-				listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger)
+				let listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger)
+				self.listing = listing
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
+				if let connectingAccount { connecting = listing.connecting(connectingAccount) }
 				step = .accounts
 			} catch {
 				loginFailed(error, userIDHelp: userIDHelp, bankName: bankName)

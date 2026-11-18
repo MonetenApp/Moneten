@@ -106,6 +106,15 @@ public struct SetupListing: Sendable {
 		let all = listed.map { Candidate(account: $0, match: ledger.setupMatch(for: $0, listed: listed)) }
 		candidates = onlyNew ? all.filter { !$0.isPresent } : all
 	}
+
+	/// What "Connect..." of the account `id` chooses: that account in the one row with a choice that it
+	/// matches. An account that matches several rows, such as a migrated account without a subnumber, is
+	/// chosen in none, because the user has not said which subaccount it is.
+	public func connecting(_ id: UUID) -> [UUID: UUID] {
+		let rows = candidates.filter { if case let .choice(accounts) = $0.match { accounts.contains { $0.id == id } } else { false } }
+		guard rows.count == 1 else { return [:] }
+		return [rows[0].account.id: id]
+	}
 }
 
 extension Ledger {
