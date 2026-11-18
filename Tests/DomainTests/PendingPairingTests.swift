@@ -39,6 +39,59 @@ extension ReconcileTests {
 		#expect(alone.added.map(\.amountMinor) == [-2_380])
 	}
 
+	/// The purpose that the FinTS connector gives a pending card debit of Targobank, which names no counterparty (#242).
+	static let targobankNote = "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht."
+
+	@Test("A pending card debit of Targobank is replaced by its only booking of the amount, although it names no counterparty (#242)")
+	func pendingTargobankCardDebitBooked() {
+		let pending = stored(row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		let booked = row(13, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let r = merge(refresh([booked]), stored: [pending], at: noon(13, month: 11))
+		#expect(r.booked.map(\.id) == [pending.id])
+		#expect(r.added.isEmpty && r.dropped.isEmpty && r.marked.isEmpty)
+		let list = history([pending], after: r)
+		#expect(list.map(\.name) == ["Tankstelle Muster"])
+		#expect(list.map(\.amountMinor) == [-1_250])
+		#expect(list.map(\.isPending) == [false])
+
+		// The bank sends the pending row again before the booking: it stays one row.
+		let again = merge(refresh([fresh(pending)]), stored: [pending], at: noon(12, month: 11))
+		#expect(again.added.isEmpty && again.booked.isEmpty && again.dropped.isEmpty)
+	}
+
+	@Test("Two bookings of the amount of a pending card debit of Targobank mark all three rows for review (#242)")
+	func pendingTargobankCardDebitTwoBookings() {
+		let pending = stored(row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		let fuel = row(13, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let bread = row(13, -1_250, "Bäckerei Beispiel", "Bäckerei Beispiel Musterstadt")
+		let r = merge(refresh([fuel, bread]), stored: [pending], at: noon(13, month: 11))
+		#expect(r.booked.isEmpty && r.dropped.isEmpty)
+		#expect(r.marked.map(\.id) == [pending.id])
+		#expect(r.added.map(\.name) == ["Tankstelle Muster", "Bäckerei Beispiel"])
+		#expect(r.added.allSatisfy { $0.review != nil })
+	}
+
+	@Test("A pending row named Abbuchung with another purpose, an IBAN, or another amount needs a counterparty as before (#242)")
+	func pendingAbbuchungOfAnotherKind() {
+		let booked = row(13, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let others = [
+			row(12, -1_250, "Abbuchung", "Lastschrift", pending: true),
+			row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true, iban: "DE02120300000000202051"),
+			row(12, -1_200, "Abbuchung", Self.targobankNote, pending: true),
+		]
+		for other in others.map(stored) {
+			let r = merge(refresh([booked]), stored: [other], at: noon(13, month: 11))
+			#expect(r.booked.isEmpty && r.marked.isEmpty)
+			#expect(r.added.map(\.name) == ["Tankstelle Muster"])
+		}
+		// A booked row that is more than seven days later stays apart too.
+		let late = row(20, -1_250, "Tankstelle Muster", "Tankstelle Muster Musterstadt")
+		let pending = stored(row(12, -1_250, "Abbuchung", Self.targobankNote, pending: true))
+		let r = merge(refresh([late]), stored: [pending], at: noon(20, month: 11))
+		#expect(r.booked.isEmpty)
+		#expect(r.added.map(\.name) == ["Tankstelle Muster"])
+	}
+
 	@Test("A recurring reference cannot hide a later pending file rent", arguments: [false, true], [false, true])
 	func gate5LaterRecurringRent(tombstone: Bool, nextMonth: Bool) {
 		var booked = stored(rent(7, purpose: "BOOKED RENT", pending: false))

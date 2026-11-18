@@ -293,7 +293,7 @@ The app SHALL keep both transactions when one fetch delivers two transactions of
 
 ### Requirement: Replace a pending transaction by its booked version
 
-The app SHALL replace a pending transaction by the booked transaction when exactly one pending transaction of the account matches it in amount and counterparty within a few days. The booked transaction takes over the comment, the checkmark, and a category that the user assigned by hand.
+The app SHALL replace a pending transaction by the booked transaction when exactly one pending transaction of the account matches it in amount and counterparty within a few days. A pending card debit of Targobank that the app stored with the name "Abbuchung" names no counterparty, so it matches a booked transaction by the amount alone. The booked transaction takes over the comment, the checkmark, and a category that the user assigned by hand.
 
 #### Scenario: Card payment gets booked
 
@@ -301,6 +301,25 @@ The app SHALL replace a pending transaction by the booked transaction when exact
 - **WHEN** the bank delivers a booked transaction of -23,80 € to "Buchhandlung Beispiel" two days later
 - **THEN** the list shows one booked transaction with the comment "Gift"
 - **AND** the pending row is gone
+
+#### Scenario: Pending card debit of Targobank gets booked
+
+- **GIVEN** the pending card debit of -12,50 € named "Abbuchung" from 12.11.2026 of the Targobank account `0012345678901234`
+- **WHEN** the bank books -12,50 € to "Tankstelle Muster" on 13.11.2026, and no other pending transaction of -12,50 € exists
+- **THEN** the list shows one booked transaction of -12,50 € to "Tankstelle Muster"
+- **AND** the pending row is gone
+
+#### Scenario: Two bookings of the amount of a pending card debit of Targobank
+
+- **GIVEN** the pending card debit of -12,50 € named "Abbuchung" from 12.11.2026 of the Targobank account `0012345678901234`
+- **WHEN** the bank books -12,50 € to "Tankstelle Muster" and -12,50 € to "Bäckerei Beispiel" on 13.11.2026
+- **THEN** the list shows both booked transactions and the pending row, each marked for review
+
+#### Scenario: Pending row named "Abbuchung" by another bank
+
+- **GIVEN** a pending transaction of -12,50 € named "Abbuchung" with the purpose "Lastschrift" from 12.11.2026
+- **WHEN** the bank books -12,50 € to "Tankstelle Muster" on 13.11.2026
+- **THEN** the list shows the pending transaction and the booked transaction
 
 ### Requirement: Keep a moved card booking as one transaction
 

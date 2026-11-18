@@ -837,10 +837,13 @@ struct PendingMatch {
 	let iban: String?
 	let words: [Substring]
 	let identity: Identity
+	/// A pending card debit of Targobank, which names no counterparty and pairs with its booking by the amount alone.
+	let isPendingCardDebit: Bool
 
 	init(_ t: Transaction) {
 		let delivered = t.sourceValues
 		identity = Identity(t)
+		isPendingCardDebit = t.isPendingCardDebit
 		amount = Money(minorUnits: delivered.amountMinor, currency: t.currency)
 		day = delivered.bookingDate.daysSince1970
 		iban = t.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
@@ -853,6 +856,7 @@ struct PendingMatch {
 		day = d.bookingDate.daysSince1970
 		iban = d.counterpartyIBAN.map(TextFolding.accountKey).flatMap { $0.isEmpty ? nil : $0 }
 		words = []
+		isPendingCardDebit = false
 	}
 
 	func counterpartyConflicts(with other: PendingMatch) -> Bool {
@@ -866,8 +870,10 @@ struct PendingMatch {
 	}
 
 	func fits(_ other: PendingMatch) -> Bool {
-		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart,
-			!counterpartyConflicts(with: other) else { return false }
+		guard identity.agrees(with: other.identity), amount == other.amount, abs(day - other.day) <= Self.maxDaysApart else { return false }
+		// The name of a pending card debit of Targobank is no counterparty, so any booked row of the amount fits it.
+		if isPendingCardDebit && !other.identity.isPending || other.isPendingCardDebit && !identity.isPending { return true }
+		guard !counterpartyConflicts(with: other) else { return false }
 		if identity.isPending == other.identity.isPending,
 			let fileID = identity.fileIdentity, let otherID = other.identity.fileIdentity, fileID != otherID { return false }
 		return identity.endToEnd != nil && identity.endToEnd == other.identity.endToEnd
