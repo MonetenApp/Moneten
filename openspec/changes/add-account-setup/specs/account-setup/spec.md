@@ -96,6 +96,28 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Brands on the Bankleitzahl of the bank that runs their accounts
+
+- **GIVEN** the bank directory names 50110800 "J.P. Morgan" and 50110801 "J.P. Morgan, Internal Reference", and the bank list of hbci4java lacks 10019000, 11010100, and 11010101
+- **WHEN** the user enters "tide"
+- **THEN** the list shows "Adyen / Tide" with 10019000
+- **AND** "kontist" lists "Solaris / Kontist / Tomorrow / ADAC" with 11010100 and with 11010101
+- **AND** "pleo" lists "J.P. Morgan / Pleo" with 50110800 and with 50110801
+
+#### Scenario: Fintech bank found by its name
+
+- **GIVEN** the bank list of hbci4java lacks 10010123, 10017997, 10018000, 37019000, and 50034200
+- **WHEN** the user enters "qonto", "holvi", "finom", "bunq", or "openbank"
+- **THEN** the list shows "Qonto" with 10010123, "Holvi" with 10017997, "Finom" with 10018000, "bunq" with 37019000, or "Openbank" with 50034200
+
+#### Scenario: Brands of flatexDEGIRO Bank
+
+- **GIVEN** the bank directory names the Bankleitzahl 10130800 "biw Bank für Investments und Wertpapiere", and flatex, DEGIRO, and ViTrade are brands of flatexDEGIRO Bank on the Bankleitzahlen 10130800, 30330800, and 76030800
+- **WHEN** the user enters "degiro"
+- **THEN** the list shows 10130800 as "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)"
+- **AND** "flatex" and "vitrade" list it too
+- **AND** the neighbor 10130600 "Isbank AG" keeps its name
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -169,6 +191,48 @@ The app SHALL reject a Bankleitzahl that is not in the bank directory, also when
 - **THEN** the app does not say that the IBAN or the Bankleitzahl is outdated
 - **AND** the app does not ask for another IBAN
 
+### Requirement: Name the fintech banks by their Bankleitzahlen
+
+The app SHALL show 10010123 as "Qonto", 10017997 as "Holvi", 10018000 as "Finom", 10019000 as "Adyen / Tide", 11010100 and 11010101 as "Solaris / Kontist / Tomorrow / ADAC", 12070088 as "Deutsche Bank / PayPal", 20220800 as "Banking Circle / TF Bank / Vivid", 37019000 as "bunq", 37021500 and 37021548 as "Ford Bank", 50034200 as "Openbank", and 50110800 and 50110801 as "J.P. Morgan / Pleo", whatever name the bank list of hbci4java gives them.
+
+#### Scenario: IBAN on the Bankleitzahl of a brand
+
+- **GIVEN** the bank directory names 12070088 "Deutsche Bank (Gf intern)" without a FinTS address
+- **WHEN** the user enters "DE20120700881234567890" and clicks "Next"
+- **THEN** the message of a bank without a FinTS server names "Deutsche Bank / PayPal", not "Deutsche Bank (Gf intern)"
+
+#### Scenario: Search by the bank and by the brand
+
+- **GIVEN** the bank directory names 12070088 "Deutsche Bank (Gf intern)"
+- **WHEN** the user searches for "deutsche bank" or for "paypal"
+- **THEN** the matches contain "Deutsche Bank / PayPal" with 12070088
+
+### Requirement: Know the fintech banks that the bank list lacks
+
+The app SHALL add each Bankleitzahl of "Name the fintech banks by their Bankleitzahlen" that the bank list of hbci4java lacks to the bank directory, without a FinTS address and without a place. A Bankleitzahl that the bank list has keeps its place, its BIC, and its FinTS address.
+
+#### Scenario: IBAN of a fintech bank
+
+- **GIVEN** the bank list of hbci4java lacks 20220800
+- **WHEN** the user enters "DE74202208001234567890" and clicks "Next"
+- **THEN** the app says that "Banking Circle / TF Bank / Vivid" does not provide a FinTS/HBCI server
+- **AND** the app does not say that the Bankleitzahl is invalid
+- **AND** the assistant stays on the first step
+
+#### Scenario: Bank list with an entry of its own
+
+- **GIVEN** the bank list of hbci4java lists 37019000 in Berlin with a FinTS address
+- **WHEN** the user enters "37019000"
+- **THEN** the app shows "bunq" with "Berlin · 37019000"
+- **AND** "Next" leads to the login data
+
+#### Scenario: Bankleitzahl of a brand with a FinTS address
+
+- **GIVEN** the bank list of hbci4java lists 12070088 in Potsdam with a FinTS address
+- **WHEN** the user enters "DE20120700881234567890"
+- **THEN** the app shows "Deutsche Bank / PayPal" with "Potsdam · 12070088"
+- **AND** "Next" leads to the login data
+
 ### Requirement: Note for the Bankleitzahl of a merged bank
 
 The app SHALL accept a Bankleitzahl that the bank directory lists for a bank that merged, as it accepts any Bankleitzahl with a FinTS address, and SHALL show a note in the first step that the bank merged and the login may need another Bankleitzahl.
@@ -239,7 +303,7 @@ The app SHALL show the access methods that are possible for the bank under "Acce
 
 ### Requirement: Explain why a bank cannot be added
 
-The app SHALL tell the user why no access is possible when it finds the bank and knows no way to reach it. The message names the bank and the ways that would work, which are an extension for that bank or the optional subscription.
+The app SHALL tell the user why no access is possible when it finds the bank and knows no way to reach it. The message names the bank and the ways that would work, which are an extension for that bank, the optional subscription, or a file of its transactions imported into an offline account.
 
 #### Scenario: Bank without a FinTS server
 
@@ -247,6 +311,7 @@ The app SHALL tell the user why no access is possible when it finds the bank and
 - **WHEN** the user enters an IBAN of "Neobank Muster" and clicks "Next"
 - **THEN** the app says that this bank does not provide a FinTS/HBCI server
 - **AND** the app says that an extension can add support for the bank
+- **AND** the app says that an offline account can take a file of its transactions
 - **AND** the assistant stays on the first step
 
 ### Requirement: Ask for the login data in the words of the bank
@@ -334,6 +399,20 @@ The app SHALL ask for the login data in the second step with the field names tha
 #### Scenario: Bank on another host
 
 - **GIVEN** the user chose a bank whose FinTS address is on the host `fints.baaderbank.de.example.com`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint
+
+#### Scenario: Oberbank
+
+- **GIVEN** the user chose Oberbank with the Bankleitzahl 70120700, whose FinTS address is "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID"
+- **AND** the line under it says to ask the customer adviser of Oberbank whether the HBCI access with xTAN is switched on, if the login fails
+- **AND** the step links to the guide of Oberbank on HBCI with xTAN
+
+#### Scenario: Another bank on the FinTS server of Oberbank
+
+- **GIVEN** the user chose a bank with the Bankleitzahl 99090000, whose FinTS address is also "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint
 
@@ -581,11 +660,27 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
 - **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
 
+#### Scenario: flatexDEGIRO Bank
+
+- **GIVEN** the user chose the bank of 10130800, 30330800, or 76030800
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the FinTS access of flatexDEGIRO Bank serves flatex accounts
+- **AND** the app says that DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS
+- **AND** the neighbor 76030080 of Consorsbank shows only its own hint
+
 #### Scenario: Baader Bank
 
 - **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows above the fields that the user requests the FinTS access and its PIN at `https://konto.baaderbank.de/` first
+
+#### Scenario: Oberbank
+
+- **GIVEN** the user chose Oberbank with the Bankleitzahl 70120700
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user asks the customer adviser of Oberbank for the HBCI access with xTAN by SMS before the first login
+- **AND** the app says that Oberbank stores the mobile number with a change of the Electronic Banking contract, and that the user logs in after Oberbank confirmed the access in writing
+- **AND** a bank with another Bankleitzahl on the same FinTS server gets no such note
 
 #### Scenario: Credit card
 
@@ -849,6 +944,19 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
 - **WHEN** the user opens the list and types "Altstadt"
 - **THEN** the list shows "Sparkasse Altstadt -alt-" with "FinTS/HBCI with TAN method" and the note of a merged bank
+
+#### Scenario: flatexDEGIRO Bank in the list
+
+- **GIVEN** the bank directory lists 10130800 with a FinTS address
+- **WHEN** the user opens the list and types "degiro"
+- **THEN** the list shows "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)" with "FinTS/HBCI with TAN method"
+- **AND** its note says that the FinTS access serves flatex accounts, and that DEGIRO and ViTrade accounts cannot be added with FinTS
+
+#### Scenario: Savings bank in the list
+
+- **GIVEN** the bank directory lists 70150000 as "Stadtsparkasse München" on a FinTS server of the savings banks
+- **WHEN** the user opens the list and types "Stadtsparkasse München"
+- **THEN** the note of the bank is the help of its login name, not the note before the first login
 
 #### Scenario: Bank directory that does not load
 

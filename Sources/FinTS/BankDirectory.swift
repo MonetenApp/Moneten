@@ -19,7 +19,7 @@ public struct BankDirectory: Sendable {
 
 		/// The entry under the name of its brand, such as "VR-Bank Altenburger Land / Skatbank".
 		var branded: Entry {
-			guard let name = CooperativeBanks.brandNames[code] ?? DeutscheBankGroup.brandNames[code] else { return self }
+			guard let name = CooperativeBanks.brandNames[code] ?? DeutscheBankGroup.brandNames[code] ?? FlatexDegiro.brandNames[code] ?? Fintechs.names[code] else { return self }
 			return Entry(code: code, city: city, bank: FinTSBank(name: name, bic: bank.bic, url: bank.url))
 		}
 
@@ -52,8 +52,9 @@ public struct BankDirectory: Sendable {
 	private let entries: [Indexed]
 	private let byCode: [String: Entry]
 
+	/// `entries` is the bank list of hbci4java. The fintech banks that it lacks join it (`Fintechs`).
 	public init(_ entries: [Entry]) {
-		let entries = entries.map(\.branded)
+		let entries = (entries + Fintechs.missing(from: Set(entries.map(\.code)))).map(\.branded)
 		// Sorted once by name, so that the list without a search needs no sort.
 		self.entries = entries.map { entry in
 			let hint = entry.loginHint
