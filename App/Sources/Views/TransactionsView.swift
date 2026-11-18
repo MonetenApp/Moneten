@@ -989,11 +989,14 @@ private struct RowReveal: View {
 
 	var body: some View {
 		let row = model.revealedRow.flatMap { $0.key == key ? $0 : nil }
-		// The position is looked up only when the request is new. "Go to" opens an account or a category, whose table
-		// has no section headings, so the position in the rows is the row of the table.
+		// The position is looked up by the ID on each turn of the wait, so `model.rows(for:)` runs up to about 25 times
+		// for one request. A refresh can move the row while the table waits, and the user can select another row; then
+		// there is nothing to reveal. "Go to" opens an account or a category, whose table has no section headings, so
+		// the position in the rows is the row of the table.
 		TableScroller(request: row?.request) { [model, key] in
+			guard let r = row, model.selectedTransactions == [r.id] else { return nil }
 			let rows = model.rows(for: key).rows
-			return row.flatMap { r in rows.firstIndex { $0.id == r.id } }.map { ($0, rows.count) }
+			return rows.firstIndex { $0.id == r.id }.map { ($0, rows.count) }
 		}
 	}
 }
@@ -1003,8 +1006,8 @@ private struct RowReveal: View {
 /// so that a view that opens again does not jump to the row of an earlier "Go to".
 private struct TableScroller: NSViewRepresentable {
 	let request: Int?
-	/// The row and the number of rows of the view.
-	let position: () -> (index: Int, count: Int)?
+	/// The row and the number of rows of the view, or nil when the row is no longer the selection.
+	let position: @MainActor () -> (index: Int, count: Int)?
 
 	final class Coordinator {
 		var done: Int?
@@ -1020,19 +1023,22 @@ private struct TableScroller: NSViewRepresentable {
 	func updateNSView(_ view: NSView, context: Context) {
 		guard let request, request != context.coordinator.done else { return }
 		context.coordinator.done = request
-		guard let position = position() else { return }
-		DispatchQueue.main.async { Self.center(position.index, of: position.count, near: view, waits: 20, settles: 5) }
+		let position = position
+		DispatchQueue.main.async { Self.center(position, near: view, waits: 20, settles: 5) }
 	}
 
 	/// A new table can get the selection before it has its rows, and then drops it. So this waits up to `waits` turns
 	/// of 0.1 seconds for the rows of the view, and selects the row again when the table has no selection, which only
-	/// repeats the selection of the model. The table places rows by an estimated height until it draws them, so the first scroll stops
+	/// repeats the selection of the model, because `position` gives a row only while the model selects exactly that row. The table places rows by an estimated height until it draws them, so the first scroll stops
 	/// short of a row far down. It scrolls again until the place of the row stays the same, at most `settles` times.
 	@MainActor
-	private static func center(_ index: Int, of count: Int, near view: NSView, waits: Int, settles: Int) {
+	private static func center(
+		_ position: @escaping @MainActor () -> (index: Int, count: Int)?, near view: NSView, waits: Int, settles: Int
+	) {
+		guard let (index, count) = position() else { return }
 		guard let table = table(near: view), table.numberOfRows == count, let clip = table.enclosingScrollView?.contentView else {
 			if waits > 0 {
-				DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { center(index, of: count, near: view, waits: waits - 1, settles: settles) }
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { center(position, near: view, waits: waits - 1, settles: settles) }
 			}
 			return
 		}
@@ -1043,14 +1049,15 @@ private struct TableScroller: NSViewRepresentable {
 		table.scrollToVisible(NSRect(x: row.minX, y: row.midY - height / 2, width: row.width, height: height))
 		table.layoutSubtreeIfNeeded()
 		guard settles > 0, table.rect(ofRow: index) != row else { return }
-		DispatchQueue.main.async { center(index, of: count, near: view, waits: 0, settles: settles - 1) }
+		DispatchQueue.main.async { center(position, near: view, waits: 0, settles: settles - 1) }
 	}
 
-	/// The nearest table above `view` in the view tree, which is the table that `view` is the background of.
+	/// The nearest table above `view` in the view tree, which is the table that `view` is the background of. It skips an
+	/// outline view, because the walk can reach the split view, and the sidebar is an outline view.
 	@MainActor
 	private static func table(near view: NSView) -> NSTableView? {
 		func find(in v: NSView) -> NSTableView? {
-			if let t = v as? NSTableView { return t }
+			if let t = v as? NSTableView, !(t is NSOutlineView) { return t }
 			for sub in v.subviews { if let t = find(in: sub) { return t } }
 			return nil
 		}
