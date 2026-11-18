@@ -15,6 +15,8 @@ struct DateField: View {
 	var expectsFuture = false
 	/// Tells the calendar buttons of several fields apart for the debug harness.
 	var identifier = "date"
+	/// Why a readable date does not fit, such as an end before the start. The field shows it in red with this tooltip.
+	var conflict: LocalizedStringKey?
 	/// The text of the field, also while it is not a date, for a sheet that keeps its input across a lock. A text
 	/// that the sheet sets here replaces the text of the field.
 	var typed: Binding<String>? = nil
@@ -56,11 +58,11 @@ struct DateField: View {
 					.focused($hasFocus)
 					.multilineTextAlignment(.trailing)
 					.monospacedDigit()
-					.foregroundStyle(isMarked ? Palette.red : Color.primary)
-					.help(isMarked ? Text("Not a valid date") : Text(verbatim: ""))
+					.foregroundStyle(isMarked || conflict != nil ? Palette.red : Color.primary)
+					.help(isMarked ? Text("Not a valid date") : conflict.map { Text($0) } ?? Text(verbatim: ""))
 					.padding(.horizontal, 4)
 					.overlay {
-						if isMarked { RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.red, lineWidth: 2) }
+						if isMarked || conflict != nil { RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.red, lineWidth: 2) }
 					}
 					.frame(width: 104)
 					.onSubmit(leave)

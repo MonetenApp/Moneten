@@ -349,23 +349,32 @@ struct CustomPeriodView: View {
 	@State private var from: Day? = Day.today().adding(months: -1)
 	@State private var to: Day? = Day.today()
 
+	/// The period of two readable dates, or nil while a date is missing or the end lies before the start.
+	private var period: PeriodChoice? {
+		guard let from, let to else { return nil }
+		return PeriodChoice.custom(from: from, to: to)
+	}
+
+	/// Both dates read, but the end lies before the start ("End before start").
+	private var endsBeforeStart: Bool { from != nil && to != nil && period == nil }
+
 	var body: some View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
 					DateField(title: "From", day: $from, identifier: "from")
-					DateField(title: "To", day: $to, identifier: "to")
+					DateField(title: "To", day: $to, identifier: "to", conflict: endsBeforeStart ? "The end lies before the start" : nil)
 				}
 			}
 			SheetButtons {
 				Spacer()
 				Button("Apply") {
-					guard let from, let to else { return }
-					model.choose(period: .custom(from, to))
+					guard let period else { return }
+					model.choose(period: period)
 					dismiss()
 				}
 				.keyboardShortcut(.defaultAction)
-				.disabled(from == nil || to == nil)
+				.disabled(period == nil)
 			}
 		}
 		.frame(width: 300)
