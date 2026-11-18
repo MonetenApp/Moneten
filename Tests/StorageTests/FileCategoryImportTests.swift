@@ -49,6 +49,51 @@ struct FileCategoryImportTests {
 		#expect(ledger.categories.map(\.name) == ["Existing"])
 	}
 
+	/// A file of 300,000 rows stores for seconds, so "Cancel" must stop the write at its next row and not only before the commit (issue #222).
+	@Test("Cancel while the rows of a file are written stops at the next row and stores none of them")
+	func cancelDuringRows() async throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let kept = Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -100, name: "Kiosk")
+		try store.save(accounts: [account], transactions: [kept])
+		let rows = (0..<2_000).map { Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk \($0)") }
+		let inserts = Mutex(0)
+		try await store.queue.writeWithoutTransaction { db in
+			db.trace { event in
+				if event.expandedDescription.contains("INSERT INTO \"bankTransaction\"") { inserts.withLock { $0 += 1 } }
+			}
+		}
+		await #expect(throws: CancellationError.self) {
+			try await store.mergeFile(rows, categories: [:], creatingCategories: false, into: account.id, isCanceled: { inserts.withLock { $0 > 0 } })
+		}
+		#expect(inserts.withLock { $0 } == 1)
+		#expect(try store.loadLedger().transactions.map(\.id) == [kept.id])
+	}
+
+	@Test("Cancel while the rows of a file are compared with the stored ones writes no row")
+	func cancelDuringComparison() async throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		let account = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		try store.save(accounts: [account])
+		let rows = (0..<2_000).map { Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Kiosk \($0)") }
+		let inserts = Mutex(0)
+		try await store.queue.writeWithoutTransaction { db in
+			db.trace { event in
+				if event.expandedDescription.contains("INSERT INTO \"bankTransaction\"") { inserts.withLock { $0 += 1 } }
+			}
+		}
+		// The cancel comes after the check at the start of the write, while the rows are compared.
+		let checks = Mutex(0)
+		await #expect(throws: CancellationError.self) {
+			try await store.mergeFile(rows, categories: [:], creatingCategories: false, into: account.id,
+				isCanceled: { checks.withLock { $0 += 1; return $0 > 10 } })
+		}
+		#expect(inserts.withLock { $0 } == 0)
+		#expect(try store.loadLedger().transactions.isEmpty)
+	}
+
 	@Test("All skipped rows leave zero new categories")
 	func skipped() async throws {
 		let store = try SchemaTests.emptyStore()

@@ -120,6 +120,6 @@ extension AppModel {
 		case let .fetched(result): result.transactionFailure
 		case let .failed(failure): failure
 		}
-		return failure.map { .failed(RefreshError(message: $0.message, code: $0.bankMessage?.code, date: date)) } ?? .refreshed(date)
+		return failure.map { .failed(RefreshError(failure: $0, date: date)) } ?? .refreshed(date)
 	}
 }

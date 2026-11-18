@@ -179,7 +179,7 @@ extension AppModel {
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
 		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
-		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
+		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = String(localized: "Import Transactions")
 		panel.message = String(localized: "CSV, CAMT (camt.052, camt.053), and MT940 files are supported.")
@@ -195,7 +195,7 @@ extension AppModel {
 	/// A CSV file with the header row of a saved profile imports without the preview, unless `alwaysPreview` is set.
 	func importFiles(_ urls: [URL], into account: Account, alwaysPreview: Bool) async {
 		// One import runs at a time. A canceled one ends at its next row, line, or entry.
-		guard !isTransferringTransactions, importResult == nil else { return NSSound.beep() }
+		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		guard sheet == nil else { return NSSound.beep() }
 		guard let importStore = store else { return }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
@@ -328,6 +328,9 @@ extension AppModel {
 						problems.append("\(name): \(error)")
 					}
 				}
+				// Without a stored file, as after a cancel, there is nothing to load, and loading the whole ledger again would keep
+				// the sheet open for seconds after "Cancel".
+				guard !storedFiles.isEmpty else { return }
 				do { try await reloadFileImport(from: store) }
 				catch { problems.append(String(localized: "The imported transactions could not be loaded: \(String(describing: error))")) }
 			}
@@ -357,18 +360,8 @@ extension AppModel {
 			message += "\n" + warnings.prefix(shown).joined(separator: "\n")
 			if warnings.count > shown { message += "\n" + String(localized: "and \(warnings.count - shown) more.") }
 		}
-		await run.waitForDismissal()
-		guard store === importStore else { return }
-		guard let window = NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) else {
-			alert = AlertMessage(title: String(localized: "Transaction Import"), message: message)
-			return
-		}
-		// SwiftUI's alert bridge can reenter AppKit layout when the result closes after an import sheet.
-		let result = NSAlert()
-		result.messageText = String(localized: "Transaction Import")
-		result.informativeText = message
-		importResult = result
-		result.beginSheetModal(for: window) { [weak self] _ in self?.importResult = nil }
+		// The result shows once the import sheet has slid out.
+		alert = AlertMessage(title: String(localized: "Transaction Import"), message: message)
 	}
 
 	/// The account for the transactions of a file. A file that names another account than the selected

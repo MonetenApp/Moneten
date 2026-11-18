@@ -325,6 +325,50 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **THEN** the pending transaction has the name "PayPal"
 - **AND** a purpose of several words without " / ", a booked row, a row with a counterparty, and a row of another bank keep the name that the bank sent
 
+### Requirement: Store a pending card debit of Targobank as a debit
+
+The app SHALL store a pending transaction of Targobank with a positive amount and no name, no purpose, no booking text, and no IBAN, on an account whose account number has 16 digits, as a pending debit of the same amount with the name "Abbuchung". An access belongs to Targobank by the Bankleitzahl 30020900 or by the FinTS host `fints.targobank.de`.
+
+#### Scenario: Pending card debit without a name
+
+- **GIVEN** the account `0012345678901234` of an access with the Bankleitzahl 30020900 and the FinTS address "https://fints.targobank.de/travicretail_fints30pintanbroker/FinTs30PinTanHttpGate"
+- **WHEN** the bank sends a pending MT940 row of 12,50 € with no name, no purpose, no booking text, and no IBAN, and the refresh ends
+- **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung"
+
+#### Scenario: Pending card debit in another currency
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a pending row of 12,50 € with the original amount 13,00 US dollars and no name, no purpose, no booking text, and no IBAN
+- **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung" and the original amount -13,00 US dollars
+
+#### Scenario: Pending credit with a name
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a pending row of 12,50 € from "Erika Mustermann" with the purpose "Rückzahlung Kino"
+- **THEN** the list shows a pending transaction of 12,50 € from "Erika Mustermann"
+
+#### Scenario: Row that is not such a debit
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a booked row of 12,50 € with no name, no purpose, and no booking text, a pending row of 12,50 € with the booking text "Gutschrift", a pending row of 12,50 € with the IBAN DE02120300000000202051, and a pending row of -12,50 € with no name
+- **THEN** each transaction keeps the amount and the name that the bank sent
+
+#### Scenario: Other account or other bank
+
+- **GIVEN** a pending row of 12,50 € with no name, no purpose, no booking text, and no IBAN
+- **WHEN** it comes for the Targobank account DE02120300000000202051 or `00123456789ABCDE`, or for the account `0012345678901234` of an access with the Bankleitzahl 99090000 and the FinTS address "https://fints.musterbank.example/fints"
+- **THEN** the pending transaction keeps 12,50 € and no name
+
+### Requirement: Explain the missing name of a pending card debit of Targobank
+
+The app SHALL give a pending card debit of Targobank that it stored as a debit the purpose "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht.", which says that the bank sends the name with the booking.
+
+#### Scenario: Purpose of the pending card debit
+
+- **GIVEN** the pending transaction of -12,50 € named "Abbuchung" from the account `0012345678901234` at Targobank
+- **WHEN** the user opens the transaction details
+- **THEN** the purpose is "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht."
+
 ### Requirement: Date a pending MT942 transaction of ING by its expected day
 
 The app SHALL give a pending transaction from an MT942 statement of the FinTS server of ING (`fints.ing.de`) the entry date of its ":61:" line as its date, because ING sends there the day on which it expects to book the transaction. A line without an entry date keeps its value date.
@@ -708,6 +752,94 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** every order goes with or without HKTAN as the bank parameters say
+
+### Requirement: Value of a holding from its quantity and its price
+
+The app SHALL count a holding without a value on a page of the custody account balance without a total with its quantity times its price, and a nominal amount at a price in percent with the nominal amount times the price divided by 100, in the currency of the security. When a holding has no value and the app cannot compute one, the account fails, so that the app never shows a sum that leaves out a holding.
+
+#### Scenario: Holdings without a value but with a quantity and a price
+
+- **GIVEN** the bank answers the custody account balance of "Depot" on 12.11.2026 without a total, with a share worth 1.200,00 €, 4 shares at the price 12,50 € without a value, and a bond in euro with the nominal amount 1.000,00 at the price 98 % without a value
+- **WHEN** the refresh ends
+- **THEN** "Depot" shows 2.230,00 €
+- **AND** the value of "Depot" on 12.11.2026 is 2.230,00 €
+
+#### Scenario: Holding without a value and without a price
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 10.000,00 € and a holding of 10 shares without a price and without a value
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+- **AND** "Depot" keeps 24.518,37 €
+
+#### Scenario: Bond without a value and without the currency of the security
+
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a bond of the nominal amount 1.000 at the price 98 % without a value and without the currency of the security
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+### Requirement: Bonds as units with a value 100 times too large
+
+The app SHALL read a holding as units at a price in percent as a nominal amount, and divide its market value and its accrued interest by 100, when a bank test showed that the FinTS server of the account sends a bond so with a value 100 times too large. Every other server keeps the values of the bank.
+
+#### Scenario: Bond as units at a server that sends its value 100 times too large
+
+- **GIVEN** a bank test showed that the FinTS server of "Depot" sends a bond as units with a value 100 times too large
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a bond of 1.000 units at the price 98 % and the value 98.000,00 €
+- **THEN** the bond counts 980,00 € with the nominal amount 1.000
+- **AND** "Depot" shows 980,00 €
+
+#### Scenario: Bond as units at any other server
+
+- **WHEN** the FinTS server of another bank answers the custody account balance of "Depot" without a total, with a bond of 1.000 units at the price 98 % and the value 98.000,00 €
+- **THEN** "Depot" shows 98.000,00 €
+
+### Requirement: Holdings in more than one currency
+
+The app SHALL count each holding of a page of the custody account balance without a total with its value and its accrued interest in the currency of the account, which the bank can send next to a value in another currency. When a holding has no value in the currency of the account, the account fails, also when every holding of the page has its value in the same other currency, because the app never converts a value.
+
+#### Scenario: Holdings in another currency with a value in the currency of the account
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD that the bank also states as 920,00 €, and a holding worth 500,00 €
+- **THEN** "Depot" shows 1.420,00 €
+
+#### Scenario: Every holding with a first value in another currency
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD that the bank also states as 920,00 €, and a holding worth 500,00 USD that the bank also states as 460,00 €
+- **THEN** "Depot" shows 1.380,00 €
+
+#### Scenario: Holding in another currency without a value in the currency of the account
+
+- **WHEN** the bank answers the custody account balance of the euro account "Depot" without a total, with a holding worth 1.000,00 USD and a holding worth 500,00 €
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+#### Scenario: Every holding only in another currency
+
+- **GIVEN** the euro account "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with 10 shares at the price 110,00 USD without a value
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+- **AND** "Depot" keeps 24.518,37 €
+
+### Requirement: Holdings show the values that the account counts
+
+The app SHALL show each holding of a page of the custody account balance without a total with the value and the accrued interest that the value of the account counts.
+
+#### Scenario: Holding with a second value in the currency of the account
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD with the accrued interest 10,00 USD that the bank also states as 920,00 € with the accrued interest 9,20 €, and a holding worth 500,00 €
+- **THEN** the first holding shows 929,20 € and the second holding shows 500,00 €
+- **AND** "Depot" shows 1.429,20 €
+
+### Requirement: Value of a page without a total as the sum of its holdings
+
+The app SHALL round the value and the accrued interest of each holding of a page of the custody account balance without a total to the minor unit of the currency, add them, and round a computed sum again, so that the value of the account is the sum of the values that its holdings show.
+
+#### Scenario: Accrued interest below a cent
+
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with two holdings of 3 shares each at the price 0,3345 € without a value and with the accrued interest 0,0015 €
+- **THEN** each holding shows 1,00 €
+- **AND** "Depot" shows 2,00 €
 
 ### Requirement: Recognize a securities account by its jobs
 
