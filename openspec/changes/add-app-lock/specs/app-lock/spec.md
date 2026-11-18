@@ -314,6 +314,39 @@ The app SHALL write a password or a key into the Keychain only as a new entry th
 - **THEN** the app shows that the password could not be stored in the Keychain
 - **AND** "Unlock with Touch ID" is off, and the lock screen no longer offers Touch ID
 
+### Requirement: Keychain entries stay in the login keychain
+
+The app SHALL add, read, and delete its Keychain entries only in the login keychain of the user, the file `~/Library/Keychains/login.keychain-db`. It SHALL NOT use the default keychain or the keychain search list of the user, because another program of the user can change both without a prompt. When the app cannot open the login keychain, it stores no secret in any keychain and shows that the login keychain cannot be opened.
+
+#### Scenario: Another program made its own keychain the default
+
+- **GIVEN** "Unlock automatically at application start" is on with the database password "korrekt-pferd-batterie", and its entry in the login keychain holds the earlier password "alt-und-lang-genug" of a database that the user restored from a backup
+- **AND** another program created the keychain "andere.keychain-db", made it the default keychain and the first one of the search list, and put the entry "Moneten database password for automatic unlock" with "falsches-passwort" into it
+- **WHEN** the user unlocks with "korrekt-pferd-batterie"
+- **THEN** the entry in the login keychain holds "korrekt-pferd-batterie"
+- **AND** the entry in "andere.keychain-db" still holds "falsches-passwort", and that keychain holds no other entry of the app
+
+#### Scenario: An entry in another keychain never counts
+
+- **GIVEN** "Unlock automatically at application start" is on, its entry is gone from the login keychain, and another program put an entry with the database password into its own default keychain
+- **WHEN** the app launches
+- **THEN** the app asks for the database password
+
+#### Scenario: A new database while another keychain is the default
+
+- **GIVEN** another program made the keychain "andere.keychain-db" the default keychain
+- **WHEN** the user creates a new database without a password
+- **THEN** the login keychain holds the random key of the database
+- **AND** "andere.keychain-db" holds no entry of the app
+
+#### Scenario: The login keychain cannot be opened
+
+- **GIVEN** the file `~/Library/Keychains/login.keychain-db` is missing
+- **WHEN** the user turns on "Unlock automatically at application start" and enters the database password
+- **THEN** the setting is still off
+- **AND** the app shows that the login keychain cannot be opened
+- **AND** no keychain holds the database password
+
 ### Requirement: Report a Keychain failure
 
 The app SHALL leave an unlock setting off when it cannot store the password or the configuration in the Keychain, and it tells the user that the Keychain did not accept the entry.

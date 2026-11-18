@@ -6321,6 +6321,17 @@
         }
       }
     },
+    "Moneten keeps its Keychain entries only in the \"login\" keychain, and the keychain file %@ cannot be opened: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten speichert seine Schlüsselbund-Einträge nur im Schlüsselbund „Anmeldung“, und die Schlüsselbunddatei %@ lässt sich nicht öffnen: %@"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Moneten keeps your accounts, transactions, and categories in an encrypted database on this Mac. A database password protects it." : {
       "localizations" : {
         "de" : {

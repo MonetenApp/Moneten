@@ -2,21 +2,20 @@ import Foundation
 import Security
 import Storage
 
-/// A keychain file in a temporary folder, for tests that write Keychain entries, so that no test writes or deletes an
-/// entry in the login Keychain of the Mac that runs it, also in CI.
-/// `security create-keychain` leaves the search list of the user alone, so nothing outside the test sees the file.
+/// A keychain file in a temporary folder, for tests that write Keychain entries. A test gives its path to `Vault` or
+/// `Keychain` in place of the login keychain, so that no test opens, writes, or deletes an entry in a keychain of the
+/// Mac that runs it, also in CI. A second file plays the keychain of another program.
+/// `security create-keychain` leaves the default keychain and the search list of the user alone, so nothing outside
+/// the test sees the file. No test changes either of them.
 /// The `security` tool plays another program: it plants entries and prints access lists without reading a value.
-public final class KeychainFile: @unchecked Sendable {
+public final class KeychainFile: Sendable {
 	public let path: String
-	/// Never changes after it is opened.
-	public let keychain: SecKeychain
 
-	/// The file stays until the process ends, also when nothing holds this value any more: a vault may still use the
-	/// `SecKeychain`, and macOS adds an entry for a keychain whose file is gone to the default keychain of the user.
+	/// The file stays until the process ends, also when nothing holds this value any more, because a vault may still
+	/// use the path.
 	public init() throws {
 		path = Self.folder.appendingPathComponent("\(UUID().uuidString).keychain-db").path
 		try Self.security("create-keychain", "-p", "test", path)
-		keychain = try openKeychain(path)
 	}
 
 	/// One folder per test process for every keychain file, removed when the process ends. The first use also turns
@@ -35,14 +34,15 @@ public final class KeychainFile: @unchecked Sendable {
 		try Self.security("add-generic-password", "-A", "-s", service, "-a", account, "-w", value, path)
 	}
 
-	/// Deletes the file while `keychain` still refers to it.
+	/// Deletes the file while a vault still uses its path. It removes the file itself, because `security delete-keychain`
+	/// also edits the search list of the user.
 	public func removeFile() throws {
-		try Self.security("delete-keychain", path)
+		try FileManager.default.removeItem(atPath: path)
 	}
 
-	/// A keychain whose file does not exist. `SecKeychainOpen` accepts the path.
-	public static func missing() throws -> SecKeychain {
-		try openKeychain(folder.appendingPathComponent("Missing-\(UUID().uuidString).keychain-db").path)
+	/// The path of a keychain file that does not exist, in the folder of the test keychains.
+	public static func missingPath() -> String {
+		folder.appendingPathComponent("Missing-\(UUID().uuidString).keychain-db").path
 	}
 
 	/// Locks the file. Reading attributes and deleting an entry still work, but reading or adding a value fails.
@@ -98,20 +98,12 @@ nonisolated(unsafe) private var keychainFolder: String?
 extension Vault {
 	/// A vault whose Keychain entries go into a keychain file, the shared one unless a test needs its own.
 	public init(testing folder: DataFolder, version: String = Vault.runningVersion, keychain: KeychainFile = TestKeychain.shared) {
-		self.init(folder: folder, version: version, keychainFile: keychain.keychain)
+		self.init(folder: folder, version: version, keychainPath: keychain.path)
 	}
 }
 
-/// `SecKeychainOpen` and `SecKeychainSetUserInteractionAllowed`, which turns the prompts off for the whole process, are deprecated together with the file-based
-/// Keychain, but only they open a keychain file and turn its prompts off.
-@available(macOS, deprecated: 10.10)
-private func openKeychain(_ path: String) throws -> SecKeychain {
-	var keychain: SecKeychain?
-	let status = SecKeychainOpen(path, &keychain)
-	guard status == errSecSuccess, let keychain else { throw KeychainFile.SecurityToolFailure(command: "SecKeychainOpen", status: status) }
-	return keychain
-}
-
+/// `SecKeychainSetUserInteractionAllowed` turns the prompts off for the whole test process. It is deprecated together
+/// with the file-based Keychain, but only it turns them off.
 @available(macOS, deprecated: 10.10)
 private func allowUserInteraction(_ allowed: Bool) {
 	SecKeychainSetUserInteractionAllowed(allowed)
