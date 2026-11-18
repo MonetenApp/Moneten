@@ -150,17 +150,15 @@ check_hardened() {
 	return 0
 }
 
-# Copies each dSYM in the folder $1 that belongs to a binary of the app dist/Moneten.app to
-# dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
-# before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
-# scripts/release.sh checks that every other binary has one.
 # A Release build never reads the variables that point a Debug or Perf build at a data folder, a debug folder, or a
 # keychain file of its own (issues #327 and #421), because another program of the user can set them with
-# `launchctl setenv`. The code that reads them is compiled out, so their names must not be in the code of the app,
-# which a Debug build keeps in Contents/MacOS/Moneten.debug.dylib.
+# `launchctl setenv`. The code that reads them is compiled out, so their names must not be in any binary of the app:
+# the app itself, which a Debug build keeps in Contents/MacOS/Moneten.debug.dylib, the extension host, and the
+# frameworks.
 check_debug_only() {
-	for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
-		for code in "$1"/Contents/MacOS/*; do
+	find "$1/Contents" -type f -perm -u+x | while read -r code; do
+		file -b "$code" | grep -q '^Mach-O' || continue
+		for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
 			if LC_ALL=C grep -a -q -F "$name" "$code"; then
 				echo "$code holds $name, which only Debug and Perf builds may read." >&2
 				exit 1
@@ -169,6 +167,10 @@ check_debug_only() {
 	done
 }
 
+# Copies each dSYM in the folder $1 that belongs to a binary of the app dist/Moneten.app to
+# dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
+# before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
+# scripts/release.sh checks that every other binary has one.
 copy_symbols() {
 	mkdir dist/Moneten.dSYMs
 	UUIDS=$(mktemp)

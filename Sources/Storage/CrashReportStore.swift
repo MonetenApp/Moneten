@@ -116,7 +116,7 @@ public struct CrashReportStore {
 	/// builds of the app pass, as for `Vault`. With `keyInFolder` and no override, the key is a file in the data folder
 	/// instead, so that a rebuilt app with its own data folder never shows a Keychain prompt.
 	public init(folder: DataFolder, keyInFolder: Bool = false, keychainOverride: String? = nil) {
-		let keychain: any CrashReportKeychain = keyInFolder && (keychainOverride ?? "").isEmpty
+		let keychain: any CrashReportKeychain = keyInFolder && keychainOverride == nil
 			? CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
 			: Keychain(service: Self.keyService, path: Keychain.path(override: keychainOverride))
 		self.init(folder: folder, keychain: keychain)

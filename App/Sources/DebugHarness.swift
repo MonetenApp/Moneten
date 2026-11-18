@@ -43,14 +43,22 @@ final class DebugHarness {
 		#endif
 	}
 
-	/// Called first at launch, before anything opens a keychain. A run of the harness needs a throwaway keychain file in
-	/// `MONETEN_KEYCHAIN_PATH`, so that no check reads or writes the login keychain of the developer by accident
-	/// (issue #421). Without one the app says so on standard error and exits. A debug build started without the
-	/// harness keeps the login keychain.
-	static func requireKeychainFileIfRequested() {
+	/// Called first at launch, before anything opens a data folder or a keychain. A run of the harness needs a
+	/// throwaway data folder in `MONETEN_DATA_DIR` and a throwaway keychain file in `MONETEN_KEYCHAIN_PATH`, so that no
+	/// check changes the real database or reads or writes the login keychain of the developer (issue #421).
+	/// `HarnessRun.missing` has the reasons. Without both the app names what is missing on standard error and exits.
+	/// A debug build started without the harness keeps the real data folder and the login keychain.
+	static func requireOwnFoldersIfRequested() {
 		#if DEBUG || PERF_HARNESS
-		guard requestedPath != nil, AppKeychain.requestedPath == nil else { return }
-		FileHandle.standardError.write(Data("The debug harness needs MONETEN_KEYCHAIN_PATH: the path of a throwaway keychain file.\n".utf8))
+		let missing = HarnessRun.missing(debugFolder: requestedPath, dataFolder: DataFolder.requestedPath, keychainFile: AppKeychain.requestedPath)
+		guard !missing.isEmpty else { return }
+		let needs = missing.map {
+			switch $0 {
+			case .dataFolder: "MONETEN_DATA_DIR (the path of a throwaway data folder)"
+			case .keychainFile: "MONETEN_KEYCHAIN_PATH (the path of a throwaway keychain file)"
+			}
+		}
+		FileHandle.standardError.write(Data("The debug harness needs \(needs.joined(separator: " and ")).\n".utf8))
 		exit(2)
 		#endif
 	}

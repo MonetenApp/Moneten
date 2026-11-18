@@ -316,7 +316,7 @@ The app SHALL write a password or a key into the Keychain only as a new entry th
 
 ### Requirement: Keychain entries stay in the login keychain
 
-The app SHALL add, read, and delete its Keychain entries only in the login keychain of the user, the file `~/Library/Keychains/login.keychain-db`. It SHALL NOT use the default keychain or the keychain search list of the user, because another program of the user can change both without a prompt. No environment variable changes the keychain file of the app. When the app cannot open the login keychain, it stores no secret in any keychain and shows that the login keychain cannot be opened.
+The app SHALL add, read, and delete its Keychain entries only in the login keychain of the user, the file `~/Library/Keychains/login.keychain-db`. It SHALL NOT use the default keychain or the keychain search list of the user, because another program of the user can change both without a prompt. No environment variable changes the keychain file of a release build. When the app cannot open the login keychain, it stores no secret in any keychain and shows that the login keychain cannot be opened.
 
 #### Scenario: Another program made its own keychain the default
 
@@ -353,6 +353,30 @@ The app SHALL add, read, and delete its Keychain entries only in the login keych
 - **THEN** the setting is still off
 - **AND** the app shows that the login keychain cannot be opened
 - **AND** no keychain holds the database password
+
+### Requirement: A run of the debug harness keeps to its own data folder and keychain file
+
+The app SHALL, in a Debug or Perf build that the debug harness drives, exit with status 2 at launch, before it opens a data folder or a keychain, unless the run names both a data folder and a keychain file of its own. An unlock in a run that opens the real database with a throwaway keychain file would turn off the unlock settings of the real database, and the crash reports would lose their key.
+
+#### Scenario: A harness run without a data folder of its own
+
+- **GIVEN** a Debug build of the app, whose real database has "Unlock automatically at application start" on
+- **WHEN** a check starts it with `MONETEN_DEBUG_DIR=/tmp/harness/debug` and `MONETEN_KEYCHAIN_PATH=/tmp/harness/run.keychain-db`, without `MONETEN_DATA_DIR`
+- **THEN** the app exits with status 2 and names `MONETEN_DATA_DIR` on standard error
+- **AND** no file in `~/Library/Application Support/Moneten` changed, and "Unlock automatically at application start" is still on
+
+#### Scenario: A harness run without a keychain file of its own
+
+- **GIVEN** a Debug build of the app
+- **WHEN** a check starts it with `MONETEN_DEBUG_DIR=/tmp/harness/debug` and `MONETEN_DATA_DIR=/tmp/harness/data`, without `MONETEN_KEYCHAIN_PATH`
+- **THEN** the app exits with status 2 and names `MONETEN_KEYCHAIN_PATH` on standard error
+- **AND** the login keychain holds no new entry of the app, and `/tmp/harness/data` holds no database
+
+#### Scenario: A debug build without the harness
+
+- **GIVEN** a Debug build of the app
+- **WHEN** the developer starts it without `MONETEN_DEBUG_DIR`, `MONETEN_DATA_DIR`, and `MONETEN_KEYCHAIN_PATH`
+- **THEN** the app opens the real database with the login keychain
 
 ### Requirement: Report a Keychain failure
 
