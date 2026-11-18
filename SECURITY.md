@@ -12,20 +12,27 @@ Include the version, the steps to reproduce, and the impact you expect. The main
 
 - The database is encrypted with SQLCipher. Its key comes from your database password. Until you set one, a random key in the Keychain protects the database.
 - You can make the app lock after a set time without activity or when the main window closes. It then opens only with the password, or with Touch ID or an Apple Watch if you turn that on.
-- Touch ID and automatic unlocking need the password saved in your login Keychain. In this build, Touch ID is checked by the app, not by the Keychain item. A program that runs under your user account and changes the app's settings can therefore unlock it without Touch ID. Do not save the password if that matters to you.
-
-Payments are not built yet. Bank access and extensions follow these rules:
-
+- Automatic unlocking, Touch ID, and the Apple Watch need the password saved in your login Keychain. The encrypted database records which of these settings are on, so a Keychain entry that another program creates never unlocks the app. Touch ID is checked by the app, not by the Keychain entry. A program that runs under your user account can ask the Keychain for the saved password, and macOS then asks you to allow it, not for Touch ID. Do not save the password if that matters to you.
 - Bank PINs are saved only if you choose, and then only inside the encrypted database.
-- The app has no log of its own yet. The FinTS helper writes only masked diagnostics. The `ext` command line tool for extension authors prints what an extension prints, unchanged.
 - TANs are never stored.
+- The app has no log file. It writes a few status lines to the system log of macOS and to its standard error: fixed words, counts, and error codes, with no names, amounts, or secrets. The FinTS helper writes only masked diagnostics. The `ext` command line tool for extension authors prints what an extension prints, unchanged.
 - The FinTS helper, which holds the PIN and reads the answers of the bank, runs in its own sandboxed process. It reaches the network and reads its own files in the app, and cannot read or change your other files or the database.
 - Each extension runs in its own sandboxed process without file access. An extension with a manifest reaches only the hosts in its manifest. An extension without one asks you before it contacts each new host. The host check runs in the extension's own process, so a flaw in Lua or in a parser of the app could get around it.
 - Automated checks and a maintainer review every catalog extension. The app installs one only from a signed index whose digests match every file. An update that adds a host or a login field waits for your confirmation.
 - Nobody from the project reviews an extension that you install from a file. The app warns you before it runs one, lists the hosts of its manifest, warns again when any of its files changes, and marks it "Unverified".
-- Extensions only read data. The extension API has no payment functions, and the app will send payments only through FinTS or finAPI. A malicious extension could still misuse a login it holds, which is why the catalog reviews every package.
+- Extensions only read data. The extension API has no payment functions. A malicious extension could still misuse a login it holds, which is why the catalog reviews every package.
+- The app installs an update and a new bank list only when the update key of the project signed them. It refuses an older bank list than the one it has.
 
 [Architecture](docs/architecture.md) explains each of these in detail.
+
+## Planned
+
+- Payments are not built yet. The app will send them only through FinTS or finAPI.
+- The Keychain entries move to the data protection Keychain in a build signed with a team. That Keychain binds each entry to the app, so another program of the user cannot redirect a new entry into a keychain file of its own.
+
+## Security review
+
+The [security review for v0.1](docs/security-review-v0.1.md) lists every finding with its fix, the risks that v0.1 accepts, and what the review did not check.
 
 ## Supported versions
 
