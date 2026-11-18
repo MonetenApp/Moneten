@@ -41,11 +41,11 @@ struct FlatexDegiroTests {
 		#expect(Self.directory.search("isbank").map(\.code) == ["10130600"])
 	}
 
-	@Test("The login step says that FinTS serves flatex accounts, and that DEGIRO and ViTrade accounts need an extension")
+	@Test("The login step says that FinTS serves flatex accounts, and that DEGIRO and ViTrade accounts cannot be added with FinTS")
 	func note() throws {
 		for code in ["10130800", "30330800", "76030800"] {
 			let note = try #require(Self.directory.bank(code: code)?.loginNote)
-			#expect(note == "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS and need an extension.")
+			#expect(note == "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS.")
 		}
 		#expect(Self.directory.bank(code: "10130800")?.loginHint == nil)
 	}

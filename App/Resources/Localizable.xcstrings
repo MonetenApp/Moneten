@@ -11107,13 +11107,13 @@
       },
       "extractionState" : "manual"
     },
-    "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS and need an extension." : {
+    "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS." : {
       "extractionState" : "manual",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Der FinTS-Zugang der flatexDEGIRO Bank dient den Konten von flatex. DEGIRO und ViTrade bieten keinen FinTS-Zugang. Ihre Konten lassen sich daher nicht mit FinTS hinzufügen und brauchen eine Erweiterung."
+            "value" : "Der FinTS-Zugang der flatexDEGIRO Bank dient den Konten von flatex. DEGIRO und ViTrade bieten keinen FinTS-Zugang. Ihre Konten lassen sich daher nicht mit FinTS hinzufügen."
           }
         }
       }

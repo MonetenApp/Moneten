@@ -63,4 +63,10 @@ extension BankDirectory.Entry {
 		let name = TextFolding.fold(bank.name)
 		return isOnSavingsBankServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}
+
+	/// What the bank requires or offers before the first login, which the login step shows above the fields: the note of the
+	/// login hint, or the note of flatexDEGIRO Bank on the brands that its FinTS access serves.
+	public var loginNote: String? {
+		loginHint?.note ?? (FlatexDegiro.bankCodes.contains(code) ? FlatexDegiro.note : nil)
+	}
 }

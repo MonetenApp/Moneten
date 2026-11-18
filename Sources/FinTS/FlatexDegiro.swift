@@ -11,14 +11,6 @@ enum FlatexDegiro {
 
 	/// The FinTS server of the bank serves only flatex accounts, so a customer of DEGIRO or ViTrade gets a failed login there.
 	static var note: String {
-		String(localized: "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS and need an extension.")
-	}
-}
-
-extension BankDirectory.Entry {
-	/// What the bank requires or offers before the first login, which the login step shows above the fields: the note of the
-	/// login hint, or the note of flatexDEGIRO Bank on the brands that its FinTS access serves.
-	public var loginNote: String? {
-		loginHint?.note ?? (FlatexDegiro.bankCodes.contains(code) ? FlatexDegiro.note : nil)
+		String(localized: "The FinTS access of flatexDEGIRO Bank serves flatex accounts. DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS.")
 	}
 }

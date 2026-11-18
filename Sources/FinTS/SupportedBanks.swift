@@ -32,6 +32,13 @@ public struct SupportedBanks: Sendable {
 		}
 	}
 
+	/// The note of a bank in the list: the note of a merged bank, then what the bank requires or offers before the first
+	/// login, then the help of the login name. The note before the first login comes before the help, so that a customer
+	/// of DEGIRO sees that flatexDEGIRO Bank serves only flatex accounts with FinTS.
+	public static func note(of bank: BankDirectory.Entry) -> String? {
+		bank.mergerNote ?? bank.loginNote ?? bank.loginHint?.help
+	}
+
 	/// The services and banks that match every word of `query` in their names, and for a bank also in its
 	/// place or Bankleitzahl, as the first step of "Add Account" finds them. An empty query lists all.
 	public func matching(_ query: String) -> (services: [Service], banks: [BankDirectory.Entry]) {

@@ -594,7 +594,7 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **GIVEN** the user chose the bank of 10130800, 30330800, or 76030800
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows above the fields that the FinTS access of flatexDEGIRO Bank serves flatex accounts
-- **AND** the app says that DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS and need an extension
+- **AND** the app says that DEGIRO and ViTrade offer no FinTS access, so their accounts cannot be added with FinTS
 - **AND** the neighbor 76030080 of Consorsbank shows only its own hint
 
 #### Scenario: Baader Bank
@@ -865,6 +865,13 @@ The app SHALL show a list of the banks and services it can reach, with a search 
 - **GIVEN** the bank directory lists 21099999 as "Sparkasse Altstadt -alt-" with a FinTS address
 - **WHEN** the user opens the list and types "Altstadt"
 - **THEN** the list shows "Sparkasse Altstadt -alt-" with "FinTS/HBCI with TAN method" and the note of a merged bank
+
+#### Scenario: flatexDEGIRO Bank in the list
+
+- **GIVEN** the bank directory lists 10130800 with a FinTS address
+- **WHEN** the user opens the list and types "degiro"
+- **THEN** the list shows "flatexDEGIRO Bank (flatex, DEGIRO, ViTrade)" with "FinTS/HBCI with TAN method"
+- **AND** its note says that the FinTS access serves flatex accounts, and that DEGIRO and ViTrade accounts cannot be added with FinTS
 
 #### Scenario: Bank directory that does not load
 
