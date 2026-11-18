@@ -182,8 +182,9 @@ def plurals(node):
 # A view of the menu bar whose first argument, unless it has a label such as action:, is its title.
 MENU_VIEW = re.compile(r"\b(?:Button|Toggle|Menu|CommandMenu|Picker|Text)\(")
 STRING_LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"')
-LOCALIZED = re.compile(r'String\(localized:\s*"(?:[^"\\\n]|\\.)*"\)')
-PROPERTY = re.compile(r"^(?:model\.|self\.)?([a-z]\w*)$")
+# A title of a property: `removeTitle`, `self.removeTitle`, `model.removeTitle`, or `$0.title` in a ForEach.
+PROPERTY = re.compile(r"^(?:(?P<receiver>\$?\w+)\.)?(?P<name>[a-z]\w*)$")
+TYPE = re.compile(r"\b(?:struct|class|enum|extension|actor)\s+(?P<name>[A-Z][\w.]*)[^{};]*\{")
 
 
 def without_comments(text):
@@ -209,8 +210,8 @@ def without_comments(text):
 	return "".join(out)
 
 
-def first_argument(text, start):
-	"""The first argument of the call whose parenthesis ends just before `start`."""
+def call_end(text, start):
+	"""The index of the comma or closing bracket that ends the argument starting at `start`, outside string literals."""
 	depth, i, in_string = 0, start, False
 	while i < len(text):
 		c = text[i]
@@ -228,37 +229,86 @@ def first_argument(text, start):
 		elif c in "),]}" and not depth:
 			break
 		i += 1
-	return text[start:i].strip()
+	return i
 
 
-def property_body(sources, name):
-	"""The path and the body of the computed property `name` of type String or String?, or None."""
+def first_argument(text, start):
+	"""The first argument of the call whose parenthesis ends just before `start`."""
+	return text[start:call_end(text, start)].strip()
+
+
+def without_localized(text):
+	"""The text without each call String(localized: ...), also one with more arguments such as comment:."""
+	key = "String(localized:"
+	out, i = [], 0
+	while (found := text.find(key, i)) >= 0:
+		out.append(text[i:found])
+		# Every argument up to the closing parenthesis of the call.
+		end = call_end(text, found + len(key))
+		while end < len(text) and text[end] == ",":
+			end = call_end(text, end + 1)
+		i = end + 1
+	out.append(text[i:])
+	return "".join(out)
+
+
+def block_end(text, start):
+	"""The index after the brace that closes the block whose body starts at `start`."""
+	depth, i = 1, start
+	while i < len(text) and depth:
+		depth += {"{": 1, "}": -1}.get(text[i], 0)
+		i += 1
+	return i
+
+
+def types_at(text, position):
+	"""The names of the types whose body holds `position`, innermost last."""
+	return [m.group("name").split(".")[-1] for m in TYPE.finditer(text) if m.end() <= position < block_end(text, m.end())]
+
+
+def properties(sources, name):
+	"""Each computed property `name` of type String or String? in `sources` as (path, innermost type, body)."""
 	declaration = re.compile(r"\bvar\s+" + re.escape(name) + r"\s*:\s*String\??\s*\{")
+	found = []
 	for path, text in sorted(sources.items()):
-		match = declaration.search(text)
-		if not match:
+		for match in declaration.finditer(text):
+			owners = types_at(text, match.start())
+			found.append((path, owners[-1] if owners else None, text[match.end():block_end(text, match.end()) - 1]))
+	return found
+
+
+def returned_literals(body):
+	"""The literals that a property body gives as its value, such as `case .account: "Remove Account..."`.
+
+	A literal inside parentheses or brackets is an argument, such as `of: "-"` of replacingOccurrences, and one
+	after ==, !=, or case, or before {, is a condition. Neither is the title.
+	"""
+	code = without_localized(without_comments(body))
+	literals = []
+	for match in STRING_LITERAL.finditer(code):
+		before, after = code[:match.start()], code[match.end():]
+		depth = sum(before.count(c) for c in "([") - sum(before.count(c) for c in ")]")
+		if depth > 0 or re.search(r"(?:==|!=|~=|\bcase|,)\s*$", before) or re.match(r"\s*(?:\{|==|!=|\.)", after):
 			continue
-		depth, i = 1, match.end()
-		while i < len(text) and depth:
-			depth += {"{": 1, "}": -1}.get(text[i], 0)
-			i += 1
-		return path, text[match.end():i - 1]
-	return None
+		literals.append(match.group(0))
+	return literals
 
 
 def menu_title_problems(sources):
 	"""Lists each title of the menu bar that the catalog cannot translate.
 
-	`sources` maps the path of each Swift file of the app to its text. The menus are the files that declare a
-	Commands type. SwiftUI looks up a literal title, such as Button("Add Category"), also both literals of a
-	ternary, in the catalog, and the compiler extracts its key. A title of type String shows verbatim, so it comes
-	from String(localized:). A literal after ?? next to such a title is a String too. A title that names a property,
-	such as Button(model.removeTitle), passes when every literal in the body of the property is the key of a
-	String(localized:). "Remove Account Group..." stayed English for both reasons (issue #463).
+	`sources` maps the path of each Swift file of the app and the libraries to its text. The menus are the files of
+	the app that declare a Commands type. SwiftUI looks up a literal title, such as Button("Add Category"), also both
+	literals of a ternary, in the catalog, and the compiler extracts its key. A title of type String shows verbatim,
+	so it comes from String(localized:). A literal after ?? next to such a title is a String too. A title that names
+	a property, such as Button(model.removeTitle), passes when every literal that the property returns is the key of
+	a String(localized:). The property of `model.` is one of AppModel, a bare name one of the type that holds the
+	menu, and `$0.title` one of any type that declares it. "Remove Account Group..." stayed English for both
+	reasons (issue #463).
 	"""
 	problems = []
 	for path, text in sorted(sources.items()):
-		if not re.search(r":\s*Commands\s*\{", text):
+		if not path.startswith("App/") or not re.search(r":\s*Commands\s*\{", text):
 			continue
 		code = without_comments(text)
 		for match in MENU_VIEW.finditer(code):
@@ -266,7 +316,7 @@ def menu_title_problems(sources):
 			if not argument or re.match(r"\w+\s*:", argument):
 				continue
 			where = f"{path}:{code.count(chr(10), 0, match.start()) + 1}"
-			value, *fallbacks = [part.strip() for part in LOCALIZED.sub("", argument).split("??")]
+			value, *fallbacks = [part.strip() for part in without_localized(argument).split("??")]
 			if any(STRING_LITERAL.search(part) for part in fallbacks):
 				problems.append(f"{where}: the literal after ?? in the menu title {argument!r} is a String and shows verbatim. "
 					"Write String(localized: ...).")
@@ -277,26 +327,33 @@ def menu_title_problems(sources):
 				continue
 			if not value:
 				continue
-			name = PROPERTY.match(value)
-			found = name and property_body(sources, name.group(1))
-			if not found:
+			title = PROPERTY.match(value)
+			candidates = properties(sources, title.group("name")) if title else []
+			receiver = title.group("receiver") if title else None
+			if receiver == "model":
+				candidates = [c for c in candidates if c[1] == "AppModel"]
+			elif receiver in (None, "self"):
+				candidates = [c for c in candidates if c[1] in types_at(code, match.start())]
+			if not candidates:
 				problems.append(f"{where}: the menu title {argument!r} is neither a literal nor a String property of the app, "
 					"so this check cannot see its text. Use a literal or a property that returns String(localized: ...).")
 				continue
-			source, body = found
-			for literal in STRING_LITERAL.findall(LOCALIZED.sub("", without_comments(body))):
-				problems.append(f"{source}: {name.group(1)} returns the literal {literal} for the menu title at {where}, "
-					f"which shows verbatim. Write String(localized: {literal}).")
+			for source, _, body in candidates:
+				for literal in returned_literals(body):
+					problems.append(f"{source}: {title.group('name')} returns the literal {literal} for the menu title at {where}, "
+						f"which shows verbatim. Write String(localized: {literal}).")
 	return problems
 
 
-def app_sources():
+def swift_sources():
+	"""The Swift files of the app and of the libraries, which hold the properties that a menu title may name."""
 	sources = {}
-	for path in sorted(glob.glob(os.path.join(ROOT, "App", "Sources", "**", "*.swift"), recursive=True)):
-		relative = os.path.relpath(path, ROOT)
-		if relative not in IGNORED:
-			with open(path, encoding="utf-8") as f:
-				sources[relative] = f.read()
+	for folder in (("App", "Sources"), ("Sources",)):
+		for path in sorted(glob.glob(os.path.join(ROOT, *folder, "**", "*.swift"), recursive=True)):
+			relative = os.path.relpath(path, ROOT)
+			if relative not in IGNORED:
+				with open(path, encoding="utf-8") as f:
+					sources[relative] = f.read()
 	return sources
 
 
@@ -364,7 +421,7 @@ def main():
 	untranslated = sorted(k for k in keys if k in strings and not is_translated(strings[k]))
 	formats = [p for k in sorted(keys) if k in strings for p in format_problems(k, strings[k])]
 	info = info_plist_problems()
-	menus = menu_title_problems(app_sources())
+	menus = menu_title_problems(swift_sources())
 	for key in missing:
 		print(f"Missing in the catalog: {key!r}")
 	for key in unused:

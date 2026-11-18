@@ -10,7 +10,7 @@ extension Format {
 
 	/// The text of an existing amount in a field, in the decimal mark of the Mac: "2500,00" in Germany.
 	static func editableAmount(_ minor: Int64, _ currency: String) -> String {
-		editableAmount(Money(minorUnits: minor, currency: currency), locale: .current)
+		editableAmount(Money(minorUnits: minor, currency: currency))
 	}
 
 	/// The placeholder of an empty amount field, "0,00" in Germany and "0.00" in the United States.

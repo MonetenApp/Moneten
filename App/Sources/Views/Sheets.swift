@@ -455,10 +455,10 @@ struct TransactionSheet: View {
 			date = t.bookingDate
 			hasValueDate = t.valueDate != nil
 			valueDate = t.valueDate
-			draft = TransactionDraft(template: t, locale: .current)
+			draft = TransactionDraft(template: t, locale: .autoupdatingCurrent)
 			comment = t.comment ?? ""
 		} else if let account {
-			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection, locale: .current)
+			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection, locale: .autoupdatingCurrent)
 		}
 	}
 

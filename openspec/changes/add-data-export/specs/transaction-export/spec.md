@@ -92,6 +92,12 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 - **WHEN** a purpose has two lines
 - **THEN** the field is in quotation marks and a spreadsheet program reads it as one cell
 
+#### Scenario: Arabic dates without direction marks
+
+- **WHEN** the user exports 3 November 2026 with ar_EG formats
+- **THEN** Date is "03/11/2026" without the direction marks U+200E, U+200F, and U+061C of the Arabic date format
+- **AND** the import of the app reads the exported file back with the same days and amounts
+
 #### Scenario: Currency with three decimal places
 
 - **WHEN** the user exports -12345 minor units in KWD with German formats

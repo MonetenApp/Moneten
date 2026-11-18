@@ -218,10 +218,12 @@ public enum AmountParser {
 		return decimal(from: text) == nil ? text + "0" : text
 	}
 
-	/// The sign and the digits with their separators, without spaces and the euro sign.
+	/// The sign and the digits with their separators, without spaces and the euro sign. The Arabic decimal separator
+	/// "٫", which the CSV export writes for an Arabic region, is a decimal comma.
 	private static func split(_ text: String) -> (negative: Bool, digits: Substring)? {
 		var s = Substring(String(String.UnicodeScalarView(text.unicodeScalars.filter { !CharacterSet.whitespaces.contains($0) }))
 			.replacingOccurrences(of: "\u{2212}", with: "-")
+			.replacingOccurrences(of: "\u{066B}", with: ",")
 			.replacingOccurrences(of: "€", with: ""))
 		let negative = s.first == "-"
 		if negative || s.first == "+" { s.removeFirst() }

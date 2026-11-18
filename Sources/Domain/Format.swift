@@ -31,7 +31,7 @@ public enum Format {
 	/// The text of an existing amount in an amount field, such as "-89,00" in Germany and "-89.00" in the United States:
 	/// the decimal mark of `locale`, no thousands separators, and every decimal place of the currency, so that
 	/// `AmountParser` reads it back unchanged in either region.
-	public static func editableAmount(_ m: Money, locale: Locale) -> String {
+	public static func editableAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
 		AmountParser.editableText(m, decimalMark: DecimalMark(region: locale))
 	}
 }

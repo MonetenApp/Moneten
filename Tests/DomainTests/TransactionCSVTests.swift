@@ -56,23 +56,18 @@ struct TransactionCSVTests {
 		#expect(text.components(separatedBy: "\r\n")[1] == "03.11.2026;;\(cell);\(cell);\(cell);\(cell);\(cell);-89,00;EUR;\(cell);\(cell);\(cell);\(cell);\(cell);\(cell);;")
 	}
 
-	@Test("Egyptian Arabic uses ASCII digits for both dates and amounts")
+	@Test("Egyptian Arabic uses ASCII digits for both dates and amounts, and the dates have no direction marks")
 	func arabicDigits() throws {
-		#expect(try lines([stadtwerke], "ar_EG")[1] == "03\u{200F}/11\u{200F}/2026;04\u{200F}/11\u{200F}/2026;Housing;Stadtwerke Musterstadt;Abschlag November;DE02120300000000202051;BYLADEM1001;-89٫00;EUR;DE02120300000000202051;Lastschrift;E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;")
+		#expect(try lines([stadtwerke], "ar_EG")[1] == "03/11/2026;04/11/2026;Housing;Stadtwerke Musterstadt;Abschlag November;DE02120300000000202051;BYLADEM1001;-89٫00;EUR;DE02120300000000202051;Lastschrift;E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;")
 	}
 
-	@Test("Choosing ASCII digits preserves the calendar of the locale")
-	func localeCalendar() throws {
-		#expect(try lines([stadtwerke], "th_TH")[1].hasPrefix("03/11/2569;04/11/2569;"))
-	}
-
-	@Test("A date in the Buddhist or the Islamic calendar has no era, so that a spreadsheet reads it as a date")
-	func noEra() throws {
+	@Test("A region with another calendar exports the Gregorian date in its order of day, month, and year, without an era", arguments: [
 		// macOS gives this app en_TH for English and the region Thailand, because the app has no Thai.
-		#expect(try lines([stadtwerke], "en_TH")[1].hasPrefix("03/11/2569;04/11/2569;"))
-		// 3 November 2026 is 23 Jumada al-Ula 1448 in the Umm al-Qura calendar of Saudi Arabia.
-		#expect(try lines([stadtwerke], "ar_SA")[1].hasPrefix("23\u{200F}/05\u{200F}/1448;24\u{200F}/05\u{200F}/1448;"))
-		#expect(try lines([stadtwerke], "en_SA")[1].hasPrefix("23/05/1448;24/05/1448;"))
+		("th_TH", "03/11/2026;04/11/2026;"), ("en_TH", "03/11/2026;04/11/2026;"), ("ar_SA", "03/11/2026;04/11/2026;"), ("en_SA", "03/11/2026;04/11/2026;"),
+		("ja_JP@calendar=japanese", "2026/11/03;2026/11/04;"), ("zh_TW@calendar=roc", "2026/11/03;2026/11/04;"), ("fa_IR", "2026/11/03;2026/11/04;"),
+	])
+	func gregorianDates(locale: String, start: String) throws {
+		#expect(try lines([stadtwerke], locale)[1].hasPrefix(start))
 	}
 
 	@Test("The first line names the 17 columns in order")
