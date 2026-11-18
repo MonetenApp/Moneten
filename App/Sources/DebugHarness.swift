@@ -364,6 +364,15 @@ final class DebugHarness {
 		case "present": model.autoRefresh.isUserPresent = argument != "off"
 		// The popover of the menu bar icon, drawn offscreen.
 		case "menubarsnapshot": offscreenSnapshot(MenuBarPopover().environment(model), width: 340, name: argument, kind: "menubar")
+		case "refreshlines":
+			// The header line of an account whose last refresh was now, 1, 3, 6, and 7 days ago, for the relative day names.
+			let accounts = [0, 1, 3, 6, 7].map { days in
+				var a = Account(position: 0, name: "Giro", kind: .giro, source: .bank)
+				a.refreshedAt = Calendar.current.date(byAdding: .day, value: -days, to: Date())
+				return a
+			}
+			offscreenSnapshot(VStack(alignment: .leading, spacing: 8) { ForEach(accounts) { AccountRefreshLine(account: $0) } }.padding(12).environment(model),
+				width: 360, name: argument, kind: "refresh")
 		#if DEBUG || PERF_HARNESS
 		// "click" clicks the menu bar icon, and "press <n>" clicks control number n of the popover, counted from 0: the account
 		// rows, then "Refresh All Accounts" and "Open Moneten", or "Unlock..." while locked. Each logs the icon, its symbol,
