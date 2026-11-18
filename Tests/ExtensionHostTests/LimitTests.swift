@@ -26,7 +26,11 @@ import Testing
 				pointer.deallocate()
 				freed.withLock { $0 += 1 }
 			})
-			return HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: body)
+			// A binary type keeps the host from reading 8 MB for the `<meta>` tags of an HTML head on
+			// every request. The memory that the tests follow does not change.
+			var headers = ["Content-Type": "application/octet-stream"]
+			if header > 0 { headers["X-Padding"] = String(repeating: "p", count: header) }
+			return HTTPResponse(status: 200, headers: headers, body: body)
 		}
 	}
 
