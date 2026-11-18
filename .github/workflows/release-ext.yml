@@ -4,7 +4,11 @@ name: Release ext
 # notarizes it, and publishes it with its SHA-256 as the GitHub release ext-v1.2.3.
 # docs/releasing-ext.md lists the secrets and the steps. The secrets are those of the app release.
 # A pull request that changes the tool or its packaging makes a dry run that needs no secret and
-# publishes nothing.
+# publishes nothing. The dry run takes one of the few macOS runners of the organization, so it starts only
+# for the inputs of ext (issue #345): the targets that ext links, as Package.swift names them, the package,
+# the packaging, and the example extension that the packaged binary replays. scripts/test-ci-changes.py
+# checks this list against Package.swift and scripts/release-ext.sh. The test job of CI still builds and
+# tests ext on every pull request that changes code.
 
 on:
   push:
@@ -15,8 +19,13 @@ on:
       - scripts/release-ext.sh
       - Package.swift
       - Package.resolved
-      - Sources/**
       - Tools/ext/**
+      - Sources/Domain/**
+      - Sources/CLua/**
+      - Sources/ExtensionHost/**
+      - Sources/ExtensionConnector/**
+      - Extensions/Example/**
+      - Fixtures/example/**
 
 permissions:
   contents: read

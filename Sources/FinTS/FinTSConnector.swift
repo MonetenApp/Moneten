@@ -191,7 +191,9 @@ public struct FinTSConnector: BankConnector {
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
 					let (outcome, errors) = try result.get().outcome(of: account)
-					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+					let server = command.url.flatMap(URL.init(string:))
+					outcomes[account.accountID] = Targobank.outcome(DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: server),
+						account: remoteID, bankCode: command.bankCode, server: server)
 					notices += errors
 				} catch {
 					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)

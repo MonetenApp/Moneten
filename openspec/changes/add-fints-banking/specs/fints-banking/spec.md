@@ -21,6 +21,34 @@ The app SHALL take the FinTS address of a bank from its bank directory by Bankle
 - **WHEN** the next refresh of an account at "Musterbank" runs
 - **THEN** the app contacts the new address and the user does nothing
 
+### Requirement: Use the current FinTS address of flatexDEGIRO Bank
+
+The app SHALL use the FinTS address `https://banking.flatexdegiro.com/hbci` for the Bankleitzahlen 10130800, 30330800, and 76030800 of flatexDEGIRO Bank. The bank list that the project publishes between releases holds this address for the three Bankleitzahlen, also when the bank list of hbci4java holds an older address, none, or no entry. Every other Bankleitzahl keeps the address of the bank list of hbci4java.
+
+#### Scenario: Older address in the bank list of hbci4java
+
+- **GIVEN** the bank list of hbci4java holds `https://konto.biw-bank.de/hbci/` for 10130800
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds `https://banking.flatexdegiro.com/hbci` for 10130800
+
+#### Scenario: No address or no entry in the bank list of hbci4java
+
+- **GIVEN** the bank list of hbci4java holds 30330800 without a FinTS address and does not list 76030800
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds `https://banking.flatexdegiro.com/hbci` for 30330800 and for 76030800
+
+#### Scenario: Neighbor Bankleitzahl
+
+- **GIVEN** the bank list of hbci4java holds `https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp` for 10130600
+- **WHEN** the project builds the bank list that it publishes
+- **THEN** the published list holds the same address for 10130600
+
+#### Scenario: Refresh after the bank list arrived
+
+- **GIVEN** an access at 10130800 stored `https://konto.biw-bank.de/hbci/`, and the app installed the published bank list
+- **WHEN** the next refresh of the access runs
+- **THEN** the app contacts `https://banking.flatexdegiro.com/hbci`
+
 ### Requirement: Identify the app as a registered product
 
 The app SHALL send its product registration number and its version in every FinTS dialog.
@@ -296,6 +324,50 @@ The app SHALL take over the transactions that a bank reports as not yet booked a
 - **WHEN** the refresh ends
 - **THEN** the pending transaction has the name "PayPal"
 - **AND** a purpose of several words without " / ", a booked row, a row with a counterparty, and a row of another bank keep the name that the bank sent
+
+### Requirement: Store a pending card debit of Targobank as a debit
+
+The app SHALL store a pending transaction of Targobank with a positive amount and no name, no purpose, no booking text, and no IBAN, on an account whose account number has 16 digits, as a pending debit of the same amount with the name "Abbuchung". An access belongs to Targobank by the Bankleitzahl 30020900 or by the FinTS host `fints.targobank.de`.
+
+#### Scenario: Pending card debit without a name
+
+- **GIVEN** the account `0012345678901234` of an access with the Bankleitzahl 30020900 and the FinTS address "https://fints.targobank.de/travicretail_fints30pintanbroker/FinTs30PinTanHttpGate"
+- **WHEN** the bank sends a pending MT940 row of 12,50 € with no name, no purpose, no booking text, and no IBAN, and the refresh ends
+- **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung"
+
+#### Scenario: Pending card debit in another currency
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a pending row of 12,50 € with the original amount 13,00 US dollars and no name, no purpose, no booking text, and no IBAN
+- **THEN** the list shows a pending transaction of -12,50 € with the name "Abbuchung" and the original amount -13,00 US dollars
+
+#### Scenario: Pending credit with a name
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a pending row of 12,50 € from "Erika Mustermann" with the purpose "Rückzahlung Kino"
+- **THEN** the list shows a pending transaction of 12,50 € from "Erika Mustermann"
+
+#### Scenario: Row that is not such a debit
+
+- **GIVEN** the account `0012345678901234` at Targobank
+- **WHEN** the bank sends a booked row of 12,50 € with no name, no purpose, and no booking text, a pending row of 12,50 € with the booking text "Gutschrift", a pending row of 12,50 € with the IBAN DE02120300000000202051, and a pending row of -12,50 € with no name
+- **THEN** each transaction keeps the amount and the name that the bank sent
+
+#### Scenario: Other account or other bank
+
+- **GIVEN** a pending row of 12,50 € with no name, no purpose, no booking text, and no IBAN
+- **WHEN** it comes for the Targobank account DE02120300000000202051 or `00123456789ABCDE`, or for the account `0012345678901234` of an access with the Bankleitzahl 99090000 and the FinTS address "https://fints.musterbank.example/fints"
+- **THEN** the pending transaction keeps 12,50 € and no name
+
+### Requirement: Explain the missing name of a pending card debit of Targobank
+
+The app SHALL give a pending card debit of Targobank that it stored as a debit the purpose "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht.", which says that the bank sends the name with the booking.
+
+#### Scenario: Purpose of the pending card debit
+
+- **GIVEN** the pending transaction of -12,50 € named "Abbuchung" from the account `0012345678901234` at Targobank
+- **WHEN** the user opens the transaction details
+- **THEN** the purpose is "Targobank übermittelt den Namen einer vorgemerkten Kartenzahlung erst mit der Buchung. Der Umsatz ändert sich, wenn die Bank ihn bucht."
 
 ### Requirement: Date a pending MT942 transaction of ING by its expected day
 
