@@ -681,7 +681,7 @@ final class AppModel {
 
 	func lock() {
 		guard hasPassword, phase == .unlocked else { return }
-		leaveVisit()
+		storeVisitSeen()
 		closeDatabase(then: .locked)
 	}
 
@@ -798,9 +798,14 @@ final class AppModel {
 	}
 
 	func mainWindowClosed() {
-		// Closing the window ends the visit of the view as leaving it does, also when the app stays unlocked.
-		leaveVisit()
-		if lockSettings.lockOnClose { lock() }
+		// Closing the window ends the visit of the view as leaving it does, also when the app stays unlocked. The lock
+		// ends it in the store alone.
+		if lockSettings.lockOnClose && hasPassword && phase == .unlocked { lock() } else { leaveVisit() }
+	}
+
+	/// The app quits: the rows that came during the visit count as seen, so the next launch does not mark them again.
+	func applicationWillTerminate() {
+		storeVisitSeen()
 	}
 
 	/// The main window opened again, or the app was unlocked: the user sees the selected view anew.
@@ -900,6 +905,16 @@ final class AppModel {
 		guard visited != nil || !newMarks.isEmpty else { return }
 		let seen = newMarks.leave(account: visited, in: ledger)
 		if let visited, !isStoringMigration { storeSeen(seen, of: visited) }
+	}
+
+	/// Ends the visit in the database alone, for the lock and the end of the app. The lock removes the table in the
+	/// drawing that it starts, so a change of the rows or of their marks must not come with it (issue #151). The ledger
+	/// and the marks go one drawing later (`closeDatabase`), and the next unlock loads the rows as seen.
+	private func storeVisitSeen() {
+		guard let id = visitedAccount else { return }
+		visitedAccount = nil
+		guard !isStoringMigration, ledger.newTransactionCounts[id, default: 0] > 0, let store else { return }
+		try? store.markSeen(account: id)
 	}
 
 	/// Writes that the new transactions of an account are seen, through the store first, then into the ledger.

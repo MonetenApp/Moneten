@@ -108,7 +108,7 @@ The app SHALL draw a transaction that the bank has not yet booked with a hatched
 
 ### Requirement: New transactions are marked
 
-The app SHALL show a mark on the row of each transaction that the user has not seen before. The mark stays while the view is open in which the user first sees the transaction. It is gone when the user leaves that view, closes the main window, or checks the row. A transaction that a refresh adds while the view of its account is open counts as seen when the user leaves that view or closes the main window.
+The app SHALL show a mark on the row of each transaction that the user has not seen before. The mark stays while the view is open in which the user first sees the transaction. It is gone when the user leaves that view, closes the main window, locks or quits the app, or checks the row. A transaction that a refresh adds while the view of its account is open counts as seen when the user leaves that view, closes the main window, or locks or quits the app.
 
 #### Scenario: After a refresh
 

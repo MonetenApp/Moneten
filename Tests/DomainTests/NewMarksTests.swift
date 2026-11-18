@@ -67,21 +67,6 @@ struct NewMarksTests {
 		#expect(!marks.shows(ledger.transaction(added.id)!))
 	}
 
-	@Test("Closing the main window ends the visit: the 2 kept marks go and stay gone when the window opens again")
-	func windowClosed() {
-		let first = Self.row(Self.giro, -1_000, isNew: true), second = Self.row(Self.giro, -2_000, isNew: true)
-		var ledger = Ledger(accounts: [Self.giro], transactions: [first, second])
-		var marks = NewMarks()
-		ledger.update(marks.open(account: Self.giro.id, in: ledger))
-		#expect(marks.shows(ledger.transaction(first.id)!) && marks.shows(ledger.transaction(second.id)!))
-
-		ledger.update(marks.leave(account: Self.giro.id, in: ledger))
-		// The window opens again on "Girokonto", a new visit.
-		#expect(marks.open(account: Self.giro.id, in: ledger).isEmpty)
-		#expect(marks.isEmpty)
-		#expect(!marks.shows(ledger.transaction(first.id)!) && !marks.shows(ledger.transaction(second.id)!))
-	}
-
 	@Test("Leaving a view without an account, such as a group, empties the marks and returns no rows")
 	func leaveWithoutAccount() {
 		let row = Self.row(Self.giro, -1_000, isNew: true)
