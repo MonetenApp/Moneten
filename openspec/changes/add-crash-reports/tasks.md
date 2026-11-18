@@ -12,9 +12,12 @@
 ## 3. Maintainer verification
 
 - [x] 3.1 Add and check scripts/symbolicate-crash.sh. Proof: two script tests pass, and the script resolves a synthetic offset from the debug binary to DebugHarness.intentionalCrash() with its matching dSYM. Task 4.6 of add-software-update keeps the release upload open.
-- [ ] 3.2 Crash only the owned debug process through its harness. Relaunch it once. Record MetricKit delivery and symbolication to the crashing function. Leave this task open if MetricKit does not deliver.
-
-MetricKit check on November 15: the owned debug process crashed through its harness and exited with signal 5. After one relaunch, the harness reported zero diagnostics and no pending report. Actual next-launch delivery and symbolication of a delivered report remain open in #224. The fallback now uses only system crash file names and modification dates. It adds no quit marker.
+- [x] 3.2 Crash only the owned debug process through its harness. Relaunch it once. Record MetricKit delivery and symbolication to the crashing function. Leave this task open if MetricKit does not deliver. Proof on November 18 with Debug build 321 of main, throwaway data, debug, and keychain folders, and the harness command `crash`:
+  - An ad hoc signed build gets no delivery. PID 22039 crashed at 10:39:05. ReportCrash sent the `MXCrashDiagnostic` to metrickitd, which wrote a payload for delivery. On the relaunch, metrickitd logged "Bundle is not codesigned" and "_shouldDeliverToClientForBundleID returned NO", and the harness reported pending=true, fallback=true, received=0. This explains the try of November 15. The user still got the short report.
+  - The same build signed with an Apple Development certificate gets the delivery. Its first launch at 10:52:32 received the payload of the 10:39 crash: received=1, fallback=false. The report had no frames, because `CrashDiagnostic.crashedFrames` expected a `callStackTree` key, and `MXCallStackTree.jsonRepresentation()` returns `callStacks` at its root. crashedThread now uses the real form.
+  - A signed copy under a new bundle ID registered as a MetricKit client at its launch at 10:41:08, but ReportCrash called it "not a MetricKit client" for its crashes at 10:41:25 and 10:42:21, and its relaunch received nothing. The ReportCrash agent that started at 10:39:05 still ran 25 minutes later. The short report covered both crashes.
+  - PID 84171 crashed at 10:58:38, launched at 10:58:21. The relaunch received the payload, but the short report stayed, because the payload ran from 10:58:00 to 10:58:00 and so began before the launch. MetricKit gives payload times in whole minutes. The fallback match now starts at the whole minute of the launch. wholeMinutePayload and fallbackTiming at 959 and 960 failed before the fix.
+  - With both fixes, PID 43375 launched at 11:01:54 and crashed at 11:02:06. ReportCrash wrote the crash file at 11:03:45 and queued the payload at 11:03:51. One relaunch at 11:03:58 reported pending=true, fallback=false, received=1, failures=0, and a report of 42 frames. `scripts/symbolicate-crash.sh` with dsymutil output for `Moneten` and `Moneten.debug.dylib` resolved the first Moneten frame, offset 0x258b20, to `DebugHarness.intentionalCrash()`, and the next one to `DebugHarness.run(_:_:)` at DebugHarness.swift:180.
 
 ## 4. Gate round 1
 
@@ -36,3 +39,8 @@ MetricKit check on November 15: the owned debug process crashed through its harn
 ## 6. Harness runs without Keychain prompts
 
 - [x] 6.1 Keep the crash report key of a harness run in the data folder, and test the store without the login Keychain. Proof: a debug build started twice with the same data folder and a rebuild in between showed no prompt, and the login Keychain has no crash report entry for that folder. A report injected by the harness survived SIGKILL and the rebuild and was offered on the relaunch. `scripts/test.sh --filter CrashReport` passes without Keychain access. The harness scripts no longer delete Keychain entries.
+
+## 7. Review of task 3.2
+
+- [x] 7.1 Open the launch minute only to a payload that no earlier crash can own. Proof: sharedMinute covers launches at 10:57:50 and 10:58:21 that crash in the same minute, with the earlier short report pending, declined, or replaced by its declined details, and failed on 44f21695 with 6 issues. declinedPayloadReplay covers a declined payload of second 1200 replayed against the short report of a crash at second 1290 under a launch at 1205, and failed with 2 issues. earlierCrashBeforeMinute shows that an earlier crash file before the minute still lets the payload replace the short report.
+- [x] 7.2 Log a call stack that cannot be read as `crash frames-undecodable`, without content of the payload, keep the report with empty frames, and count it in `failureCount` of a Debug build.

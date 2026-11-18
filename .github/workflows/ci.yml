@@ -13,6 +13,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # A pull request that changes only documentation skips the macOS job, which holds one of the few macOS
+  # runners of the organization for about half an hour. scripts/ci-changes.py has the list of documentation.
+  # Every other path, a push to main, and a manual run start the macOS job.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      macos: ${{ steps.decide.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The merge base of the pull request and its base branch.
+          fetch-depth: 0
+      - id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/ci-changes.py "$EVENT" "$BASE" "$HEAD" >> "$GITHUB_OUTPUT"
+
   specs:
     runs-on: ubuntu-latest
     steps:
@@ -31,6 +50,9 @@ jobs:
       - run: python3 scripts/test-release-notes.py
       # The script that builds and signs the bank data of the workflow bank-data.yml.
       - run: python3 scripts/test-bank-data.py
+      # The router of the changes job, that nothing in the macOS job reads a file on its list, and that the path
+      # filter of release-ext.yml names the inputs of ext.
+      - run: python3 scripts/test-ci-changes.py
       # Every part that the pins ship has a license notice at its version (issue #411).
       - run: python3 scripts/licenses.py check
       - run: python3 scripts/test-licenses.py
@@ -43,6 +65,10 @@ jobs:
       - run: scripts/vendor-lua.sh --self-test
 
   test:
+    needs: changes
+    # Only an explicit docs-only decision of a successful router skips the job. A failed router runs it, even
+    # when it wrote macos=false before it failed, because the runner keeps the outputs of a failed job.
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.macos != 'false') }}
     runs-on: macos-15
     # A green run takes about 30 minutes. A hung test then ends the job instead of holding a runner for six hours.
     timeout-minutes: 90

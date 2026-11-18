@@ -19,7 +19,7 @@ The dry run needs no secrets and contacts no service. It builds the same zip, si
 scripts/release-ext.sh dry-run       # writes dist/ext
 ```
 
-The workflow runs the dry run on each pull request that changes the tool, the libraries in `Sources`, the package, or the packaging.
+The workflow runs the dry run on each pull request that changes an input of `ext`: `Tools/ext`, the libraries that it links (`Domain`, `CLua`, `ExtensionHost`, and `ExtensionConnector`), `Package.swift`, `Package.resolved`, the packaging, or the example extension that the check replays. A change elsewhere in `Sources`, such as `Storage` or `FinTS`, cannot change the binary and skips the dry run. The `test` job of CI still builds and tests `ext` for it.
 
 ## Set up once
 

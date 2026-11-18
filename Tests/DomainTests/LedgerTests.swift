@@ -216,7 +216,7 @@ struct LedgerTests {
 	@Test("An IBAN written with a no-break or a narrow no-break space is found by the plain IBAN, as the rule finds it", arguments: ["\u{00A0}", "\u{202F}"])
 	func searchIBANWithOtherSpaces(_ space: String) throws {
 		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
-		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: iban)
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: try IBAN(parsing: iban))
 		let other = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline, iban: "DE89370400440532013000")
 		let rows = [
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_250, name: "Markt", purpose: "REWE"),
@@ -465,7 +465,7 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 11), amountMinor: -90, name: "Miete.", purpose: "Mai")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
-			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
+			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000", "remote_account:/^DE89 3704/", "remote_account:/^DE893704/", "local_account:/^DE02 1203/", "local_account:/^DE021203/",
 			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
 			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
 			"true", "NOT false", "comment:strom OR false",
@@ -490,6 +490,71 @@ struct LedgerTests {
 			#expect(l.rows(in: .account(giro.id), filter: f).rows.isEmpty, "\(query)")
 			#expect(!all.contains { rule.matches(RuleSubject($0, account: giro)) }, "\(query)")
 		}
+		// Swift calls "é" and "e" with a combining accent equal, but a regular expression tells them apart, so the
+		// search must not take the forms or the outcome of one account text for the other.
+		let composed = Account(position: 0, name: "Kasse A", kind: .giro, source: .offline, accountNumber: "\u{E9}4711")
+		let decomposed = Account(position: 1, name: "Kasse B", kind: .giro, source: .offline, accountNumber: "e\u{301}4711")
+		let accounts = [composed, decomposed]
+		let accented = accounts.enumerated().map { i, account in
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 12 + i), amountMinor: -100, name: "Kunde \(i)",
+				counterpartyIBAN: account.accountNumber)
+		}
+		let accentedLedger = Ledger(accounts: accounts, transactions: accented)
+		for query in ["local_account:/^\u{E9}4711$/", "local_account:/^e\u{301}4711$/", "remote_account:/^\u{E9}4711$/", "remote_account:/^e\u{301}4711$/"] {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched = accentedLedger.rows(in: .all, filter: f).rows.map(\.name).sorted()
+			let ruled = accented.filter { t in rule.matches(RuleSubject(t, account: accounts.first { $0.id == t.accountID })) }.map(\.name)
+			#expect(ruled.count == 1, "\(query)")
+			#expect(searched == ruled, "\(query)")
+		}
+		// A bridged text with an unpaired UTF-16 surrogate has the UTF-8 bytes of a replacement character in Swift, but
+		// a regular expression reads the surrogate. So the search must not share the forms or the outcome of the two.
+		let surrogate = NSString(characters: [0xD800, 0x34, 0x37, 0x31, 0x31], length: 5) as String
+		for numbers in [[surrogate, "\u{FFFD}4711"], ["\u{FFFD}4711", surrogate]] {
+			let kassen = numbers.enumerated().map { i, number in
+				Account(position: i, name: "Kasse \(i)", kind: .giro, source: .offline, accountNumber: number)
+			}
+			let rows = kassen.enumerated().map { i, account in
+				Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 12 + i), amountMinor: -100, name: "Kunde \(i)",
+					counterpartyIBAN: account.accountNumber)
+			}
+			let surrogateLedger = Ledger(accounts: kassen, transactions: rows)
+			for query in ["local_account:/^\u{FFFD}4711$/", "remote_account:/^\u{FFFD}4711$/"] {
+				var f = TransactionFilter()
+				f.searchText = query
+				let rule = try Rule(parsing: query)
+				let searched = surrogateLedger.rows(in: .all, filter: f).rows.map(\.name).sorted()
+				let ruled = rows.filter { t in rule.matches(RuleSubject(t, account: kassen.first { $0.id == t.accountID })) }.map(\.name)
+				#expect(ruled.count == 1, "\(query)")
+				#expect(searched == ruled, "\(query)")
+			}
+		}
+	}
+
+	@Test("A regular expression on the counterparty account finds the same rows as the rule when rows share a counterparty")
+	func sharedCounterpartyRegex() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let counterparties: [String?] = ["DE02120300000000202051", "4711", "DE02120300000000202051", nil, "DE03120300000000202051", "4711", nil]
+		let rows = counterparties.enumerated().map { i, iban in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + i), amountMinor: -100 * Int64(i + 1), name: "Kunde \(i)",
+				counterpartyIBAN: iban)
+		}
+		let l = Ledger(accounts: [giro], transactions: rows)
+		let queries = ["remote_account:/^DE02 1203/", "remote_account:/^DE021203/", "remote_account:/^4711$/", "NOT remote_account:/^DE02/",
+			"remote_account:/^DE03/ OR remote_account:/^4711$/", "remote_account:/^$/", "remote_account:/DE02/ AND name:/Kunde [02]/"]
+		for query in queries {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched = l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted()
+			let ruled = rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name).sorted()
+			#expect(searched == ruled, "\(query)")
+		}
+		var f = TransactionFilter()
+		f.searchText = "remote_account:/^DE02 1203/"
+		#expect(l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted() == ["Kunde 0", "Kunde 2"])
 	}
 
 	@Test("Search for finds the row it starts from, also with quotation marks in the name")
@@ -788,7 +853,7 @@ struct LedgerTests {
 		notSetYet.initialBalanceIsSet = false
 		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today, refresh: .idle) == nil)
 		var failed = unexplained
-		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
+		failed.refreshError = RefreshError(failure: .network("The transactions could not be fetched."), date: Date())
 		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today, refresh: .idle) == nil)
 	}
 

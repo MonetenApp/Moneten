@@ -13,7 +13,10 @@ public enum TransactionDetail: Hashable, Sendable {
 	/// The deviating recipient of a debit or the deviating originator of a credit.
 	case deviatingParty(String, recipient: Bool)
 	case valueDate(Day)
-	case iban(String)
+	/// The account of the counterparty when it is a valid IBAN.
+	case iban(IBAN)
+	/// The account of the counterparty as the source gave it when it is no valid IBAN, such as an older account number.
+	case accountNumber(String)
 	case bic(String)
 
 	/// The same label as the field of the transaction sheet, so that one detail has one name in the app.
@@ -28,6 +31,7 @@ public enum TransactionDetail: Hashable, Sendable {
 		case let .deviatingParty(_, recipient): recipient ? String(localized: "Deviating recipient") : String(localized: "Deviating originator")
 		case .valueDate: String(localized: "Value date")
 		case .iban: String(localized: "IBAN")
+		case .accountNumber: String(localized: "Account number")
 		case .bic: String(localized: "BIC")
 		}
 	}
@@ -45,7 +49,7 @@ extension Transaction {
 			text(endToEndReference, TransactionDetail.endToEndReference), text(mandateReference, TransactionDetail.mandateReference),
 			text(creditorID, TransactionDetail.creditorID), originalAmount.map(TransactionDetail.originalAmount),
 			text(deviatingParty) { TransactionDetail.deviatingParty($0, recipient: amountMinor < 0) }, valueDate.map(TransactionDetail.valueDate),
-			text(counterpartyIBAN, TransactionDetail.iban), text(counterpartyBIC, TransactionDetail.bic)].compactMap { $0 }
+			text(counterpartyIBAN) { IBAN($0).map(TransactionDetail.iban) ?? .accountNumber($0) }, text(counterpartyBIC, TransactionDetail.bic)].compactMap { $0 }
 	}
 
 	/// The name as the row shows it: the booking text stands in for a missing name.
@@ -75,7 +79,7 @@ public enum TransactionCopy {
 				pieces.append("\(detail.label): \(oneLine(v))")
 			case let .originalAmount(money):
 				pieces.append("\(detail.label): \(marks.amount(money.minorUnits, money.currency)) \(money.currency)")
-			case .valueDate, .iban, .bic: break
+			case .valueDate, .iban, .accountNumber, .bic: break
 			}
 		}
 		return pieces.filter { !$0.isEmpty }.joined(separator: ", ")

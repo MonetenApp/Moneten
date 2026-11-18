@@ -22,7 +22,8 @@ struct ListedAccount: Equatable {
 	let subAccount: String?
 	let bankCode: String?
 	let currency: String
-	let iban: String?
+	/// Nil also when the script lists text that is not a valid IBAN. The account keeps its account number.
+	let iban: IBAN?
 	let bic: String?
 	let kind: AccountKind
 	/// The results of the account have `securities`. Only the field `portfolio` decides, whatever `type` says:
@@ -51,7 +52,7 @@ struct ListedAccount: Equatable {
 		owner = fields.text("owner")
 		bankCode = fields.text("bankCode")
 		currency = fields.text("currency")?.uppercased() ?? "EUR"
-		iban = fields.text("iban")
+		iban = fields.text("iban").flatMap(IBAN.init)
 		bic = fields.text("bic")
 		holdsSecurities = fields["portfolio"].map { $0 != .boolean(false) && $0 != .null } ?? false
 		// The kind keeps its rule, because the remote ID depends on it and a stored access knows its accounts by it.
@@ -293,7 +294,7 @@ enum ResultMapping {
 		return Transaction(accountID: UUID(), bookingDate: try day(rawBooking, String(localized: "booking date")), valueDate: try fields["valueDate"].map { value throws(MappingError) in
 			try day(value, String(localized: "value date"))
 		}, amountMinor: try money(amount, rowCurrency, String(localized: "The amount of transaction \(number)")).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
-			purpose: fields.text("purpose") ?? "", counterpartyIBAN: fields.text("accountNumber"), counterpartyBIC: fields.text("bankCode"),
+			purpose: fields.text("purpose") ?? "", counterpartyIBAN: fields.text("accountNumber").map(IBAN.electronicForm), counterpartyBIC: fields.text("bankCode"),
 			bookingText: fields.text("bookingText"), endToEndReference: fields.text("endToEndReference"), mandateReference: fields.text("mandateReference"),
 			creditorID: fields.text("creditorId"), isPending: !booked, sourceID: booked ? fields.text("transactionId") : nil)
 	}

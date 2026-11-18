@@ -50,7 +50,7 @@ struct AllDataTests {
 		try source.replaceParts(of: original.id, with: parts)
 		let file = try source.exportAllData(at: exportedAt).json()
 		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
-		#expect(json["version"] as? Int == 2)
+		#expect(json["version"] as? Int == 3)
 		let entries = json["splitParts"] as? [[String: Any]] ?? []
 		#expect(entries.compactMap { $0["amount"] as? String } == ["-100.00", "-19.00"])
 		#expect(entries.compactMap { ($0["vat"] as? [String: Any])?["rate"] as? Int } == [1900, 1900])
@@ -99,6 +99,36 @@ struct AllDataTests {
 		#expect(booked.amountMinor == -3000)
 		#expect(booked.review == nil)
 		#expect(ledger.parts(of: pending.id).isEmpty && ledger.parts(of: booked.id).isEmpty)
+	}
+
+	@Test("An export with a refresh error writes version 3 and the failure without its text, so a reader of version 2 asks for a newer app")
+	func refreshErrorVersion() throws {
+		let file = try filledStore().exportAllData(at: exportedAt).json()
+		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
+		#expect(json["version"] as? Int == 3)
+		let accounts = try #require(json["accounts"] as? [[String: Any]])
+		let error = try #require(accounts.compactMap { $0["refreshError"] as? [String: Any] }.first)
+		#expect(error["message"] == nil && error["code"] == nil)
+		let failure = try #require(error["failure"] as? [String: Any])
+		#expect(failure["reason"] as? String == "pinRejected")
+		#expect(failure["code"] as? String == "9931")
+	}
+
+	@Test("A version-2 file with the text and the code of a refresh error imports them as an answer of the bank")
+	func v2RefreshError() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let file = Data(#"""
+		{"format":"moneten-export","version":2,"exportedAt":"2026-11-14T23:46:40.000Z",
+		"accountGroups":[],"accesses":[],"categories":[],"transactions":[],"splitParts":[],"deletedTransactions":[],"portfolioValues":[],"holdings":[],
+		"accounts":[{"id":"00000000-0000-0000-0000-000000000001","position":0,"name":"Giro","kind":"giro","source":"offline","currency":"EUR","initialBalance":"0.00","initialBalanceIsSet":true,"isClosed":false,"refreshInterval":"onlyManually",
+		"refreshError":{"message":"Die PIN ist falsch.","code":"9931","date":"2026-11-14T23:46:40.000Z","notices":[],"waitsForUser":true}}]}
+		"""#.utf8)
+		let target = try emptyStore("v2-target")
+		try target.importAllData(try AllData(json: file))
+		let reopened = try Vault(testing: DataFolder(root: root.appendingPathComponent("v2-target"))).open(password: "korrekt-pferd-batterie-heftklammer")
+		let error = try #require(try reopened.loadLedger().accounts.first?.refreshError)
+		#expect(error.failure == .bank(BankMessage(code: "9931", text: "Die PIN ist falsch.")))
+		#expect(error.waitsForUser)
 	}
 
 	@Test("An invalid split import writes nothing", arguments: ["transaction", "category", "pending", "id", "transaction-id", "position", "negative-position", "one", "zero", "sum", "overflow"])
@@ -220,7 +250,7 @@ struct AllDataTests {
 		let access = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://banking.example.org/fints")!), bankName: "Musterbank", loginName: "erika77")
 		let giro = Account(groupID: privat.id, position: 2, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", bankBalanceMinor: 250_000,
 			refreshedAt: Date(timeIntervalSince1970: 1_794_650_000.5),
-			refreshError: RefreshError(message: "Die PIN ist falsch.", code: "9931", date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
+			refreshError: RefreshError(failure: .pinRejected(BankMessage(code: "9931", text: "Die PIN ist falsch.")), date: Date(timeIntervalSince1970: 1_794_660_000), notices: ["Wartung am Sonntag"]),
 			refreshInterval: .onceADay, missesOlderTransactions: true, otherBankBalances: [Money(minorUnits: 3_500, currency: "USD")], bonusPoints: 12_400)
 		let linked = try store.add(access, state: AccessState(Data("bank parameters".utf8)), accounts: [giro])
 		try store.savePIN(Secret("24680"), for: linked.access.id)
@@ -350,6 +380,22 @@ struct AllDataTests {
 		#expect(throws: AllData.ReadError.damaged(expected)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 	}
 
+	@Test("An export of an earlier version with an invalid or a spaced account IBAN imports, and the IBAN moves as from a bank",
+		arguments: [("DE03120300000000202051", nil, "DE03120300000000202051"), ("de02 1203 0000 0000 2020 51", "DE02120300000000202051", nil)] as [(String, String?, String?)])
+	func earlierAccountIBAN(text: String, iban: String?, accountNumber: String?) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var accounts = json["accounts"] as! [[String: Any]]
+		let index = try #require(accounts.firstIndex { $0["name"] as? String == "Haushalt" })
+		#expect(accounts[index]["accountNumber"] is NSNull || accounts[index]["accountNumber"] == nil)
+		accounts[index]["iban"] = text
+		json["accounts"] = accounts
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let haushalt = try #require(try target.loadLedger().accounts.first { $0.name == "Haushalt" })
+		#expect(haushalt.iban?.electronic == iban)
+		#expect(haushalt.accountNumber == accountNumber)
+	}
+
 	@Test("An export without returnReason imports its transactions with no return reason")
 	func missingReturnReason() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
@@ -407,7 +453,7 @@ struct AllDataTests {
 		#expect(text.contains(#""quantity" : "12.345""#))
 		#expect(text.contains(#""bookingDate" : "2026-11-02""#))
 		#expect(text.contains(#""exportedAt" : "2026-11-14T23:46:40.000Z""#))
-		#expect(text.contains(#""version" : 2"#))
+		#expect(text.contains(#""version" : 3"#))
 	}
 
 	@Test("The file names the bank, the user ID, and the connector of an access, and holds neither its PIN nor its state")
@@ -457,7 +503,7 @@ struct AllDataTests {
 		json["version"] = 5
 		#expect(throws: AllData.ReadError.newerVersion(5)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 		#expect(AllData.ReadError.newerVersion(5).description
-			== "The file has format version 5, and this version of Moneten reads up to version 2. Install a newer version of Moneten to import it.")
+			== "The file has format version 5, and this version of Moneten reads up to version 3. Install a newer version of Moneten to import it.")
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": "other", "version": 1}"#.utf8)) }
 	}
 

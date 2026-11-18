@@ -28,6 +28,27 @@ import Testing
 		#expect(account?.remoteID == "111222333444 EUR")
 	}
 
+	@Test func ibanIsKeptOnlyWhenValid() {
+		func listed(_ iban: String) -> ListedAccount? {
+			ListedAccount(.object(["accountNumber": .string("4711"), "iban": .string(iban)]))
+		}
+		#expect(listed("de02 1203 0000 0000 2020 51")?.iban == "DE02120300000000202051")
+		#expect(listed("DE03120300000000202051")?.iban == nil)
+		#expect(listed("")?.iban == nil)
+		#expect(listed("DE03120300000000202051")?.accountNumber == "4711")
+	}
+
+	@Test func counterpartyAccountKeepsItsText() throws {
+		func counterparty(_ text: String) throws -> String? {
+			try #require(try result(["balance": .integer(0), "transactions": .array([.object([
+				"name": .string("Vermieter A"), "accountNumber": .string(text), "amount": .number(-800), "bookingDate": .integer(1794182400)])])])
+				.transactions?.rows.first).counterpartyIBAN
+		}
+		#expect(try counterparty("de02 1203 0000 0000 2020 51") == "DE02120300000000202051")
+		#expect(try counterparty("DE03120300000000202051") == "DE03120300000000202051")
+		#expect(try counterparty("0099887766") == "0099887766")
+	}
+
 	@Test func missingAccountNumberIsIgnored() {
 		#expect(ListedAccount(.object(["name": .string("No number")])) == nil)
 	}
