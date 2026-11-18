@@ -883,8 +883,10 @@ final class DebugHarness {
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			#if DEBUG || PERF_HARNESS
 			// What "Add Comment..." and ⇧⌘K do with the selected rows.
 			case "comment": model.sheet = .comment(model.visibleSelection)
+			#endif
 			default: model.sheet = nil
 			}
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
@@ -1045,6 +1047,7 @@ final class DebugHarness {
 		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
 		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
 		case "savedsearch": savedSearch(argument)
+		#if DEBUG || PERF_HARNESS
 		// "<account>|<day>|<minor units>|<name>|<purpose>|<flags>" adds a made-up transaction, as a delivery would store it.
 		// The day is yyyymmdd or a number of days from today, such as -3. The flags, separated by commas, are pending,
 		// review, new, checked, manual, and key=value for currency, comment, iban, bic, booking, e2e, mandate, creditor,
@@ -1056,11 +1059,14 @@ final class DebugHarness {
 		// whether it is enabled.
 		case "rowmenu": rowMenu(argument)
 		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
-		// its buttons by their hashes. "<button>" clicks the button with that English title.
+		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
+		// it clicks only "Cancel".
 		case "modal": modal(argument)
 		// "<menu>|<item>" chooses the item of the menu bar by their English titles, as a click does, also while the app in the
-		// background shows the item disabled. It logs whether the item is enabled after an update of the menu.
+		// background shows the item disabled. It logs whether the item is enabled after an update of the menu. Only the
+		// local items of `HarnessGuard` are allowed, and a refresh or a bank setup only with the made-up bank.
 		case "menuitem": menuItem(argument)
+		#endif
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -1780,12 +1786,12 @@ final class DebugHarness {
 		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
 
+	#if DEBUG || PERF_HARNESS
 	private func addRow(_ argument: String) {
 		guard let model else { return }
 		let parts = argument.components(separatedBy: "|")
-		guard parts.count >= 5, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }), let raw = Int(parts[1]),
-			let minor = Int64(parts[2]) else { return log("row refused") }
-		let day = parts[1].count == 8 ? Day(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100) : Day.today().adding(days: raw)
+		guard parts.count >= 5, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }),
+			let day = HarnessGuard.day(parts[1], today: .today()), let minor = Int64(parts[2]) else { return log("row refused") }
 		var t = Transaction(accountID: account.id, bookingDate: day, amountMinor: minor, currency: account.currency, name: parts[3], purpose: parts[4].replacingOccurrences(of: "\\n", with: "\n"))
 		for flag in (parts.count > 5 ? parts[5] : "").split(separator: ",").map(String.init) {
 			let pair = flag.split(separator: "=", maxSplits: 1).map(String.init)
@@ -1805,7 +1811,9 @@ final class DebugHarness {
 			case "mandate": t.mandateReference = value
 			case "creditor": t.creditorID = value
 			case "return": t.returnReason = value
-			case "valuedate": t.valueDate = Int(value).map { Day(year: $0 / 10_000, month: $0 / 100 % 100, day: $0 % 100) }
+			case "valuedate":
+				guard let valueDate = HarnessGuard.day(value, today: .today()) else { return log("row refused") }
+				t.valueDate = valueDate
 			case "category":
 				t.categoryID = model.ledger.categories.first { $0.name == value }?.id
 				t.categorizedBy = .manual
@@ -1835,7 +1843,7 @@ final class DebugHarness {
 			log("rowmenu submenu", ("item", .position(n)), ("items", .list(submenu.items.map { .hash($0.title) })), ("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
 		}
 		guard parts.count >= 3 else { return }
-		guard let item = menu.items.first(where: { $0.title.hasPrefix(String(localized: String.LocalizationValue(parts[2]))) }), let owner = item.menu else { return log("rowmenu no item") }
+		guard let item = menu.items.first(where: { $0.title == String(localized: String.LocalizationValue(parts[2])) }), let owner = item.menu else { return log("rowmenu no item") }
 		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
 		nonisolated(unsafe) let choose: () -> Void
 		if parts.count == 4, let n = Int(parts[3]), let submenu = item.submenu {
@@ -1860,6 +1868,15 @@ final class DebugHarness {
 	private func menuItem(_ argument: String) {
 		let parts = argument.components(separatedBy: "|")
 		guard parts.count == 2 else { return log("menuitem refused") }
+		#if DEBUG
+		let helper = ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"].flatMap { $0.isEmpty ? nil : $0 }
+		#else
+		// The Perf build ignores the variable and runs the real helper, as `AppModel.makeFinTSConnector` does.
+		let helper: String? = nil
+		#endif
+		guard HarnessGuard.allowsMenuItem(menu: parts[0], item: parts[1], fintsHelper: helper) else {
+			return log("menuitem refused", ("title", .hash(parts[0] + "|" + parts[1])))
+		}
 		let localized = { (text: String) in String(localized: String.LocalizationValue(text)) }
 		guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == localized(parts[0]) })?.submenu else { return log("menuitem no menu") }
 		menu.delegate?.menuNeedsUpdate?(menu)
@@ -1882,9 +1899,14 @@ final class DebugHarness {
 		let texts = all.compactMap { $0 as? NSTextField }.map(\.stringValue).filter { !$0.isEmpty }
 		log("modal", ("texts", .list(texts.map { .hash($0) })), ("buttons", .list(buttons.map { .hash($0.title) })))
 		guard !argument.isEmpty else { return }
+		// The app has no sandbox, so "Save" in the panel of "Backup Database..." or of an export would write into a folder
+		// of the developer, such as Documents.
+		let filePanel = window is NSSavePanel || window.className.contains("SavePanel") || window.className.contains("OpenPanel")
+		guard HarnessGuard.allowsModalButton(argument, inFilePanel: filePanel) else { return log("modal refused", ("panel", .flag(true))) }
 		guard let button = buttons.first(where: { $0.title == String(localized: String.LocalizationValue(argument)) }) else { return log("modal no button") }
 		button.performClick(nil)
 	}
+	#endif
 
 	private func csvPreview(_ argument: String) {
 		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
