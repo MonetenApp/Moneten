@@ -256,7 +256,7 @@ final class DebugHarness {
 		// presses a control, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the date that
 		// each field reads, whether it has the focus, and the open popovers.
 		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
-		// "calendarsnapshot <name>" draws the calendar alone.
+		// "calendarsnapshot <name>" draws the calendar alone, and "today <yyyy-mm-dd>" sets the day that typed days complete against.
 		case "datefield": dateField(argument)
 		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
@@ -642,6 +642,43 @@ final class DebugHarness {
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
 			}
+		// "<account>|<name>" writes the rows of that account into <name>.tsv in the debug folder, for a check that compares
+		// them with a made-up import file. Like a snapshot, the file shows the data of the check, so it never goes into debug.log.
+		case "dumprows":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("dumprows refused") }
+			let rows = model.ledger.transactions(ofAccount: account.id).map { t in
+				[t.bookingDate.rawValue.description, t.valueDate.map { $0.rawValue.description } ?? "", t.amountMinor.description, t.currency, t.name, t.purpose,
+					t.counterpartyIBAN ?? "", t.counterpartyBIC ?? "", t.bookingText ?? "", t.isPending ? "pending" : "booked", model.ledger.categoryPath(t.categoryID), t.comment ?? ""]
+					.map { $0.replacing("\t", with: " ").replacing("\n", with: "\\n") }.joined(separator: "\t")
+			}
+			try? (rows.joined(separator: "\n") + "\n").write(to: folder.appendingPathComponent("\(parts[1]).tsv"), atomically: true, encoding: .utf8)
+			log("dumprows", ("", .count(rows.count)))
+		// "<account>|<path>[|<source IDs>]" delivers the rows of a made-up CAMT, MT940, or CSV file as a refresh of the bank
+		// would, for the checks of pending rows that a bank and a file both bring. The path "-" delivers no row. The source IDs,
+		// separated by commas and empty for none, go to the rows in their order. The refresh covers the 30 days before
+		// today and every day of the file.
+		case "fetchfile":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count >= 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
+			var rows: [Transaction]
+			do { rows = parts[1] == "-" ? [] : try TransactionFileImporter.parse(Data(contentsOf: URL(filePath: parts[1])), currency: account.currency).transactions }
+			catch { return log("fetchfile", ("error", .type(of: error))) }
+			let ids = parts.count > 2 ? parts[2].components(separatedBy: ",") : []
+			for i in rows.indices {
+				rows[i].accountID = account.id
+				if ids.indices.contains(i), !ids[i].isEmpty { rows[i].sourceID = ids[i] }
+			}
+			let from = rows.map(\.bookingDate).min().map { min($0, Day.today().adding(days: -30)) } ?? Day.today().adding(days: -30)
+			let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: from))
+			let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890", currency: account.currency)])
+			model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
+			log("fetchfile", ("rows", .count(rows.count)))
+		// "<name>" writes the title and the text of the open import result or alert into <name>.txt in the debug folder, as "dumprows" does.
+		case "alerttext":
+			let text = model.importResult.map { "\($0.messageText)\n\($0.informativeText)" } ?? model.alert.map { "\($0.title)\n\($0.message)" }
+			try? (text ?? "").write(to: folder.appendingPathComponent("\(argument).txt"), atomically: true, encoding: .utf8)
+			log("alerttext", ("", .presence(text != nil)))
 		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
 		case "manualrows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
@@ -847,8 +884,14 @@ final class DebugHarness {
 			Task {
 				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
-		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
-		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
+		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file, so only
+		// the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
+		case "importall":
+			Task {
+				let outcome = await model.readAllData(from: URL(filePath: argument))
+				if outcome != "done" { model.alert = AlertMessage(title: String(localized: "Could not import the data."), message: outcome) }
+				log("importall", ("", .word(outcome == "done" ? "done" : "refused")))
+			}
 		case "exportcsv":
 			model.export(model.rowsToExport, to: URL(filePath: argument))
 			log("exportcsv", ("rows", .count(model.rowsToExport.count)))
@@ -1244,6 +1287,12 @@ final class DebugHarness {
 		let popoverWindow = NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") && !($0.contentView.map(fields) ?? []).isEmpty }
 		let window = popoverWindow ?? topSheet
 		switch parts.first ?? "" {
+		#if DEBUG || PERF_HARNESS
+		// "today <yyyy-mm-dd>" completes typed days as if that were today, "today" alone uses the real day again.
+		case "today":
+			DateField.debugToday = parts.count == 2 ? Day(string: parts[1]) : nil
+			log("datefield today", ("", DateField.debugToday.map { .day($0) } ?? .word("real")))
+		#endif
 		case "open":
 			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
 			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
