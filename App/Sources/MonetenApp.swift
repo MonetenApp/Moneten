@@ -194,7 +194,7 @@ struct AppCommands: Commands {
 				.disabled(!unlocked || model.selectedTransactions.isEmpty)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
-				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)
+				.disabled(!unlocked || !(model.selectedAccount?.takesImportedTransactions ?? false) || model.isTransferringTransactions || model.sheet != nil)
 			Button("Export Transactions...") { model.exportTransactions() }
 				.disabled(!unlocked || model.selection == nil || model.isTransferringTransactions)
 			Button(model.removeTitle ?? "Remove...") { if let row = model.selection { model.confirmRemove(row) } }

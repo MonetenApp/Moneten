@@ -178,7 +178,7 @@ extension AppModel {
 	/// Imports files into `accountID`, or into the selected account. The context menu of an account names
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
-		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
+		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount, account.takesImportedTransactions else { return }
 		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = String(localized: "Import Transactions")

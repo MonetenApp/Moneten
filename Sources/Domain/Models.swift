@@ -156,6 +156,9 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// In an account with bank access, a manual row covers what the bank does not deliver.
 	public var takesManualTransactions: Bool { kind != .portfolio }
 
+	/// "Import Transactions..." works in the same accounts. A file holds transactions, and a portfolio has positions.
+	public var takesImportedTransactions: Bool { kind != .portfolio }
+
 	/// The balance that a portfolio or an open account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
 	/// the balance of the source, and a closed one, whose clearing entry brings the computed balance to zero.

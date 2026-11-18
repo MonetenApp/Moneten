@@ -7,6 +7,14 @@ struct FileAccountTests {
 	let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02 1203 0000 0000 2020 51")
 	let savings = Account(position: 1, name: "Savings", kind: .savings, source: .offline, accountNumber: "0012345678", bankCode: "12030000")
 
+	@Test("Import Transactions works in every account but a portfolio, whose value comes from its positions")
+	func importCommand() {
+		#expect(giro.takesImportedTransactions)
+		#expect(savings.takesImportedTransactions)
+		#expect(Account(position: 2, name: "Bar", kind: .cash, source: .migrated).takesImportedTransactions)
+		#expect(!Account(position: 3, name: "Depot", kind: .portfolio, source: .offline).takesImportedTransactions)
+	}
+
 	@Test("A file that names the IBAN of another account goes to that account after a question")
 	func wrongAccountSelected() {
 		let file = FileAccount.iban("DE02120300000000202051")
