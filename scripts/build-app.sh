@@ -209,7 +209,14 @@ mkdir -p dist
 cp -R "$PRODUCT" dist/
 [ "$CONFIG" = Debug ] || copy_symbols "$SYMBOLS"
 # The license notices of every shipped part (issue #411), before embed_fints_helper signs the app again.
-python3 scripts/licenses.py build dist/Moneten.app "${MONETEN_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/Moneten.app/Contents/Info.plist)}"
+# The page links to the release of this version, which a build without MONETEN_VERSION reads from its Info.plist.
+PAGE_VERSION="$MONETEN_VERSION"
+if [ -z "$PAGE_VERSION" ]; then
+	PAGE_VERSION=$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/Moneten.app/Contents/Info.plist)
+	PRE=$(/usr/libexec/PlistBuddy -c 'Print MonetenPreRelease' dist/Moneten.app/Contents/Info.plist 2>/dev/null || true)
+	[ -z "$PRE" ] || PAGE_VERSION="$PAGE_VERSION-$PRE"
+fi
+python3 scripts/licenses.py build dist/Moneten.app "$PAGE_VERSION"
 embed_fints_helper dist/Moneten.app
 check_fints_helper dist/Moneten.app
 python3 scripts/licenses.py check-app dist/Moneten.app >/dev/null

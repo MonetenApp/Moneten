@@ -347,6 +347,26 @@ draft() {
 	echo "Created the draft of v$1. Check it, then run scripts/release.sh publish $1."
 }
 
+# Writes the files of the commit $1 that scripts/licenses.py reads into $WORK/tag.
+tag_notices() {
+	rm -rf "$WORK/tag" "$WORK/tag.tar"
+	mkdir "$WORK/tag"
+	git archive -o "$WORK/tag.tar" "$1" $(python3 scripts/licenses.py inputs) || fail "The license notices of $1 cannot be read."
+	tar -xf "$WORK/tag.tar" -C "$WORK/tag"
+}
+
+# Fails unless the list $2, one "name sha256:digest" per asset, holds each source archive that the
+# notices in the folder $1 name, with its pinned SHA-256. Notices that cannot be read, or that name no
+# archive, fail as well, so that a broken check never passes a release without its source.
+check_sources() {
+	SOURCES=$(python3 scripts/licenses.py --root "$1" source-names) || fail "The license notices in $1 fail their check."
+	[ -n "$SOURCES" ] || fail "The license notices in $1 name no source archive."
+	printf '%s\n' "$SOURCES" > "$WORK/sources.txt"
+	while read -r NAME SHA; do
+		grep -qxF "$NAME sha256:$SHA" "$2" || fail "The release lacks the source archive $NAME with the SHA-256 $SHA."
+	done < "$WORK/sources.txt"
+}
+
 publish() {
 	# The release texts below come from CHANGELOG.md, so a stale checkout would undo fixes on main.
 	git fetch -q origin main
@@ -355,9 +375,11 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" && grep -qx "Moneten-$1-dSYMs.zip" "$WORK/draft" \
 		|| fail "The draft of v$1 lacks its disk image, its dSYMs, or appcast.xml."
-	for SOURCE in $(python3 scripts/licenses.py source-names); do
-		grep -qxF "$SOURCE" "$WORK/draft" || fail "The draft of v$1 lacks the source archive $SOURCE."
-	done
+	# The source archives that the tagged commit pins, never those of a main that moved on to a new JDK.
+	git fetch -q origin "refs/tags/v$1:refs/tags/v$1"
+	gh release view "v$1" --repo "$REPO" --json assets -q '.assets[] | "\(.name) \(.digest)"' > "$WORK/assets"
+	tag_notices "v$1"
+	check_sources "$WORK/tag" "$WORK/assets"
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
 	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
 	KEY=$(committed_key)
@@ -473,6 +495,21 @@ check_path_rule() {
 	esac
 }
 
+# The check of publish must accept the source archives that this run downloaded, and refuse a
+# missing archive, another digest, and notices that cannot be read.
+check_source_rule() {
+	tag_notices HEAD
+	for f in "$OUT"/sources/*; do echo "${f##*/} sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)"; done > "$WORK/assets-good"
+	(check_sources "$WORK/tag" "$WORK/assets-good") || fail "The check of publish refuses the source archives of this commit."
+	tail -n +2 "$WORK/assets-good" > "$WORK/assets-short"
+	(check_sources "$WORK/tag" "$WORK/assets-short") 2>/dev/null && fail "The check of publish accepts a release without a source archive."
+	sed '1s/sha256:./sha256:x/' "$WORK/assets-good" > "$WORK/assets-wrong"
+	(check_sources "$WORK/tag" "$WORK/assets-wrong") 2>/dev/null && fail "The check of publish accepts a source archive with another digest."
+	rm "$WORK/tag/Licenses/notices.json"
+	(check_sources "$WORK/tag" "$WORK/assets-good") 2>/dev/null && fail "The check of publish accepts notices that cannot be read."
+	echo "publish refuses a release without its source archives or with other ones."
+}
+
 dry_run() {
 	VERSION=${1:-0.0.0-beta.1}
 	cp CHANGELOG.md "$WORK/CHANGELOG.md"
@@ -494,6 +531,7 @@ dry_run() {
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"
 	check_keys
+	check_source_rule
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
 	check_feeds "$TEST_KEY_FILE" "$VERSION"
