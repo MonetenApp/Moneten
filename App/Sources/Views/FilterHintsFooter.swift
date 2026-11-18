@@ -161,10 +161,15 @@ final class FilterHintsAnchor: NSView {
 			writtenBottom = insets.bottom
 			return
 		}
-		// The scroll view takes a written inset only without the automatic insets. The table lies below the
-		// toolbar, so the automatic insets are zero there, and `detach` turns them back on.
-		if adjustedInsets == nil { adjustedInsets = scroll.automaticallyAdjustsContentInsets }
-		scroll.automaticallyAdjustsContentInsets = false
+		// The scroll view takes a written inset only without the automatic insets, and `detach` turns them back on.
+		// The table lies below the toolbar, so its automatic top inset is zero. Should a layout ever put it under
+		// the toolbar, the top inset keeps the part that the toolbar covers, which the automatic insets would add.
+		if scroll.automaticallyAdjustsContentInsets, let window = scroll.window {
+			adjustedInsets = true
+			let covered = scroll.convert(scroll.bounds, to: nil).maxY - window.contentLayoutRect.maxY
+			insets.top = max(insets.top, covered)
+			scroll.automaticallyAdjustsContentInsets = false
+		}
 		insets.bottom = base + newRoom
 		writtenBottom = insets.bottom
 		scroll.contentInsets = insets

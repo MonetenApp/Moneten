@@ -837,6 +837,21 @@ final class DebugHarness {
 			default: model.period = .all
 			}
 		#if DEBUG || PERF_HARNESS
+		// The insets of the transaction table, for a check that the room of the filter lines changes only the bottom
+		// inset. "underToolbar" is true when the scroll view reaches under the toolbar, and "firstRowAtTop" when the
+		// list is at its top and the first row starts where the visible part of the list starts.
+		case "tableinsets":
+			for table in transactionTables() {
+				guard let scroll = table.enclosingScrollView, let window = scroll.window else { continue }
+				let clip = scroll.contentView
+				let scrollTop = scroll.convert(scroll.bounds, to: nil).maxY
+				let visibleTop = clip.convert(clip.bounds, to: nil).maxY - scroll.contentInsets.top
+				let firstRowTop = table.numberOfRows > 0 ? table.convert(table.rect(ofRow: 0), to: nil).maxY : visibleTop
+				log("tableinsets", ("top", .count(Int(scroll.contentInsets.top))), ("bottom", .count(Int(scroll.contentInsets.bottom))),
+					("automatic", .flag(scroll.automaticallyAdjustsContentInsets)),
+					("underToolbar", .flag(scrollTop > window.contentLayoutRect.maxY + 0.5)),
+					("firstRowAtTop", .flag(abs(firstRowTop - visibleTop) < 0.5)))
+			}
 		// "<width> <height>" sets the size of the content of the main window, for a check of a layout at another width.
 		case "windowsize":
 			let size = argument.split(separator: " ").compactMap { Double($0) }
