@@ -22,6 +22,14 @@ The app SHALL offer its whole interface in German and in English. That includes 
 - **WHEN** the user opens the settings window
 - **THEN** no label is in German
 
+#### Scenario: Error of a refresh after a switch of the language
+
+- **GIVEN** the interface language is German
+- **AND** a refresh of the account "Girokonto" failed, because the bank did not accept the PIN, with the answer "PIN falsch" and the code 9931
+- **WHEN** the user sets "Language" to English and restarts the app
+- **THEN** the error of "Girokonto" reads "The bank did not accept the PIN: PIN falsch" in English
+- **AND** the error shows the code 9931
+
 ### Requirement: Follow the language of macOS
 
 The app SHALL use German when German is the preferred language of macOS and English in every other case, unless the user has set a language in the app.

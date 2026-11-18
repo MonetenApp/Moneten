@@ -120,9 +120,10 @@ struct SyncModelTests {
 			Choose “Edit Login Data...” and enter the new login that the bank gave you.
 			""")
 		#expect(SyncFailure.noTANMethod(nil).waitsForUser && !SyncFailure.noTANMethod(nil).dialogResolves)
-		let dkb = SyncFailure.noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: "Set up the DKB app.")
+		let dkb = SyncFailure.noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: .dkbApp)
 		#expect(dkb.waitsForUser && !dkb.dialogResolves && !dkb.rejectsPIN && !dkb.mayAskForNewSetup && dkb.bankMessage?.code == "9955")
-		#expect(SyncFailure.noTANMethodOfBank(nil, nextStep: "Set up the DKB app.").message == "There are no available TAN methods.\nSet up the DKB app.")
+		#expect(SyncFailure.noTANMethodOfBank(nil, nextStep: .dkbApp).message == "There are no available TAN methods.\n"
+			+ "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")
 		#expect(SyncFailure.needsUser(.secondFactor).dialogResolves)
 		#expect(SyncFailure.pinRejected(BankMessage(code: "9942", text: "PIN falsch")).dialogResolves)
 		#expect(!SyncFailure.tanRejected(BankMessage(code: "9941", text: "TAN ungültig")).dialogResolves)

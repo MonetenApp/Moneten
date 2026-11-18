@@ -179,7 +179,7 @@ struct AccountQuestionView: View {
 
 	private var message: String {
 		let named = switch question.named {
-		case let .iban(iban): String(localized: "the IBAN \(Format.iban(iban))")
+		case let .iban(iban): String(localized: "the IBAN \(iban.formatted)")
 		case let .number(bankCode, number, _): bankCode.map { String(localized: "the account number \(number) at the bank code \($0)") } ?? String(localized: "the account number \(number)")
 		}
 		if let other = question.other {

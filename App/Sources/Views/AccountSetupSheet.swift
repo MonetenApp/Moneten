@@ -590,7 +590,7 @@ struct AccountSetupSheet: View {
 				}
 			}
 		}
-		if let note = setup.loginHint?.note {
+		if let note = setup.chosenBank?.loginNote {
 			Section {
 				Label(note, systemImage: "info.circle")
 					.fixedSize(horizontal: false, vertical: true)
@@ -734,7 +734,7 @@ private struct CandidateRow: View {
 		let a = candidate.account
 		VStack(alignment: .leading, spacing: 2) {
 			Text(a.name)
-			Text([a.kind.title, a.iban.map(Format.iban) ?? a.accountNumber, a.currency].compactMap { $0 }.joined(separator: " · "))
+			Text([a.kind.title, a.iban?.formatted ?? a.accountNumber, a.currency].compactMap { $0 }.joined(separator: " · "))
 				.font(.callout)
 				.foregroundStyle(.secondary)
 			switch candidate.match {

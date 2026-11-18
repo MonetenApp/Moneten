@@ -241,6 +241,79 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
+### Requirement: CSV account and bank columns of an exported file
+
+The app SHALL assign the column "Account" or "Konto" to the counterparty account and the column "Bank" to the counterparty bank code only when the header row starts with the nine columns of the transaction export, in English or German and in their order. More columns may follow. In a file with other headers, these columns hold no field.
+
+#### Scenario: Account and bank columns of an exported file
+
+- **GIVEN** a file with the headers "Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", and "Currency"
+- **AND** one row with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank, and one row with "0000202051" under Account and "12030000" under Bank
+- **WHEN** the file is imported
+- **THEN** the first transaction has the counterparty IBAN DE02120300000000202051 and the BIC BYLADEM1001
+- **AND** the second transaction has the counterparty account "0000202051" and the bank code "12030000"
+- **AND** the German headers "Datum", "Wertstellung", "Kategorie", "Name", "Verwendungszweck", "Konto", "Bank", "Betrag", and "Währung" give the same
+- **AND** the same nine headers followed by "Own account" and "Booking text" give the same
+
+#### Scenario: Account and bank columns in a file with other headers
+
+- **GIVEN** a file with the headers "Buchungstag", "Empfänger", "Konto", "Bank", and "Betrag"
+- **AND** the rows have "0000202051" and "0000202052" under Konto and "12030000" and "BYLADEM1001" under Bank
+- **WHEN** the preview opens
+- **THEN** the columns "Konto" and "Bank" hold no field
+
+### Requirement: CSV account and bank columns by their values
+
+The app SHALL assign an account or bank column of an exported file only when more than half of its filled cells fit. A bank cell counts only in a row with a filled account cell. An account fits as an IBAN with a valid checksum or as five or more digits. A bank fits as eight digits, as a BIC whose letters 5 and 6 are the IBAN country of the row, or, in a row without an IBAN, as a BIC of 11 characters whose letters 5 and 6 are a country. The import keeps the cells as written.
+
+#### Scenario: A bank name in capitals under Bank
+
+- **GIVEN** a file with the headers "Date", "Name", "Bank", and "Amount"
+- **AND** one row with "POSTBANK" under Bank
+- **WHEN** the file is imported
+- **THEN** the transaction has no counterparty BIC
+- **AND** in a file with the nine headers of the export, rows with the IBAN DE02120300000000202051 under Account and "POSTBANK", "COMMERZBANK", and "SPARKASSE" under Bank give no counterparty BIC
+
+#### Scenario: A card number or a ledger account under Account
+
+- **GIVEN** a file with the headers "Account", "Date", "Payee", and "Amount"
+- **AND** the rows have "4111111111111111" and "4111 1111 1111 1111" under Account
+- **WHEN** the file is imported
+- **THEN** no transaction has a counterparty account
+- **AND** in a file with the nine headers of the export, rows with "1200", "4930", and "1250" under Account give no counterparty account
+
+#### Scenario: One counterparty in every row
+
+- **GIVEN** a file with the nine headers of the export
+- **AND** three rows with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank
+- **WHEN** the file is imported
+- **THEN** each transaction has the counterparty IBAN DE02120300000000202051 and the BIC BYLADEM1001
+- **AND** twelve rows with the same IBAN and BIC give the same
+
+#### Scenario: A bank name of eight capitals in a row without an IBAN
+
+- **GIVEN** a file with the nine headers of the export
+- **AND** rows with "0000202051", "0000202052", and "0000202053" under Account and "POSTBANK", "RABOBANK", and "12030000" under Bank
+- **WHEN** the file is imported
+- **THEN** no transaction has a counterparty BIC
+- **AND** the same rows with "BYLADEM1001", "COBADEFFXXX", and "12030000" under Bank give these three as the counterparty BIC
+- **AND** bank codes of 7 or 9 digits, such as "1203000" and "120300000", give no counterparty BIC
+
+#### Scenario: A BIC in a row without an account
+
+- **GIVEN** a file with the nine headers of the export
+- **AND** one row with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank
+- **AND** two rows with an empty Account and "PBNKDEFF" and "COBADEFF" under Bank
+- **WHEN** the file is imported
+- **THEN** the transactions have the counterparty BIC BYLADEM1001, PBNKDEFF, and COBADEFF
+
+#### Scenario: A header that differs from the export in one name
+
+- **GIVEN** a file with the headers "Date", "Value date", "Category", "Payee", "Purpose", "Account", "Bank", "Amount", and "Currency"
+- **AND** rows with "DE02120300000000202051" under Account and "BYLADEM1001" under Bank
+- **WHEN** the file is imported
+- **THEN** no transaction has a counterparty account or BIC
+
 ### Requirement: CSV data boundary
 
 The app SHALL apply this rule: A keyword header within the first 100 nonblank rows wins; without one, data starts after the nearest title row above the first transaction; dated rows above it are skipped with a warning.
