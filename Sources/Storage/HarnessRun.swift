@@ -47,6 +47,56 @@ public enum HarnessRun {
 		}
 	}
 
+	/// Where a key or a press of the harness lands. The app has no sandbox, so a save panel can write anywhere, and a
+	/// bank dialog can reach a real bank. The harness acts only where a scenario needs it and nothing leaves the Mac.
+	public enum Surface: Sendable, Equatable {
+		/// The main window or one of its alerts while the database is not open: the first launch, the lock screen, and
+		/// the windows that say why the database did not open.
+		case startWindow
+		/// The sheet that sets or changes the database password.
+		case passwordSheet
+		/// A save or open panel of macOS.
+		case filePanel
+		/// The setup of a bank access, or a question of a bank or an extension, such as a PIN or a TAN.
+		case bankDialog
+		/// Any other window or sheet.
+		case other
+	}
+
+	/// The English titles of the buttons that "controls press" may press on each surface, each a local action of a
+	/// scenario. "Show Database in Finder" and every link to a web page are missing on purpose.
+	static let pressable: [Surface: Set<String>] = [
+		.startWindow: ["Open", "Set Password", "Skip, set a password later", "Forgot your password?", "OK", "Try Again", "Load Database Again"],
+		.passwordSheet: ["Set Password", "OK", "Cancel"],
+		.filePanel: ["Cancel"],
+	]
+
+	/// Whether "controls press" may press a control with the title `label` on `surface`. `localized` turns an English
+	/// title into the text of the language of the run, as the button shows it. A switch or a check box changes a value
+	/// in the app, so it qualifies on the start window and the password sheet. A save or open panel takes only "Cancel",
+	/// and a bank dialog or any other surface takes no press.
+	public static func mayPress(_ label: String, isSwitch: Bool, on surface: Surface, localized: (String) -> String) -> Bool {
+		if isSwitch { return surface == .startWindow || surface == .passwordSheet }
+		return pressable[surface, default: []].contains { localized($0) == label }
+	}
+
+	/// Whether "key" may send `key` to `surface`. A save or open panel takes only "escape", which is its "Cancel". A bank
+	/// dialog takes a key only when `fakeBank` is true, so that a check never sends a login, a PIN, or a TAN to a real bank.
+	public static func mayKey(_ key: String, on surface: Surface, fakeBank: Bool) -> Bool {
+		switch surface {
+		case .filePanel: key == "escape"
+		case .bankDialog: fakeBank
+		case .startWindow, .passwordSheet, .other: true
+		}
+	}
+
+	/// Whether the FinTS connector of the run talks to the made-up bank of `scripts/fake-fints-helper.sh`, given the
+	/// path in `MONETEN_FINTS_HELPER` that the build reads, or nil when it reads none.
+	public static func usesFakeBank(helper: String?) -> Bool {
+		guard let helper, helper.hasPrefix("/") else { return false }
+		return (helper as NSString).lastPathComponent == "fake-fints-helper.sh"
+	}
+
 	/// The absolute path without symlinks, `.`, or `..`, or nil when the item does not exist.
 	private static func canonical(_ path: String) -> String? {
 		guard let resolved = realpath(path, nil) else { return nil }

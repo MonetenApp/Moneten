@@ -192,15 +192,22 @@ final class DebugHarness {
 		#if DEBUG || PERF_HARNESS
 		// The buttons and switches of the sheet on top, or without a sheet of the main window, such as the lock screen and the
 		// first launch: each label by its hash, whether it is enabled, and the value of a switch. "press <n>" first clicks
-		// control number n, counted from 0.
+		// control number n, counted from 0, but only a local button or switch of a scenario (HarnessRun.mayPress): never a
+		// link to a web page, "Show Database in Finder", a bank dialog, or anything but "Cancel" in a save or open panel.
 		case "controls":
 			let controls = { (self.fieldWindow.map(self.accessibility) ?? []).filter {
 				let role = ($0 as AnyObject).accessibilityRole?()
 				return role == .button || role == .checkBox || role == .link || role?.rawValue == "AXSwitch" || role?.rawValue == "AXToggle"
 			} }
 			let parts = argument.split(separator: " ")
-			if parts.count == 2, parts[0] == "press", let n = Int(parts[1]), controls().indices.contains(n) {
-				_ = (controls()[n] as AnyObject).accessibilityPerformPress?()
+			if parts.count == 2, parts[0] == "press", let n = Int(parts[1]), controls().indices.contains(n), let window = fieldWindow {
+				let control = controls()[n] as AnyObject
+				let role = control.accessibilityRole?()
+				let label = control.accessibilityLabel?() ?? control.accessibilityTitle?() ?? ""
+				// The titles are compared in the language of the run, because the button shows the translated title.
+				guard HarnessRun.mayPress(label, isSwitch: role == .checkBox || role?.rawValue == "AXSwitch" || role?.rawValue == "AXToggle",
+					on: surface(of: window), localized: { String(localized: String.LocalizationValue($0)) }) else { return log("controls refused") }
+				_ = control.accessibilityPerformPress?()
 			}
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 				let all = controls()
@@ -366,26 +373,32 @@ final class DebugHarness {
 				sheet.sendEvent(event)
 				log("key", ("", .choice(argument, of: ["down", "up"])), ("highlighted", .position(model.setup?.highlighted)))
 			}
+		#if DEBUG || PERF_HARNESS
 		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. Without a sheet it
 		// goes to the main window only while the database is not open, such as on the lock screen, so that a key between two
-		// sheets never presses "Import from MoneyMoney..." of an empty database. The log rejects any other key.
+		// sheets never presses "Import from MoneyMoney..." of an empty database. The log rejects any other key, and refuses
+		// any key but "escape" in a save or open panel and any key in a bank dialog without the made-up bank (HarnessRun.mayKey).
 		case "key":
 			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
 			let command = argument.hasPrefix("cmd")
 			let characters = switch argument { case "escape": "\u{1b}"; case "return": "\r"; case "tab": "\t"; default: String(argument.dropFirst(3)) }
-			if let sheet = model.phase == .unlocked ? topSheet : fieldWindow, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
+			let target = model.phase == .unlocked ? topSheet : fieldWindow
+			if let target, !HarnessRun.mayKey(argument, on: surface(of: target), fakeBank: usesFakeBank) { return log("key refused") }
+			if let sheet = target, let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: command ? .command : [], timestamp: 0,
 				windowNumber: sheet.windowNumber, context: nil, characters: characters, charactersIgnoringModifiers: characters, isARepeat: false,
 				keyCode: argument == "escape" ? 53 : argument == "return" ? 36 : argument == "tab" ? 48 : 24) {
 				let handled = sheet.performKeyEquivalent(with: event)
 				if !handled, argument == "tab" { sheet.sendEvent(event) }
 				log("key", ("", .choice(argument, of: keys)), ("handled", .flag(handled || argument == "tab")))
 			}
+		#endif
 		// Moves the focus to the next field of the sheet on top, as the Tab key does.
 		case "tab": (topSheet?.firstResponder as? NSTextView)?.insertTab(nil)
 		// Whether a sheet window is on screen. The window shows a moment after the state of the model, and a closing one
 		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
+		#if DEBUG || PERF_HARNESS
 		// "<n>" focuses editable field number n, counted from 0, of the sheet on top, or without a sheet of the main window,
 		// such as the field of the lock screen or of the first launch.
 		case "focusfield":
@@ -401,6 +414,7 @@ final class DebugHarness {
 			sheet.makeFirstResponder(editable[position])
 			editable[position].selectText(nil)
 			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
+		#endif
 		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
 		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
 		case "type": ((topSheet ?? NSApp.keyWindow ?? NSApp.orderedWindows.first { $0.firstResponder is NSTextView })?.firstResponder as? NSTextView)?
@@ -1196,15 +1210,33 @@ final class DebugHarness {
 		NSApp.windows.compactMap(\.attachedSheet).flatMap { sequence(first: $0) { $0.attachedSheet } }.last
 	}
 
+	#if DEBUG || PERF_HARNESS
 	/// The sheet on top, or the visible main window when no sheet is open, for "focusfield", "key", and "controls".
-	/// A release build keeps only the sheet on top.
 	private var fieldWindow: NSWindow? {
-		#if DEBUG || PERF_HARNESS
 		topSheet ?? NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+	}
+
+	/// What a key or a press of "key" and "controls" in `window` reaches, for the rules of HarnessRun.
+	private func surface(of window: NSWindow) -> HarnessRun.Surface {
+		guard let model, !(window is NSSavePanel) else { return .filePanel }
+		if model.setup != nil || model.sync.broker.current != nil { return .bankDialog }
+		if model.phase != .unlocked { return .startWindow }
+		switch model.sheet {
+		case .setPassword?, .changePassword?: return .passwordSheet
+		default: return .other
+		}
+	}
+
+	/// Whether the FinTS connector talks to the made-up bank. Only a Debug build reads `MONETEN_FINTS_HELPER`, so a Perf
+	/// build always has the real connector.
+	private var usesFakeBank: Bool {
+		#if DEBUG
+		HarnessRun.usesFakeBank(helper: ProcessInfo.processInfo.environment["MONETEN_FINTS_HELPER"])
 		#else
-		topSheet
+		false
 		#endif
 	}
+	#endif
 
 	/// Logs the class, the content type, and the AutoFill hints of the first secure field in a sheet,
 	/// after it has the focus for two seconds, and the windows of the app then, so that an AutoFill

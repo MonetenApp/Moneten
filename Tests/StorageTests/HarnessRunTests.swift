@@ -95,3 +95,57 @@ struct HarnessWriteTests {
 		try fm.removeItem(at: root)
 	}
 }
+
+/// Review of the scenario checks (#485 and #486): a key or a press of the harness never saves through a save panel and
+/// never reaches a real bank or a web page.
+@Suite("Debug harness presses and keys")
+struct HarnessActionTests {
+	/// A made-up translation, so that the tests see that the label is compared in the language of the run.
+	func german(_ title: String) -> String {
+		["Open": "Öffnen", "Cancel": "Abbrechen", "Save": "Sichern", "Set Password": "Passwort festlegen"][title] ?? title
+	}
+
+	@Test("A save or open panel takes only Cancel and escape")
+	func filePanel() {
+		#expect(HarnessRun.mayPress("Abbrechen", isSwitch: false, on: .filePanel, localized: german))
+		#expect(!HarnessRun.mayPress("Sichern", isSwitch: false, on: .filePanel, localized: german))
+		#expect(!HarnessRun.mayPress("Cancel", isSwitch: false, on: .filePanel, localized: german))
+		#expect(!HarnessRun.mayPress("Hide extension", isSwitch: true, on: .filePanel, localized: german))
+		#expect(HarnessRun.mayKey("escape", on: .filePanel, fakeBank: true))
+		for key in ["return", "tab", "cmd+", "cmd-"] {
+			#expect(!HarnessRun.mayKey(key, on: .filePanel, fakeBank: true))
+		}
+	}
+
+	@Test("The start window and the password sheet take only their local buttons and switches")
+	func localButtons() {
+		#expect(HarnessRun.mayPress("Öffnen", isSwitch: false, on: .startWindow, localized: german))
+		#expect(HarnessRun.mayPress("Skip, set a password later", isSwitch: false, on: .startWindow, localized: { $0 }))
+		#expect(HarnessRun.mayPress("Passwort festlegen", isSwitch: false, on: .passwordSheet, localized: german))
+		#expect(HarnessRun.mayPress("I understand that a forgotten password cannot be recovered.", isSwitch: true, on: .passwordSheet, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Show Database in Finder", isSwitch: false, on: .startWindow, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Help", isSwitch: false, on: .startWindow, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Open", isSwitch: false, on: .startWindow, localized: german))
+	}
+
+	@Test("A bank dialog and any other surface take no press, and a bank dialog takes a key only with the made-up bank")
+	func outward() {
+		for surface in [HarnessRun.Surface.bankDialog, .other] {
+			#expect(!HarnessRun.mayPress("OK", isSwitch: false, on: surface, localized: { $0 }))
+			#expect(!HarnessRun.mayPress("Save PIN", isSwitch: true, on: surface, localized: { $0 }))
+		}
+		#expect(!HarnessRun.mayKey("return", on: .bankDialog, fakeBank: false))
+		#expect(HarnessRun.mayKey("return", on: .bankDialog, fakeBank: true))
+		#expect(HarnessRun.mayKey("return", on: .other, fakeBank: false))
+		#expect(HarnessRun.mayKey("return", on: .startWindow, fakeBank: false))
+	}
+
+	@Test("Only the fake helper of the repository counts as the made-up bank")
+	func fakeBank() {
+		#expect(HarnessRun.usesFakeBank(helper: "/Users/erika/Moneten/scripts/fake-fints-helper.sh"))
+		#expect(!HarnessRun.usesFakeBank(helper: nil))
+		#expect(!HarnessRun.usesFakeBank(helper: ""))
+		#expect(!HarnessRun.usesFakeBank(helper: "scripts/fake-fints-helper.sh"))
+		#expect(!HarnessRun.usesFakeBank(helper: "/Users/erika/Moneten/Tools/FinTSHelper/run.sh"))
+	}
+}
