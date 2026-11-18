@@ -5,6 +5,7 @@ import Foundation
 import Storage
 import Testing
 import TestSupport
+import StorageTestSupport
 
 /// The time of a whole extension refresh, from the start of the host process to the merge into a
 /// long history, and the start of a session up to its first entry call.
@@ -31,7 +32,7 @@ struct ExtensionRefreshPerformanceTests {
 	@Test("300 replayed rows into one account of a 50,000-row history, end to end, within 1 second")
 	func refreshIntoLongHistory() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let accounts = (0..<20).map { Account(position: $0, name: "Konto \($0)", kind: .giro, source: .bank) }
 		let today = Day(year: 2026, month: 11, day: 12)
 		let history = accounts.flatMap { a in

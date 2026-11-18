@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 /// app-lock: the Keychain entries of the unlock settings and the lock settings in the database. A settings file that
 /// a program changed outside the app must neither open the database nor weaken the lock.
@@ -9,11 +10,9 @@ struct AppLockStorageTests {
 	let root = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)", isDirectory: true)
 	var folder: DataFolder { DataFolder(root: root.appendingPathComponent("Moneten", isDirectory: true)) }
 	static let password = "korrekt-pferd-batterie-heftklammer"
-	/// Tests that write the login Keychain run only on a Mac that offers it, not in CI.
-	static let hasKeychain = ProcessInfo.processInfo.environment["CI"] == nil
 
 	func vaultWithDatabase() throws -> (Vault, Store) {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		return (vault, store)
 	}
@@ -30,11 +29,11 @@ struct AppLockStorageTests {
 	@Test("Each unlock setting has its own entry")
 	func entryNames() {
 		#expect(Vault.PasswordEntry.allCases.map(\.rawValue) == ["unlockAutomatically", "unlockWithTouchID", "unlockWithAppleWatch"])
-		#expect(Set(Vault.PasswordEntry.allCases.map(\.keychain.service)).count == 3)
-		#expect(!Vault.PasswordEntry.allCases.map(\.keychain.service).contains("Moneten database password"))
+		#expect(Set(Vault.PasswordEntry.allCases.map(\.service)).count == 3)
+		#expect(!Vault.PasswordEntry.allCases.map(\.service).contains("Moneten database password"))
 	}
 
-	@Test("A password stored for Touch ID does not unlock at launch", .enabled(if: hasKeychain))
+	@Test("A password stored for Touch ID does not unlock at launch")
 	func touchIDEntryIsNotTheLaunchEntry() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -45,7 +44,7 @@ struct AppLockStorageTests {
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 	}
 
-	@Test("The settings are the entries: turning a setting on or off shows in the toggles, and only an entry unlocks", .enabled(if: hasKeychain))
+	@Test("The settings are the entries: turning a setting on or off shows in the toggles, and only an entry unlocks")
 	func settingsFollowEntries() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -60,14 +59,14 @@ struct AppLockStorageTests {
 		#expect(try vault.unlockPassword(offered: [.touchID, .appleWatch]) == Self.password)
 	}
 
-	@Test("A database in another data folder without entries leaves the entries of this database alone", .enabled(if: hasKeychain))
+	@Test("A database in another data folder without entries leaves the entries of this database alone")
 	func otherDatabaseKeepsEntries() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
 		try store.close()
 		for entry in Vault.PasswordEntry.allCases { #expect(try vault.setUnlockMethod(entry, on: true, password: Self.password)) }
 		// A throwaway data folder, as the debug harness and a test launch use, gets a new database and starts.
-		let other = Vault(folder: DataFolder(root: root.appendingPathComponent("Throwaway", isDirectory: true)))
+		let other = Vault(testing: DataFolder(root: root.appendingPathComponent("Throwaway", isDirectory: true)))
 		defer { removeEntries(other) }
 		try other.create(password: "ein-anderes-passwort", starterCategories: []).close()
 		try other.removeSharedEntry()
@@ -79,7 +78,7 @@ struct AppLockStorageTests {
 		#expect(try vault.storedPassword(for: .automaticUnlock) == Self.password)
 	}
 
-	@Test("A wrong password changes no entry", .enabled(if: hasKeychain))
+	@Test("A wrong password changes no entry")
 	func wrongPasswordChangesNothing() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -91,7 +90,7 @@ struct AppLockStorageTests {
 		#expect(try stored(vault) == [.touchID])
 	}
 
-	@Test("Turning a method off deletes only its entry", .enabled(if: hasKeychain))
+	@Test("Turning a method off deletes only its entry")
 	func turningOffDeletesOnlyItsEntry() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -103,7 +102,7 @@ struct AppLockStorageTests {
 		#expect(try stored(vault) == [.appleWatch])
 	}
 
-	@Test("The shared entry of earlier builds is removed, so it unlocks nothing", .enabled(if: hasKeychain))
+	@Test("The shared entry of earlier builds is removed, so it unlocks nothing")
 	func sharedEntryIsRemoved() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -114,7 +113,7 @@ struct AppLockStorageTests {
 		#expect(try vault.sharedPasswordKeychain.read(account: folder.keychainAccount) == nil)
 	}
 
-	@Test("A password change replaces each stored entry, and an unlock replaces a stale entry but creates none", .enabled(if: hasKeychain))
+	@Test("A password change replaces each stored entry, and an unlock replaces a stale entry but creates none")
 	func entriesFollowChanges() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }
@@ -132,7 +131,39 @@ struct AppLockStorageTests {
 		#expect(try vault.storedPassword(for: .automaticUnlock) == nil)
 	}
 
-	@Test("A new database removes every entry that a renamed database left", .enabled(if: hasKeychain))
+	/// A locked keychain file without prompts reads attributes and deletes an entry, but refuses to read a password or
+	/// add an entry, as a Keychain that fails between the two steps of `Keychain.write` does.
+	func vaultWithTwoSettings(refusingWrites file: KeychainFile) throws -> (Vault, Store) {
+		let vault = Vault(testing: folder, keychain: file)
+		let store = try vault.create(password: Self.password, starterCategories: [])
+		#expect(try vault.setUnlockMethod(.automaticUnlock, on: true, password: Self.password))
+		#expect(try vault.setUnlockMethod(.touchID, on: true, password: Self.password))
+		try file.lock()
+		return (vault, store)
+	}
+
+	@Test("A password change that the Keychain refuses writes every entry, so none keeps the earlier password")
+	func refusedChangeKeepsNoEarlierPassword() throws {
+		let file = try KeychainFile()
+		let (vault, store) = try vaultWithTwoSettings(refusingWrites: file)
+		defer { try? store.close() }
+		let failure = #expect(throws: Vault.Failure.self) {
+			try vault.changePassword(current: Self.password, new: "neu-und-noch-laenger", on: store)
+		}
+		#expect(failure?.passwordChanged == true)
+		#expect(try vault.unlockSettings().isEmpty)
+	}
+
+	@Test("An unlock whose Keychain cannot read an entry, such as a locked one whose prompt the user canceled, keeps every entry and setting")
+	func unreadableEntryStays() throws {
+		let file = try KeychainFile()
+		let (vault, store) = try vaultWithTwoSettings(refusingWrites: file)
+		try store.close()
+		#expect(throws: Vault.Failure.self) { try vault.refreshStoredPassword("neu-und-noch-laenger") }
+		#expect(try vault.unlockSettings() == [.automaticUnlock, .touchID])
+	}
+
+	@Test("A new database removes every entry that a renamed database left")
 	func newDatabaseClearsAllEntries() throws {
 		let (vault, store) = try vaultWithDatabase()
 		defer { removeEntries(vault) }

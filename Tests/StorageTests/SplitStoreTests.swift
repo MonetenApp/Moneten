@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Split parts in the database")
 struct SplitStoreTests {
@@ -29,7 +30,7 @@ struct SplitStoreTests {
 	func reopen() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenSplitTests-\(UUID().uuidString)"))
 		defer { try? FileManager.default.removeItem(at: folder.root) }
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: "split-test-password", starterCategories: [])
 		let t = original(-11900)
 		try store.save(accounts: [account], categories: [groceries, household], transactions: [t])

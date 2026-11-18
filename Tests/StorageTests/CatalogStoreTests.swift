@@ -3,6 +3,7 @@ import GRDB
 import Testing
 import Synchronization
 @testable import Storage
+import StorageTestSupport
 
 /// extension-catalog "Catalog extensions and file installs": the origin of each extension, the accepted
 /// index, and the key floors live in the encrypted database, outside the "Extensions" folder.
@@ -14,7 +15,7 @@ struct CatalogStoreTests {
 
 	@Test("The accepted index and the floors come back after the database opens again")
 	func catalogRoundTrip() async throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		#expect(try store.catalog() == nil)
 		try await store.saveCatalog(StoredCatalog(index: Data("index 120".utf8), signature: Data([1]), floors: Data("floors".utf8)))
@@ -27,7 +28,7 @@ struct CatalogStoreTests {
 	@MainActor
 	func catalogDuringMigration() async throws {
 		defer { try? FileManager.default.removeItem(at: root) }
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		defer { try? store.close() }
 		let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
 		let writer = Task.detached {
@@ -62,7 +63,7 @@ struct CatalogStoreTests {
 
 	@Test("The origin of each installed extension stays until the extension is removed")
 	func installedRoundTrip() throws {
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
 		try store.saveInstalledExtension(InstalledExtension(id: "example", origin: .catalog, record: Data("1.0".utf8)))
 		try store.saveInstalledExtension(InstalledExtension(id: "Demo", origin: .file, record: Data("demo".utf8)))
@@ -79,7 +80,7 @@ struct CatalogStoreTests {
 
 	@Test("A row with an origin that this version does not know counts as a catalog extension, so it never runs as a file install")
 	func unknownOriginIsCatalog() throws {
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		try store.queue.write { db in
 			try db.execute(sql: "INSERT INTO installedExtension (id, origin, record) VALUES ('example', 'future', x'00')")
 		}

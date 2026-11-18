@@ -3,6 +3,7 @@ import Foundation
 import GRDB
 import Testing
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Opening balance of a fetched account")
 struct OpeningBalanceTests {
@@ -11,7 +12,7 @@ struct OpeningBalanceTests {
 	let today = Day.today()
 
 	func makeStore(_ accounts: [Account]) throws -> Store {
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try store.save(accounts: accounts)
 		return store
 	}
@@ -93,7 +94,7 @@ struct OpeningBalanceTests {
 		_ = try source.merge(.refresh(RefreshResult(balance: Money(minorUnits: 1_000_000, currency: "EUR"), balanceDate: Date(),
 			transactions: FetchedTransactions(rows: quarter, from: today.adding(days: -90)), missesOlder: true)), into: giro.id)
 		let file = try source.exportAllData().json()
-		let target = try Vault(folder: DataFolder(root: folder.root.appendingPathComponent("target")))
+		let target = try Vault(testing: DataFolder(root: folder.root.appendingPathComponent("target")))
 			.create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		try target.importAllData(try AllData(json: file))
 		// A normal refresh after the import starts before the last fetch, so it misses nothing of its own.

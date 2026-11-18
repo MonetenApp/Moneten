@@ -10593,12 +10593,12 @@
       },
       "extractionState" : "manual"
     },
-    "The database password has been changed, but the Keychain did not accept the new password: %@\n\nEnter the database password at the next start. Moneten then stores the new password in the Keychain." : {
+    "The database password has been changed, but the Keychain did not accept the new password: %@\n\nAn unlock setting whose entry is gone is now off. Turn it on again in the \"Security\" settings. A setting that is still on stores the new password at the next unlock with the database password." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Datenbankpasswort wurde geändert, aber der Schlüsselbund hat das neue Passwort nicht angenommen: %@\n\nGeben Sie beim nächsten Start das Datenbankpasswort ein. Moneten speichert das neue Passwort dann im Schlüsselbund."
+            "value" : "Das Datenbankpasswort wurde geändert, aber der Schlüsselbund hat das neue Passwort nicht angenommen: %@\n\nEine Entsperr-Einstellung, deren Eintrag fehlt, ist jetzt aus. Schalten Sie sie in den Einstellungen unter „Sicherheit“ wieder ein. Eine Einstellung, die noch an ist, speichert das neue Passwort beim nächsten Entsperren mit dem Datenbankpasswort."
           }
         }
       },

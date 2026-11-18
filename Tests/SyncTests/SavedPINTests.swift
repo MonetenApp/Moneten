@@ -5,6 +5,7 @@ import Synchronization
 import SyncTesting
 import Testing
 @testable import Sync
+import StorageTestSupport
 
 /// login-credentials: a PIN is saved only on request and only after the bank accepted it, it answers
 /// the refreshes after a restart, and "Remove saved PIN" and a rejection delete it.
@@ -80,7 +81,7 @@ struct SavedPINTests {
 	@Test("A saved PIN answers the refreshes after a restart without a sheet, also the automatic one")
 	func afterRestart() async throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
-		let vault = Vault(folder: folder)
+		let vault = Vault(testing: folder)
 		let database = try vault.create(password: "korrekt-pferd-batterie", starterCategories: [])
 		try database.add(Self.bank, state: nil, accounts: [])
 		try broker.open(database)

@@ -41,6 +41,13 @@ struct TransactionDraftTests {
 		#expect(AmountProblem.zero.message == "The amount should not be zero.")
 	}
 
+	@Test("An amount typed in the format of the region Germany is read, and one that has no reading is refused")
+	func germanEntry() {
+		let germany = DecimalMark(region: Locale(identifier: "de_DE"))
+		#expect(draft(amount: "1.234,5").amountMinor(in: "EUR", region: germany) == .success(123_450))
+		#expect(draft(amount: "12,3,4").amountMinor(in: "EUR", region: germany) == .failure(.notANumber))
+	}
+
 	@Test("A row from a source keeps an amount of zero when the user edits it, and a manual one refuses it")
 	func zeroFromSource() {
 		#expect(draft(amount: "0,00").amountMinor(in: "EUR", region: .comma, allowsZero: true) == .success(0))

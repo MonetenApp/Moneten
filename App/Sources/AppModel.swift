@@ -586,6 +586,8 @@ final class AppModel {
 			// A Keychain that failed at launch left the settings empty; with the Keychain back they show its entries again.
 			try loadUnlockSettings()
 		} catch {
+			// A write that failed may have removed its entry, which turns that setting off.
+			try? loadUnlockSettings()
 			alert = AlertMessage(title: String(localized: "The database password could not be stored in the Keychain."), message: String(describing: error))
 		}
 		return .unlocked
@@ -718,6 +720,8 @@ final class AppModel {
 		} catch Vault.Failure.incorrectPassword {
 			return String(localized: "Incorrect password!")
 		} catch let failure as Vault.Failure where failure.passwordChanged {
+			// A Keychain entry that could not take the new password may be gone, which turns its setting off.
+			if case .keychainNotUpdated = failure { try? loadUnlockSettings() }
 			alert = AlertMessage(title: String(localized: "The password has been changed."), message: String(describing: failure))
 			return nil
 		} catch {

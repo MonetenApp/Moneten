@@ -82,19 +82,55 @@ The app SHALL show dates in the date format of macOS for the order and form of d
 
 ### Requirement: Relative day names
 
-The app SHALL name a day close to today in words where it shows a point in time, such as the last refresh or the next execution. It uses "Today", "Yesterday", "Tomorrow", a number of days ago, and a number of days ahead.
+The app SHALL name the day of the last refresh and of the bank balance in words when it lies close to today. A time today or yesterday reads "Today" or "Yesterday" with the time. A time two to six days before today, or after today, reads the weekday with the time. An older time reads the date alone, with a four-digit year. The app counts calendar days in the time zone of the Mac, and the time and the date follow the format of macOS.
 
 #### Scenario: Refresh today
 
-- **GIVEN** the last refresh ended today at 14:32
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the last refresh ended today at 14:32
 - **WHEN** the user looks at the time of the last refresh
 - **THEN** it reads "Today, 14:32"
 
 #### Scenario: Refresh the day before
 
-- **GIVEN** the last refresh ended yesterday at 08:05
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the last refresh ended yesterday at 08:05
 - **WHEN** the user looks at the time of the last refresh
 - **THEN** it reads "Yesterday, 08:05"
+
+#### Scenario: Refresh three days before
+
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the last refresh ended on Saturday, 14.11.2026, at 09:10
+- **WHEN** the user looks at the time of the last refresh
+- **THEN** it reads "Saturday, 09:10"
+
+#### Scenario: Refresh six days before
+
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the last refresh ended on Wednesday, 11.11.2026, at 23:59
+- **WHEN** the user looks at the time of the last refresh
+- **THEN** it reads "Wednesday, 23:59"
+
+#### Scenario: Refresh a week before
+
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the last refresh ended on Tuesday, 10.11.2026, at 07:45
+- **WHEN** the user looks at the time of the last refresh
+- **THEN** it reads "10.11.2026" without a time
+
+#### Scenario: Refresh after today
+
+- **GIVEN** macOS uses the region Germany, today is Tuesday, 17.11.2026, and the clock of the Mac was set back after a refresh that ended on Wednesday, 18.11.2026, at 10:00
+- **WHEN** the user looks at the time of the last refresh
+- **THEN** it reads "Wednesday, 10:00"
+
+#### Scenario: Calendar days, not hours
+
+- **GIVEN** macOS uses the region Germany, it is 17.11.2026, 00:01, and the last refresh ended on 16.11.2026 at 23:59
+- **WHEN** the user looks at the time of the last refresh
+- **THEN** it reads "Yesterday, 23:59"
+
+#### Scenario: German interface
+
+- **GIVEN** the interface is German, macOS uses the region Germany, and today is Tuesday, 17.11.2026
+- **WHEN** the last refresh ended today at 14:32, or on Saturday, 14.11.2026, at 09:10
+- **THEN** it reads "Heute, 14:32", or "Samstag, 09:10"
 
 ### Requirement: Complete a typed day
 

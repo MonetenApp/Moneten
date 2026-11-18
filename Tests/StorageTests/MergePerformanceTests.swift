@@ -3,13 +3,14 @@ import Foundation
 import Testing
 import TestSupport
 @testable import Storage
+import StorageTestSupport
 
 @Suite("Performance of the merge")
 struct MergePerformanceTests {
 	@Test("A refresh of 300 rows into one account of a 50,000-row history merges and shows within the import budget")
 	func refreshIntoLongHistory() throws {
 		let folder = DataFolder(root: FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)"))
-		let store = try Vault(folder: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
+		let store = try Vault(testing: folder).create(password: "korrekt-pferd-batterie-heftklammer", starterCategories: [])
 		let accounts = (0..<20).map { Account(position: $0, name: "Konto \($0)", kind: .giro, source: .offline) }
 		let today = Day(year: 2026, month: 11, day: 12)
 		var history: [UUID: [Transaction]] = [:]

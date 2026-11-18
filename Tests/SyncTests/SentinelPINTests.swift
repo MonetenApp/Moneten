@@ -5,6 +5,7 @@ import SyncTesting
 import Testing
 @testable import Storage
 @testable import Sync
+import StorageTestSupport
 
 /// Issue #4: a PIN that the user does not save appears nowhere in the decrypted database or in a backup,
 /// and a saved PIN appears only in the table of saved PINs. scripts/check-debug-log.sh checks the log.
@@ -28,7 +29,7 @@ struct SentinelPINTests {
 	/// Refreshes the made-up bank once with the sentinel as the PIN and returns the database and a backup of it.
 	func refresh(save: Bool) async throws -> (database: Store, backup: Store, files: [URL]) {
 		let folder = DataFolder(root: root.appendingPathComponent("Moneten", isDirectory: true))
-		let store = try Vault(folder: folder).create(password: Self.password, starterCategories: [])
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		let account = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accessID: Self.bank.id,
 			remoteID: "DE02120300000000202051")
 		try store.add(Self.bank, state: nil, accounts: [account])
@@ -43,7 +44,7 @@ struct SentinelPINTests {
 		let copy = DataFolder(root: root.appendingPathComponent("Clean Mac", isDirectory: true))
 		try copy.createFolders()
 		try store.backup(to: copy.databaseFile)
-		let backup = try Vault(folder: copy).open(password: Self.password)
+		let backup = try Vault(testing: copy).open(password: Self.password)
 		let files = try FileManager.default.subpathsOfDirectory(atPath: root.path).map { root.appendingPathComponent($0) }
 			.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
 		return (store, backup, files)
