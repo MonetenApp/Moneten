@@ -4,17 +4,28 @@ import Foundation
 public struct DataFolder: Sendable {
 	public let root: URL
 
-	/// `~/Library/Application Support/Moneten`, or the folder at `path` when the caller gives one.
-	/// Only debug and Perf builds of the app pass the folder of `MONETEN_DATA_DIR` (issue #327). The app
-	/// decides, because Xcode builds this package without the compilation conditions of the app.
+	/// `~/Library/Application Support/Moneten` in the home folder of the user database, or the folder at `path` when the
+	/// caller gives one. Only debug and Perf builds of the app pass the folder of `MONETEN_DATA_DIR` (issue #327). The app
+	/// decides, because Xcode builds this package without the compilation conditions of the app. Nil without a path and
+	/// without a home folder in the user database: the app then opens no data folder at all (issue #422).
 	/// The first call after the rename to Moneten (ADR 0013) moves the data of the old name.
-	public static func standard(override path: String?) -> DataFolder {
+	public static func standard(override path: String?) -> DataFolder? {
+		standard(override: path, home: userHome)
+	}
+
+	/// The home folder that holds the data folder. It comes from the user database of macOS, never from Foundation,
+	/// whose home folder follows `CFFIXED_USER_HOME`: another program of the user could start the app with
+	/// `open --env CFFIXED_USER_HOME=<folder>` and let it open a database that the user did not create (issue #422).
+	static var userHome: String? { userDatabaseHome() }
+
+	static func standard(override path: String?, home: String?) -> DataFolder? {
 		if let path, !path.isEmpty {
 			let folder = DataFolder(root: URL(fileURLWithPath: path, isDirectory: true))
 			try? folder.adoptLegacyNames()
 			return folder
 		}
-		let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+		guard let home else { return nil }
+		let support = URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("Library/Application Support", isDirectory: true)
 		let legacy = support.appendingPathComponent(Self.legacyName, isDirectory: true)
 		let folder = DataFolder(root: support.appendingPathComponent("Moneten", isDirectory: true), legacyRoot: legacy)
 		do {

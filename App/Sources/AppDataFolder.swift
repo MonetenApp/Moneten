@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Storage
 
@@ -6,7 +7,28 @@ extension DataFolder {
 	/// so that the tests, the debug harness, and `scripts/perf-check.sh` never open the real database.
 	/// A release build ignores the variable: another process of the user could set it with
 	/// `launchctl setenv` and let the app open a database that the user did not create (issue #327).
-	static var current: DataFolder { .standard(override: requestedPath) }
+	/// The folder lies in the home folder that the user database of macOS names, never in the one of
+	/// `CFFIXED_USER_HOME`, which another process can set with `open --env` (issue #422).
+	static var current: DataFolder {
+		guard let folder = DataFolder.standard(override: requestedPath) else {
+			// `requireHomeFolder()` quit the launch already, so only a user database that lost the home folder while
+			// the app runs comes here. The app stops rather than open a data folder somewhere else.
+			fatalError("The user database of macOS names no home folder.")
+		}
+		return folder
+	}
+
+	/// Called at launch, before the model opens the data folder. Without a home folder in the user database the app
+	/// does not know where the data folder lies, so it says so and quits instead of opening a folder somewhere else.
+	@MainActor static func requireHomeFolder() {
+		guard DataFolder.standard(override: requestedPath) == nil else { return }
+		let alert = NSAlert()
+		alert.alertStyle = .critical
+		alert.messageText = String(localized: "Moneten cannot find your home folder")
+		alert.informativeText = String(localized: "macOS names no home folder for your user account, so Moneten does not know where its data folder is. Moneten quits.")
+		alert.runModal()
+		exit(1)
+	}
 
 	/// The folder of `MONETEN_DATA_DIR`, or nil in a release build and in a run without the variable.
 	static var requestedPath: String? {

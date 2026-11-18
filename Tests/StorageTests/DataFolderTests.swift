@@ -58,3 +58,40 @@ struct DataFolderTests {
 		#expect(DataFolder.isDatabaseFile(URL(fileURLWithPath: "/Users/beispiel/Downloads/\(name)")) == isDatabase)
 	}
 }
+
+/// data-folder-and-backup "No environment variable moves the data folder of a release build" (issue #422). The paths are
+/// built in a temporary home folder, so no test opens or moves the real data folder.
+@Suite("Where the data folder lies")
+struct DataFolderLocationTests {
+	let home = FileManager.default.temporaryDirectory.appendingPathComponent("MonetenTests-\(UUID().uuidString)", isDirectory: true)
+
+	/// The home folder from the user database, which `CFFIXED_USER_HOME` and `HOME` do not change. Foundation's home
+	/// folder follows `CFFIXED_USER_HOME`, so a run with that variable set fails this test when the data folder takes its
+	/// home folder from Foundation.
+	@Test("The data folder takes its home folder from the user database, whatever the environment holds")
+	func homeFromUserDatabase() throws {
+		let entry = try #require(getpwuid(getuid())?.pointee.pw_dir)
+		#expect(DataFolder.userHome == String(cString: entry))
+		#expect(DataFolder.userHome == Keychain.loginKeychainPath.map { String($0.dropLast("/Library/Keychains/login.keychain-db".count)) })
+	}
+
+	@Test("The data folder lies in Library/Application Support/Moneten of the home folder, and the folder of the old name moves there")
+	func folderInHome() throws {
+		let support = home.appendingPathComponent("Library/Application Support", isDirectory: true)
+		let old = support.appendingPathComponent("MonetenMoneten/Database/MonetenMoneten.sqlite")
+		try FileManager.default.createDirectory(at: old.deletingLastPathComponent(), withIntermediateDirectories: true)
+		try Data("db".utf8).write(to: old)
+		defer { try? FileManager.default.removeItem(at: home) }
+
+		let folder = try #require(DataFolder.standard(override: nil, home: home.path))
+		#expect(folder.root.standardizedFileURL == support.appendingPathComponent("Moneten", isDirectory: true).standardizedFileURL)
+		#expect(String(decoding: try Data(contentsOf: folder.databaseFile), as: UTF8.self) == "db")
+	}
+
+	@Test("Without a home folder in the user database there is no data folder, and a folder that a debug run names still opens")
+	func noHome() throws {
+		#expect(DataFolder.standard(override: nil, home: nil) == nil)
+		#expect(DataFolder.standard(override: "", home: nil) == nil)
+		#expect(DataFolder.standard(override: home.path, home: nil)?.root.path == home.path)
+	}
+}

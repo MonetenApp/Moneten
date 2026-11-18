@@ -18,6 +18,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.12 No synchronization between copies. Verified by OpeningTests "A data folder copied to another Mac opens with the same password, and the two copies stay independent". The app has no code that sends data to another Mac (#266).
 - [x] 1.13 Reset after a lost password. Verified by OpeningTests "Renaming the folder Database starts a new database, and renaming it back opens the old data with the old password" and "A new database keeps the Keychain entries that a renamed database still needs" "A new database with a password keeps the random key of a renamed database through its unlock", and "A backup of a renamed database that the user put into the new folder keeps the random key of the renamed one". The new database also turns the unlock settings off (#266).
 - [ ] 1.14 Take over the data of the old app name. Built: DataFolderTests cover the folder and the files. Verify the Keychain entries and the settings in the app.
+- [ ] 1.15 No environment variable moves the data folder of a release build (#422). Built: the home folder comes from the user database of macOS, and the app quits without one. DataFolderLocationTests check the library. Verify the scenarios in a release build.
 
 ## 2. Integration
 
