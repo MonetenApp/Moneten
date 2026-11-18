@@ -1003,7 +1003,7 @@ struct TransactionMenu: View {
 				}
 			}
 			if case let .category(id) = model.selection, model.ledger.defaultCategory?.id != id {
-				Button("Remove Transaction from Category") { model.assign(category: nil, to: ids) }
+				Button(ids.count == 1 ? "Remove Transaction from Category" : "Remove Transactions from Category") { model.assign(category: nil, to: ids) }
 			}
 			Menu("Create Offsetting Entry") {
 				let targets = model.ledger.offsettingTargets(for: transactions)

@@ -8195,6 +8195,16 @@
         }
       }
     },
+    "Remove Transactions from Category" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umsätze aus Kategorie entfernen"
+          }
+        }
+      }
+    },
     "Remove VAT rate at position %lld" : {
       "localizations" : {
         "de" : {
@@ -12138,6 +12148,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Umsätze bleiben erhalten und werden unkategorisiert."
+          }
+        }
+      }
+    },
+    "The transactions will be retained and become uncategorized. All subcategories will be removed as well." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Umsätze bleiben erhalten und werden unkategorisiert. Alle Unterkategorien werden ebenfalls entfernt."
           }
         }
       }

@@ -73,6 +73,7 @@ struct CategorySettingsSheet: View {
 							Button { showHelp = true } label: { Image(systemName: "questionmark.circle") }
 								.buttonStyle(.borderless)
 								.help("Help")
+								.accessibilityIdentifier("rule-help")
 								.popover(isPresented: $showHelp) { RuleHelp() }
 						}
 					} footer: {
