@@ -106,7 +106,7 @@ struct RuleFromTransactionTests {
 		#expect(try matches(rule, transaction("Stadtwerke Musterstadt")))
 	}
 
-	@Test("A name made only of the wildcards * and ? and of quotation marks gives way to the IBAN, or to no condition", arguments: ["*", "?", "* ?", "**", "\"", "„“"])
+	@Test("A name made only of white space, the wildcards * and ?, and quotation marks gives way to the IBAN, or to no condition", arguments: ["*", "?", "* ?", "**", "\"", "„“", " ", "\t", " \n ", "* \t?"])
 	func wildcardsOnly(name: String) throws {
 		#expect(Rule.condition(for: transaction(name, iban: "DE02 1203 0000 0000 2020 51")) == #"remote_account:"DE02120300000000202051""#)
 		#expect(Rule.condition(for: transaction(name)) == nil)
