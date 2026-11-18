@@ -6,11 +6,16 @@ import Testing
 /// nil when the variable is missing or empty, and exits with status 2 when anything is missing.
 @Suite("Debug harness run")
 struct HarnessRunTests {
-	@Test("A run without the debug harness starts, whatever else the environment holds")
+	@Test("A run without the debug harness and without a keychain file of its own starts")
 	func withoutHarness() {
 		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: nil, keychainFile: nil).isEmpty)
 		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: "/tmp/data", keychainFile: nil).isEmpty)
-		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: nil, keychainFile: "/tmp/run.keychain-db").isEmpty)
+		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: "/tmp/data", keychainFile: "/tmp/run.keychain-db").isEmpty)
+	}
+
+	@Test("A keychain file of its own needs a data folder of its own, also without the harness")
+	func keychainFileNeedsDataFolder() {
+		#expect(HarnessRun.missing(debugFolder: nil, dataFolder: nil, keychainFile: "/tmp/run.keychain-db") == [.dataFolder])
 	}
 
 	@Test("A harness run starts only with a data folder and a keychain file of its own")

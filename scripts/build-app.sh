@@ -156,7 +156,7 @@ check_hardened() {
 # the app itself, which a Debug build keeps in Contents/MacOS/Moneten.debug.dylib, the extension host, and the
 # frameworks.
 check_debug_only() {
-	find "$1/Contents" -type f -perm -u+x | while read -r code; do
+	find "$1/Contents" -type f | while read -r code; do
 		file -b "$code" | grep -q '^Mach-O' || continue
 		for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
 			if LC_ALL=C grep -a -q -F "$name" "$code"; then

@@ -356,7 +356,7 @@ The app SHALL add, read, and delete its Keychain entries only in the login keych
 
 ### Requirement: A run of the debug harness keeps to its own data folder and keychain file
 
-The app SHALL, in a Debug or Perf build that the debug harness drives, exit with status 2 at launch, before it opens a data folder or a keychain, unless the run names both a data folder and a keychain file of its own. An unlock in a run that opens the real database with a throwaway keychain file would turn off the unlock settings of the real database, and the crash reports would lose their key.
+The app SHALL, in a Debug or Perf build, exit with status 2 at launch, before it opens a data folder or a keychain, when the debug harness drives the run and the run does not name both a data folder and a keychain file of its own, and when any run names a keychain file of its own but no data folder of its own. An unlock in a run that opens the real database with a throwaway keychain file would turn off the unlock settings of the real database, and the crash reports would lose their key.
 
 #### Scenario: A harness run without a data folder of its own
 
@@ -371,6 +371,13 @@ The app SHALL, in a Debug or Perf build that the debug harness drives, exit with
 - **WHEN** a check starts it with `MONETEN_DEBUG_DIR=/tmp/harness/debug` and `MONETEN_DATA_DIR=/tmp/harness/data`, without `MONETEN_KEYCHAIN_PATH`
 - **THEN** the app exits with status 2 and names `MONETEN_KEYCHAIN_PATH` on standard error
 - **AND** the login keychain holds no new entry of the app, and `/tmp/harness/data` holds no database
+
+#### Scenario: A debug build started by hand with a keychain file but without a data folder
+
+- **GIVEN** a Debug build of the app, whose real database has "Unlock with Touch ID" on
+- **WHEN** the developer starts it with `MONETEN_KEYCHAIN_PATH=/tmp/check/run.keychain-db`, without `MONETEN_DEBUG_DIR` and `MONETEN_DATA_DIR`
+- **THEN** the app exits with status 2 and names `MONETEN_DATA_DIR` on standard error
+- **AND** no file in `~/Library/Application Support/Moneten` changed, and "Unlock with Touch ID" is still on
 
 #### Scenario: A debug build without the harness
 

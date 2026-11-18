@@ -47,8 +47,8 @@ final class DebugHarness {
 	/// throwaway data folder in `MONETEN_DATA_DIR` and a throwaway keychain file in `MONETEN_KEYCHAIN_PATH`, so that no
 	/// check changes the real database or reads or writes the login keychain of the developer (issue #421).
 	/// `HarnessRun.missing` has the reasons. Without both the app names what is missing on standard error and exits.
-	/// A debug build started without the harness keeps the real data folder and the login keychain, unless it names
-	/// its own.
+	/// A debug build started without the harness keeps the real data folder and the login keychain. One that names a
+	/// keychain file of its own must name a data folder of its own too.
 	static func requireOwnFoldersIfRequested() {
 		#if DEBUG || PERF_HARNESS
 		let missing = HarnessRun.missing(debugFolder: requestedPath, dataFolder: DataFolder.requestedPath, keychainFile: AppKeychain.requestedPath)
@@ -59,7 +59,8 @@ final class DebugHarness {
 			case .keychainFile: "MONETEN_KEYCHAIN_PATH (the path of a throwaway keychain file)"
 			}
 		}
-		FileHandle.standardError.write(Data("The debug harness needs \(needs.joined(separator: " and ")).\n".utf8))
+		let run = requestedPath != nil ? "The debug harness" : "A run with MONETEN_KEYCHAIN_PATH"
+		FileHandle.standardError.write(Data("\(run) needs \(needs.joined(separator: " and ")).\n".utf8))
 		exit(2)
 		#endif
 	}

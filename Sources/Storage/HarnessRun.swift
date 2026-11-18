@@ -12,10 +12,12 @@ public enum HarnessRun {
 		case keychainFile
 	}
 
-	/// What a run lacks before it may open a data folder or a keychain. Empty when it may start, also for each run
-	/// without the harness. Each value is nil when its environment variable is missing or empty.
+	/// What a run lacks before it may open a data folder or a keychain. Empty when it may start. A harness run needs
+	/// both. A run with a keychain file of its own needs a data folder of its own too, also without the harness:
+	/// started by hand to check an unlock setting, it would otherwise unlock the real database against the empty
+	/// throwaway file and turn its unlock settings off. Each value is nil when its environment variable is missing or empty.
 	public static func missing(debugFolder: String?, dataFolder: String?, keychainFile: String?) -> [Missing] {
-		guard debugFolder != nil else { return [] }
-		return (dataFolder == nil ? [.dataFolder] : []) + (keychainFile == nil ? [.keychainFile] : [])
+		guard debugFolder != nil || keychainFile != nil else { return [] }
+		return (dataFolder == nil ? [.dataFolder] : []) + (debugFolder != nil && keychainFile == nil ? [.keychainFile] : [])
 	}
 }
