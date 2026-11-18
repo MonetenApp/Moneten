@@ -10,7 +10,7 @@ public struct HeldSheet<Sheet: Equatable, Input, Database: Equatable> {
 	private var current: (sheet: Sheet, input: Input)?
 	/// The sheet that the lock closed and the database that was open, until the unlock asks for it.
 	private var held: (sheet: Sheet, input: Input, database: Database)?
-	/// The sheet that the unlock gave back, until it shows and takes its input.
+	/// The sheet that the unlock gave back, until it closes.
 	private var returning: (sheet: Sheet, input: Input)?
 
 	public init() {}
@@ -42,17 +42,22 @@ public struct HeldSheet<Sheet: Equatable, Input, Database: Equatable> {
 	/// The input that the unlock gave back, before its sheet shows, without taking it.
 	public var returningInput: Input? { returning?.input }
 
-	/// The input of a sheet that shows again after the unlock, once. Any other opening of a sheet gets nil and starts
-	/// from the stored values.
-	public mutating func input(for sheet: Sheet) -> Input? {
+	/// The input of a sheet that shows again after the unlock, until that sheet closes. SwiftUI can show the sheet more
+	/// than once after the unlock, the last time with new state, so each appearance gets the input. Any other opening of
+	/// a sheet gets nil and starts from the stored values.
+	public func input(for sheet: Sheet) -> Input? {
 		guard let returning, returning.sheet == sheet else { return nil }
-		self.returning = nil
 		return returning.input
+	}
+
+	/// `sheet` closed, so a later opening of it starts from the stored values.
+	public mutating func close(_ sheet: Sheet) {
+		if returning?.sheet == sheet { returning = nil }
 	}
 
 	/// The input of a sheet as the type that the sheet wrote. A sheet whose input is optional gets nil when nothing
 	/// returns, never an input of nil, which would replace the values that it loaded.
-	public mutating func input<Wanted>(for sheet: Sheet, as type: Wanted.Type) -> Wanted? {
+	public func input<Wanted>(for sheet: Sheet, as type: Wanted.Type) -> Wanted? {
 		guard let input = input(for: sheet) else { return nil }
 		return input as? Wanted
 	}

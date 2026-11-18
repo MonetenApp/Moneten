@@ -28,7 +28,7 @@ struct HeldSheetTests {
 		return Settings(account: a, color: "#2E7D32")
 	}
 
-	@Test("The lock keeps the open account settings with a changed name and color, and the unlock gives them back once")
+	@Test("The lock keeps the open account settings with a changed name and color, and the unlock gives them back until the settings close")
 	func lockAndUnlock() {
 		var held = HeldSheet<Sheet, Settings, Int>()
 		let sheet = Sheet.accountSettings(girokonto.id)
@@ -37,9 +37,34 @@ struct HeldSheetTests {
 		held.lock(closing: sheet, database: database)
 		#expect(held.unlock(database: database) == sheet)
 		#expect(held.input(for: sheet) == changed)
-		// The input goes back once. A later opening of the same settings starts from the account.
+		// The input goes back until the settings close. A later opening of the same settings starts from the account.
+		held.close(sheet)
 		#expect(held.input(for: sheet) == nil)
 		#expect(held.unlock(database: database) == nil)
+	}
+
+	@Test("A sheet that SwiftUI shows twice after the unlock, the second time with new state, gets the input both times")
+	func appearsTwice() {
+		var held = HeldSheet<Sheet, Settings, Int>()
+		let sheet = Sheet.accountSettings(girokonto.id)
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: database)
+		_ = held.unlock(database: database)
+		#expect(held.input(for: sheet) == changed)
+		#expect(held.input(for: sheet) == changed)
+	}
+
+	@Test("Closing another sheet keeps the returning input, and closing its own sheet ends it")
+	func closeOther() {
+		var held = HeldSheet<Sheet, Settings, Int>()
+		let sheet = Sheet.accountSettings(girokonto.id)
+		held.record(changed, of: sheet)
+		held.lock(closing: sheet, database: database)
+		_ = held.unlock(database: database)
+		held.close(.groupSettings(haushalt))
+		#expect(held.returningInput == changed)
+		held.close(sheet)
+		#expect(held.returningInput == nil)
 	}
 
 	@Test("A sheet that opens without a lock before it starts from the stored values")
@@ -101,6 +126,7 @@ struct HeldSheetTests {
 		#expect(held.unlock(database: database) == account)
 		#expect(held.input(for: group) == nil)
 		#expect(held.input(for: account) == changed)
+		held.close(account)
 		held.lock(closing: nil, database: database)
 		#expect(held.unlock(database: database) == nil)
 	}
@@ -141,6 +167,7 @@ struct HeldSheetTests {
 		_ = held.unlock(database: database)
 		#expect(held.returningInput == changed)
 		#expect(held.input(for: sheet) == changed)
+		held.close(sheet)
 		#expect(held.returningInput == nil)
 	}
 

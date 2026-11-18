@@ -13,15 +13,13 @@ extension AppModel {
 			guard returningSheet == kind else { return }
 			returningSheet = nil
 			// A sheet whose subject is gone stays closed, and its input goes.
-			guard phase == .unlocked, sheet == nil, stillShows(kind) else {
-				_ = heldSheet.input(for: kind)
-				return
-			}
+			guard phase == .unlocked, sheet == nil, stillShows(kind) else { return heldSheet.close(kind) }
 			sheet = kind
 		}
 	}
 
-	/// The input of a sheet that shows again after the unlock, once. Any other opening gets nil.
+	/// The input of a sheet that shows again after the unlock, for each appearance until it closes. Any other opening
+	/// gets nil.
 	func heldInput<Input>(for kind: SheetKind) -> Input? {
 		heldSheet.input(for: kind, as: Input.self)
 	}

@@ -361,6 +361,8 @@ final class AppModel {
 		didSet {
 			guard sheet != oldValue else { return }
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
+			// A sheet that the unlock gave back takes its input until it closes.
+			if let oldValue { heldSheet.close(oldValue) }
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
