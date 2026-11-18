@@ -82,6 +82,15 @@ struct HarnessWriteTests {
 		try FileManager.default.removeItem(at: root)
 	}
 
+	@Test("The target of a write is the canonical path inside the folders")
+	func target() throws {
+		let canonicalDebug = try #require(HarnessRun.writeTarget(debug.appendingPathComponent("copy.sqlite").path, inside: [debug.path, data.path]))
+		#expect(canonicalDebug.hasSuffix("/debug/copy.sqlite"))
+		#expect(HarnessRun.writeTarget(debug.path + "/../data/copy.sqlite", inside: [debug.path, data.path]) == canonicalDebug.replacingOccurrences(of: "/debug/", with: "/data/"))
+		#expect(HarnessRun.writeTarget(outside.appendingPathComponent("real.sqlite").path, inside: [debug.path, data.path]) == nil)
+		try FileManager.default.removeItem(at: root)
+	}
+
 	@Test("A symlink inside the folders that points outside does not qualify")
 	func symlink() throws {
 		let fm = FileManager.default
@@ -128,16 +137,39 @@ struct HarnessActionTests {
 		#expect(!HarnessRun.mayPress("Open", isSwitch: false, on: .startWindow, localized: german))
 	}
 
-	@Test("A bank dialog and any other surface take no press, and a bank dialog takes a key only with the made-up bank")
-	func outward() {
-		for surface in [HarnessRun.Surface.bankDialog, .other] {
+	@Test("A bank dialog and any other surface take no press")
+	func noPress() {
+		for surface in [HarnessRun.Surface.bankDialog(.fints), .bankDialog(.local), .bankDialog(.realService), .other] {
 			#expect(!HarnessRun.mayPress("OK", isSwitch: false, on: surface, localized: { $0 }))
 			#expect(!HarnessRun.mayPress("Save PIN", isSwitch: true, on: surface, localized: { $0 }))
 		}
-		#expect(!HarnessRun.mayKey("return", on: .bankDialog, fakeBank: false))
-		#expect(HarnessRun.mayKey("return", on: .bankDialog, fakeBank: true))
 		#expect(HarnessRun.mayKey("return", on: .other, fakeBank: false))
 		#expect(HarnessRun.mayKey("return", on: .startWindow, fakeBank: false))
+	}
+
+	@Test("FinTS takes a key or an answer only with the made-up bank, and a real service never")
+	func recipients() {
+		#expect(!HarnessRun.mayReach(.fints, fakeBank: false))
+		#expect(HarnessRun.mayReach(.fints, fakeBank: true))
+		#expect(HarnessRun.mayReach(.local, fakeBank: false))
+		#expect(!HarnessRun.mayReach(.realService, fakeBank: true))
+		for key in ["return", "escape", "tab"] {
+			#expect(!HarnessRun.mayKey(key, on: .bankDialog(.fints), fakeBank: false))
+			#expect(HarnessRun.mayKey(key, on: .bankDialog(.fints), fakeBank: true))
+			#expect(HarnessRun.mayKey(key, on: .bankDialog(.local), fakeBank: false))
+			#expect(!HarnessRun.mayKey(key, on: .bankDialog(.realService), fakeBank: true))
+		}
+	}
+
+	@Test("An alert over the start window takes no Return, which would press \"Show Database in Finder\"")
+	func startAlert() {
+		#expect(!HarnessRun.mayKey("return", on: .startAlert, fakeBank: true))
+		#expect(HarnessRun.mayKey("escape", on: .startAlert, fakeBank: false))
+		#expect(HarnessRun.mayKey("return", on: .startWindow, fakeBank: false))
+		#expect(HarnessRun.mayPress("OK", isSwitch: false, on: .startAlert, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Show Database in Finder", isSwitch: false, on: .startAlert, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Open", isSwitch: false, on: .startAlert, localized: { $0 }))
+		#expect(!HarnessRun.mayPress("Remember", isSwitch: true, on: .startAlert, localized: { $0 }))
 	}
 
 	@Test("Only the fake helper of the repository counts as the made-up bank")

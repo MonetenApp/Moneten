@@ -36,6 +36,9 @@ final class DebugHarness {
 	#if DEBUG || PERF_HARNESS
 	/// Set by "backup": answers the warning of "Backup Database..." without a database password and logs it.
 	var alertAnswer: ((NSAlert) -> NSApplication.ModalResponse)?
+	/// The extensions that this run loaded itself from a file, with "extfile", "extaccess", "extrefresh", or "extrun".
+	/// Their questions count as local (HarnessRun.Recipient.local), as do those of an extension with a fixture.
+	private var fileExtensions: Set<String> = []
 	#endif
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
@@ -340,6 +343,10 @@ final class DebugHarness {
 		// "<account name>": "Look for New Accounts..." and "Edit Login Data..." on the account with a bank access, which "setup" then drives.
 		case "lookfornew", "editlogin":
 			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.accessID != nil }) else { return log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("", .word("no account"))) }
+			#if DEBUG || PERF_HARNESS
+			// "Look for New Accounts..." logs in with the saved PIN at once.
+			if command == "lookfornew", !HarnessRun.mayReach(.fints, fakeBank: usesFakeBank) { return log("lookfornew refused") }
+			#endif
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
 			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
@@ -357,13 +364,23 @@ final class DebugHarness {
 		case "removecategory":
 			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
 		// "<text>" answers the dialog on screen with a TAN, or with a PIN when it asks for one.
+		// Each of "answer", "method", and "medium" reaches only the made-up bank or a local service (HarnessRun.mayReach)
+		// and logs "<command> refused" otherwise.
 		case "answer":
 			if let prompt = model.sync.broker.current {
+				#if DEBUG || PERF_HARNESS
+				guard mayAnswer(prompt) else { return log("answer refused") }
+				#endif
 				if case .pin = prompt.request { model.sync.broker.answer(.pin(Secret(argument)), to: prompt.id) } else { model.sync.broker.answer(.tan(Secret(argument)), to: prompt.id) }
 			}
 		// "<id>" chooses a TAN method in the dialog on screen, and "medium <name>" a TAN medium.
-		case "method": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMethod(argument), to: prompt.id) }
-		case "medium": if let prompt = model.sync.broker.current { model.sync.broker.answer(.tanMedium(argument), to: prompt.id) }
+		case "method", "medium":
+			if let prompt = model.sync.broker.current {
+				#if DEBUG || PERF_HARNESS
+				guard mayAnswer(prompt) else { return log("", ("", .choice(command, of: ["method", "medium"])), ("", .word("refused"))) }
+				#endif
+				model.sync.broker.answer(command == "method" ? .tanMethod(argument) : .tanMedium(argument), to: prompt.id)
+			}
 		// "down" or "up" sends that arrow key to the field with the focus in the sheet on top.
 		case "key" where argument == "down" || argument == "up":
 			let characters = String(UnicodeScalar(argument == "down" ? NSDownArrowFunctionKey : NSUpArrowFunctionKey)!)
@@ -376,8 +393,9 @@ final class DebugHarness {
 		#if DEBUG || PERF_HARNESS
 		// "return", "escape", "tab", "cmd+", or "cmd-" sends that key to the sheet on top, as the keyboard does. Without a sheet it
 		// goes to the main window only while the database is not open, such as on the lock screen, so that a key between two
-		// sheets never presses "Import from MoneyMoney..." of an empty database. The log rejects any other key, and refuses
-		// any key but "escape" in a save or open panel and any key in a bank dialog without the made-up bank (HarnessRun.mayKey).
+		// sheets never presses "Import from MoneyMoney..." of an empty database. The log rejects any other key. HarnessRun.mayKey
+		// refuses any key but "escape" in a save or open panel, "return" in an alert over the start window, and any key in a
+		// bank dialog, also the progress after a TAN method, unless it reaches the made-up bank or a local service.
 		case "key":
 			let keys: [StaticString] = ["return", "escape", "tab", "cmd+", "cmd-"]
 			guard keys.contains(where: { "\($0)" == argument }) else { return log("key rejected") }
@@ -422,11 +440,19 @@ final class DebugHarness {
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
+		// Logs "refresh refused" when an access of the refresh is not the made-up bank or a local service (HarnessRun.mayReach).
 		case "refresh", "refreshenforced":
 			let enforced = command == "refreshenforced"
-			if argument == "all" { model.refresh(.all, enforced: enforced) }
-			else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { model.refresh(.account(a.id), enforced: enforced) }
-			else if let g = model.ledger.groups.first(where: { $0.name == argument }) { model.refresh(.group(g.id), enforced: enforced) }
+			let scope: RefreshScope? = if argument == "all" { .all }
+				else if let a = model.ledger.accounts.first(where: { $0.name == argument }) { .account(a.id) }
+				else if let g = model.ledger.groups.first(where: { $0.name == argument }) { .group(g.id) }
+				else { nil }
+			guard let scope else { return }
+			#if DEBUG || PERF_HARNESS
+			let recipients = model.ledger.refreshAccounts(scope).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) }
+			guard recipients.allSatisfy({ HarnessRun.mayReach($0, fakeBank: usesFakeBank) }) else { return log("refresh refused") }
+			#endif
+			model.refresh(scope, enforced: enforced)
 		case "status":
 			// Each account by its position and kind, never by its name, IBAN, or account number.
 			for (position, a) in model.ledger.accounts.filter({ $0.accessID != nil }).enumerated() {
@@ -506,6 +532,10 @@ final class DebugHarness {
 			guard let sheet = NSApp.windows.first(where: { $0.isSheet && $0.isVisible }),
 				let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: sheet.windowNumber, context: nil,
 					characters: "\u{1B}", charactersIgnoringModifiers: "\u{1B}", isARepeat: false, keyCode: 53) else { return log("escape no sheet") }
+			#if DEBUG || PERF_HARNESS
+			// Escape cancels the dialog of a refresh, so it follows the rule of "key".
+			guard HarnessRun.mayKey("escape", on: surface(of: sheet), fakeBank: usesFakeBank) else { return log("escape refused") }
+			#endif
 			NSApp.sendEvent(event)
 			DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
 				self?.log("escape", ("open", .state(self?.model?.sync.broker.current?.request.kind)))
@@ -577,7 +607,11 @@ final class DebugHarness {
 		case "extupdate": Task { await model.extensions.update(argument, approving: .init(version: model.extensions.items.first { $0.id == argument }?.available ?? "")) }
 		case "extreview": model.extensions.review(argument)
 		case "extremove": model.extensions.askRemove(argument)
-		case "extfile": model.extensions.pickFile(URL(filePath: argument))
+		case "extfile":
+			model.extensions.pickFile(URL(filePath: argument))
+			#if DEBUG || PERF_HARNESS
+			if case let .fileWarning(_, _, name)? = model.extensions.question { fileExtensions.insert(name) }
+			#endif
 		case "extallow": model.extensions.askAllow(argument)
 		case "extselect": model.extensions.selection = argument
 		// "<id>|<fixture>": the recorded answers that replace the network for an installed extension.
@@ -1181,7 +1215,18 @@ final class DebugHarness {
 		case "save": setup.savePIN = value == "yes"
 		// "no", "offline", or the name of an extension service.
 		case "other": setup.service = value == "no" ? nil : setup.otherServices.first { $0.title == value } ?? .offline
-		case "next": setup.next()
+		case "next":
+			#if DEBUG || PERF_HARNESS
+			// "Next" of the login step logs in at the bank, and "Next" of the first step with the service of an extension
+			// starts its session. Each reaches only the made-up bank or a local service (HarnessRun.mayReach).
+			let reached: HarnessRun.Recipient? = switch (setup.step, setup.service) {
+			case (.login, _): .fints
+			case let (.bank, .extensionService(id, _)?): recipient(of: .extension(id: id))
+			default: nil
+			}
+			if let reached, !HarnessRun.mayReach(reached, fakeBank: usesFakeBank) { return log("setup refused") }
+			#endif
+			setup.next()
 		case "back": setup.back()
 		case "toggle": if setup.selected.remove(value) == nil { setup.selected.insert(value) }
 		// "<account name>": the account that the row with a choice connects.
@@ -1216,15 +1261,49 @@ final class DebugHarness {
 		topSheet ?? NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
 	}
 
-	/// What a key or a press of "key" and "controls" in `window` reaches, for the rules of HarnessRun.
+	/// What a key or a press of "key" and "controls" in `window` reaches, for the rules of HarnessRun. A dialog of the
+	/// broker counts as a bank dialog while it is on screen: a question, and also the progress after the choice of a TAN
+	/// method or medium, whose Escape cancels the refresh. A sheet over the main window while the database is not open
+	/// is an alert, such as "Forgot your password?".
 	private func surface(of window: NSWindow) -> HarnessRun.Surface {
 		guard let model, !(window is NSSavePanel) else { return .filePanel }
-		if model.setup != nil || model.sync.broker.current != nil { return .bankDialog }
-		if model.phase != .unlocked { return .startWindow }
+		if let sheet = model.sync.broker.sheet {
+			switch sheet {
+			case let .prompt(prompt): return .bankDialog(recipient(of: prompt.access))
+			case let .requesting(requesting): return .bankDialog(recipient(of: requesting.access))
+			}
+		}
+		if let setup = model.setup {
+			switch setup.service {
+			case nil: return .bankDialog(.fints)
+			case let .extensionService(id, _)?: return .bankDialog(recipient(of: .extension(id: id)))
+			// An offline account reaches no service.
+			case .offline?: return .other
+			}
+		}
+		if model.phase != .unlocked { return window.isSheet ? .startAlert : .startWindow }
 		switch model.sheet {
 		case .setPassword?, .changePassword?: return .passwordSheet
 		default: return .other
 		}
+	}
+
+	/// Who receives what the harness sends to `access`.
+	private func recipient(of access: Access) -> HarnessRun.Recipient {
+		access.id == SyncDemo.access.id ? .local : recipient(of: access.source)
+	}
+
+	private func recipient(of source: AccessSource) -> HarnessRun.Recipient {
+		switch source {
+		case .fints: .fints
+		case let .extension(id): fileExtensions.contains(id) || model?.extensions.fixtures[id] != nil ? .local : .realService
+		case .finAPI: .realService
+		}
+	}
+
+	/// Whether "answer", "method", "medium", and the answers of "ext..." may answer `prompt`.
+	private func mayAnswer(_ prompt: Prompt) -> Bool {
+		HarnessRun.mayReach(recipient(of: prompt.access), fakeBank: usesFakeBank)
 	}
 
 	/// Whether the FinTS connector talks to the made-up bank. Only a Debug build reads `MONETEN_FINTS_HELPER`, so a Perf
@@ -1616,6 +1695,9 @@ final class DebugHarness {
 			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			let fixture = try parts.count > 2 && !parts[2].isEmpty ? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[2]))) : nil
 			let access = Access(source: .extension(id: package.name), bankName: package.name, loginName: "")
+			#if DEBUG || PERF_HARNESS
+			fileExtensions.insert(package.name)
+			#endif
 			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] line in self?.log(line) }
 			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
 		} catch {
@@ -1640,6 +1722,9 @@ final class DebugHarness {
 				return
 			}
 			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
+			#if DEBUG || PERF_HARNESS
+			fileExtensions.insert(package.name)
+			#endif
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""
 			}
@@ -1710,6 +1795,9 @@ final class DebugHarness {
 
 	private func answer(_ make: () -> UserAnswer) {
 		guard let model, let prompt = model.sync.broker.current else { return log("ext no dialog") }
+		#if DEBUG || PERF_HARNESS
+		guard mayAnswer(prompt) else { return log("ext refused") }
+		#endif
 		model.sync.broker.answer(make(), to: prompt.id)
 	}
 
@@ -1961,7 +2049,13 @@ final class DebugHarness {
 		}
 		savePanelAnswer = { [weak self] panel in
 			self?.log("backup panel", ("title", .hash(panel.title ?? "")), ("message", .hash(panel.message ?? "")), ("name", .hash(panel.nameFieldStringValue)))
-			return URL(filePath: parts[0])
+			// The copy follows this answer at once, so the path is checked again here, after the warning, and the copy goes
+			// to the canonical path of that check (HarnessRun.writeTarget says what this guards against).
+			guard let target = HarnessRun.writeTarget(parts[0], inside: folders) else {
+				self?.log("backup rejected")
+				return nil
+			}
+			return URL(filePath: target)
 		}
 		model.backupDatabase()
 		log("backup", ("alert", model.alert.map { .hash($0.title) } ?? .presence(false)), ("sheet", .state(model.sheet)))
