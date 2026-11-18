@@ -316,7 +316,7 @@ struct BankAccessTests {
 		#expect(giro.refreshedAt == Self.noon)
 		#expect(giro.refreshError == nil)
 
-		let error = RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: later, notices: ["Wartung am 14.11.2026"])
+		let error = RefreshError(failure: .bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), date: later, notices: ["Wartung am 14.11.2026"])
 		giro.record(.failed(error))
 		#expect(giro.refreshedAt == Self.noon)
 		#expect(giro.refreshError == error)
@@ -332,7 +332,7 @@ struct BankAccessTests {
 		var current = opened
 		current.bankBalanceMinor = 234_015
 		current.bankBalanceDate = Self.noon
-		current.record(.failed(RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: Self.noon)))
+		current.record(.failed(RefreshError(failure: .bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), date: Self.noon)))
 		current.record(.refreshed(Self.noon))
 		var edited = opened
 		edited.name = "Haushalt"
@@ -476,7 +476,7 @@ struct BankAccessTests {
 		let tanMethod = BankMessage(code: "9955", text: "Das gewählte TAN-Verfahren ist nicht mehr zugelassen.")
 		for failure in [SyncFailure.bank(tanMethod), .approvalDeclined(nil), .challengeExpired, .invalidChallenge] {
 			#expect(SyncState.failed(failure).accountRefreshes(of: [giro], notices: [], at: at)[giro]
-				== .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, suggestsEditLoginData: true)))
+				== .failed(RefreshError(failure: failure, date: at, suggestsEditLoginData: true)))
 		}
 		for failure in [SyncFailure.network("timeout"), .offline, .pinRejected(BankMessage(code: "9942", text: "PIN falsch")), .tanRejected(tanMethod),
 			.needsUser(.pin), .notRegistered] {
@@ -488,7 +488,7 @@ struct BankAccessTests {
 		}
 		let finished = SyncState.finished(SyncSummary(finishedAt: at, fetched: [giro], failures: [savings: .bank(tanMethod)]))
 		#expect(finished.accountRefreshes(of: [giro, savings], notices: [], at: at)[savings]
-			== .failed(RefreshError(message: tanMethod.text, code: "9955", date: at)))
+			== .failed(RefreshError(failure: .bank(tanMethod), date: at)))
 	}
 
 	@Test("The end of a refresh gives each requested account its outcome, and a cancel gives none")
@@ -500,12 +500,12 @@ struct BankAccessTests {
 		let finished = SyncState.finished(SyncSummary(finishedAt: at, fetched: [giro], failures: [savings: .bank(blocked), card: .notFetched]))
 		#expect(finished.accountRefreshes(of: [giro, savings, card], notices: notices, at: at.addingTimeInterval(5)) == [
 			giro: .refreshed(at),
-			savings: .failed(RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: at, notices: ["Wartung am 14.11.2026"])),
-			card: .failed(RefreshError(message: "Canceled because of the previous error.", code: nil, date: at, notices: ["Wartung am 14.11.2026"])),
+			savings: .failed(RefreshError(failure: .bank(blocked), date: at, notices: ["Wartung am 14.11.2026"])),
+			card: .failed(RefreshError(failure: .notFetched, date: at, notices: ["Wartung am 14.11.2026"])),
 		])
 		#expect(SyncState.failed(.needsUser(.secondFactor)).accountRefreshes(of: [giro, savings], notices: [], at: at) == [
-			giro: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [], waitsForUser: true)),
-			savings: .failed(RefreshError(message: "An authorization is needed. Choose “Refresh Account” to give it.", code: nil, date: at, notices: [], waitsForUser: true)),
+			giro: .failed(RefreshError(failure: .needsUser(.secondFactor), date: at, notices: [], waitsForUser: true)),
+			savings: .failed(RefreshError(failure: .needsUser(.secondFactor), date: at, notices: [], waitsForUser: true)),
 		])
 		#expect(SyncState.cancelled.accountRefreshes(of: [giro], notices: notices, at: at).isEmpty)
 		#expect(SyncState.fetching(done: 0, of: 1).accountRefreshes(of: [giro], notices: [], at: at).isEmpty)

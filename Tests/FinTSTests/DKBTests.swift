@@ -91,8 +91,7 @@ struct DKBTests {
 	func noTANMethod() async throws {
 		let line = #"{"type":"failed","kind":"noTANMethod","code":"9955","text":"Ein-Schritt-TAN-Verfahren nicht zugelassen"}"#
 		let bank = BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen")
-		let named = SyncFailure.noTANMethodOfBank(bank,
-			nextStep: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")
+		let named = SyncFailure.noTANMethodOfBank(bank, nextStep: .dkbApp)
 		for access in [Self.dkb, Self.dkbHost, Self.dkbCode] {
 			await #expect(throws: named) {
 				_ = try await Self.connector("read cmd; echo '\(line)'").listAccounts(of: access, state: nil, session: Session())
