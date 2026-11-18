@@ -148,8 +148,17 @@ struct CSVAccountColumnTests {
 		let codes = try Self.counterparties(Self.export([("0000202051", "BYLADEM1001"), ("0000202052", "COBADEFFXXX"), ("0000202053", "12030000")]))
 		#expect(codes.bics == ["BYLADEM1001", "COBADEFFXXX", "12030000"])
 		// A BIC of 8 characters does not count without an IBAN, but the column keeps it as written.
-		let short = try Self.counterparties(Self.export([("0000202051", "PBNKDEFF"), ("0000202052", "12030000"), ("", "12030000")]))
+		let short = try Self.counterparties(Self.export([("0000202051", "PBNKDEFF"), ("0000202052", "12030000"), ("0000202053", "12030000")]))
 		#expect(short.bics == ["PBNKDEFF", "12030000", "12030000"])
+	}
+
+	/// A row without an account says nothing about the bank column, as a BIC of 8 characters fits only beside an IBAN.
+	@Test("A BIC in a row without an account does not count against the bank column")
+	func bicWithoutAccount() throws {
+		let (layout, ibans, bics) = try Self.counterparties(Self.export([("DE02120300000000202051", "BYLADEM1001"), ("", "PBNKDEFF"), ("", "COBADEFF")]))
+		#expect(layout.columns[.bic] == 6)
+		#expect(ibans == ["DE02120300000000202051", nil, nil])
+		#expect(bics == ["BYLADEM1001", "PBNKDEFF", "COBADEFF"])
 	}
 
 	@Test("Bank codes of 7 or 9 digits in an exported file give no bank code")
