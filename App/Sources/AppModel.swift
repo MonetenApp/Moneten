@@ -1904,7 +1904,7 @@ struct TableKey: Hashable {
 }
 
 /// A row that the table of `key` scrolls to.
-struct RevealedRow: Equatable {
+struct RevealedRow {
 	let id: UUID
 	let key: TableKey
 	let request: Int

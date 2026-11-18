@@ -981,8 +981,8 @@ private struct RowReveal: View {
 	let key: TableKey
 
 	var body: some View {
-		Color.clear.onChange(of: model.revealedRow) { _, row in
-			if let row, row.key == key { proxy.scrollTo(row.id, anchor: .center) }
+		Color.clear.onChange(of: model.revealedRow?.request) {
+			if let row = model.revealedRow, row.key == key { proxy.scrollTo(row.id, anchor: .center) }
 		}
 	}
 }
