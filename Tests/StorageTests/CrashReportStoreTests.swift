@@ -204,6 +204,71 @@ struct CrashReportStoreTests {
 		#expect(pending?.diagnostic.signal == 5)
 	}
 
+	/// Launch A starts at 10:57:50 and crashes at 10:58:05. Launch B starts at 10:58:21 and crashes at 10:58:38. A payload
+	/// of 10:58:00 can be the crash of either launch, so it never replaces the short report of B.
+	@Test("A payload of the minute that two launches share keeps the newer short report", arguments: ["pending", "fallback declined", "details declined"])
+	func sharedMinute(earlier: String) {
+		let minute = 39_480.0 // 10:58:00
+		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
+		var state = CrashReportStore.State()
+		state.start(.init(start: Date(timeIntervalSince1970: minute - 60), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+		state.start(.init(start: Date(timeIntervalSince1970: minute - 10), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+		let fileA = ("Moneten-a.ips", Date(timeIntervalSince1970: minute + 6))
+		state.start(.init(start: Date(timeIntervalSince1970: minute + 21), appVersion: "0.1.0", macOSVersion: "15.2"), files: [fileA])
+		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 6))
+		if earlier == "details declined" {
+			state.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
+			#expect(state.pending?.fallback == nil)
+		}
+		if earlier != "pending" { state.decide(.decline) }
+		state.start(.init(start: Date(timeIntervalSince1970: minute + 67), appVersion: "0.1.0", macOSVersion: "15.2"),
+			files: [fileA, ("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))])
+		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+		state.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
+		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: minute + 46))
+		#expect(state.pending?.diagnostic.signal == nil)
+	}
+
+	/// An earlier crash file dated 10:57:55 proves that the earlier crash came before 10:58:00, so the payload of
+	/// 10:58:00 belongs to launch B even after the user declined the earlier short report.
+	@Test("A payload of the launch minute replaces the short report when the earlier crash came before that minute")
+	func earlierCrashBeforeMinute() {
+		let minute = 39_480.0 // 10:58:00
+		var state = CrashReportStore.State()
+		state.start(.init(start: Date(timeIntervalSince1970: minute - 60), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+		state.start(.init(start: Date(timeIntervalSince1970: minute - 10), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+		let fileA = ("Moneten-a.ips", Date(timeIntervalSince1970: minute - 5))
+		state.start(.init(start: Date(timeIntervalSince1970: minute + 21), appVersion: "0.1.0", macOSVersion: "15.2"), files: [fileA])
+		state.decide(.decline)
+		state.start(.init(start: Date(timeIntervalSince1970: minute + 67), appVersion: "0.1.0", macOSVersion: "15.2"),
+			files: [fileA, ("Moneten-b.ips", Date(timeIntervalSince1970: minute + 46))])
+		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
+		state.receive(payload, at: Date(timeIntervalSince1970: minute), since: Date(timeIntervalSince1970: minute))
+		#expect(state.pending?.fallback == nil)
+		#expect(state.pending?.diagnostic.signal == 5)
+	}
+
+	/// C0 crashes at 1202 under the launch at 1000. The launch at 1205 gets its payload of 1200 and the user declines it.
+	/// The launch at 1205 crashes too, and its file is dated 1290. A replay of the declined payload stays declined.
+	@Test("A replay of a declined payload in the minute of the next launch keeps the newer short report")
+	func declinedPayloadReplay() {
+		let payload = CrashDiagnostic(appVersion: "0.1.0", macOSVersion: "15.2", exceptionType: 6, signal: 5, frames: [])
+		var state = CrashReportStore.State()
+		state.start(.init(start: Date(timeIntervalSince1970: 1_000), appVersion: "0.1.0", macOSVersion: "15.2"), files: [])
+		let fileC0 = ("Moneten-c0.ips", Date(timeIntervalSince1970: 1_203))
+		state.start(.init(start: Date(timeIntervalSince1970: 1_205), appVersion: "0.1.0", macOSVersion: "15.2"), files: [fileC0])
+		state.receive(payload, at: Date(timeIntervalSince1970: 1_200), since: Date(timeIntervalSince1970: 1_200))
+		#expect(state.pending?.diagnostic.signal == 5)
+		state.decide(.decline)
+		#expect(state.latest == Date(timeIntervalSince1970: 1_200))
+		state.start(.init(start: Date(timeIntervalSince1970: 1_300), appVersion: "0.1.0", macOSVersion: "15.2"),
+			files: [fileC0, ("Moneten-c1.ips", Date(timeIntervalSince1970: 1_290))])
+		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: 1_290))
+		state.receive(payload, at: Date(timeIntervalSince1970: 1_200), since: Date(timeIntervalSince1970: 1_200))
+		#expect(state.pending?.fallback?.date == Date(timeIntervalSince1970: 1_290))
+		#expect(state.pending?.diagnostic.signal == nil)
+	}
+
 	@Test("Fallback correlation starts at the minute of the crashed launch and includes at most 60 seconds of file delay",
 		arguments: [959.0, 960, 999, 1_000, 1_001, 1_100, 1_162, 1_163, 1_164])
 	func fallbackTiming(start: TimeInterval) throws {

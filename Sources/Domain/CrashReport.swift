@@ -27,6 +27,8 @@ public struct CrashDiagnostic: Codable, Equatable, Sendable {
 		self.frames = frames
 	}
 
+	/// Reads the JSON of `MXCallStackTree.jsonRepresentation()`. Apple's documentation still shows the stacks inside a
+	/// `callStackTree` object, but the payload captured in task 3.2 of add-crash-reports has `callStacks` at its root.
 	public static func crashedFrames(in data: Data) throws -> [Frame] {
 		let tree = try JSONDecoder().decode(StackTree.self, from: data)
 		var pending = Array((tree.callStacks.first { $0.threadAttributed == true }?.callStackRootFrames ?? []).reversed())

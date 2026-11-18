@@ -39,3 +39,8 @@
 ## 6. Harness runs without Keychain prompts
 
 - [x] 6.1 Keep the crash report key of a harness run in the data folder, and test the store without the login Keychain. Proof: a debug build started twice with the same data folder and a rebuild in between showed no prompt, and the login Keychain has no crash report entry for that folder. A report injected by the harness survived SIGKILL and the rebuild and was offered on the relaunch. `scripts/test.sh --filter CrashReport` passes without Keychain access. The harness scripts no longer delete Keychain entries.
+
+## 7. Review of task 3.2
+
+- [x] 7.1 Open the launch minute only to a payload that no earlier crash can own. Proof: sharedMinute covers launches at 10:57:50 and 10:58:21 that crash in the same minute, with the earlier short report pending, declined, or replaced by its declined details, and failed on 44f21695 with 6 issues. declinedPayloadReplay covers a declined payload of second 1200 replayed against the short report of a crash at second 1290 under a launch at 1205, and failed with 2 issues. earlierCrashBeforeMinute shows that an earlier crash file before the minute still lets the payload replace the short report.
+- [x] 7.2 Log a call stack that cannot be read as `crash frames-undecodable`, without content of the payload, keep the report with empty frames, and count it in `failureCount` of a Debug build.

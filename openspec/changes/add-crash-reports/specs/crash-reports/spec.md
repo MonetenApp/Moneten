@@ -65,6 +65,24 @@ The app SHALL offer the newest available crash report in a sheet after an unexpe
 - **WHEN** a diagnostic beginning and ending at 10:58:00 arrives on the next launch
 - **THEN** its details replace the short report
 
+#### Scenario: Two launches share a minute
+
+- **GIVEN** launch A started at 10:57:50, crashed at 10:58:05, and its crash file is dated 10:58:06
+- **AND** launch B started at 10:58:21 and crashed at 10:58:38, and its crash file is dated 10:58:46
+- **AND** the short report of B awaits a decision on the next launch
+- **WHEN** a diagnostic beginning and ending at 10:58:00 arrives
+- **THEN** the short report of B stays, because the diagnostic can belong to A or to B
+- **AND** the short report of B also stays when the user already declined the short report or the full report of A
+- **AND** if the crash file of A is dated 10:57:55 instead, the diagnostic replaces the short report of B
+
+#### Scenario: Replay of a declined diagnostic in the next minute
+
+- **GIVEN** the launch at second 1000 crashed at second 1202
+- **AND** the launch at second 1205 received its diagnostic from second 1200 to 1200, and the user declined it
+- **AND** the launch at second 1205 crashed, and its crash file is dated second 1290
+- **WHEN** the launch at second 1300 receives the declined diagnostic again
+- **THEN** the short report of the crash at second 1290 stays
+
 #### Scenario: Main window closed
 
 - **GIVEN** only the menu bar is open

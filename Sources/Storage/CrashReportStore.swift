@@ -10,12 +10,19 @@ public struct PendingCrashReport: Codable, Equatable, Sendable {
 	public struct Fallback: Codable, Equatable, Sendable {
 		public let date: Date
 		let launchStart: Date
+		/// True when an earlier crash is known from the whole minute of the launch on: a crash file, a short report, or
+		/// a payload. A payload from before the launch could then belong to that earlier crash.
+		let sharesMinute: Bool
+
+		static func minute(of date: Date) -> Date {
+			Date(timeIntervalSince1970: (date.timeIntervalSince1970 / 60).rounded(.down) * 60)
+		}
 
 		/// MetricKit gives payload times in whole minutes, so a crash in the minute of its launch arrives with a start
-		/// before that launch. The match therefore starts at the whole minute of the launch.
+		/// before that launch. The match therefore starts at the whole minute of the launch, unless an earlier crash
+		/// may own that minute.
 		func matches(start: Date) -> Bool {
-			let launchMinute = Date(timeIntervalSince1970: (launchStart.timeIntervalSince1970 / 60).rounded(.down) * 60)
-			return start >= launchMinute && start <= date.addingTimeInterval(60)
+			start >= (sharesMinute ? launchStart : Self.minute(of: launchStart)) && start <= date.addingTimeInterval(60)
 		}
 	}
 
@@ -81,7 +88,11 @@ public struct CrashReportStore {
 				crash.date > (pending?.date ?? .distantPast) {
 				let diagnostic = CrashDiagnostic(appVersion: previous.appVersion, macOSVersion: previous.macOSVersion,
 					exceptionType: nil, signal: nil, frames: [])
-				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date, launchStart: previous.start))
+				let launchMinute = PendingCrashReport.Fallback.minute(of: previous.start)
+				let earlier = [latest, pending?.date, decidedFallback?.date].compactMap { $0 }
+					+ files.filter { CrashReports.isCrashFile($0.name) && $0.date < previous.start }.map(\.date)
+				pending = PendingCrashReport(date: crash.date, diagnostic: diagnostic, fallback: .init(date: crash.date,
+					launchStart: previous.start, sharesMinute: earlier.contains { $0 >= launchMinute }))
 			}
 			self.launch = launch
 		}
@@ -89,7 +100,9 @@ public struct CrashReportStore {
 		mutating func receive(_ diagnostic: CrashDiagnostic, at date: Date, since start: Date) {
 			let replacesFallback: Bool
 			if let fallback = pending?.fallback {
-				guard fallback.matches(start: start) else { return }
+				// A start before the launch is a whole minute that an older crash may share, so only a payload newer
+				// than every handled one may use it.
+				guard fallback.matches(start: start), start >= fallback.launchStart || date > (latest ?? .distantPast) else { return }
 				replacesFallback = true
 			} else {
 				replacesFallback = false
