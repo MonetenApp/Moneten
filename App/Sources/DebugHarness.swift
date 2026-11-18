@@ -873,6 +873,7 @@ final class DebugHarness {
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
+			case "newGroup": model.sheet = .newGroup
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }

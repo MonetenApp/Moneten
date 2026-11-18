@@ -459,50 +459,47 @@ struct TransactionTable: View {
 			// are built for the visible rows only, so they carry the drag, and its payload is made when
 			// a drag starts.
 			let sections = accountSections
-			// The reader lets "Go to" scroll to the row that it selects.
-			ScrollViewReader { proxy in
-				Group {
-					if let sections {
-						// "Group transactions by account": a heading with the account name above its rows. The
-						// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
-						// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
-						// M-series Mac (perf scenario "group-by-account"), against half a second without it.
-						Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-							columns(currency: currency, balances: balances, checkmarks: checkmarks)
-						} rows: {
-							ForEach(sections, id: \.account.id) { section in
-								Section(section.account.name) {
-									ForEach(section.rows) { TableRow($0) }
-								}
+			Group {
+				if let sections {
+					// "Group transactions by account": a heading with the account name above its rows. The
+					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
+					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
+					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
+					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
+					} rows: {
+						ForEach(sections, id: \.account.id) { section in
+							Section(section.account.name) {
+								ForEach(section.rows) { TableRow($0) }
 							}
 						}
-					} else {
-						Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-							columns(currency: currency, balances: balances, checkmarks: checkmarks)
-						}
+					}
+				} else {
+					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
+						columns(currency: currency, balances: balances, checkmarks: checkmarks)
 					}
 				}
-				.tableStyle(.bordered(alternatesRowBackgrounds: false))
-				.tableColumnHeaders(.hidden)
-				// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
-				// only that text, so this runs only without selected text.
-				.onCopyCommand { copiedRows() }
-				// The table hands over its selection, which keeps the rows that a search hides, so both take the shown rows.
-				.contextMenu(forSelectionType: UUID.self) { ids in
-					TransactionMenu(ids: model.shown(ids))
-				} primaryAction: { ids in
-					let ids = model.shown(ids)
-					if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
-				}
-				.background(RowReveal(proxy: proxy, key: key))
-				// The table starts over for another view, and after a change of `AppModel.replacingTable`, such as a
-				// file import. A refresh usually updates the rows in place (issue #135). SwiftUI otherwise turns a
-				// new view into row insertions, and AppKit then measures every inserted row with its own
-				// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
-				// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
-				// view graph ran out of space. Edits inside one view still update single rows.
-				.id(key)
 			}
+			.tableStyle(.bordered(alternatesRowBackgrounds: false))
+			.tableColumnHeaders(.hidden)
+			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
+			// only that text, so this runs only without selected text.
+			.onCopyCommand { copiedRows() }
+			// The table hands over its selection, which keeps the rows that a search hides, so both take the shown rows.
+			.contextMenu(forSelectionType: UUID.self) { ids in
+				TransactionMenu(ids: model.shown(ids))
+			} primaryAction: { ids in
+				let ids = model.shown(ids)
+				if ids.count == 1, let id = ids.first { model.sheet = .transaction(id) }
+			}
+			.background(RowReveal(key: key))
+			// The table starts over for another view, and after a change of `AppModel.replacingTable`, such as a
+			// file import. A refresh usually updates the rows in place (issue #135). SwiftUI otherwise turns a
+			// new view into row insertions, and AppKit then measures every inserted row with its own
+			// SwiftUI view to keep the top row in place. With thousands of rows, for example from an
+			// account scrolled to the middle to its group, the app hung, and SwiftUI aborted when its
+			// view graph ran out of space. Edits inside one view still update single rows.
+			.id(key)
 		}
 	}
 
@@ -979,13 +976,81 @@ struct CategoryChoices: View {
 /// the table itself does not update for it.
 private struct RowReveal: View {
 	@Environment(AppModel.self) private var model
-	let proxy: ScrollViewProxy
 	let key: TableKey
 
 	var body: some View {
-		Color.clear.onChange(of: model.revealedRow?.request) {
-			if let row = model.revealedRow, row.key == key { proxy.scrollTo(row.id, anchor: .center) }
+		let row = model.revealedRow.flatMap { $0.key == key ? $0 : nil }
+		// The position is looked up only when the request is new. "Go to" opens an account or a category, whose table
+		// has no section headings, so the position in the rows is the row of the table.
+		TableScroller(request: row?.request) { [model, key] in
+			let rows = model.rows(for: key).rows
+			return row.flatMap { r in rows.firstIndex { $0.id == r.id } }.map { ($0, rows.count) }
 		}
+	}
+}
+
+/// Selects and centers a row of the table next to it. `ScrollViewProxy.scrollTo` does not move a SwiftUI `Table` on
+/// macOS, so this works on the `NSTableView` that draws it. A new table takes the request that is already there as done,
+/// so that a view that opens again does not jump to the row of an earlier "Go to".
+private struct TableScroller: NSViewRepresentable {
+	let request: Int?
+	/// The row and the number of rows of the view.
+	let position: () -> (index: Int, count: Int)?
+
+	final class Coordinator {
+		var done: Int?
+	}
+
+	func makeCoordinator() -> Coordinator { Coordinator() }
+
+	func makeNSView(context: Context) -> NSView {
+		context.coordinator.done = request
+		return NSView()
+	}
+
+	func updateNSView(_ view: NSView, context: Context) {
+		guard let request, request != context.coordinator.done else { return }
+		context.coordinator.done = request
+		guard let position = position() else { return }
+		DispatchQueue.main.async { Self.center(position.index, of: position.count, near: view, waits: 20, settles: 5) }
+	}
+
+	/// A new table can get the selection before it has its rows, and then drops it. So this waits up to `waits` turns
+	/// of 0.1 seconds for the rows of the view, and selects the row again when the table has no selection, which only
+	/// repeats the selection of the model. The table places rows by an estimated height until it draws them, so the first scroll stops
+	/// short of a row far down. It scrolls again until the place of the row stays the same, at most `settles` times.
+	@MainActor
+	private static func center(_ index: Int, of count: Int, near view: NSView, waits: Int, settles: Int) {
+		guard let table = table(near: view), table.numberOfRows == count, let clip = table.enclosingScrollView?.contentView else {
+			if waits > 0 {
+				DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { center(index, of: count, near: view, waits: waits - 1, settles: settles) }
+			}
+			return
+		}
+		if table.selectedRow < 0 { table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false) }
+		let row = table.rect(ofRow: index)
+		let height = clip.bounds.height
+		// A rect as tall as the visible part, around the row, centers the row. AppKit keeps the scroll inside the table.
+		table.scrollToVisible(NSRect(x: row.minX, y: row.midY - height / 2, width: row.width, height: height))
+		table.layoutSubtreeIfNeeded()
+		guard settles > 0, table.rect(ofRow: index) != row else { return }
+		DispatchQueue.main.async { center(index, of: count, near: view, waits: 0, settles: settles - 1) }
+	}
+
+	/// The nearest table above `view` in the view tree, which is the table that `view` is the background of.
+	@MainActor
+	private static func table(near view: NSView) -> NSTableView? {
+		func find(in v: NSView) -> NSTableView? {
+			if let t = v as? NSTableView { return t }
+			for sub in v.subviews { if let t = find(in: sub) { return t } }
+			return nil
+		}
+		var ancestor = view.superview
+		while let a = ancestor {
+			if let t = find(in: a) { return t }
+			ancestor = a.superview
+		}
+		return nil
 	}
 }
 
