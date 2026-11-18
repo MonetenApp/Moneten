@@ -193,6 +193,25 @@ class ReleaseNotesTests(unittest.TestCase):
 		result = self.run_script("check-release", "0.1.4", "--build", "105", "--feed", str(first))
 		self.assertIn("has no revision", result.stderr)
 
+	def test_a_first_feed_takes_the_revision_of_a_key_change(self):
+		"""The new feed of a key change starts above the last revision of the old feed."""
+		feed = self.dir / "feed.xml"
+		result = self.run_script("appcast", "0.1.3", "--build", "100", "--first-release", "--revision", "7", "--min-macos", "15.0",
+			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
+			"--length", "1000", "--signature", "sig==", "--out", str(feed))
+		self.assertEqual(result.returncode, 0, result.stderr)
+		self.assertEqual(self.revisions(feed), ["7"])
+		later = self.dir / "later.xml"
+		result = self.run_script("appcast", "0.1.3", "--build", "100", "--feed", str(feed), "--revision", "9", "--min-macos", "15.0",
+			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
+			"--length", "1000", "--signature", "sig==", "--out", str(later))
+		self.assertIn("--revision is only for a first feed", result.stderr)
+		self.assertFalse(later.exists())
+		result = self.run_script("appcast", "0.1.3", "--build", "100", "--first-release", "--revision", "0", "--min-macos", "15.0",
+			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
+			"--length", "1000", "--signature", "sig==", "--out", str(later))
+		self.assertIn("0 is not a whole number of 1 or more", result.stderr)
+
 	def test_appcast_without_readable_feed_fails(self):
 		result = self.appcast("0.1.3", 100, self.dir / "out.xml", feed=self.dir / "missing.xml")
 		self.assertNotEqual(result.returncode, 0)
