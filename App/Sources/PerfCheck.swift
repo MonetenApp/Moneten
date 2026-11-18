@@ -4,6 +4,7 @@ import Domain
 import ExtensionCatalog
 import FinTS
 import Foundation
+import Storage
 import SwiftUI
 import Synchronization
 
@@ -406,12 +407,7 @@ struct PerfScenario {
 		PerfScenario(name: "import-large-csv", budget: halfSecond,
 			setUp: { c in
 				await c.select("Account 7")
-				let today = Day.today()
-				let rows = (0..<importedRows).map { i in
-					let d = today.adding(days: -(i % 2_000))
-					return String(format: "%02d.%02d.%04d;Online Shop;Large %d;-%d,%02d", d.day, d.month, d.year, i, 1 + i % 400, i % 100)
-				}
-				try? (["Buchungstag;Name;Verwendungszweck;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+				writeImportFile(prefix: "Large")
 			},
 			run: { c in
 				guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 7" }) else { return }
@@ -440,6 +436,10 @@ struct PerfScenario {
 				if model.ledger.transactions.count - before != importedRows { c.fail("the category import did not store every row") }
 				if model.ledger.categories.count - categories != 1_000 { c.fail("the category creation limit did not hold") }
 			}),
+		// "Cancel" while a large CSV file is stored (issue #222). The write runs away from the main actor and checks the cancel
+		// before each row, so the cancel ends the import within `cancelLimit` and leaves the account as it was. The setup
+		// starts the import and confirms its preview, so the stall is the one of storing and of the cancel.
+		PerfScenario(name: "cancel-large-import", budget: halfSecond, setUp: { await startImportToCancel($0) }, run: { await cancelImport($0) }),
 		PerfScenario(name: "refresh-booked-file-history", budget: halfSecond,
 			setUp: { c in
 				let account = Account(position: c.model.ledger.accounts.count, name: "Booked file history", kind: .giro, source: .offline)
@@ -583,6 +583,68 @@ struct PerfScenario {
 		model.fileImport?.confirm()
 	}
 
+	/// `importedRows` rows of made-up payments over 2,000 days, each with its own purpose, as a CSV file without a saved profile.
+	private static func writeImportFile(prefix: String) {
+		let today = Day.today()
+		let rows = (0..<importedRows).map { i in
+			let d = today.adding(days: -(i % 2_000))
+			return String(format: "%02d.%02d.%04d;Online Shop;%@ %d;-%d,%02d", d.day, d.month, d.year, prefix, i, 1 + i % 400, i % 100)
+		}
+		try? (["Buchungstag;Name;Verwendungszweck;Betrag"] + rows).joined(separator: "\n").write(to: importFile, atomically: true, encoding: .utf8)
+	}
+
+	/// The setup of "cancel-large-import": an import of `importedRows` rows into "Account 9", confirmed in its preview,
+	/// that has started to store.
+	@MainActor private static func startImportToCancel(_ c: PerfContext) async {
+		await c.select("Account 9")
+		writeImportFile(prefix: "Cancel")
+		guard let account = c.model.selectedAccount else { return c.fail("no target account") }
+		let model = c.model
+		pendingImport = Task { await model.importFiles([importFile], into: account, alwaysPreview: false) }
+		await confirmPreview(model)
+		for _ in 0..<2_400 where model.fileImport?.storing == nil { try? await Task.sleep(for: .milliseconds(50)) }
+		if model.fileImport?.storing == nil { c.fail("the import did not start storing") }
+	}
+
+	@MainActor private static func cancelImport(_ c: PerfContext) async {
+		guard let account = c.model.ledger.accounts.first(where: { $0.name == "Account 9" }), let run = c.model.fileImport,
+			let pending = pendingImport else { return c.fail("no import to cancel") }
+		pendingImport = nil
+		let before = c.model.ledger.transactions(ofAccount: account.id).count
+		// Into the write, which takes more than a second for 50,000 rows.
+		try? await Task.sleep(for: .milliseconds(300))
+		let clock = ContinuousClock()
+		let start = clock.now
+		run.cancel()
+		await pending.value
+		let took = clock.now - start
+		// The result waits in line until the import sheet has slid out, and then shows as an alert sheet.
+		let ended = clock.now
+		while c.model.alerts.panel == nil, clock.now - ended < alertLimit { try? await Task.sleep(for: .milliseconds(50)) }
+		let shown = c.model.alerts.panel != nil
+		let alertTook = clock.now - ended
+		let canceled = c.model.alert?.message.hasPrefix("Import canceled. 0 files were imported before.") == true
+		c.harness.run("alert", "")
+		c.harness.log("perf cancel", ("cancel_ms", .count(Int((took / .milliseconds(1)).rounded()))), ("canceled", .flag(canceled)),
+			("alert_ms", .count(Int((alertTook / .milliseconds(1)).rounded()))), ("shown", .flag(shown)))
+		if !canceled { c.fail("the result does not report the cancel") }
+		if !shown { c.fail("the result did not show after the sheet closed") }
+		if took > cancelLimit { c.fail("the cancel did not end the import in time") }
+		if c.model.ledger.transactions(ofAccount: account.id).count != before { c.fail("the cancel changed the ledger") }
+		if await storedRows(of: account.id, in: c.model.store) != before { c.fail("the cancel left rows in the database") }
+	}
+
+	/// The rows of an account in the database, read away from the main actor.
+	nonisolated private static func storedRows(of account: UUID, in store: Store?) async -> Int? {
+		try? store?.loadLedger().transactions(ofAccount: account).count
+	}
+
+	/// The import of "cancel-large-import", which its setup starts and its run cancels.
+	private static var pendingImport: Task<Void, Never>?
+	/// A canceled write rolls back and the sheet closes. Before the cancel was checked in the write, it waited for all rows.
+	private static let cancelLimit = Duration.seconds(2)
+	/// The result shows once the sheet has slid out. A sheet without `onDismiss` holds it back for 3 seconds, so this waits longer.
+	private static let alertLimit = Duration.seconds(4)
 	static let importedRows = 50_000
 	static let importFile = FileManager.default.temporaryDirectory.appending(path: "perf-import.csv")
 
