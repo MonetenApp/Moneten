@@ -96,6 +96,13 @@ The app SHALL find the bank from a name, an IBAN, or a Bankleitzahl that the use
 - **THEN** the list shows "Postbank / FYRST" with "Berlin · 10010010"
 - **AND** "postbank" lists it too
 
+#### Scenario: Consumer brand on the Bankleitzahl of a payment institution
+
+- **GIVEN** the bank directory names the Bankleitzahl 70017000 "PayCenter GmbH" in Freising, and VIMpay is the consumer brand of PayCenter on the same Bankleitzahl
+- **WHEN** the user enters "vimpay"
+- **THEN** the list shows "PayCenter / VIMpay" with "Freising · 70017000"
+- **AND** "paycenter" lists it too
+
 #### Scenario: Old entry of a merged bank
 
 - **GIVEN** the bank directory lists "Sparkasse Bonn -alt-" and "Sparkasse KölnBonn"
@@ -315,6 +322,12 @@ The app SHALL ask for the login data in the second step with the field names tha
 #### Scenario: norisbank
 
 - **GIVEN** the user chose norisbank with the Bankleitzahl 10077777, whose FinTS address is on the host `fints.norisbank.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
+
+#### Scenario: PayCenter and VIMpay
+
+- **GIVEN** the user chose "PayCenter / VIMpay" with the Bankleitzahl 70017000, whose FinTS address is on the host `fints.paycenter.de`
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
 

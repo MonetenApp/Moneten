@@ -315,6 +315,18 @@ public struct TANField: Sendable, Equatable {
 		return text
 	}
 
+	/// What the dialog says while `text` is shorter than the field needs, such as "Enter 6 characters.", because "Continue"
+	/// stays disabled then. Nil for an empty text, which "Required" covers, for a long enough text, and for a field without a
+	/// length. A note needs a lower bound above 1, so its count is never singular.
+	public func lengthNote(_ text: String) -> String? {
+		guard let length, !text.isEmpty, text.count < length.lowerBound else { return nil }
+		if length.lowerBound == length.upperBound {
+			return isNumeric ? String(localized: "Enter \(length.lowerBound) digits.") : String(localized: "Enter \(length.lowerBound) characters.")
+		}
+		return isNumeric ? String(localized: "Enter \(length.lowerBound) to \(length.upperBound) digits.")
+			: String(localized: "Enter \(length.lowerBound) to \(length.upperBound) characters.")
+	}
+
 	/// The text is complete enough to send.
 	public func isComplete(_ text: String) -> Bool {
 		guard !text.isEmpty else { return false }

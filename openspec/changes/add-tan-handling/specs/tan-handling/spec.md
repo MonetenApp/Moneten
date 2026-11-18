@@ -201,6 +201,48 @@ The app SHALL accept a typed TAN of digits only for the photoTAN of Commerzbank 
 - **WHEN** the user types "123456"
 - **THEN** "Continue" is enabled
 
+### Requirement: TAN length of PayCenter
+
+The app SHALL accept a typed TAN of exactly 6 characters for the method 911 on `fints.paycenter.de`, and it SHALL say so while the TAN is shorter. The field stops at 6 characters, and "Continue" stays disabled until it holds 6. A TAN with a missing character then never reaches the bank, where it would count as a wrong attempt. Other methods and other hosts keep their field.
+
+#### Scenario: TAN of 5 characters
+
+- **GIVEN** a TAN request of method 911 from `https://fints.paycenter.de`
+- **WHEN** the user types "12345"
+- **THEN** the dialog says "Enter 6 characters." and "Continue" stays disabled, so the app sends nothing
+- **WHEN** the user types "123456"
+- **THEN** the dialog says nothing about the length, "Continue" is enabled, and the app sends "123456"
+
+#### Scenario: TAN of 7 characters
+
+- **GIVEN** a TAN request of method 911 from `https://fints.paycenter.de`
+- **WHEN** the user types "1234567"
+- **THEN** the field holds "123456"
+
+#### Scenario: Same method code at another bank
+
+- **GIVEN** a TAN request of "Musterbank" for the method 911 from `https://fints.musterbank.example/fints`
+- **WHEN** the user types "12345"
+- **THEN** "Continue" is enabled
+
+### Requirement: Name the length of a TAN field
+
+The app SHALL say how many characters a TAN field with a set length needs while the typed TAN is shorter than that. "Continue" is disabled then, and the line says why. The line names digits for a field of digits only and characters for any other field.
+
+#### Scenario: Range of digits
+
+- **GIVEN** a TAN request of Commerzbank for the method 900, whose bank parameters announce 10 characters
+- **WHEN** the user types "123456"
+- **THEN** the dialog says "Enter 7 to 10 digits."
+- **WHEN** the user types "1234567"
+- **THEN** the line is gone
+
+#### Scenario: Empty field
+
+- **GIVEN** a TAN request of method 911 from `https://fints.paycenter.de`
+- **WHEN** the field is empty
+- **THEN** the dialog shows no line about the length, and "Continue" stays disabled
+
 ### Requirement: Send a typed TAN of Deutsche Bank, Postbank, and norisbank in capitals
 
 The app SHALL turn the letters of a typed TAN into capitals as the user types, when the FinTS address of the bank is on a host that ends in `.deutsche-bank.de`, `.postbank.de`, or `.norisbank.de`. A TAN typed in lower case then does not count as a wrong TAN at the bank. The TAN of any other bank stays as the user types it.
