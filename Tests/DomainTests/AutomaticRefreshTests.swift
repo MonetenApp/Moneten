@@ -64,7 +64,7 @@ struct AutomaticRefreshTests {
 
 	@Test("A failed refresh is tried again one interval after the failure, not at every run")
 	func failure() {
-		let error = RefreshError(message: "The bank could not be reached: timeout", date: Self.hours(3))
+		let error = RefreshError(failure: .network("timeout"), date: Self.hours(3))
 		let giro = Self.account("Giro", error: error)
 		#expect(Self.due([giro], at: Self.hours(4)).isEmpty)
 		#expect(Self.due([giro], at: Self.hours(5)) == [Self.access: ["Giro"]])
@@ -80,7 +80,7 @@ struct AutomaticRefreshTests {
 
 	@Test("An account that waits for the user stays out of the automatic refresh, and every command still fetches it")
 	func waitsForUser() {
-		let tan = RefreshError(message: SyncFailure.needsUser(.secondFactor).message, date: Self.hours(2), waitsForUser: true)
+		let tan = RefreshError(failure: .needsUser(.secondFactor), date: Self.hours(2), waitsForUser: true)
 		let giro = Self.account("Giro", error: tan)
 		let ledger = Ledger(accounts: [giro])
 		#expect(ledger.dueAccounts(at: Self.hours(100)).isEmpty)
@@ -107,7 +107,7 @@ struct AutomaticRefreshTests {
 		(.needsUser(.allowHost), true, false), (.pinRejected(BankMessage(code: "9942", text: "PIN falsch")), true, false), (.loginRejected, true, false),
 		(.accessBlocked(BankMessage(code: "9931", text: "Zugang gesperrt")), true, false),
 		(.noTANMethod(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen")), true, false),
-		(.noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: "Set up the DKB app."), true, false),
+		(.noTANMethodOfBank(BankMessage(code: "9955", text: "Ein-Schritt-TAN-Verfahren nicht zugelassen"), nextStep: .dkbApp), true, false),
 		(.approvalDeclined(BankMessage(code: "9951", text: "Zeitüberschreitung")), false, true),
 		(.network("timeout"), false, false), (.bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), false, true), (.notFetched, false, false),
 		(.tanRejected(BankMessage(text: "TAN falsch")), false, false), (.challengeExpired, false, true), (.offline, false, false),
@@ -116,7 +116,7 @@ struct AutomaticRefreshTests {
 		let at = Self.eight
 		let id = UUID()
 		let refreshes = SyncState.failed(failure).accountRefreshes(of: [id], notices: [], at: at)
-		#expect(refreshes == [id: .failed(RefreshError(message: failure.message, code: failure.bankMessage?.code, date: at, waitsForUser: waits,
+		#expect(refreshes == [id: .failed(RefreshError(failure: failure, date: at, waitsForUser: waits,
 			suggestsEditLoginData: suggestsEditLoginData))])
 	}
 
@@ -124,7 +124,7 @@ struct AutomaticRefreshTests {
 	func oldError() throws {
 		let json = Data(#"{"message":"Zugang vorübergehend gesperrt","code":"9010","date":0,"notices":[]}"#.utf8)
 		let error = try JSONDecoder().decode(RefreshError.self, from: json)
-		#expect(error == RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: Date(timeIntervalSinceReferenceDate: 0)))
+		#expect(error == RefreshError(failure: .bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), date: Date(timeIntervalSinceReferenceDate: 0)))
 	}
 
 	@Test("Refresh All Accounts and Refresh Accounts leave out an account with the interval never, and Refresh Account fetches it")
