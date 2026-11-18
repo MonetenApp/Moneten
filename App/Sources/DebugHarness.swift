@@ -706,7 +706,7 @@ final class DebugHarness {
 		case "refreshfailed":
 			// "<account>" stores a made-up error of a failed refresh on the account, so that the sidebar and the popover show its mark.
 			if var account = model.ledger.accounts.first(where: { $0.name == argument }) {
-				account.refreshError = RefreshError(message: "The bank refused the refresh.", date: Date())
+				account.refreshError = RefreshError(failure: .bank(BankMessage(text: "The bank refused the refresh.")), date: Date())
 				model.save(account: account)
 			}
 		case "portfoliovalue":

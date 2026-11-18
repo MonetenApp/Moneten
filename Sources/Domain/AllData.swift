@@ -4,7 +4,9 @@ import Foundation
 /// file of docs/export-format.md, and `init(json:)` reads it again without loss. Saved PINs, the state of each
 /// access, and everything about extensions stay out.
 public struct AllData: Sendable, Equatable {
-	public static let formatVersion = 2
+	/// 3 since the error of a refresh holds `failure` in place of the required `message` (#310). A reader of version 2
+	/// would refuse such a file as damaged, so the higher version makes it ask for a newer app.
+	public static let formatVersion = 3
 
 	public var exportedAt: Date
 	public var groups: [AccountGroup]

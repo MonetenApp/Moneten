@@ -45,7 +45,6 @@ enum DKB {
 	/// every login and every download. Any other error stays as it is.
 	static func failure(_ error: any Error, bankCode: String?, server: URL?) -> any Error {
 		guard case let .noTANMethod(message)? = error as? SyncFailure, isDKB(bankCode: bankCode, server: server) else { return error }
-		return SyncFailure.noTANMethodOfBank(message,
-			nextStep: String(localized: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”."))
+		return SyncFailure.noTANMethodOfBank(message, nextStep: .dkbApp)
 	}
 }

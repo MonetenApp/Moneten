@@ -353,14 +353,14 @@ The app SHALL count each part with its own amount and category in search results
 
 ### Requirement: A complete export preserves splits and review reasons
 
-The app SHALL preserve the original transactions, their split parts, and their review reasons through "Export All Data..." and "Import All Data..." in format version 2. Each part keeps its identifier, order, amount, category, comment, and VAT data. Import still accepts version 1, with `needsReview` true read as the review reason for an unclear booking and false read as no review.
+The app SHALL preserve the original transactions, their split parts, and their review reasons through "Export All Data..." and "Import All Data..." from format version 2 on. Each part keeps its identifier, order, amount, category, comment, and VAT data. Import still accepts version 1, with `needsReview` true read as the review reason for an unclear booking and false read as no review.
 
 #### Scenario: A split survives a complete export and import
 
 - **GIVEN** a booked -119,00 € transaction in "Groceries" with comment "Invoice" and review for an unclear booking
 - **AND** its parts are -100,00 € in "Household" with comment "Net goods" and the net label at 19 %, and -19,00 € in "Drinks" with comment "Tax" and the tax label at 19 %
 - **AND** a second transaction of -85,00 € has the review reason for an undone split
-- **WHEN** the user exports all data and imports the version-2 file into an empty database
+- **WHEN** the user exports all data and imports the file into an empty database
 - **THEN** the original and both parts keep their identifiers, links, order, literal amounts, categories, comments, and VAT labels
 - **AND** both transactions keep their review reasons
 - **AND** the account balance stays unchanged and no part becomes a separate stored transaction

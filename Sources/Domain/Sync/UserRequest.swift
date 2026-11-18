@@ -43,7 +43,7 @@ public enum UserRequest: Sendable, Equatable {
 	/// The login data of an extension service, with the fields of its manifest.
 	case login(LoginRequest)
 
-	public enum Kind: Sendable, Equatable {
+	public enum Kind: String, Sendable, Hashable, Codable {
 		case pin, secondFactor, allowHost, login
 	}
 
