@@ -675,6 +675,60 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
 
+### Requirement: Value of a holding from its quantity and its price
+
+The app SHALL count a holding without a value on a page of the custody account balance without a total with its quantity times its price, and a nominal amount at a price in percent with the nominal amount times the price divided by 100, in the currency of the security. When a holding has no value and the app cannot compute one, the account fails, so that the app never shows a sum that leaves out a holding.
+
+#### Scenario: Holdings without a value but with a quantity and a price
+
+- **GIVEN** the bank answers the custody account balance of "Depot" on 12.11.2026 without a total, with a share worth 1.200,00 €, 4 shares at the price 12,50 € without a value, and a bond in euro with the nominal amount 1.000,00 at the price 98 % without a value
+- **WHEN** the refresh ends
+- **THEN** "Depot" shows 2.230,00 €
+- **AND** the value of "Depot" on 12.11.2026 is 2.230,00 €
+
+#### Scenario: Holding without a value and without a price
+
+- **GIVEN** "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 10.000,00 € and a holding of 10 shares without a price and without a value
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+- **AND** "Depot" keeps 24.518,37 €
+
+#### Scenario: Bond without a value and without the currency of the security
+
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a bond of the nominal amount 1.000 at the price 98 % without a value and without the currency of the security
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
+### Requirement: Bonds as units with a value 100 times too large
+
+The app SHALL read a holding as units at a price in percent as a nominal amount, and divide its values by 100, when a bank test showed that the FinTS server of the account sends a bond so with a value 100 times too large. Every other server keeps the values of the bank.
+
+#### Scenario: Bond as units at a server that sends its value 100 times too large
+
+- **GIVEN** a bank test showed that the FinTS server of "Depot" sends a bond as units with a value 100 times too large
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a bond of 1.000 units at the price 98 % and the value 98.000,00 €
+- **THEN** the bond counts 980,00 € with the nominal amount 1.000
+- **AND** "Depot" shows 980,00 €
+
+#### Scenario: Bond as units at any other server
+
+- **WHEN** the FinTS server of another bank answers the custody account balance of "Depot" without a total, with a bond of 1.000 units at the price 98 % and the value 98.000,00 €
+- **THEN** "Depot" shows 98.000,00 €
+
+### Requirement: Holdings in more than one currency
+
+The app SHALL count each holding of a page of the custody account balance without a total with its value in the currency of the account, when the values of the holdings have more than one currency and the bank also sends the value of each holding in the currency of the account.
+
+#### Scenario: Holdings in another currency with a value in the currency of the account
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD that the bank also states as 920,00 €, and a holding worth 500,00 €
+- **THEN** "Depot" shows 1.420,00 €
+
+#### Scenario: Holding in another currency without a value in the currency of the account
+
+- **WHEN** the bank answers the custody account balance of the euro account "Depot" without a total, with a holding worth 1.000,00 USD and a holding worth 500,00 €
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+
 #### Scenario: Another server with a similar name
 
 - **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
