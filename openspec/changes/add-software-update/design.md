@@ -29,7 +29,7 @@ The app uses Sparkle 2 for the feed, the download, the check of the signature, a
 
 A Debug build trusts a test key instead: the configuration Debug in `App/project.yml` sets its public key. Its private key is public on purpose, in `Fixtures/update`, so every contributor and the dry run can sign test feeds with it. That is safe because a Debug build looks for updates only in the feed that `MONETEN_FEED_URL` names, and a Release build never carries the test key. So the local test feeds and test disk images of the tasks are signed with the test key and never need the production key. `scripts/update-test-feed.sh` writes them with `release-notes.py appcast` and `sign_update`, as a release does.
 
-A Release build carries the production key, which the owner commits in `App/project.yml` in place of the placeholder `none`. A build with the placeholder does not start Sparkle, and its update settings are off. `scripts/release.sh preflight` fails while the placeholder is there, the release workflow fails right after step 2 when the Info.plist of the exported app does not carry the committed production key or carries the test key, and step 5 fails when the private key of the secret does not belong to the public key in the app.
+A Release build carries the production key, which is committed in the base settings of the target `Moneten` in `App/project.yml` (#424). The configuration Perf keeps the placeholder `none`, so a Perf build never looks for updates while `scripts/perf-check.sh` measures it. A build with the placeholder does not start Sparkle, and its update settings are off. `scripts/release.sh preflight` fails while the placeholder is there, the release workflow fails right after step 2 when the Info.plist of the exported app does not carry the committed production key or carries the test key, and step 5 fails when the private key of the secret does not belong to the public key in the app.
 
 Sparkle 2.10.1 or later is a package of the app target in `App/project.yml`, not of the root package. Only `App` uses it, and the libraries stay free of it.
 
@@ -210,7 +210,7 @@ A local build with another JDK than the pinned one still names the pinned runtim
 
 ## Migration Plan
 
-Builds before the first release have no Sparkle and update by hand. The first notarized release is v0.1.0, and every later version updates itself. To withdraw a version, `scripts/release.sh withdraw` removes its item from the checked feed, and the owner publishes a fixed version with a higher build number.
+Builds made before the production key was committed have no working Sparkle and update by hand. A Release build made after it looks for updates, and finds none until the first release publishes a feed. The first notarized release is v0.1.0, and every later version updates itself. To withdraw a version, `scripts/release.sh withdraw` removes its item from the checked feed, and the owner publishes a fixed version with a higher build number.
 
 ## Open Questions
 

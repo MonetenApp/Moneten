@@ -9,7 +9,7 @@ import Sparkle
 final class AppUpdater: NSObject {
 	/// The release page that every failure names for a manual download.
 	static let releasePage = URL(string: "https://github.com/MonetenApp/Moneten/releases")!
-	/// The placeholder of App/project.yml until the owner commits the production key.
+	/// The placeholder of App/project.yml for a build that must not look for updates: the configuration Perf.
 	static let keyPlaceholder = "none"
 
 	let driver = UpdateDriver()
