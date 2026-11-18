@@ -26,6 +26,11 @@ READ_BY_TESTS = {"docs/export-format.md"}
 
 
 def is_doc(path):
+	# A name that is not UTF-8 arrives with surrogate escapes. It is never documentation.
+	try:
+		path.encode("utf-8")
+	except UnicodeEncodeError:
+		return False
 	if path in READ_BY_TESTS:
 		return False
 	if path in DOC_FILES:
@@ -42,10 +47,19 @@ def changed_paths(base, head):
 	# Without renames, a moved file counts with its old and its new path.
 	out = subprocess.run(["git", "diff", "--no-renames", "--name-only", "-z", f"{base}...{head}"],
 		check=True, capture_output=True).stdout
-	return [p for p in out.decode().split("\0") if p]
+	return [p for p in out.decode("utf-8", errors="surrogateescape").split("\0") if p]
 
 
 def main(argv):
+	try:
+		run = decide(argv)
+	except Exception as error:  # Any failure of the router runs everything.
+		print(f"The router failed ({error!r}), so every job runs.", file=sys.stderr)
+		run = True
+	print(f"macos={'true' if run else 'false'}")
+
+
+def decide(argv):
 	event = argv[1] if len(argv) > 1 else ""
 	if event != "pull_request":
 		run = True
@@ -56,9 +70,9 @@ def main(argv):
 			print(f"No diff ({error}), so every job runs.", file=sys.stderr)
 			paths = []
 		for path in paths:
-			print(f"{'docs ' if is_doc(path) else 'other'} {path}", file=sys.stderr)
+			print(f"{'docs ' if is_doc(path) else 'other'} {path!r}", file=sys.stderr)
 		run = needs_macos(paths)
-	print(f"macos={'true' if run else 'false'}")
+	return run
 
 
 if __name__ == "__main__":

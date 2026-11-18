@@ -65,7 +65,8 @@ jobs:
 
   test:
     needs: changes
-    if: needs.changes.outputs.macos == 'true'
+    # Only an explicit docs-only decision of a successful router skips the job. A failed or empty router runs it.
+    if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' }}
     runs-on: macos-15
     # A green run takes about 30 minutes. A hung test then ends the job instead of holding a runner for six hours.
     timeout-minutes: 90

@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Tests of scripts/ci-changes.py, run by scripts/check.sh and by the specs job of CI."""
 
+import contextlib
 import importlib.util
+import io
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -20,18 +23,20 @@ spec.loader.exec_module(ci)
 CONSUMERS = ["Tests", "Sources", "App", "Tools", "scripts", "Package.swift", ".github/workflows/ci.yml"]
 UBUNTU_ONLY = ["scripts/check-docs.py", "scripts/check-ui.py", "scripts/roadmap.py", "scripts/ci-changes.py", "scripts/test-ci-changes.py"]
 
-# Lines outside comments that name a file on the list but do not read it. A new line that names one
-# fails the test: then either the file leaves the list, or the line goes here with its reason.
+# Lines outside comments that name a file on the list but do not read it, as (file, part of the line). A
+# new line that names one fails the test, even in a file listed here: then either the file leaves the list,
+# or the line goes here with its reason.
 MENTIONS = {
 	# A README.md inside an extension package, not the one of the repository.
-	("App/Sources/PerfCheck.swift", "README.md"),
-	("Tests/ExtensionCatalogTests/FileInstallTests.swift", "README.md"),
-	("Tests/ExtensionCatalogTests/InstallerTests.swift", "README.md"),
-	("Tests/ExtensionCatalogTests/Support.swift", "README.md"),
+	("App/Sources/PerfCheck.swift", '"README.md", "manifest.json"].map'),
+	("Tests/ExtensionCatalogTests/FileInstallTests.swift", '"README.md": "# Broker'),
+	("Tests/ExtensionCatalogTests/InstallerTests.swift", '"LICENSE", "README.md", "manifest.json"])'),
+	("Tests/ExtensionCatalogTests/Support.swift", '"README.md": Data("# Example Bank'),
 	# Error messages that send the reader to the page.
-	("scripts/build-app.sh", "docs/releasing.md"),
-	("scripts/release.sh", "docs/releasing.md"),
-	("scripts/check-localization.py", "CONTRIBUTING.md"),
+	("scripts/build-app.sh", 'private key in the Keychain. See docs/releasing.md."'),
+	("scripts/release.sh", 'docs/releasing.md explains how the owner adds it."'),
+	("scripts/release.sh", 'no FinTS product ID. See docs/releasing.md."'),
+	("scripts/check-localization.py", 'CONTRIBUTING.md explains it.")'),
 }
 
 # A comment line of Swift, Java, Lua, YAML, and the scripts. "#expect(" in Swift is code.
@@ -45,7 +50,11 @@ def docs():
 
 
 def references(listed):
-	"""Yield (file, path) for each line outside comments that names a listed file or a folder of one."""
+	"""Yield (file, path, line) for each line outside comments that names a listed file or a folder of one.
+
+	The scan reads paths as they are written. It misses a path that code joins from parts, a shell continuation
+	line that starts with -- or *, which it takes for a comment, and code that walks a whole folder tree.
+	"""
 	pattern = "|".join(["docs", "openspec", "ISSUE_TEMPLATE"] + [re.escape(name) for name in ci.DOC_FILES])
 	out = subprocess.run(["git", "grep", "-n", "-I", "-E", pattern, "--", *CONSUMERS] + [f":!{path}" for path in UBUNTU_ONLY],
 		cwd=ROOT, capture_output=True).stdout.decode()
@@ -58,7 +67,7 @@ def references(listed):
 			path = re.sub(r"^(\.{1,2}/)+", "", token).rstrip("./")
 			# A folder counts only as a path, such as docs/ or openspec/changes, not as the word "docs".
 			if path in listed or (path in folders and "/" in token):
-				yield file, path
+				yield file, path, text
 
 
 class Routing(unittest.TestCase):
@@ -103,13 +112,88 @@ class Readers(unittest.TestCase):
 		self.assertIn("openspec/config.yaml", listed)
 		self.assertNotIn("docs/export-format.md", listed)
 		found = set(references(listed))
-		self.assertEqual(found - MENTIONS, set(), "a file on the list is read by the macOS job: drop it from the list in ci-changes.py")
-		self.assertEqual(MENTIONS - found, set(), "a mention is gone: remove it from MENTIONS")
+		known = lambda file, text: any(file == f and part in text for f, part in MENTIONS)
+		unknown = {(file, path) for file, path, text in found if not known(file, text)}
+		self.assertEqual(unknown, set(), "a file on the list is read by the macOS job: drop it from the list in ci-changes.py")
+		gone = {(f, part) for f, part in MENTIONS if not any(file == f and part in text for file, _, text in found)}
+		self.assertEqual(gone, set(), "a mention is gone: remove it from MENTIONS")
 
 	def test_the_scan_finds_a_reader(self):
 		# The test of the export format reads its page. Without READ_BY_TESTS the scan must name it.
 		listed = docs() | {"docs/export-format.md"}
-		self.assertIn(("Tests/StorageTests/AllDataTests.swift", "docs/export-format.md"), set(references(listed)))
+		self.assertIn(("Tests/StorageTests/AllDataTests.swift", "docs/export-format.md"), {(f, p) for f, p, _ in references(listed)})
+
+
+class Failures(unittest.TestCase):
+	def test_a_failed_router_runs_everything(self):
+		def broken(argv):
+			raise RuntimeError("probe")
+		saved, ci.decide = ci.decide, broken
+		try:
+			out = io.StringIO()
+			with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+				ci.main(["ci-changes.py", "pull_request", "a", "b"])
+		finally:
+			ci.decide = saved
+		self.assertEqual(out.getvalue().strip(), "macos=true")
+
+	def test_the_macos_job_skips_only_on_an_explicit_docs_only_decision(self):
+		# A failed, cancelled, or silent router leaves the output empty, and != 'false' then runs the job.
+		workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+		self.assertIn("if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' }}", workflow)
+
+
+class Diff(unittest.TestCase):
+	"""The router on a real repository: renames, deletions, odd names, and a name that is not UTF-8."""
+
+	def setUp(self):
+		self.dir = tempfile.TemporaryDirectory()
+		self.repo = Path(self.dir.name)
+		self.git("init", "-q", "-b", "main")
+		self.git("config", "user.email", "ci@example.invalid")
+		self.git("config", "user.name", "CI")
+		for name in ["docs/old.md", "docs/gone.md", "README.md"]:
+			(self.repo / name).parent.mkdir(parents=True, exist_ok=True)
+			(self.repo / name).write_text("text\n")
+		self.git("add", "-A")
+		self.git("commit", "-q", "-m", "base")
+		self.git("checkout", "-q", "-b", "change")
+
+	def tearDown(self):
+		self.dir.cleanup()
+
+	def git(self, *args):
+		subprocess.run(["git", *args], cwd=self.repo, check=True, capture_output=True)
+
+	def route(self):
+		self.git("add", "-A")
+		self.git("commit", "-q", "-m", "change")
+		return subprocess.run([sys.executable, str(SCRIPT), "pull_request", "main", "HEAD"], cwd=self.repo,
+			capture_output=True, text=True).stdout.strip()
+
+	def test_a_rename_and_a_deletion_of_docs_skip(self):
+		self.git("mv", "docs/old.md", "docs/new.md")
+		self.git("rm", "-q", "docs/gone.md")
+		self.assertEqual(self.route(), "macos=false")
+
+	def test_a_doc_renamed_out_of_the_docs_runs(self):
+		(self.repo / "Sources").mkdir()
+		self.git("mv", "docs/old.md", "Sources/old.md")
+		self.assertEqual(self.route(), "macos=true")
+
+	def test_an_odd_name_in_the_docs_skips(self):
+		(self.repo / "docs/a b\nc.md").write_text("text\n")
+		self.assertEqual(self.route(), "macos=false")
+
+	def test_a_name_that_is_not_utf8_runs(self):
+		# APFS refuses such a name on disk, so the name goes into the index only.
+		blob = subprocess.run(["git", "hash-object", "-w", "--stdin"], cwd=self.repo, input=b"text\n", check=True,
+			capture_output=True).stdout.decode().strip()
+		subprocess.run([b"git", b"update-index", b"--add", b"--cacheinfo", f"100644,{blob},".encode() + b"docs/x\xff.md"],
+			cwd=self.repo, check=True, capture_output=True)
+		self.git("commit", "-q", "-m", "change")
+		out = subprocess.run([sys.executable, str(SCRIPT), "pull_request", "main", "HEAD"], cwd=self.repo, capture_output=True, text=True)
+		self.assertEqual(out.stdout.strip(), "macos=true")
 
 
 if __name__ == "__main__":
