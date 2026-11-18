@@ -297,15 +297,11 @@ final class AppModel {
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
 	}
-	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:))
+	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
 	/// The view mode of the selected view. Account views and category views each keep their own.
 	var viewMode: ViewMode {
 		get { viewModes[viewKind] }
-		set {
-			let kind = viewKind
-			viewModes[kind] = newValue
-			UserDefaults.standard.set(newValue.rawValue, forKey: ViewModes.key(of: kind))
-		}
+		set { viewModes.set(newValue, for: viewKind) { UserDefaults.standard.set($1, forKey: $0) } }
 	}
 	/// A view without a selection draws no chart, so its mode is that of the account views.
 	private var viewKind: ViewModes.Kind {

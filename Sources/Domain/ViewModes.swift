@@ -27,15 +27,26 @@ public struct ViewModes: Equatable, Sendable {
 	}
 
 	/// The modes that `stored` reads by key. A kind without a readable mode starts with the one mode of earlier
-	/// versions, or else with the bar chart.
-	public init(stored: (String) -> String?) {
+	/// versions, or else with the bar chart. A category mode taken from the earlier mode goes to `store` at once,
+	/// because that key holds the account mode from the next change on.
+	public init(stored: (String) -> String?, store: (_ key: String, _ value: String) -> Void) {
 		let earlier = stored(Self.key(of: .accounts)).flatMap(ViewMode.init) ?? .barChart
 		accounts = earlier
-		categories = stored(Self.key(of: .categories)).flatMap(ViewMode.init) ?? earlier
+		if let own = stored(Self.key(of: .categories)).flatMap(ViewMode.init) {
+			categories = own
+		} else {
+			categories = earlier
+			store(Self.key(of: .categories), earlier.rawValue)
+		}
 	}
 
 	public subscript(kind: Kind) -> ViewMode {
-		get { kind == .accounts ? accounts : categories }
-		set { if kind == .accounts { accounts = newValue } else { categories = newValue } }
+		kind == .accounts ? accounts : categories
+	}
+
+	/// Sets the mode of `kind` and hands it to `store` for the next launch.
+	public mutating func set(_ mode: ViewMode, for kind: Kind, store: (_ key: String, _ value: String) -> Void) {
+		if kind == .accounts { accounts = mode } else { categories = mode }
+		store(Self.key(of: kind), mode.rawValue)
 	}
 }
