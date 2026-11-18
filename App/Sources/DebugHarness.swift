@@ -33,6 +33,10 @@ final class DebugHarness {
 	private let datePopover = DateFieldPopoverState()
 	/// Set by "menuexport": answers the save panel of an export with a path and logs the panel.
 	var savePanelAnswer: ((NSSavePanel) -> URL?)?
+	#if DEBUG || PERF_HARNESS
+	/// The input of a sheet that "sheetinput mark" remembered.
+	private var markedSheetInput: AnyHashable?
+	#endif
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
 	private static var requestedPath: String? {
@@ -185,6 +189,29 @@ final class DebugHarness {
 		case "create": model.createDatabase(password: argument.isEmpty ? nil : argument)
 		case "unlock": Task { log("unlock", ("", .flag(await model.unlock(password: argument) == .unlocked))) }
 		case "lock": model.lock()
+		// "mark" remembers the input that the open sheet wrote last (`HeldSheet`), and "same" logs whether the input that
+		// a sheet wrote last is the remembered one, for the check that the unlock gives back the input from before the lock.
+		case "sheetinput":
+			#if DEBUG || PERF_HARNESS
+			if argument == "mark" { markedSheetInput = model.debugSheetInput }
+			log("sheetinput", ("", .choice(argument, of: ["mark", "same"])), ("recorded", .presence(model.debugSheetInput != nil)),
+				("same", .flag(markedSheetInput != nil && markedSheetInput == model.debugSheetInput)), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
+			#endif
+		// "<n>" picks color swatch n of the sheet on top, counted from 0, as a click does.
+		case "swatch":
+			let swatches = sheetAccessibility().filter { ($0 as AnyObject).accessibilityIdentifier?() == "color-swatch" }
+			guard let n = Int(argument), swatches.indices.contains(n) else { return log("swatch", ("count", .count(swatches.count))) }
+			log("swatch", ("handled", .flag((swatches[n] as AnyObject).accessibilityPerformPress?() ?? false)))
+		// "<n>|<text>" logs whether editable text field n of the sheet on top, counted from 0, holds the text.
+		case "sheetfield":
+			func fields(in view: NSView) -> [NSTextField] {
+				if let field = view as? NSTextField, field.isEditable { return [field] }
+				return view.subviews.flatMap(fields)
+			}
+			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
+			guard parts.count == 2, let n = Int(parts[0]), let view = topSheet?.contentView else { return log("sheetfield none") }
+			let editable = fields(in: view)
+			log("sheetfield", ("position", .position(n)), ("matches", .flag(editable.indices.contains(n) && editable[n].stringValue == parts[1])))
 		// "<action>" drives the update window and the updater, see UpdateHarness.swift.
 		case "update": update(argument, model: model)
 		// "Try Again" of the window that shows why the database did not open.

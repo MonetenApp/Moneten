@@ -4,6 +4,8 @@ import SwiftUI
 struct SplitSheet: View {
 	@Environment(AppModel.self) private var model
 	@Environment(\.dismiss) private var dismiss
+	/// The sheet as it opened, which names the row before any refused split.
+	let sheet: SheetKind
 	/// The row as the window shows it. After a refused stale split it takes the current row, so that the next
 	/// confirm splits the current amount, category, and comment.
 	@State var row: Transaction
@@ -19,6 +21,13 @@ struct SplitSheet: View {
 		case changed
 		/// The kept amounts have the old currency and can never add up to the row, so the window drops them.
 		case currencyChanged
+	}
+
+	/// What the lock keeps of the window. A split that runs at the lock stores nothing (`saving`).
+	private struct Input: Hashable, Sendable {
+		var row: Transaction
+		var text: String
+		var kept: [Money]
 	}
 
 	private var empty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -72,7 +81,15 @@ struct SplitSheet: View {
 				}
 			}
 		}
-		.onAppear { amountFocused = true }
+		.keepsInput(Input(row: row, text: text, kept: kept), of: sheet)
+		.onAppear {
+			if let held: Input = model.heldInput(for: sheet) {
+				row = held.row
+				text = held.text
+				kept = held.kept
+			}
+			amountFocused = true
+		}
 		.onDisappear { saving?.cancel() }
 		.onChange(of: text) { if notice == .changed { notice = nil } }
 	}

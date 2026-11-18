@@ -21,6 +21,13 @@ struct CategorySettingsSheet: View {
 	/// The last count of matches and the rule that it counted.
 	@State private var matches: (key: MatchKey, count: MatchCount)?
 
+	/// What the lock keeps of the settings, the rule included.
+	private struct Input: Hashable, Sendable {
+		var category: Domain.Category?
+		var color: Color
+		var originalColor: Color
+	}
+
 	var body: some View {
 		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
@@ -99,6 +106,7 @@ struct CategorySettingsSheet: View {
 		}
 		.interactiveDismissDisabled(isApplying)
 		.task(id: matchKey) { await countMatches(matchKey) }
+		.keepsInput(Input(category: category, color: color, originalColor: originalColor), of: .categorySettings(categoryID))
 		.onAppear {
 			category = model.ledger.category(categoryID)
 			color = category.map { CategoryColors.color(of: $0, in: model.ledger) } ?? .accentColor
@@ -110,6 +118,12 @@ struct CategorySettingsSheet: View {
 				validate(draft.rule)
 			}
 			model.ruleDraft = nil
+			if let held: Input = model.heldInput(for: .categorySettings(categoryID)), held.category != nil {
+				category = held.category
+				color = held.color
+				originalColor = held.originalColor
+				validate(held.category?.rule ?? "")
+			}
 		}
 		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: $askApply) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
@@ -256,6 +270,7 @@ struct ColorSwatches: View {
 				}
 				.buttonStyle(.plain)
 				.help(selected ? "Selected color" : "Choose this color")
+				.accessibilityIdentifier("color-swatch")
 			}
 			OtherColorButton(selection: $selection)
 				.help("Other color")

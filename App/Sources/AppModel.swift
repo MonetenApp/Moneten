@@ -333,6 +333,12 @@ final class AppModel {
 	/// The rule that "Create Rule" puts into the settings of a category. The settings take it when they open,
 	/// and it is saved only when the user confirms them.
 	@ObservationIgnored var ruleDraft: (categoryID: UUID, rule: String)?
+	/// The input of the open sheet, which the lock keeps in memory so that the sheet shows again after the unlock.
+	@ObservationIgnored var heldSheet = HeldSheet<SheetKind, any Sendable>()
+	#if DEBUG || PERF_HARNESS
+	/// The last input that a sheet wrote, for the command "sheetinput" of the debug harness.
+	@ObservationIgnored var debugSheetInput: AnyHashable?
+	#endif
 
 	/// The alerts of the main window, which show once no sheet is on it.
 	@ObservationIgnored let alerts = SheetAlerts(window: "main")
@@ -710,6 +716,9 @@ final class AppModel {
 		accesses = [:]
 		bankNotices = BankNotices()
 		bankHistories = [:]
+		// Only the lock keeps the input of the open sheet. Any other close ends this database for good. The held
+		// input is not observed, so this changes no view in the drawing that shows the lock screen (issue #151).
+		if next == .locked { heldSheet.lock(closing: sheet) } else { heldSheet.drop() }
 		sheet = nil
 		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the

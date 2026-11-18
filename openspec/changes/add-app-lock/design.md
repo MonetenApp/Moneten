@@ -38,6 +38,16 @@ Before this change a setting was on exactly while its Keychain entry existed. An
 - Before the first unlock of a launch the lock screen offers Touch ID and the Apple Watch when their entries exist, because only the entries are readable then. A planted entry therefore shows a button, but its confirmation runs into the check above. After the first unlock the app keeps the state of the database, and a lock during the session offers only the settings that are on there.
 - No state comes from the Keychain. Migration `v30` creates the empty table, so a database from before this change has every setting off, whatever entries exist. Reading an existing entry to set the state would trust exactly the entry that another program may have planted, and the hole would stay open for every installation that updates. The first unlock after the update deletes the entries, and the user turns the settings on again once. No release has shipped, so only databases of development builds lose the setting, and the cost is one switch per setting.
 
+### Sheets across a lock (issue #482)
+
+The lock closes the open sheet of the main window, because the main window shows only the lock screen, and the unlock shows the sheet again with the input from before the lock.
+
+- `HeldSheet` in `Domain` holds the input. Each sheet with input writes it at every change and when it opens, through the view modifier `keepsInput(_:of:)`, so the input is in memory before the lock closes the sheet. `AppModel.closeDatabase(then:)` keeps the input of the open sheet when it locks, and drops it on any other close, such as a database that changed on disk. The input lives only in the memory of the app: never in the database, the preferences, or the Keychain, so it ends with the app.
+- The lock only moves the input inside `HeldSheet`, which no view observes. The lock screen therefore comes in an update that changes nothing else that a view reads (issue #151).
+- The main view asks for the held sheet when it appears after the unlock, and the sheet opens one turn later. A sheet takes its input once, after it loaded the stored values, so any later opening starts from the database. A sheet whose subject is gone, for example an account of a database that a backup replaced while the app was locked, stays closed and its input goes.
+- The account settings merge the input with the account as it is at the time of saving (`Account.takeSettings(from:opened:)`), as for a refresh that ends while the settings are open.
+- The account settings, the calibration, the account group settings, the category settings with the rule, a new or edited transaction, a comment, a split, a new category, and the name sheets (new account group, save search, rename search) keep their input. A split that runs at the lock stores nothing, and the window shows again with its amounts. The sheets for a password, "Add Account", the migration, the file import, the export, ⌘K, and "Undo Split" do not come back: the password sheets must not keep a password, and the lock cancels the work of the others.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

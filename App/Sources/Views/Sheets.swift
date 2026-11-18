@@ -102,6 +102,8 @@ struct SheetButtons<Content: View>: View {
 }
 
 struct NameSheet: View {
+	@Environment(AppModel.self) private var model
+	let kind: SheetKind
 	var title: LocalizedStringKey
 	var placeholder: LocalizedStringKey
 	/// The name the field starts with, such as the current name for a rename.
@@ -117,6 +119,8 @@ struct NameSheet: View {
 				TextField(placeholder, text: $name, prompt: Text("Required"))
 			}
 		}
+		.keepsInput(name, of: kind)
+		.onAppear { if let held: String = model.heldInput(for: kind) { name = held } }
 	}
 }
 
@@ -127,6 +131,13 @@ struct NewCategorySheet: View {
 	var assigning: Set<UUID> = []
 	@State private var name = ""
 	@State private var parentID: UUID?
+
+	private struct Input: Hashable, Sendable {
+		var name: String
+		var parentID: UUID?
+	}
+
+	private var kind: SheetKind { .newCategory(isGroup: isGroup, assigning: assigning) }
 
 	var body: some View {
 		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: !name.isEmpty, onConfirm: {
@@ -141,8 +152,13 @@ struct NewCategorySheet: View {
 				}
 			}
 		}
+		.keepsInput(Input(name: name, parentID: parentID), of: kind)
 		.onAppear {
 			if case let .category(id) = model.selection, let c = model.ledger.category(id) { parentID = c.isGroup ? c.id : c.parentID }
+			if let held: Input = model.heldInput(for: kind) {
+				name = held.name
+				parentID = held.parentID
+			}
 		}
 	}
 }
@@ -158,6 +174,19 @@ struct AccountSettingsSheet: View {
 	@State private var confirmRemovePIN = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
+
+	/// What the lock keeps of the settings: the edited account, the account as the settings opened, and the fields.
+	private struct Input: Hashable, Sendable {
+		var account: Account?
+		var opened: Account?
+		var initialBalance: String
+		var color: Color
+		var originalColor: Color
+	}
+
+	private var input: Input {
+		Input(account: account, opened: opened, initialBalance: initialBalance, color: color, originalColor: originalColor)
+	}
 
 	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
 	private func typedInitialBalance(in currency: String) -> Money? {
@@ -239,12 +268,22 @@ struct AccountSettingsSheet: View {
 					}
 				}
 			}
+			.keepsInput(input, of: .accountSettings(accountID))
 			.onAppear {
 				account = original
 				opened = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
+				// After the unlock, the settings show the input from before the lock. Saving merges it with the
+				// account as it is now, as for a refresh that ended while the settings were open.
+				if let held: Input = model.heldInput(for: .accountSettings(accountID)) {
+					account = held.account
+					opened = held.opened
+					initialBalance = held.initialBalance
+					color = held.color
+					originalColor = held.originalColor
+				}
 			}
 		}
 	}
@@ -293,10 +332,12 @@ struct CalibrationSheet: View {
 					}
 				}
 			}
+			.keepsInput(balance, of: .calibration(accountID))
 			.onAppear {
 				let today = Day.today()
 				let value = model.proposedCalibration(of: account)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
 				balance = Format.editableAmount(value.minorUnits, value.currency)
+				if let held: String = model.heldInput(for: .calibration(accountID)) { balance = held }
 			}
 		}
 	}
@@ -320,7 +361,11 @@ struct GroupSettingsSheet: View {
 				}
 			}
 		}
-		.onAppear { group = model.ledger.group(groupID) }
+		.keepsInput(group, of: .groupSettings(groupID))
+		.onAppear {
+			group = model.ledger.group(groupID)
+			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)) { group = held }
+		}
 	}
 }
 
@@ -340,7 +385,11 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
+		.keepsInput(text, of: .comment(ids))
+		.onAppear {
+			text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? ""
+			if let held: String = model.heldInput(for: .comment(ids)) { text = held }
+		}
 	}
 }
 
@@ -359,6 +408,19 @@ struct TransactionSheet: View {
 	/// The suggestions for the name as it stands. Only a change of the name searches again, never a redraw.
 	@State private var suggestions: [Transaction] = []
 	@FocusState private var nameHasFocus: Bool
+
+	/// What the lock keeps of the fields.
+	private struct Input: Hashable, Sendable {
+		var date: Day?
+		var hasValueDate: Bool
+		var valueDate: Day?
+		var draft: TransactionDraft
+		var comment: String
+	}
+
+	private var input: Input {
+		Input(date: date, hasValueDate: hasValueDate, valueDate: valueDate, draft: draft, comment: comment)
+	}
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
@@ -443,8 +505,16 @@ struct TransactionSheet: View {
 			}
 		}
 		.onChange(of: draft.amount) { problem = nil }
+		.keepsInput(input, of: .transaction(transactionID))
 		.onAppear {
 			load()
+			if let held: Input = model.heldInput(for: .transaction(transactionID)) {
+				date = held.date
+				hasValueDate = held.hasValueDate
+				valueDate = held.valueDate
+				draft = held.draft
+				comment = held.comment
+			}
 			nameHasFocus = editable
 		}
 	}
