@@ -2428,6 +2428,17 @@
         }
       }
     },
+    "Before the first login, ask your customer adviser at Oberbank for the HBCI access with xTAN by SMS. Oberbank stores your mobile number with a change of the Electronic Banking contract and confirms the access in writing. Log in after that." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitten Sie vor der ersten Anmeldung Ihre Kundenberaterin oder Ihren Kundenberater bei der Oberbank um den HBCI-Zugang mit xTAN per SMS. Die Oberbank hinterlegt Ihre Mobilfunknummer mit einer Änderung des Electronic-Banking-Vertrags und bestätigt den Zugang schriftlich. Melden Sie sich erst danach an."
+          }
+        }
+      }
+    },
     "Before the first login, set up a TAN method such as photoTAN on the website of comdirect. comdirect needs about two business days before its FinTS server accepts it. If the login fails until then, try again later with “Edit Login Data...”." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4937,6 +4948,17 @@
         }
       }
     },
+    "Guide of Oberbank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anleitung der Oberbank"
+          }
+        }
+      }
+    },
     "Guide of Postbank" : {
       "localizations" : {
         "de" : {
@@ -5151,6 +5173,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn die Bank verlangt, den Zugang neu einzurichten, etwa nach einem neuen TAN-Verfahren oder einer abgebrochenen Authentifizierung, wählen Sie „Zugangsdaten bearbeiten...“ und bestätigen Sie die Zugangsdaten."
+          }
+        }
+      }
+    },
+    "If the login fails, ask your customer adviser at Oberbank whether the HBCI access with xTAN is switched on for you." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn die Anmeldung fehlschlägt, fragen Sie Ihre Kundenberaterin oder Ihren Kundenberater bei der Oberbank, ob der HBCI-Zugang mit xTAN für Sie freigeschaltet ist."
           }
         }
       }
@@ -7245,6 +7278,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hinweise der Bank"
+          }
+        }
+      }
+    },
+    "Oberbank offers the Security App only for its internet banking, not for finance software." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Oberbank bietet die Security App nur für ihr Internetbanking an, nicht für Finanzsoftware."
           }
         }
       }

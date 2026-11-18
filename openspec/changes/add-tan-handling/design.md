@@ -36,6 +36,14 @@ The helper sends with each typed TAN request the code of its method (`current`) 
 
 Deutsche Bank, Postbank, and norisbank take a TAN with letters only in capitals. The connector gives the request of these hosts, `FinTSServer.isDeutscheBankGroup`, a `TANField` with `isUppercase`, so the field turns letters into capitals as the user types, as it does for an extension that asks for it. A numeric TAN is unchanged by it. Which methods of these banks send a TAN with letters is not recorded yet, so the bank test of issue #11 checks it.
 
+### Security App of Oberbank
+
+Oberbank (#236) approves the transactions of its internet banking with its Security App, as the page of the app (`https://www.oberbank.de/security-app`) says. The HBCI page of Oberbank (`https://www.oberbank.de/electronic-banking`) names only xTAN by SMS and the security file for finance software. A user who knows the Security App from the website looks for it among the TAN methods. `Oberbank.methods(_:bankCode:)` in `Sources/FinTS/Oberbank.swift` adds it to the choice of the TAN method as a `TANMethod` with `unavailable`, the reason "Oberbank offers the Security App only for its internet banking, not for finance software." The dialog then shows the methods of the server to choose and the Security App with its reason in a radio group, as it does for a method that an extension cannot use. The ID of the added method is no code of a bank, and the dialog never sends a method that cannot be chosen.
+
+The rule follows the Bankleitzahl 70120700, because the server of Bank-Verlag serves many banks. It applies only when no method of the server is an app: a method that the bank parameters mark as an approval in an app ("push"), or whose name has the word "App". The line above the methods names the login, the download, or the order, as for every bank, so the text fits the step.
+
+The bank test of issue #11 records the TAN methods that the server of Oberbank reports, with their names. If the Security App is among them, the rule never applies and can go. It also shows whether the helper asks at all when the server offers a single method, because hbci4java may choose that method by itself.
+
 ## Deviations from the spec
 
 - The progress texts after a choice come from the bank parameters and from the names of the method. A method whose names say nothing shows "Requesting the challenge of the bank...".

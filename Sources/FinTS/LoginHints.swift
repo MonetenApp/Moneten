@@ -56,6 +56,7 @@ extension BankDirectory.Entry {
 	public var loginHint: LoginHint? {
 		if let hint = commerzbankGroupHint { return hint }
 		if let hint = LoginHint.byCode[code] { return hint }
+		if let hint = oberbankHint { return hint }
 		if let hint = cooperativeHint { return hint }
 		if let hint = deutscheBankGroupHint { return hint }
 		let name = TextFolding.fold(bank.name)

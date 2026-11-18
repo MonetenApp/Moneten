@@ -161,8 +161,8 @@ struct Ask: Decodable {
 	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
 	/// A login that ING accepts only after a login on its website stops the run too, because a new PIN does not help.
 	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
-	/// `server` is the FinTS address of the bank, whose rules some requests follow.
-	func request(server: URL?) throws -> UserRequest {
+	/// `server` is the FinTS address of the bank, whose rules some requests follow, and `bankCode` its Bankleitzahl.
+	func request(server: URL?, bankCode: String? = nil) throws -> UserRequest {
 		if kind == "pin" {
 			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
@@ -175,7 +175,7 @@ struct Ask: Decodable {
 		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
-		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
+		case "tanMethod": return secondFactor(.chooseTANMethod(Oberbank.methods(offered, bankCode: bankCode), current: nil), methods: [])
 		case "tanMedium":
 			let media = media ?? []
 			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)

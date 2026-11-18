@@ -88,7 +88,7 @@ The app SHALL let the user select another TAN method while the dialog is open. T
 
 ### Requirement: No usable TAN method
 
-The app SHALL tell the user when the bank reports no TAN method that the app can use, and name the next step, which is to set up a method on the website of the bank and then to run "Edit Login Data...".
+The app SHALL tell the user when the bank reports no TAN method that the app can use, and name the next step, which is to set up a method on the website of the bank and then to run "Edit Login Data...". When a bank offers a method of its website for its FinTS server too, and the app knows that the bank does not, the app SHALL show that method next to the methods of the FinTS server, as a method that cannot be chosen, with the reason.
 
 #### Scenario: No method registered
 
@@ -127,6 +127,29 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 
 - **WHEN** the bank offers a method for its website only and not for its FinTS server
 - **THEN** the app says that the bank supports this method only on the website
+
+#### Scenario: Security App of Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 70120700, whose FinTS server is "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **AND** the FinTS server offers the methods "smsTAN" and "TAN-Generator", neither of them an approval in an app
+- **WHEN** the app asks the user for the TAN method at the login
+- **THEN** the dialog says that the FinTS server needs a confirmation to allow the login
+- **AND** the user can choose "smsTAN" or "TAN-Generator"
+- **AND** the dialog shows "Oberbank Security App", which the user cannot choose, with the reason that Oberbank offers the Security App only for its internet banking and not for finance software
+
+#### Scenario: Oberbank offers an app
+
+- **GIVEN** an access with the Bankleitzahl 70120700
+- **AND** the FinTS server offers "smsTAN" and "Security App", or "smsTAN" and a method that the bank parameters mark as an approval in an app
+- **WHEN** the app asks the user for the TAN method
+- **THEN** the dialog shows only the methods of the FinTS server
+
+#### Scenario: Another bank on the FinTS server of Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 99090000, whose FinTS server is also "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **AND** the FinTS server offers "smsTAN" and "TAN-Generator"
+- **WHEN** the app asks the user for the TAN method
+- **THEN** the dialog shows only "smsTAN" and "TAN-Generator"
 
 ### Requirement: Choose the TAN medium
 

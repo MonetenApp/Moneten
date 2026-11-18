@@ -318,6 +318,20 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
 
+#### Scenario: Oberbank
+
+- **GIVEN** the user chose Oberbank with the Bankleitzahl 70120700, whose FinTS address is "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID"
+- **AND** the line under it says to ask the customer adviser of Oberbank whether the HBCI access with xTAN is switched on, if the login fails
+- **AND** the step links to the guide of Oberbank on HBCI with xTAN
+
+#### Scenario: Another bank on the FinTS server of Oberbank
+
+- **GIVEN** the user chose a bank with the Bankleitzahl 99090000, whose FinTS address is also "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint
+
 #### Scenario: Optional customer ID
 
 - **GIVEN** "Musterbank" accepts a customer ID in addition to the user ID
@@ -561,6 +575,14 @@ The app SHALL show a hint in the second step when the app, the bank directory, o
 - **WHEN** the assistant shows the second step
 - **THEN** the app shows above the fields that the user sets up a TAN method such as photoTAN on the website of comdirect first
 - **AND** the app says that comdirect needs about two business days before its FinTS server accepts the method, and that the user tries again later with "Edit Login Data..."
+
+#### Scenario: Oberbank
+
+- **GIVEN** the user chose Oberbank with the Bankleitzahl 70120700
+- **WHEN** the assistant shows the second step
+- **THEN** the app shows above the fields that the user asks the customer adviser of Oberbank for the HBCI access with xTAN by SMS before the first login
+- **AND** the app says that Oberbank stores the mobile number with a change of the Electronic Banking contract, and that the user logs in after Oberbank confirmed the access in writing
+- **AND** a bank with another Bankleitzahl on the same FinTS server gets no such note
 
 #### Scenario: Credit card
 
