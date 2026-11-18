@@ -118,7 +118,7 @@ struct Ask: Decodable {
 	let rejected: HelperError?
 	/// The PIN rules of the bank parameters, on a PIN request.
 	let rules: Rules?
-	/// The methods to choose from, and on a challenge the methods that the user can change to.
+	/// The methods to choose from, and on a challenge the methods that the bank allows the user, also a single one.
 	let methods: [Method]?
 	/// The ID of the method of a challenge.
 	let current: String?
@@ -161,8 +161,8 @@ struct Ask: Decodable {
 	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
 	/// A login that ING accepts only after a login on its website stops the run too, because a new PIN does not help.
 	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
-	/// `server` is the FinTS address of the bank, whose rules some requests follow.
-	func request(server: URL?) throws -> UserRequest {
+	/// `server` is the FinTS address of the bank, whose rules some requests follow, and `bankCode` its Bankleitzahl.
+	func request(server: URL?, bankCode: String? = nil) throws -> UserRequest {
 		if kind == "pin" {
 			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
@@ -175,7 +175,7 @@ struct Ask: Decodable {
 		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
-		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
+		case "tanMethod": return secondFactor(.chooseTANMethod(Oberbank.methods(offered, bankCode: bankCode), current: nil), methods: [])
 		case "tanMedium":
 			let media = media ?? []
 			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
@@ -189,16 +189,22 @@ struct Ask: Decodable {
 			// The Deutsche Bank group takes a typed TAN in capitals (#231).
 			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
 				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
-			return secondFactor(challenge, methods: offered, field: field)
+			return secondFactor(challenge, methods: changes, field: field, note: Oberbank.note(offered, bankCode: bankCode))
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return secondFactor(challenge, methods: offered)
+		return secondFactor(challenge, methods: changes)
 	}
 
-	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
+	/// The methods of a challenge that the user can change to: none when the bank allows a single method.
+	private var changes: [TANMethod] {
+		let offered = (methods ?? []).map(\.method)
+		return offered.count < 2 ? [] : offered
+	}
+
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField(), note: String? = nil) -> UserRequest {
 		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current, field: field, olderTransactions: history == true))
+			method: current, field: field, olderTransactions: history == true, note: note))
 	}
 }
 

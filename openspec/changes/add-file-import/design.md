@@ -42,7 +42,7 @@ Tasks marked as built in part may differ from the spec in the way their note say
 - A quotation mark that is still open at the end of a CSV file fails the file with the line where the quote opened, because the open field would otherwise hold every later row and lose them without a warning.
 - `Domain` indexes category names and full paths once per file. `Storage` creates, assigns, merges and removes unused file categories in one database transaction, so a failed merge rolls back categories too.
 
-- Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes and before commit. Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.
+- Cancellation shares a thread-safe flag between the import sheet and the storage transaction. Storage checks it during category writes, before each transaction that it compares or writes, and before commit, so a cancel of a file with 300,000 rows does not wait for all of them (issue #222). Complete exports carry versioned profile payloads, including unreadable entries, without decoding them.
 
 - Existing rows retain NULL file identity. Without another explicit identity, their prior file history cannot be recovered. A relaxed file match still fills empty user fields, while imports from this build retain their original fingerprint and preserve cleared fields on repeats.
 

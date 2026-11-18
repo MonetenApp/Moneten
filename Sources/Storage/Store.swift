@@ -154,7 +154,9 @@ public final class Store: SavedPINStore {
 		try write { db in try merge(delivery, into: accountID, now: now, in: db) }
 	}
 
-	func merge(_ delivery: Delivery, into accountID: UUID, now: Date, in db: Database) throws -> Reconciliation {
+	/// `check` runs before each row that the merge compares or writes, and may throw to stop it. The write then rolls
+	/// back. A file import passes its cancel, so that "Cancel" does not wait for every row of a large file.
+	func merge(_ delivery: Delivery, into accountID: UUID, now: Date, in db: Database, check: () throws -> Void = {}) throws -> Reconciliation {
 		guard let account = try Account.fetchOne(db, key: accountID) else { return Reconciliation() }
 		let rules = Categorizer(ledger: Ledger(groups: try AccountGroup.fetchAll(db), accounts: try Account.fetchAll(db),
 			categories: try Domain.Category.fetchAll(db)))
@@ -169,13 +171,20 @@ public final class Store: SavedPINStore {
 			SELECT DISTINCT splitPart.transactionID FROM splitPart
 			JOIN bankTransaction ON bankTransaction.id = splitPart.transactionID WHERE bankTransaction.accountID = ?
 			""", arguments: [accountID]))
-		let r = rules.allOrNothing {
-			reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now)
+		let r = try rules.allOrNothing {
+			try reconcile(delivery, into: account, stored: stored, deleted: deleted, holdings: holdings, split: split, rules: rules, now: now,
+				checkpoint: { _ in try check() })
 		}
 		if let refusal = r.refusal { throw refusal }
 		_ = try SplitPart.filter(r.unsplit.contains(Column("transactionID"))).deleteAll(db)
-		for t in r.added { try t.insert(db) }
-		for t in r.booked + r.updated + r.marked { try t.update(db) }
+		for t in r.added {
+			try check()
+			try t.insert(db)
+		}
+		for t in r.booked + r.updated + r.marked {
+			try check()
+			try t.update(db)
+		}
 		_ = try Transaction.deleteAll(db, keys: r.dropped)
 		if let a = r.account {
 			try a.update(db)
