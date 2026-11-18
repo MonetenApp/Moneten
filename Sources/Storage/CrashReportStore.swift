@@ -54,7 +54,7 @@ struct CrashReportKeyFile: CrashReportKeychain {
 
 public struct CrashReportStore {
 	private let folder: DataFolder
-	private let keychain: any CrashReportKeychain
+	let keychain: any CrashReportKeychain
 	private var file: URL { folder.root.appendingPathComponent("CrashReport.encrypted") }
 
 	struct State: Codable {
@@ -112,14 +112,17 @@ public struct CrashReportStore {
 		}
 	}
 
-	/// Keeps the key in the login Keychain. With `keyInFolder`, the key is a file in the data folder
-	/// instead, so that a rebuilt app in a harness run never shows a Keychain prompt.
-	public init(folder: DataFolder, keyInFolder: Bool = false) {
-		let keychain: any CrashReportKeychain = keyInFolder
+	/// Keeps the key in the login Keychain, or in the keychain file at `keychainOverride`, which only Debug and Perf
+	/// builds of the app pass, as for `Vault`. With `keyInFolder` and no override, the key is a file in the data folder
+	/// instead, so that a rebuilt app with its own data folder never shows a Keychain prompt.
+	public init(folder: DataFolder, keyInFolder: Bool = false, keychainOverride: String? = nil) {
+		let keychain: any CrashReportKeychain = keyInFolder && (keychainOverride ?? "").isEmpty
 			? CrashReportKeyFile(file: folder.root.appendingPathComponent("CrashReport.key"))
-			: Keychain(service: "Moneten crash report key", path: Keychain.loginKeychainPath)
+			: Keychain(service: Self.keyService, path: Keychain.path(override: keychainOverride))
 		self.init(folder: folder, keychain: keychain)
 	}
+
+	static let keyService = "Moneten crash report key"
 
 	init(folder: DataFolder, keychain: any CrashReportKeychain) {
 		self.folder = folder

@@ -121,7 +121,7 @@ final class AppModel {
 		case passwordChangeUnfinished
 	}
 
-	let vault = Vault(folder: .current)
+	let vault = Vault(folder: .current, keychainOverride: AppKeychain.requestedPath)
 	let crashes: CrashReportController
 	/// The refreshes of the bank accesses and their dialogs.
 	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))

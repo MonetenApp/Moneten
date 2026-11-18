@@ -43,6 +43,18 @@ final class DebugHarness {
 		#endif
 	}
 
+	/// Called first at launch, before anything opens a keychain. A run of the harness needs a throwaway keychain file in
+	/// `MONETEN_KEYCHAIN_PATH`, so that no check reads or writes the login keychain of the developer by accident
+	/// (issue #421). Without one the app says so on standard error and exits. A debug build started without the
+	/// harness keeps the login keychain.
+	static func requireKeychainFileIfRequested() {
+		#if DEBUG || PERF_HARNESS
+		guard requestedPath != nil, AppKeychain.requestedPath == nil else { return }
+		FileHandle.standardError.write(Data("The debug harness needs MONETEN_KEYCHAIN_PATH: the path of a throwaway keychain file.\n".utf8))
+		exit(2)
+		#endif
+	}
+
 	/// Called before the app finishes launching. A run of the harness does not bring the app to the front,
 	/// because the developer keeps working in another app. The app then drops every request to become the
 	/// active app, also for a bank dialog, an alert, and the offer of a crash report, and only "mainkey table"

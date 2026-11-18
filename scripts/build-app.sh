@@ -154,6 +154,21 @@ check_hardened() {
 # dist/Moneten.dSYMs: the app, the extension host, SQLCipher, and Sparkle with its helpers. It runs
 # before embed_fints_helper, so the Java runtime, which has no dSYM, is not in the app yet.
 # scripts/release.sh checks that every other binary has one.
+# A Release build never reads the variables that point a Debug or Perf build at a data folder, a debug folder, or a
+# keychain file of its own (issues #327 and #421), because another program of the user can set them with
+# `launchctl setenv`. The code that reads them is compiled out, so their names must not be in the code of the app,
+# which a Debug build keeps in Contents/MacOS/Moneten.debug.dylib.
+check_debug_only() {
+	for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
+		for code in "$1"/Contents/MacOS/*; do
+			if LC_ALL=C grep -a -q -F "$name" "$code"; then
+				echo "$code holds $name, which only Debug and Perf builds may read." >&2
+				exit 1
+			fi
+		done
+	done
+}
+
 copy_symbols() {
 	mkdir dist/Moneten.dSYMs
 	UUIDS=$(mktemp)
@@ -222,5 +237,6 @@ check_fints_helper dist/Moneten.app
 python3 scripts/licenses.py check-app dist/Moneten.app >/dev/null
 check_extension_host dist/Moneten.app
 [ "$CONFIG" = Debug ] || check_hardened dist/Moneten.app
+[ "$CONFIG" = Debug ] || check_debug_only dist/Moneten.app
 codesign --verify --strict --deep dist/Moneten.app
 echo "Built dist/Moneten.app ($CONFIG, build $BUILD), $(codesign -dv --verbose=2 dist/Moneten.app 2>&1 | grep -m1 -E '^(Authority|Signature)=')"

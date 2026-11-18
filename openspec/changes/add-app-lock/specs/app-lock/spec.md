@@ -316,7 +316,7 @@ The app SHALL write a password or a key into the Keychain only as a new entry th
 
 ### Requirement: Keychain entries stay in the login keychain
 
-The app SHALL add, read, and delete its Keychain entries only in the login keychain of the user, the file `~/Library/Keychains/login.keychain-db`. It SHALL NOT use the default keychain or the keychain search list of the user, because another program of the user can change both without a prompt. When the app cannot open the login keychain, it stores no secret in any keychain and shows that the login keychain cannot be opened.
+The app SHALL add, read, and delete its Keychain entries only in the login keychain of the user, the file `~/Library/Keychains/login.keychain-db`. It SHALL NOT use the default keychain or the keychain search list of the user, because another program of the user can change both without a prompt. No environment variable changes the keychain file of the app. When the app cannot open the login keychain, it stores no secret in any keychain and shows that the login keychain cannot be opened.
 
 #### Scenario: Another program made its own keychain the default
 
@@ -336,6 +336,13 @@ The app SHALL add, read, and delete its Keychain entries only in the login keych
 
 - **GIVEN** another program made the keychain "andere.keychain-db" the default keychain
 - **WHEN** the user creates a new database without a password
+- **THEN** the login keychain holds the random key of the database
+- **AND** "andere.keychain-db" holds no entry of the app
+
+#### Scenario: An environment variable names another keychain file
+
+- **GIVEN** another program ran `launchctl setenv MONETEN_KEYCHAIN_PATH /Users/Shared/andere.keychain-db`, and that file is a keychain without an entry of the app
+- **WHEN** the user starts the app and creates a new database without a password
 - **THEN** the login keychain holds the random key of the database
 - **AND** "andere.keychain-db" holds no entry of the app
 

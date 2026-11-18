@@ -22,8 +22,9 @@ final class CrashReportController: NSObject, MXMetricManagerSubscriber {
 
 	init(folder: DataFolder) {
 		// Only a run with its own data folder keeps the key there, so the real crash reports keep theirs in the
-		// Keychain also when the debug harness drives the real data folder.
-		store = CrashReportStore(folder: folder, keyInFolder: DataFolder.requestedPath != nil)
+		// Keychain also when the debug harness drives the real data folder. A run with its own keychain file keeps the
+		// key in that file.
+		store = CrashReportStore(folder: folder, keyInFolder: DataFolder.requestedPath != nil, keychainOverride: AppKeychain.requestedPath)
 		super.init()
 	}
 

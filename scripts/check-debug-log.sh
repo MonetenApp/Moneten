@@ -22,8 +22,10 @@
 # the sums the check expects, so the log says "ok" or "differs" and never holds an amount.
 # Before a key or a text goes to a sheet, the check waits until the sheet window shows ("topsheet") and the field
 # has the focus ("splitui focus=amount", "focusfield"), because a loaded Mac shows them a moment after the model state.
-# The app runs with a temporary data folder and a password, so it never opens the real database and
-# leaves no Keychain item, and as a copy under its own bundle ID, so it leaves an installed Moneten alone.
+# The app runs with a temporary data folder and a password, so it never opens the real database, with a
+# throwaway keychain file in MONETEN_KEYCHAIN_PATH, so it never opens the login keychain, and as a copy under
+# its own bundle ID, so it leaves an installed Moneten alone. The check fails unless the entries of the app
+# land in that keychain file.
 # Each run has a bundle ID of its own, whose settings the end of the run deletes, so runs from several
 # worktrees at once never share the saved filter bar or another setting.
 set -e
@@ -55,9 +57,17 @@ finish() {
 		wait "$PID" 2>/dev/null || true
 	fi
 	scripts/forget-bundle.sh "$BUNDLE_ID" "$APP"
+	rm -f "$KEYCHAIN"
 	[ -n "$KEEP" ] && echo "The log stays in $WORK/debug." || rm -rf "$WORK"
 }
 trap finish EXIT
+# The keychain file of the run, created and unlocked by its path. `security create-keychain` leaves the default
+# keychain and the search list of the user alone. The end of the run removes the file itself, because
+# `security delete-keychain` edits the search list.
+KEYCHAIN="$WORK/check-debug-log.keychain-db"
+security create-keychain -p check-debug-log "$KEYCHAIN"
+security unlock-keychain -p check-debug-log "$KEYCHAIN"
+security set-keychain-settings "$KEYCHAIN"
 # Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
 # Notifications settings. The end of the run deletes the domain again.
 defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
@@ -68,7 +78,7 @@ mkdir -p "$DATA/Database/Moneten.sqlite"
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP" 2>/dev/null
-MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" MONETEN_DEBUG_NO_IDLE_LOCK=1 \
+MONETEN_DATA_DIR="$DATA" MONETEN_DEBUG_DIR="$WORK/debug" MONETEN_KEYCHAIN_PATH="$KEYCHAIN" MONETEN_FINTS_HELPER="$PWD/scripts/fake-fints-helper.sh" MONETEN_DEBUG_NO_IDLE_LOCK=1 \
 	"$APP/Contents/MacOS/Moneten" -ApplePersistenceIgnoreState YES -AppleLocale de_DE >"$WORK/app.log" 2>&1 &
 PID=$!
 
@@ -544,7 +554,13 @@ poll "^crash inject frames=3 pending=true" crashinject
 poll "^crash decision pending=false copied=false" crashdecision decline
 poll "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|1800000000"
 poll "^crash decision pending=false copied=true" crashdecision copy
+# The password of "Unlock automatically" goes into the keychain file of the run, as the crash report key did at launch.
+poll "^security setting=unlockAutomatically result=changed .*keychainAutomatic=true" security "unlockAutomatically on check-debug-log"
 send quit
+for service in "Moneten crash report key" "Moneten database password for automatic unlock"; do
+	security find-generic-password -s "$service" "$KEYCHAIN" >/dev/null \
+		|| { echo "The keychain file of the run holds no entry \"$service\"." >&2; exit 1; }
+done
 
 found=0
 for value in "25,00" "20,00" "30,00" "Synthetic extra" DE02120300000000202051 "DE02 1203" 202051 1234567890 0099887766 "99 88 77 66" 4711 5550001 "$LOGIN" "$PIN" "$MIGRATION_UNKNOWN" 123456 1800000000 check-debug-log \
