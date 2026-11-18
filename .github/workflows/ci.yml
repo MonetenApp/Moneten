@@ -31,6 +31,9 @@ jobs:
       - run: python3 scripts/test-release-notes.py
       # The script that builds and signs the bank data of the workflow bank-data.yml.
       - run: python3 scripts/test-bank-data.py
+      # Every part that the pins ship has a license notice at its version (issue #411).
+      - run: python3 scripts/licenses.py check
+      - run: python3 scripts/test-licenses.py
       # The catalog keys of the app are the keys/*.pub of MonetenApp/moneten-extensions.
       - run: scripts/check-catalog-keys.sh
       - run: npm install -g @fission-ai/openspec

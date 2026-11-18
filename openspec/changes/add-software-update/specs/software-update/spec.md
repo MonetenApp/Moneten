@@ -376,3 +376,72 @@ The app SHALL show the build number next to the version number in "About Moneten
 
 - **WHEN** the user opens "About Moneten" in version 0.2.0-beta.1
 - **THEN** the window shows "0.2.0-beta.1", the build number, and a mark that this is a pre-release
+
+### Requirement: Show the licenses of shipped parts
+
+The app SHALL carry the license name, the copyright notices, and the full license text of every part of another project that it ships, on a page that "About Moneten" opens.
+
+#### Scenario: Open the licenses
+
+- **GIVEN** version 0.1.0 ships hbci4java 4.1.17 in its FinTS helper
+- **WHEN** the user chooses "About Moneten" and clicks "Licenses"
+- **THEN** the default browser shows the page "Moneten: Licenses"
+- **AND** the page lists hbci4java 4.1.17 under "LGPL-2.1-or-later" with its copyright lines and a link to the full license text
+- **AND** the page names the folder inside the app that holds the notices of the Java runtime
+
+#### Scenario: German interface
+
+- **GIVEN** the language of macOS is German
+- **WHEN** the user clicks "Lizenzen" in "Über Moneten"
+- **THEN** the page "Moneten: Lizenzen" opens
+- **AND** the license texts on it stay in their original English
+
+### Requirement: No release with a part without a notice
+
+The app SHALL not be released while it ships a part without a license notice. A pinned part without a notice stops the release before the build. A part that the build adds outside the pins stops it after the build, before the disk image.
+
+#### Scenario: Pinned part without a notice
+
+- **GIVEN** a change pins the jar example-tools 1.0.0 for the FinTS helper without a license notice
+- **WHEN** the release pipeline runs
+- **THEN** the release stops before the build with a message that names example-tools 1.0.0
+
+#### Scenario: Part outside the pins
+
+- **GIVEN** a change copies the library libexample.dylib into the app without a license notice
+- **WHEN** the release pipeline builds the app
+- **THEN** the release stops after the build with a message that names libexample.dylib
+
+### Requirement: Attach the source of GPL and LGPL parts
+
+The app SHALL be released with the exact source of each part under the GPL or the LGPL that it ships, as files of the same release, each with the SHA-256 that the project pinned for its version.
+
+#### Scenario: Source on the release page
+
+- **GIVEN** version 0.1.0 ships hbci4java 4.1.17 and the Java runtime 17.0.21+9
+- **WHEN** the user opens the release page of version 0.1.0
+- **THEN** the page offers "hbci4java-4.1.17-source.tar.gz" and "OpenJDK17U-jdk-sources_17.0.21_9.tar.gz" for download
+
+#### Scenario: Missing source archive
+
+- **GIVEN** the draft of version 0.1.0 lacks "OpenJDK17U-jdk-sources_17.0.21_9.tar.gz"
+- **WHEN** the owner publishes version 0.1.0
+- **THEN** the release stays a draft
+- **AND** the message names the missing archive
+
+#### Scenario: Corrupt source archive
+
+- **GIVEN** the download of the source of hbci4java 4.1.17 has another SHA-256 than the pinned one
+- **WHEN** the release pipeline packages version 0.1.0
+- **THEN** the release stops with a message that names the archive and hbci4java 4.1.17
+
+### Requirement: Link the source from the license page
+
+The app SHALL name, on its license page, the source archive of each part under the GPL or the LGPL with its SHA-256, and link to the release that carries it.
+
+#### Scenario: Source link
+
+- **GIVEN** version 0.1.0 ships hbci4java 4.1.17
+- **WHEN** the user opens the license page of version 0.1.0
+- **THEN** the entry of hbci4java names "hbci4java-4.1.17-source.tar.gz" with its SHA-256
+- **AND** it links to the release page of version 0.1.0

@@ -9,11 +9,12 @@
 #                                         With MONETEN_SIGN=1 it also signs and notarizes.
 #   scripts/release.sh preflight <version>  step 1: the changelog section, the tag on main, and the feed
 #   scripts/release.sh package <version>    steps 2 to 4: the signed and notarized app on a notarized
-#                                           disk image in dist/release, and the zip of its dSYMs
+#                                           disk image in dist/release, the zip of its dSYMs, and the
+#                                           source archives of the GPL and LGPL parts in dist/release/sources
 #   scripts/release.sh feed <version>       step 5: the update signature of the disk image and the new
 #                                           signed feed dist/release/appcast.xml
 #   scripts/release.sh draft <version>      step 6: the GitHub release as a draft with the disk image,
-#                                           the dSYMs, and the feed
+#                                           the dSYMs, the feed, and the source archives
 #   scripts/release.sh publish <version>    step 7, run by the owner: checks the feeds with the committed
 #                                           update key, publishes the draft, moves the feed
 #                                           of a pre-release to the newest stable release, and updates
@@ -133,6 +134,7 @@ check_dmg() {
 	[ -L "$WORK/volume/Applications" ] || unmount_and_fail "The disk image has no link to the Applications folder."
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
+	python3 scripts/licenses.py check-app "$MOUNTED" >/dev/null || unmount_and_fail "The app on the disk image lacks license notices."
 	JDK_VERSION=$(sed -n 's/^jdk:temurin-aarch64-mac:\([^ ]*\) .*/\1/p' Tools/FinTSProbeJava/dependencies.lock)
 	env -i "$MOUNTED/Contents/Resources/FinTSHelper/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
 		|| unmount_and_fail "The FinTS helper on the disk image does not start with the pinned Java runtime $JDK_VERSION."
@@ -231,6 +233,9 @@ package() {
 	MODE=${2:-signed}
 	rm -rf "$OUT"
 	mkdir -p "$OUT"
+	# Every shipped part needs its notice before anything is built, and each GPL or LGPL part its source.
+	python3 scripts/licenses.py check
+	python3 scripts/licenses.py sources "$OUT/sources" >/dev/null
 	# The pinned tools of scripts/build-tools.sh. The jlink runtime of this JDK ships inside the app.
 	JAVA_HOME=$(scripts/build-tools.sh jdk)
 	PATH="$(scripts/build-tools.sh xcodegen):$PATH"
@@ -338,8 +343,28 @@ draft() {
 	notes section "$1" > "$WORK/notes.md"
 	case "$1" in *-*) KIND="--prerelease --latest=false" ;; *) KIND="" ;; esac
 	gh release create "v$1" --repo "$REPO" --draft --verify-tag --title "$(heading "$1")" --notes-file "$WORK/notes.md" $KIND \
-		"$OUT/Moneten-$1.dmg" "$OUT/Moneten-$1-dSYMs.zip" "$OUT/appcast.xml"
+		"$OUT/Moneten-$1.dmg" "$OUT/Moneten-$1-dSYMs.zip" "$OUT/appcast.xml" "$OUT"/sources/*
 	echo "Created the draft of v$1. Check it, then run scripts/release.sh publish $1."
+}
+
+# Writes the files of the commit $1 that scripts/licenses.py reads into $WORK/tag.
+tag_notices() {
+	rm -rf "$WORK/tag" "$WORK/tag.tar"
+	mkdir "$WORK/tag"
+	git archive -o "$WORK/tag.tar" "$1" $(python3 scripts/licenses.py inputs) || fail "The license notices of $1 cannot be read."
+	tar -xf "$WORK/tag.tar" -C "$WORK/tag"
+}
+
+# Fails unless the list $2, one "name sha256:digest" per asset, holds each source archive that the
+# notices in the folder $1 name, with its pinned SHA-256. Notices that cannot be read, or that name no
+# archive, fail as well, so that a broken check never passes a release without its source.
+check_sources() {
+	SOURCES=$(python3 scripts/licenses.py --root "$1" source-names) || fail "The license notices in $1 fail their check."
+	[ -n "$SOURCES" ] || fail "The license notices in $1 name no source archive."
+	printf '%s\n' "$SOURCES" > "$WORK/sources.txt"
+	while read -r NAME SHA; do
+		grep -qxF "$NAME sha256:$SHA" "$2" || fail "The release lacks the source archive $NAME with the SHA-256 $SHA."
+	done < "$WORK/sources.txt"
 }
 
 publish() {
@@ -350,6 +375,11 @@ publish() {
 	[ "$(head -1 "$WORK/draft")" = true ] || fail "v$1 is not a draft."
 	grep -qx "Moneten-$1.dmg" "$WORK/draft" && grep -qx appcast.xml "$WORK/draft" && grep -qx "Moneten-$1-dSYMs.zip" "$WORK/draft" \
 		|| fail "The draft of v$1 lacks its disk image, its dSYMs, or appcast.xml."
+	# The source archives that the tagged commit pins, never those of a main that moved on to a new JDK.
+	git fetch -q origin "refs/tags/v$1:refs/tags/v$1"
+	gh release view "v$1" --repo "$REPO" --json assets -q '.assets[] | "\(.name) \(.digest)"' > "$WORK/assets"
+	tag_notices "v$1"
+	check_sources "$WORK/tag" "$WORK/assets"
 	gh release download "v$1" --repo "$REPO" -p appcast.xml -D "$WORK/draft-feed"
 	# Every copy of the app refuses a feed that the committed update key did not sign, so no other feed may go out.
 	KEY=$(committed_key)
@@ -465,6 +495,26 @@ check_path_rule() {
 	esac
 }
 
+# The check of publish must read the notices of a commit, accept the source archives that this run
+# downloaded with the notices of the checkout, and refuse a missing archive, another digest, and
+# notices that cannot be read.
+check_source_rule() {
+	tag_notices HEAD
+	python3 scripts/licenses.py --root "$WORK/tag" check >/dev/null || fail "The license notices of HEAD fail their check."
+	rm -rf "$WORK/tag"
+	mkdir "$WORK/tag"
+	tar -cf - $(python3 scripts/licenses.py inputs) | tar -xf - -C "$WORK/tag"
+	for f in "$OUT"/sources/*; do echo "${f##*/} sha256:$(shasum -a 256 "$f" | cut -d' ' -f1)"; done > "$WORK/assets-good"
+	(check_sources "$WORK/tag" "$WORK/assets-good") || fail "The check of publish refuses the source archives of this commit."
+	tail -n +2 "$WORK/assets-good" > "$WORK/assets-short"
+	(check_sources "$WORK/tag" "$WORK/assets-short") 2>/dev/null && fail "The check of publish accepts a release without a source archive."
+	sed '1s/sha256:./sha256:x/' "$WORK/assets-good" > "$WORK/assets-wrong"
+	(check_sources "$WORK/tag" "$WORK/assets-wrong") 2>/dev/null && fail "The check of publish accepts a source archive with another digest."
+	rm "$WORK/tag/Licenses/notices.json"
+	(check_sources "$WORK/tag" "$WORK/assets-good") 2>/dev/null && fail "The check of publish accepts notices that cannot be read."
+	echo "publish refuses a release without its source archives or with other ones."
+}
+
 dry_run() {
 	VERSION=${1:-0.0.0-beta.1}
 	cp CHANGELOG.md "$WORK/CHANGELOG.md"
@@ -486,6 +536,7 @@ dry_run() {
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"
 	check_keys
+	check_source_rule
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).
 	MONETEN_UPDATE_KEY_FILE="$TEST_KEY_FILE" feed "$VERSION" first
 	check_feeds "$TEST_KEY_FILE" "$VERSION"

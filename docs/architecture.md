@@ -225,6 +225,7 @@ Moneten/
 │   ├── FinTSHelper/         The hbci4java helper that FinTSConnector runs (ADR 0014)
 │   └── FinTSProbeJava/      The hbci4java probe of issue #11, and dependencies.lock
 ├── scripts/                 Test, build, project, and check scripts
+├── Licenses/                The license notices of the shipped parts, which scripts/licenses.py checks and writes into the app
 ├── openspec/                Specs of every change
 └── docs/
 ```
