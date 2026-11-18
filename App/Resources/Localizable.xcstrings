@@ -1804,22 +1804,22 @@
         }
       }
     },
-    "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
     },
-    "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
