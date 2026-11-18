@@ -178,13 +178,14 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	public let field: TANField
 	/// The title of the confirm button, "Continue" or, when an extension asks for it, "Next".
 	public let confirmTitle: String
-	/// A note of the bank about its TAN methods, which the dialog shows under the purpose, such as the note that OLB
-	/// offers OLB-Sign only on its website. Nil for most requests.
-	public let note: String?
 	/// The bank may ask because the refresh requests transactions older than 90 days. "Cancel" then ends
 	/// only this request with `OlderTransactionsSkipped`, and the refresh fetches the last 90 days ("The
 	/// first refresh asks for the full history").
 	public let olderTransactions: Bool
+	/// A sentence of the source about the methods, which the dialog shows under the purpose, for example that a method of
+	/// the website of the bank is not offered for finance software, as the Security App of Oberbank or OLB-Sign of OLB.
+	/// Nil for most requests.
+	public let note: String?
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),
 		methods: [TANMethod] = [], method: TANMethod.ID? = nil, field: TANField = TANField(), confirmTitle: String = String(localized: "Continue"),

@@ -50,11 +50,16 @@ struct OLBGroupTests {
 		#expect(directory.search("OLB").first?.code == "28020050")
 	}
 
-	/// The note of a request that the helper sends from `server`.
-	static func note(_ line: String, server: String) throws -> String? {
+	/// The request that the helper sends from `server` for the Bankleitzahl `bankCode`.
+	static func request(_ line: String, server: String, bankCode: String? = nil) throws -> SecondFactorRequest {
 		guard case let .ask(_, ask) = try JSONDecoder().decode(HelperMessage.self, from: Data(line.utf8)),
-			case let .secondFactor(request) = try ask.request(server: URL(string: server)) else { throw HelperFailure.unreadable }
-		return request.note
+			case let .secondFactor(request) = try ask.request(server: URL(string: server), bankCode: bankCode) else { throw HelperFailure.unreadable }
+		return request
+	}
+
+	/// The note of a request that the helper sends from `server`.
+	static func note(_ line: String, server: String, bankCode: String? = nil) throws -> String? {
+		try request(line, server: server, bankCode: bankCode).note
 	}
 
 	static let appTAN = #"{"id":"920","name":"appTAN"}"#
@@ -84,6 +89,46 @@ struct OLBGroupTests {
 		let choose = #"{"type":"ask","id":3,"kind":"tanMethod","purpose":"login","methods":[\#(Self.appTAN)]}"#
 		#expect(try Self.note(choose, server: Self.neelmeyerURL) == nil)
 		#expect(try Self.note(choose, server: Self.musterbankURL) == nil)
+	}
+
+	static let bankVerlagURL = "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+
+	// The helper sends with every challenge the methods that the bank allows, also a single one (#236). The note of OLB
+	// counts all of them, while the dialog offers a change only between two or more.
+
+	@Test("At OLB, the TAN dialog of the single method appTAN that the bank allows says that OLB-Sign works only on the website, and offers no change")
+	func singleAppTAN() throws {
+		let typed = #"{"type":"ask","id":1,"kind":"tan","purpose":"login","prompt":"Bitte TAN eingeben","current":"920","methods":[\#(Self.appTAN)]}"#
+		let request = try Self.request(typed, server: Self.olbURL, bankCode: "28020050")
+		#expect(request.note == "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software.")
+		#expect(request.methods.isEmpty)
+	}
+
+	@Test("At OLB, the TAN dialog and the approval of the single method OLB-Sign have no note")
+	func singleOLBSign() throws {
+		let typed = #"{"type":"ask","id":1,"kind":"tan","purpose":"login","prompt":"Bitte TAN eingeben","current":"930","methods":[\#(Self.olbSign)]}"#
+		#expect(try Self.note(typed, server: Self.olbURL, bankCode: "28020050") == nil)
+		let approve = #"{"type":"ask","id":2,"kind":"approve","purpose":"download","prompt":"Bitte in der App freigeben","current":"930","methods":[\#(Self.olbSign)]}"#
+		#expect(try Self.note(approve, server: Self.olbURL, bankCode: "28020050") == nil)
+	}
+
+	@Test("OLB gets the note about OLB-Sign and no Security App of Oberbank, and Oberbank keeps the note about its Security App")
+	func olbAndOberbank() throws {
+		let choose = #"{"type":"ask","id":1,"kind":"tanMethod","purpose":"login","methods":[\#(Self.appTAN)]}"#
+		let olb = try Self.request(choose, server: Self.olbURL, bankCode: "28020050")
+		#expect(olb.note == "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software.")
+		guard case let .chooseTANMethod(methods, _) = olb.challenge else { Issue.record("no choice of the TAN method"); return }
+		#expect(methods.map(\.name) == ["appTAN"])
+		let sms = #"{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die xTAN aus der SMS ein.","current":"921","methods":[{"id":"921","name":"smsTAN"}]}"#
+		#expect(try Self.note(sms, server: Self.bankVerlagURL, bankCode: "70120700")
+			== "Oberbank offers the Security App only for its internet banking, not for finance software.")
+	}
+
+	@Test("Bankhaus Neelmeyer and another bank on the FinTS server of Bank-Verlag get no note for a single method")
+	func singleMethodOtherBanks() throws {
+		let typed = #"{"type":"ask","id":1,"kind":"tan","purpose":"login","prompt":"Bitte TAN eingeben","current":"920","methods":[\#(Self.appTAN)]}"#
+		#expect(try Self.note(typed, server: Self.neelmeyerURL, bankCode: "29020000") == nil)
+		#expect(try Self.note(typed, server: Self.bankVerlagURL, bankCode: "99090000") == nil)
 	}
 
 	/// A position of the helper, read for an account in euros of `server`.
