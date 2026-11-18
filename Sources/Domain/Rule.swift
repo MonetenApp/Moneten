@@ -382,6 +382,31 @@ package enum RuleToken: Equatable {
 	case amount(AmountComparison, String)
 }
 
+extension Rule {
+	/// The characters that open or close a term in quotation marks.
+	static let quotationMarks: Set<Character> = ["\"", "„", "“", "”"]
+
+	/// A condition that finds the transactions of the counterparty of `t`: its name, or its IBAN without spaces
+	/// when it has no name. Nil when it has neither.
+	///
+	/// The rule language has no escape inside a term, and a quotation mark ends it, so each one becomes the
+	/// wildcard `?`, which matches it.
+	public static func condition(for t: Transaction) -> String? {
+		func quoted(_ text: String) -> String { "\"" + String(text.map { quotationMarks.contains($0) ? "?" : $0 }) + "\"" }
+		let name = t.name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+		if !name.isEmpty { return "name:" + quoted(name) }
+		guard let iban = t.counterpartyIBAN.map(TextFolding.accountKey), !iban.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+		return "remote_account:" + quoted(iban)
+	}
+
+	/// `rule` with `condition` as one more alternative. `OR` binds weakest, so the rule keeps every transaction
+	/// that it found before.
+	public static func adding(_ condition: String, to rule: String) -> String {
+		let old = rule.trimmingCharacters(in: .whitespacesAndNewlines)
+		return old.isEmpty ? condition : "\(old) OR \(condition)"
+	}
+}
+
 extension RuleToken {
 	package static func positioned(in text: String) throws(RuleSyntaxError) -> [(token: RuleToken, position: Int)] {
 		var parser = RuleParser(text)
@@ -528,7 +553,7 @@ private struct RuleParser {
 
 	mutating func tokenize() throws(RuleSyntaxError) {
 		var i = 0
-		let openQuotes: Set<Character> = ["\"", "„", "“", "”"]
+		let openQuotes = Rule.quotationMarks
 		// Right after a field operator, a word is the search term, so `name:and` and `name:-x` search for "and" and "-x".
 		var fieldValueStart: Int?
 		while i < chars.count {

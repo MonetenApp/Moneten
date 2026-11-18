@@ -47,10 +47,11 @@ TEST_KEY_FILE=Fixtures/update/test-update.key
 public_key() { notes public-key "$1"; }
 
 # MONETEN_UPDATE_PUBLIC_KEY of the target Moneten in App/project.yml: in its base settings, indented by
-# 8 spaces, and in its Debug settings, by 10. check_production_key fails when this finds no line or two.
-project_key() { sed -n "s/^ \{$1\}MONETEN_UPDATE_PUBLIC_KEY: *//p" App/project.yml; }
-committed_key() { project_key 8; }
-debug_key() { project_key 10; }
+# 8 spaces, and in its Debug settings, by 10 inside the block "Debug:". The Perf settings hold the
+# placeholder at the same indent, so debug_key reads only the Debug block. check_production_key fails
+# when this finds no line or two.
+committed_key() { sed -n 's/^ \{8\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml; }
+debug_key() { awk '/^        [A-Za-z]+:$/ { debug = ($1 == "Debug:") } debug && /^ {10}MONETEN_UPDATE_PUBLIC_KEY:/ { sub(/^ +MONETEN_UPDATE_PUBLIC_KEY: */, ""); print }' App/project.yml; }
 
 # A release must carry one production update key: not the placeholder, and not the public test key.
 check_production_key() {
@@ -299,8 +300,8 @@ feed() {
 		--length "$(stat -f%z "$DMG")" --signature "$SIGNATURE" $FEED_ARGS --out "$OUT/appcast.xml"
 	"$SPARKLE/sign_update" --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml" >/dev/null
 	"$SPARKLE/sign_update" --verify --ed-key-file "$MONETEN_UPDATE_KEY_FILE" "$OUT/appcast.xml"
-	# A feed that the installed apps cannot check would stop every update. A dry run builds without
-	# the production key, signs with the test key, and checks its feed in check_feeds.
+	# A feed that the installed apps cannot check would stop every update. A dry run builds Release with
+	# the production key in its Info.plist, but signs its feed with the test key and checks it in check_feeds.
 	if [ "$2" != first ]; then
 		check_feed "$OUT/appcast.xml" "$UPDATE_KEY" || fail "MONETEN_UPDATE_KEY_FILE is not the private half of the update key in the app."
 	fi

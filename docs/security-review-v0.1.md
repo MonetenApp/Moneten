@@ -101,12 +101,11 @@ These risks stay in v0.1. Each one was checked again on main at ae7fd282.
 - Anything that needs a person or real hardware: a real Touch ID or Apple Watch confirmation, and the prompts of the login Keychain for a build signed with Developer ID.
 - Real banks. The FinTS tests replay recorded or made-up answers.
 - The SSL socket factory and the XML entity handling of hbci4java.
-- A notarized Developer ID build, and a release with the production update key. `App/project.yml` has no production update key yet, so the updater and the bank list download of a release build were checked only with the test key and in tests.
+- A notarized Developer ID build, and a release with the production update key. `App/project.yml` carries the production update key since #424, but no Release build with it has been checked yet, so the updater and the bank list download of a release build were checked only with the test key and in tests.
 - The published bank list. The release `bank-data` does not exist yet.
 - Fuzzing of the parsers.
 - Third-party code beyond its pins: the fork of GRDB that links SQLCipher, the installer and XPC services of Sparkle, the bundled Java runtime, Lua, and hbci4java beyond the parts named above.
 
 ## Before the first release
 
-- Create the environments `build`, `release`, and `bank-data` with their secrets and the owner as required reviewer, as `docs/releasing.md` says, and protect the branch `main`. The repository has no environment yet, so today only the check for `main` in `bank-data.yml` and the check for a missing secret hold, and the second one fails closed.
-- Put the production update key into `App/project.yml`.
+- Create the environments `build`, `release`, and `bank-data` with their secrets and the owner as required reviewer, as `docs/releasing.md` says, and protect the branch `main`. Done on 2026-11-18: the three environments with their deployment rules, secrets, and required reviewer, a ruleset for the tags `v*` and `ext-v*`, and a ruleset for `main` that refuses deletion and force pushes and requires a pull request, with only repository admins allowed to bypass.

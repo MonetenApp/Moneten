@@ -9,8 +9,8 @@ import Storage
 @MainActor
 enum BankDataUpdates {
 	/// The updater of this build, or nil when Info.plist carries no update key, as a build with the
-	/// placeholder does. A Debug or Perf build trusts the test key, so it looks only in the folder that
-	/// `MONETEN_BANK_DATA_URL` names, such as a test server on 127.0.0.1 or a file URL.
+	/// placeholder does, such as a Perf build. A Debug build trusts the test key, so it looks only in the folder
+	/// that `MONETEN_BANK_DATA_URL` names, such as a test server on 127.0.0.1 or a file URL.
 	nonisolated static let updater: BankDataUpdater? = {
 		guard let text = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String, let key = Data(base64Encoded: text), key.count == 32,
 			let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String else { return nil }
