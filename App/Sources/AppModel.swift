@@ -197,10 +197,14 @@ final class AppModel {
 	/// What the account view says about the history at the bank, by account, from the refreshes while the
 	/// app runs ("Say when the bank has no older transactions", "Use only what the bank allows").
 	var bankHistories: [UUID: BankHistory] = [:]
+	/// The rows that keep the mark of new transactions while the view of their account stays open.
+	private(set) var newMarks = NewMarks()
 
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
+			// The user left the view, so its rows lose the mark of new transactions ("New transactions are marked").
+			if !newMarks.isEmpty { newMarks.leave() }
 			UserDefaults.standard.set(selection?.preferenceValue, forKey: Preference.selectedRow)
 			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
 			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
@@ -712,6 +716,7 @@ final class AppModel {
 				guard let self, self.phase == next else { return }
 				self.ledgerChange = "clear"
 				self.ledger = Ledger()
+				self.newMarks = NewMarks()
 				self.savedSearches = []
 				self.selectedTransactions = []
 			}
@@ -856,7 +861,8 @@ final class AppModel {
 		return ledger.rows(in: selection.scope, filter: f).rows
 	}
 
-	/// New transactions count as seen when the user opens their account.
+	/// New transactions count as seen when the user opens their account, so the number on its sidebar row goes. Their
+	/// rows keep the mark until the user leaves the view (`newMarks`).
 	private func markSeen() {
 		guard !isStoringMigration else { return }
 		// The rows wait until SwiftUI drew a new table.
@@ -865,9 +871,8 @@ final class AppModel {
 			return
 		}
 		guard case let .account(id) = selection, let store else { return }
-		var seen = ledger.transactions(ofAccount: id).filter(\.isNew)
+		let seen = newMarks.open(account: id, in: ledger)
 		guard !seen.isEmpty, (try? store.markSeen(account: id)) != nil else { return }
-		for i in seen.indices { seen[i].isNew = false }
 		ledgerChange = "seen"
 		ledger.update(seen)
 	}
@@ -1043,7 +1048,8 @@ final class AppModel {
 	func setChecked(_ checked: Bool, for ids: Set<UUID>) {
 		let rows = ids.compactMap { ledger.row($0) }
 		if checked {
-			commit(ledger.changes(from: rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t }))
+			guard commit(ledger.changes(from: rows.filter(\.changesWhenChecked).map { var t = $0; t.markChecked(); return t })) else { return }
+			if !newMarks.isEmpty { newMarks.checked(ids) }
 		} else {
 			commit(ledger.changes(from: rows.filter(\.isChecked).map { var t = $0; t.isChecked = false; return t }))
 		}

@@ -11,4 +11,12 @@ public enum Format {
 		style.locale = locale
 		return d.noon.formatted(style)
 	}
+
+	/// An amount in a currency other than the one of its row, such as the original amount of a card payment abroad:
+	/// "−12.345,00 USD". The code names the currency without doubt, where a symbol such as "$" stands for several. The
+	/// minus sign is the one of the amounts in the list.
+	public static func foreignAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		let number = m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces)))
+		return number.replacingOccurrences(of: "-", with: "\u{2212}") + " " + m.currency
+	}
 }

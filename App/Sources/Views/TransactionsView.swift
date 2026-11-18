@@ -520,9 +520,24 @@ struct TransactionTable: View {
 			TableColumn("Amount") { (t: Transaction) in
 				HStack(spacing: 5) {
 					VStack(alignment: .trailing, spacing: 1) {
-						AmountText(money: t.amount, showsCurrency: t.currency != currency)
-							.font(.system(size: 18))
-							.modifier(PendingValue(pending: t.isPending))
+						HStack(alignment: .firstTextBaseline, spacing: 6) {
+							// A card payment abroad shows the amount that the bank converted, in its own currency, next to the amount.
+							// It gives way to the amount when the column is narrow, and its help tag has it whole.
+							if let original = t.originalAmount {
+								let text = Format.foreignAmount(original)
+								let tip = "\(TransactionDetail.originalAmount(original).label): \(text)"
+								Text(text)
+									.font(.system(size: 11))
+									.monospacedDigit()
+									.foregroundStyle(Palette.detail)
+									.lineLimit(1)
+									.help(tip)
+							}
+							AmountText(money: t.amount, showsCurrency: t.currency != currency)
+								.font(.system(size: 18))
+								.modifier(PendingValue(pending: t.isPending))
+								.layoutPriority(1)
+						}
 						if let balance = balances[t.id] {
 							Text(Format.money(balance))
 								.font(.system(size: 11))
@@ -605,6 +620,13 @@ struct TransactionCell: View {
 				Text(transaction.shownName).fontWeight(.bold).lineLimit(1)
 				if let comment = transaction.comment {
 					Image(systemName: "note.text").foregroundStyle(.yellow).help(comment).accessibilityLabel("Comment: \(comment)")
+					// The comment on one line after the icon. It gives way to the name first, and the help tag has the whole text.
+					Text(comment.split(whereSeparator: \.isNewline).joined(separator: " "))
+						.foregroundStyle(Palette.detail)
+						.lineLimit(1)
+						.layoutPriority(-1)
+						.help(comment)
+						.accessibilityHidden(true)
 				}
 				if let review = transaction.review {
 					Image(systemName: "exclamationmark.circle").foregroundStyle(.orange)
@@ -692,7 +714,7 @@ struct DateCell: View {
 				.padding(.leading, 17 - DateCell.cellInset)
 				.padding(.top, 1)
 				.overlay(alignment: .leading) {
-					if transaction.isNew {
+					if model.newMarks.shows(transaction) {
 						Circle().fill(.tint).frame(width: 6, height: 6).help("New transaction").accessibilityLabel("New transaction")
 					}
 				}
