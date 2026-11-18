@@ -13,6 +13,7 @@ Include the version, the steps to reproduce, and the impact you expect. The main
 - The database is encrypted with SQLCipher. Its key comes from your database password. Until you set one, a random key in the Keychain protects the database.
 - You can make the app lock after a set time without activity or when the main window closes. It then opens only with the password, or with Touch ID or an Apple Watch if you turn that on.
 - Automatic unlocking, Touch ID, and the Apple Watch need the password saved in your login Keychain. The encrypted database records which of these settings are on, so a Keychain entry that another program creates never turns on a setting that is off in your database. Touch ID is checked by the app, not by the Keychain entry. The [accepted risks](docs/security-review-v0.1.md#accepted-risks) explain what that means. Do not save the password if that matters to you.
+- The app adds, reads, and deletes its Keychain entries only in your login keychain, so another program cannot redirect them into a keychain file of its own (#419).
 - Bank PINs are saved only if you choose, and then only inside the encrypted database.
 - TANs are never stored.
 - The app has no log file. The [accepted risks](docs/security-review-v0.1.md#accepted-risks) list what it, the FinTS helper, and the `ext` tool write.
@@ -28,7 +29,6 @@ Include the version, the steps to reproduce, and the impact you expect. The main
 ## Planned
 
 - Payments are not built yet. The app will send them only through FinTS or finAPI.
-- Issue #419: another program of the user can redirect a new Keychain entry of the app into a keychain file of its own. The fix comes before the first release.
 
 ## Security review
 
