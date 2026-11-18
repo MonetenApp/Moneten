@@ -123,8 +123,8 @@ extension AppModel {
 			guard let a = ledger.account(id) else { return nil }
 			question.messageText = String(localized: "Are you sure you want to remove the account \(a.name)?")
 			question.informativeText = a.kind == .portfolio
-				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings.")
-				: String(localized: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
+				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
+				: String(localized: "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
 		case let .group(id):
 			guard let g = ledger.group(id) else { return nil }
 			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
@@ -164,7 +164,13 @@ extension AppModel {
 			warning.addButton(withTitle: String(localized: "Set Database Password..."))
 			warning.addButton(withTitle: String(localized: "Back Up Anyway"))
 			warning.addButton(withTitle: String(localized: "Cancel"))
-			switch warning.runModal() {
+			#if DEBUG || PERF_HARNESS
+			// The debug harness answers the warning, which needs a screen, and logs what the user would see.
+			let response = DebugHarness.shared?.alertAnswer?(warning) ?? warning.runModal()
+			#else
+			let response = warning.runModal()
+			#endif
+			switch response {
 			case .alertFirstButtonReturn: sheet = .setPassword; return
 			case .alertSecondButtonReturn: break
 			default: return
@@ -176,7 +182,12 @@ extension AppModel {
 			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac.")
 			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac.")
 		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
+		#if DEBUG || PERF_HARNESS
+		let answer = DebugHarness.shared?.savePanelAnswer
+		guard let url = answer.map({ $0(panel) }) ?? (panel.runModal() == .OK ? panel.url : nil) else { return }
+		#else
 		guard panel.runModal() == .OK, let url = panel.url else { return }
+		#endif
 		do {
 			try store.backup(to: url)
 			alert = AlertMessage(title: String(localized: "Backup Database"), message: String(localized: "The copy has been saved."))
