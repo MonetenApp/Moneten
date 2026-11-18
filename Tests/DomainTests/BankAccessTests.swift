@@ -379,6 +379,19 @@ struct BankAccessTests {
 		#expect(current.name == "Haushalt")
 	}
 
+	@Test("Saving the account settings keeps a name that the user did not change exactly as stored", arguments: [
+		" Giro ", "\u{00A0}Giro\u{00A0}", "\u{2003}Giro", "\nGiro\n",
+	])
+	func settingsKeepUnchangedName(stored: String) {
+		let opened = Self.bankAccount(stored)
+		var edited = opened
+		edited.color = "#FF3B30"
+		var current = opened
+		current.takeSettings(from: edited, opened: opened)
+		#expect(current.name == stored)
+		#expect(current.color == "#FF3B30")
+	}
+
 	@Test("An initial balance that the user enters in the account settings ends the derived value, so no manual row moves it")
 	func enteredInitialBalanceIsNotDerived() {
 		var opened = Self.bankAccount("Giro")
