@@ -6028,6 +6028,16 @@
         }
       }
     },
+    "macOS names no home folder for your user account, so Moneten does not know where its data folder is. Moneten quits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS nennt für Ihr Benutzerkonto keinen Benutzerordner, daher weiß Moneten nicht, wo sein Datenordner liegt. Moneten wird beendet."
+          }
+        }
+      }
+    },
     "Main Window" : {
       "localizations" : {
         "de" : {
@@ -6207,6 +6217,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten %1$@ benötigt macOS %2$@ oder neuer."
+          }
+        }
+      }
+    },
+    "Moneten cannot find your home folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten findet Ihren Benutzerordner nicht"
           }
         }
       }
