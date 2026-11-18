@@ -31,18 +31,25 @@ struct PerformanceTests {
 		f.searchText = "kundennummer 7"
 		var count = 0
 		let search = fastest { count = ledger.rows(in: .accountGroup(UUID()), filter: f).rows.count + ledger.rows(in: .account(accounts[0].id), filter: f).rows.count }
-		// The fastest run, and the rows that a run found. The regular expressions of a search share 300 ms of
+		// The time and the rows of the fastest run that finished. The regular expressions of a search share 300 ms of
 		// processor time, the watch of `RegexWatch`. A search that spends it gives up and returns no rows, so a slow
-		// runner would read as a search that finds nothing. The count is nil when every run gave up.
+		// runner would read as a search that finds nothing. A run that gave up never counts as the fastest: when
+		// every run gave up, the count is nil, which fails the release check below, and the time is the fastest run.
 		func timed(_ scope: LedgerScope, _ text: String) -> (Duration, Int?) {
 			var filter = TransactionFilter()
 			filter.searchText = text
-			var count: Int?
-			let time = fastest {
-				let result = ledger.rows(in: scope, filter: filter)
-				if !result.gaveUp { count = result.rows.count }
+			let clock = ContinuousClock()
+			var runs: [(time: Duration, count: Int?)] = []
+			for _ in 0..<3 {
+				var count: Int?
+				let time = clock.measure {
+					let result = ledger.rows(in: scope, filter: filter)
+					if !result.gaveUp { count = result.rows.count }
+				}
+				runs.append((time, count))
 			}
-			return (time, count)
+			if let finished = runs.filter({ $0.count != nil }).min(by: { $0.time < $1.time }) { return finished }
+			return (runs.map(\.time).min()!, nil)
 		}
 		// "Uncategorized" holds three quarters of the rows.
 		func ruleSearch(_ text: String) -> (Duration, Int?) {
