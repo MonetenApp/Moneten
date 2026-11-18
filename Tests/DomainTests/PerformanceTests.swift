@@ -57,8 +57,9 @@ struct PerformanceTests {
 		// Every row holds " kunden", so every row reads its fields.
 		let (slowRegexOverAll, slowRegexCount) = overAll(#"/\d{5} Kunden/"#)
 		let (plainOverAll, plainOverAllCount) = overAll("kundennummer 7")
-		// An amount word compares the amounts of the rows that hold its digits as a whole.
-		let (amountWordOverAll, amountWordCount) = overAll("49,99")
+		// An amount word compares the exact amounts of the rows that hold its digits, here those of -49,98 €. No row is
+		// exactly 49,99, and the KWD rows of 49,985 to 49,994 only round to it.
+		let (amountWordOverAll, amountWordCount) = overAll("49,98")
 		let (noSearch, noSearchCount) = overAll("")
 		let category = fastest { _ = ledger.rows(in: .category(categories[3].id)).rows }
 		var range = TransactionFilter()
