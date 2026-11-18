@@ -124,7 +124,7 @@ Each entry links to the proposal of a change in [openspec/changes](../../openspe
 | Main window with sidebar, toolbar, filter bar, and navigation | [add-main-window](../../openspec/changes/add-main-window/proposal.md) (v0.1) |
 | Settings window | [add-app-settings](../../openspec/changes/add-app-settings/proposal.md) (v0.1) |
 | German and English interface, dark mode | [add-localization-and-formatting](../../openspec/changes/add-localization-and-formatting/proposal.md) (v0.1) |
-| License keys, trial period, in-app purchases, version in the Mac App Store | No spec. Moneten is free software. See [ADR 0006](../decisions/0006-license-gpl-3.md). |
+| License keys, trial period, in-app purchases, version in the Mac App Store | No spec. Moneten is free software. See [ADR 0020](../decisions/0020-keep-gpl-3-after-hbci4java.md). |
 | Sync between devices and an iPhone app | Not in MoneyMoney. Both are ideas on the [roadmap](../roadmap.md#ideas-without-a-spec) and have no spec. |
 
 ## Changes without a counterpart in MoneyMoney

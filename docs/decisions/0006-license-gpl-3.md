@@ -1,6 +1,6 @@
 # 0006. License the app under GPL-3.0-or-later
 
-Status: Accepted
+Status: Superseded by [ADR 0020](0020-keep-gpl-3-after-hbci4java.md)
 
 ## Context
 

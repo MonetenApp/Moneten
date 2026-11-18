@@ -9,7 +9,7 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0003](0003-fints-through-hbci4swift.md) | Use HBCI4Swift for FinTS | Superseded by 0014 |
 | [0004](0004-moneymoney-compatible-extension-api.md) | Make the extension API compatible with MoneyMoney | Partly superseded by 0015 |
 | [0005](0005-grdb-and-sqlcipher.md) | Store data in SQLite with GRDB and SQLCipher | Accepted |
-| [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Accepted |
+| [0006](0006-license-gpl-3.md) | License the app under GPL-3.0-or-later | Superseded by 0020 |
 | [0007](0007-optional-finapi-subscription.md) | Offer finAPI as an optional subscription | Proposed |
 | [0008](0008-payments-only-through-licensed-channels.md) | Send payments only through FinTS or finAPI | Accepted |
 | [0009](0009-database-password-as-in-moneymoney.md) | Protect the database with a password and save PINs only on request, as MoneyMoney does | Accepted |
@@ -23,5 +23,6 @@ Each file records one architecture decision with its context, the choice, and wh
 | [0017](0017-hardened-runtime-for-every-release-build.md) | Give every Release build the hardened runtime | Accepted |
 | [0018](0018-sandbox-the-fints-helper.md) | Run the FinTS helper in the app sandbox | Accepted |
 | [0019](0019-ext-releases-in-the-build-environment.md) | Sign releases of ext in the environment build | Accepted |
+| [0020](0020-keep-gpl-3-after-hbci4java.md) | Keep GPL-3.0-or-later after the move to hbci4java | Accepted |
 
 A decision with status Proposed waits on a prototype or an outside answer. Its file names what settles it.

@@ -193,7 +193,7 @@ draft → payeeCheck → confirmed → (needsChallenge) → submitted → accept
 
 ## The app ships outside the App Store
 
-Releases are signed with the Developer ID of Adanos Software GmbH, notarized by Apple, and updated through Sparkle. `scripts/build-app.sh developer-id` signs with the Developer ID today. Notarization and Sparkle come with issue #25. Other builds sign with the team in `App/Local.xcconfig`, or to run locally without a team. The App Store is not an option because its terms conflict with the GPL. [ADR 0006](decisions/0006-license-gpl-3.md) has the details.
+Releases are signed with the Developer ID of Adanos Software GmbH, notarized by Apple, and updated through Sparkle. `scripts/release.sh` signs, notarizes, and publishes the update feed, and [releasing](releasing.md) describes the steps. Other builds sign with the team in `App/Local.xcconfig`, or to run locally without a team. The App Store is not an option because its terms conflict with the GPL. [ADR 0020](decisions/0020-keep-gpl-3-after-hbci4java.md) has the details.
 
 ## The subscription service is a separate project
 

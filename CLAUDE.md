@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Moneten is an open source banking app for the Mac: Swift 6, SwiftUI, macOS 15 or newer, GPL-3.0-or-later. It is local-first. It has no server, no account, and no telemetry, and all data stays in an encrypted database on the Mac. The local part of v0.1 is built: the encrypted database, the MoneyMoney migration, the CSV, CAMT, and MT940 import, the transaction list, categories, rules, charts, and the sync model. The FinTS connector adds bank accesses and refreshes them, and saves a PIN in the database on request; extensions are not built yet.
+Moneten is an open source banking app for the Mac: Swift 6, SwiftUI, macOS 15 or newer, GPL-3.0-or-later. It is local-first. It has no server, no account, and no telemetry, and all data stays in an encrypted database on the Mac. The local part of v0.1 is built: the encrypted database, the MoneyMoney migration, the CSV, CAMT, and MT940 import, the transaction list, categories, rules, charts, and the sync model. The FinTS connector adds bank accesses and refreshes them, and saves a PIN in the database on request. Lua extensions add accounts of other services, installed from the signed catalog or from a file.
 
 The behavior target is MoneyMoney 2.5.3. [docs/research/moneymoney-analysis.md](docs/research/moneymoney-analysis.md) records what was observed. A user who switches must find the same behavior, unless a proposal names a difference under "Decided for Moneten".
 
