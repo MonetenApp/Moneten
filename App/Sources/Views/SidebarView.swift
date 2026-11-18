@@ -331,9 +331,15 @@ private struct CategoryContextMenu: View {
 				}
 			}
 		}
-		// "Uncategorized" cannot be removed, and the menu shows that with the item disabled.
-		Button("Remove...") { model.confirmRemove(.category(category.id)) }
-			.disabled(category.isDefault)
+		// "Uncategorized" cannot be removed, and the menu shows that with the item disabled. A group names itself, because
+		// its subcategories go with it.
+		if category.isDefault {
+			Button("Remove...") {}.disabled(true)
+		} else if category.isGroup {
+			Button("Remove Category Group...") { model.confirmRemove(.category(category.id)) }
+		} else {
+			Button("Remove Category...") { model.confirmRemove(.category(category.id)) }
+		}
 		Divider()
 		Button("Settings...") { model.sheet = .categorySettings(category.id) }
 	}

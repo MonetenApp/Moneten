@@ -180,10 +180,11 @@ extension Ledger {
 		return result
 	}
 
-	/// Deposits and withdrawals per month, quarter, or year for a list of transactions.
-	/// Transactions in categories that are left out of charts do not count.
-	public func periodSums(of transactions: [Transaction], period: ChartPeriod) -> [PeriodSum] {
-		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
+	/// Deposits and withdrawals per month, quarter, or year for a list of transactions. Transactions in categories that
+	/// are left out of charts do not count, unless the category is the one of the view, `view`, or lies above it: the
+	/// own view of a hidden category still shows its bars, and a hidden group still shows those of its visible subcategories.
+	public func periodSums(of transactions: [Transaction], period: ChartPeriod, in view: UUID? = nil) -> [PeriodSum] {
+		let hidden = hiddenCategoryIDs(inTrees: chartRoots(below: view))
 		var sums: [Day: (deposits: Int128, withdrawals: Int128)] = [:]
 		for t in transactions where t.countsInSums {
 			if let c = effectiveCategoryID(of: t), hidden.contains(c) { continue }
@@ -193,18 +194,41 @@ extension Ledger {
 		return sums.map { PeriodSum(start: $0.key, deposits: $0.value.deposits, withdrawals: $0.value.withdrawals) }.sorted { $0.start < $1.start }
 	}
 
-	/// The sum of a list of transactions per top-level category below a parent, for a pie chart.
+	/// The sum of a list of transactions per top-level category below a parent, for a pie chart. A hidden category
+	/// leaves the slice of every group above it too, but a hidden category above `parent` hides nothing below it.
 	public func categoryTotals(of transactions: [Transaction], below parent: UUID? = nil) -> [(category: Category, minorUnits: Int64)] {
-		let roots = parent.map { childCategories(of: $0) } ?? (childCategories(of: nil) + [defaultCategory].compactMap { $0 })
+		let roots = chartRoots(below: parent)
 		var rootOf: [UUID: UUID] = [:]
 		for r in roots { for id in categoryIDs(inTree: r.id) { rootOf[id] = r.id } }
-		// A hidden category leaves the slice of every group above it too, as in `periodSums`.
-		let hidden = Set(categories.filter { !$0.showInDiagrams }.flatMap { categoryIDs(inTree: $0.id) })
+		let hidden = hiddenCategoryIDs(inTrees: roots)
 		var totals: [UUID: Int128] = [:]
 		for t in transactions where t.countsInSums {
 			guard let c = effectiveCategoryID(of: t), !hidden.contains(c), let r = rootOf[c] else { continue }
 			totals[r, default: 0] += Int128(t.amountMinor)
 		}
 		return roots.filter { $0.showInDiagrams }.compactMap { r in totals[r.id].map { (r, Int64(clampingSum: $0)) } }
+	}
+
+	/// Whether a row that counts in sums falls in a category that the pie below `parent` leaves out. The chart area says
+	/// "No visible categories" only then, and not for rows that net to zero or rows on the group of the view itself.
+	public func chartHidesRows(of transactions: [Transaction], below parent: UUID? = nil) -> Bool {
+		let hidden = hiddenCategoryIDs(inTrees: chartRoots(below: parent))
+		return transactions.contains { t in t.countsInSums && effectiveCategoryID(of: t).map(hidden.contains) == true }
+	}
+
+	/// The categories whose sums a chart below `parent` splits into: the subcategories of `parent`, or every top-level
+	/// category and "Uncategorized".
+	private func chartRoots(below parent: UUID?) -> [Category] {
+		parent.map { childCategories(of: $0) } ?? (childCategories(of: nil) + [defaultCategory].compactMap { $0 })
+	}
+
+	/// Each category of the trees of `roots` with "Show in diagrams" off, with every category below it. A hidden
+	/// category above the roots hides nothing, so the view of a hidden group shows its visible subcategories.
+	private func hiddenCategoryIDs(inTrees roots: [Category]) -> Set<UUID> {
+		var hidden: Set<UUID> = []
+		for r in roots {
+			for id in categoryIDs(inTree: r.id) where category(id)?.showInDiagrams == false { hidden.formUnion(categoryIDs(inTree: id)) }
+		}
+		return hidden
 	}
 }

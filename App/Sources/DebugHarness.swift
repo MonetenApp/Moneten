@@ -2250,7 +2250,9 @@ extension DebugHarness {
 	}
 
 	/// The question of `AppModel.confirmRemove` is modal, and a modal run loop gets no distributed notification, so a timer that
-	/// runs in the modal mode too logs the question by the hash of its texts and buttons and then clicks the button.
+	/// runs in the modal mode too logs the question by the hash of its texts and buttons and then clicks the button. It clicks only
+	/// in the question that names the category. Any other modal window, or no question within five seconds, ends the modal run as
+	/// Cancel does, so the harness never clicks in a foreign window and the question never waits for ever.
 	fileprivate func confirmRemove(_ argument: String) {
 		guard let model else { return }
 		let parts = argument.split(separator: "|").map(String.init)
@@ -2260,19 +2262,35 @@ extension DebugHarness {
 			return log("confirmremove refused")
 		}
 		let answer = String(localized: String.LocalizationValue(parts[1]))
-		let timer = Timer(timeInterval: 0.5, repeats: false) { [weak self] _ in
-			MainActor.assumeIsolated {
-				guard let window = NSApp.modalWindow, let content = window.contentView else { return }
+		let question = String(localized: "Are you sure you want to remove the category \(c.name)?")
+		let deadline = Date().addingTimeInterval(5)
+		let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] timer in
+			// The timer runs on the main run loop, which the modal run of the question keeps turning.
+			let done = MainActor.assumeIsolated { () -> Bool in
+				guard let window = NSApp.modalWindow, let content = window.contentView else {
+					// The question may not be up yet. Past the deadline nothing waits for a click any more.
+					guard Date() > deadline else { return false }
+					self?.log("confirmremove no question")
+					return true
+				}
+				let texts = Self.texts(in: content).filter { !$0.isEmpty }
+				guard texts.contains(question) else {
+					self?.log("confirmremove other window")
+					NSApp.abortModal()
+					return true
+				}
 				let all = Self.buttons(in: content).filter { !$0.isHidden && !$0.title.isEmpty }
-				self?.log("confirmremove question", ("titles", .list(all.map { .hash($0.title) })),
-					("texts", .list(Self.texts(in: content).filter { !$0.isEmpty }.map { .hash($0) })))
+				self?.log("confirmremove question", ("titles", .list(all.map { .hash($0.title) })), ("texts", .list(texts.map { .hash($0) })))
 				guard let button = all.first(where: { $0.title == answer }),
 					HarnessInput.mayClick(button.title, allowed: allowed, inFilePanel: window is NSSavePanel, cancel: String(localized: "Cancel")) else {
 					// Without a click the question would wait for ever, so it ends as Cancel does.
-					return NSApp.abortModal()
+					NSApp.abortModal()
+					return true
 				}
 				button.performClick(nil)
+				return true
 			}
+			if done { timer.invalidate() }
 		}
 		RunLoop.main.add(timer, forMode: .common)
 		DispatchQueue.main.async { [self] in

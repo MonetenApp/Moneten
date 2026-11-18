@@ -793,21 +793,81 @@ struct LedgerTests {
 		#expect(l.rows(in: .category(d.id)).rows.count == 3)
 	}
 
-	/// charts "Categories can be left out of charts": a hidden category leaves the slice of every group above it too.
-	@Test("A category without Show in diagrams leaves the pie also when it sits in a group")
-	func hiddenSubcategoryLeavesPie() {
+	/// A giro with the hidden group "Transfers", whose subcategories "To savings" and "To depot" show in charts and whose
+	/// subcategory "Fees" does not, and the visible group "Living" with the hidden "Rent" and the visible "Groceries".
+	private struct HiddenFixture {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
-		let living = Domain.Category(position: 0, name: "Living", isGroup: true)
-		let rent = Domain.Category(parentID: living.id, position: 0, name: "Rent", showInDiagrams: false)
-		let groceries = Domain.Category(parentID: living.id, position: 1, name: "Groceries")
+		let transfers = Domain.Category(position: 0, name: "Transfers", isGroup: true, showInDiagrams: false)
+		let savings: Domain.Category
+		let depot: Domain.Category
+		let fees: Domain.Category
+		let living = Domain.Category(position: 1, name: "Living", isGroup: true)
+		let rent: Domain.Category
+		let groceries: Domain.Category
 		let day = Day(year: 2026, month: 11, day: 2)
-		func row(_ c: Domain.Category, _ minor: Int64) -> Transaction {
-			Transaction(accountID: giro.id, bookingDate: day, amountMinor: minor, name: "Muster", categoryID: c.id, categorizedBy: .manual)
+
+		init() {
+			savings = Domain.Category(parentID: transfers.id, position: 0, name: "To savings")
+			depot = Domain.Category(parentID: transfers.id, position: 1, name: "To depot")
+			fees = Domain.Category(parentID: transfers.id, position: 2, name: "Fees", showInDiagrams: false)
+			rent = Domain.Category(parentID: living.id, position: 0, name: "Rent", showInDiagrams: false)
+			groceries = Domain.Category(parentID: living.id, position: 1, name: "Groceries")
 		}
-		let l = Ledger(accounts: [giro], categories: [living, rent, groceries], transactions: [row(rent, -95_000), row(groceries, -30_000)])
+
+		func row(_ c: Domain.Category, _ minor: Int64, pending: Bool = false, review: Bool = false) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: minor, name: "Muster", isPending: pending, categoryID: c.id,
+				categorizedBy: .manual, review: review ? .unclearBooking : nil)
+		}
+
+		func ledger(_ rows: [Transaction]) -> Ledger {
+			Ledger(accounts: [giro], categories: [transfers, savings, depot, fees, living, rent, groceries], transactions: rows)
+		}
+	}
+
+	/// charts "Categories can be left out of charts", "Nothing left to show": a hidden group above the view hides nothing in it.
+	@Test("In the view of a hidden group, its visible subcategories fill the pie and the bars, and a hidden one inside stays out")
+	func hiddenGroupShowsItsVisibleChildren() {
+		let f = HiddenFixture()
+		let l = f.ledger([f.row(f.savings, -200_000), f.row(f.depot, -50_000), f.row(f.fees, -500)])
+		#expect(l.categoryTotals(of: l.transactions, below: f.transfers.id).map(\.category.name) == ["To savings", "To depot"])
+		#expect(l.periodSums(of: l.transactions, period: .month, in: f.transfers.id).map(\.withdrawals) == [-250_000])
+		// The view of an account leaves the whole hidden group out.
+		#expect(l.categoryTotals(of: l.transactions).isEmpty)
+		#expect(l.periodSums(of: l.transactions, period: .month).isEmpty)
+	}
+
+	/// charts "Categories can be left out of charts": "The category's own view still shows its bar chart."
+	@Test("The view of a hidden category shows its bars, and the group above it leaves them out")
+	func hiddenCategoryKeepsItsOwnBars() {
+		let f = HiddenFixture()
+		let l = f.ledger([f.row(f.rent, -95_000), f.row(f.groceries, -30_000)])
+		let rentRows = l.transactions.filter { $0.categoryID == f.rent.id }
+		#expect(l.periodSums(of: rentRows, period: .month, in: f.rent.id).map(\.withdrawals) == [-95_000])
+		#expect(l.periodSums(of: l.transactions, period: .month, in: f.living.id).map(\.withdrawals) == [-30_000])
+		#expect(l.categoryTotals(of: l.transactions, below: f.living.id).map(\.category.name) == ["Groceries"])
 		#expect(l.categoryTotals(of: l.transactions).map(\.minorUnits) == [-30_000])
-		#expect(l.categoryTotals(of: l.transactions, below: living.id).map(\.category.name) == ["Groceries"])
-		#expect(l.periodSums(of: l.transactions, period: .month).map(\.withdrawals) == [-30_000])
+	}
+
+	/// charts "Nothing left to show": the text names hidden categories only when a counted row falls in one.
+	@Test("A chart hides rows only when a counted row falls in a hidden category of the view")
+	func chartHidesRows() {
+		let f = HiddenFixture()
+		let netZero = f.ledger([f.row(f.groceries, 10_000), f.row(f.groceries, -10_000)])
+		#expect(netZero.categoryTotals(of: netZero.transactions).map(\.minorUnits) == [0])
+		#expect(!netZero.chartHidesRows(of: netZero.transactions))
+		let onGroup = f.ledger([f.row(f.living, -10_000)])
+		#expect(onGroup.categoryTotals(of: onGroup.transactions, below: f.living.id).isEmpty)
+		#expect(!onGroup.chartHidesRows(of: onGroup.transactions, below: f.living.id))
+		let rent = f.ledger([f.row(f.rent, -95_000)])
+		#expect(rent.chartHidesRows(of: rent.transactions))
+		#expect(rent.chartHidesRows(of: rent.transactions, below: f.living.id))
+		// A pending row marked for review counts in no sum, so it hides nothing.
+		let unclear = f.ledger([f.row(f.rent, -95_000, pending: true, review: true)])
+		#expect(!unclear.chartHidesRows(of: unclear.transactions))
+		// In the view of the hidden group "Transfers", only its hidden subcategory "Fees" hides rows.
+		let transfers = f.ledger([f.row(f.savings, -200_000), f.row(f.fees, -500)])
+		#expect(!transfers.chartHidesRows(of: transfers.transactions.filter { $0.categoryID == f.savings.id }, below: f.transfers.id))
+		#expect(transfers.chartHidesRows(of: transfers.transactions, below: f.transfers.id))
 	}
 
 	@Test("A pending transaction counts in the balance, the bars, and the pie")

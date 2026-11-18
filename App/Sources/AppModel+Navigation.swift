@@ -86,13 +86,19 @@ extension AppModel {
 		if case .group = selection { String(localized: "Refresh Accounts") } else { String(localized: "Refresh Account") }
 	}
 
-	/// "Remove Account...", "Remove Account Group...", or "Remove Category..." for the selected row, or nil when
-	/// the row cannot be removed.
+	/// "Remove Account...", "Remove Account Group...", "Remove Category...", or "Remove Category Group..." for the
+	/// selected row, or nil when the row cannot be removed.
 	var removeTitle: String? {
 		switch selection {
-		case .account: "Remove Account..."
-		case .group: "Remove Account Group..."
-		case let .category(id): ledger.category(id)?.isDefault == false ? "Remove Category..." : nil
+		case .account: String(localized: "Remove Account...")
+		case .group: String(localized: "Remove Account Group...")
+		case let .category(id):
+			switch ledger.category(id) {
+			case let c? where c.isDefault: nil
+			case let c? where c.isGroup: String(localized: "Remove Category Group...")
+			case .some: String(localized: "Remove Category...")
+			case nil: nil
+			}
 		// A saved search has "Remove" in its own context menu.
 		case .search, nil: nil
 		}

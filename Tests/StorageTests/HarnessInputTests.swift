@@ -31,7 +31,8 @@ struct HarnessInputTests {
 
 	@Test("A made-up row with an unknown key, a repeated key, or an impossible value is refused", arguments: [
 		"name", "color=#FF0000", "name=A|name=B", "days=-1", "days=36501", "days=drei", "count=100001", "amount=1,50",
-		"amount=1000000000000000001", "currency=eur", "currency=EURO", "pending=no", "stored=no", "category=", "via=bank", "rows=all", "name=",
+		"amount=1000000000000000001", "amount=-9223372036854775808", "amount=9223372036854775807",
+		"balance=-9223372036854775808", "balance=9223372036854775807", "currency=eur", "currency=EURO", "pending=no", "stored=no", "category=", "via=bank", "rows=all", "name=",
 	])
 	func refusedRow(text: String) {
 		#expect(HarnessInput.rowFields(text) == nil)

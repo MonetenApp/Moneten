@@ -1,6 +1,11 @@
 /// The rules for the input of the debug harness commands that click, type made-up rows, or read a day. The harness runs
 /// in a Debug or Perf build without a sandbox, so a click in a save panel would write outside the throwaway folders, and a
 /// command must refuse a value that it would otherwise bend into another one. The rules live here so that a test checks them.
+///
+/// The helpers of this type ship in a Release build too, unused. No compilation condition of the package can leave
+/// them out: `App/project.yml` builds the package of a Perf build as Release, so a condition that a Release build of
+/// the package lacks would take the helpers from the Perf build, whose harness needs them. They read nothing and
+/// change nothing by themselves, and they hold no name of a file.
 public enum HarnessInput {
 	/// Whether the harness may click a control with this title. In a save or open panel only the title `cancel` passes, so a
 	/// panel never writes or reads a file. Elsewhere only a title of `allowed` passes, compared in full, never by prefix.
@@ -12,7 +17,7 @@ public enum HarnessInput {
 	static let rowKeys: [String: @Sendable (String) -> Bool] = {
 		let text: @Sendable (String) -> Bool = { !$0.isEmpty && $0.count <= 140 }
 		let flag: @Sendable (String) -> Bool = { $0 == "yes" }
-		let amount: @Sendable (String) -> Bool = { Int64($0).map { abs($0) <= maxMinorUnits } ?? false }
+		let amount: @Sendable (String) -> Bool = { Int64($0).map { $0.magnitude <= maxMinorUnits.magnitude } ?? false }
 		return ["name": text, "purpose": text, "comment": text, "iban": text, "booking": text, "reference": text, "mandate": text,
 			"creditor": text, "id": text, "amount": amount, "balance": amount, "currency": isCurrencyCode,
 			"days": { day($0) != nil }, "balanceday": { day($0) != nil }, "from": { day($0) != nil },
@@ -22,6 +27,7 @@ public enum HarnessInput {
 	}()
 
 	/// The largest amount in minor units that a made-up row may have: 10.000.000.000.000,00 in a currency with cents.
+	/// The check compares magnitudes, because `abs` traps on `Int64.min`.
 	static let maxMinorUnits: Int64 = 1_000_000_000_000_000
 
 	/// The fields "<key>=<value>|..." of one made-up row, or nil when a part has no "=", a key is unknown or comes twice,

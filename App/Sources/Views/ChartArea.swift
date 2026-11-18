@@ -127,7 +127,9 @@ struct CategoryBars: View {
 		@Bindable var model = model
 		let currencies = ChartCurrency.ranked(rows.map(\.currency))
 		let currency = ChartCurrency.current(currencies, picked: picked)
-		let sums = model.ledger.periodSums(of: ChartCurrency.rows(rows, in: currency, of: currencies), period: model.chartPeriod)
+		// The view of a hidden category or group still shows its own bars.
+		let view: UUID? = if case let .category(id) = model.selection { id } else { nil }
+		let sums = model.ledger.periodSums(of: ChartCurrency.rows(rows, in: currency, of: currencies), period: model.chartPeriod, in: view)
 		VStack(alignment: .trailing, spacing: 4) {
 			ChartCurrency.Picker(currencies: currencies, current: currency, picked: $picked)
 			HStack(alignment: .bottom, spacing: 8) {
@@ -222,8 +224,8 @@ struct CategoryPie: View {
 		let slices = Self.slices(of: shown, in: model)
 		GeometryReader { geometry in
 			if slices.withdrawals.isEmpty, slices.deposits.isEmpty {
-				// Rows whose categories are all left out of charts give no slice either, and the text says why.
-				Text(shown.contains { !$0.isPending || $0.review == nil } ? "No visible categories; no pie chart." : "No transactions; no pie chart.")
+				// Rows in categories that are left out of charts give no slice either, and the text says why.
+				Text(model.ledger.chartHidesRows(of: shown, below: Self.parent(in: model)) ? "No visible categories; no pie chart." : "No transactions; no pie chart.")
 					.foregroundStyle(Palette.bandLabel).frame(maxWidth: .infinity, maxHeight: .infinity)
 			} else {
 				// Each pie takes half the width up to its own, and the outer labels use what is left at the edges.
@@ -242,11 +244,16 @@ struct CategoryPie: View {
 		}
 	}
 
+	/// The selected category when it has subcategories, whose slices the pie then shows.
+	static func parent(in model: AppModel) -> UUID? {
+		if case let .category(id) = model.selection, !model.ledger.childCategories(of: id).isEmpty { return id }
+		return nil
+	}
+
 	/// The categories of the view, or the subcategories of the selected category, split into
 	/// withdrawals and deposits. The rows are in one currency.
 	static func slices(of rows: [Transaction], in model: AppModel) -> (withdrawals: [PieSlice], deposits: [PieSlice]) {
-		let parent: UUID? = { if case let .category(id) = model.selection, !model.ledger.childCategories(of: id).isEmpty { return id }; return nil }()
-		let totals = model.ledger.categoryTotals(of: rows, below: parent)
+		let totals = model.ledger.categoryTotals(of: rows, below: parent(in: model))
 		let currency = rows.first?.currency ?? "EUR"
 		func slice(_ category: Domain.Category, _ minorUnits: Int64) -> PieSlice {
 			PieSlice(id: category.id, name: category.name, money: Money(minorUnits: Int64(clamping: minorUnits.magnitude), currency: currency),
