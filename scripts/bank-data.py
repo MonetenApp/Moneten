@@ -35,6 +35,7 @@ import base64
 import datetime
 import hashlib
 import io
+import json
 import os
 import re
 import shutil
@@ -292,15 +293,47 @@ def dry_run(out, jar=None, sign_update=None):
 APP_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 
 
+def app_releases(text):
+	"""The published stable versions of the app in the pages of the list of releases that
+	gh api --paginate --slurp printed. Fails unless each page is a list, each page before the last
+	holds 100 releases, and each release has a string tag_name and a Boolean draft, so a page that is
+	cut short or an answer of another shape never reads as a list without a version. A release marked
+	as a pre-release still counts, so the list ignores the field prerelease."""
+	try:
+		pages = json.loads(text)
+	except ValueError as error:
+		raise Failure("the list of releases is not JSON: %s" % error)
+	if not isinstance(pages, list) or not pages:
+		raise Failure("the list of releases has no page")
+	published = []
+	for number, page in enumerate(pages, 1):
+		if not isinstance(page, list):
+			raise Failure("page %d of the list of releases is not a list" % number)
+		if number < len(pages) and len(page) != 100:
+			raise Failure("page %d of the list of releases holds %d releases, but each page before the last holds 100" % (number, len(page)))
+		for release in page:
+			if not isinstance(release, dict) or not isinstance(release.get("tag_name"), str) or not isinstance(release.get("draft"), bool):
+				raise Failure("page %d of the list of releases holds a release without a string tag_name and a Boolean draft: %.200s"
+					% (number, json.dumps(release)))
+			if not release["draft"] and APP_TAG.fullmatch(release["tag_name"]):
+				published.append(release["tag_name"])
+	return published
+
+
 def check_latest(repo):
 	"""The feed URL of the app follows the latest release. GitHub marks the only published release as the
 	latest one even when it was created with --latest=false, so ext-v0.1.0 or bank-data can be the latest
 	release before the first version of the app. That is fine while no version is published: the first
 	version takes the mark with --latest. GitHub leaves a release marked as a pre-release out of the
 	latest release, so only the full list of releases shows that no version is published."""
-	result = subprocess.run(["gh", "api", "repos/%s/releases/latest" % repo, "--jq", ".tag_name"], capture_output=True, text=True)
+	result = subprocess.run(["gh", "api", "repos/%s/releases/latest" % repo], capture_output=True, text=True)
 	if result.returncode == 0:
-		latest = result.stdout.strip()
+		try:
+			latest = json.loads(result.stdout).get("tag_name")
+		except (ValueError, AttributeError):
+			latest = None
+		if not isinstance(latest, str):
+			raise Failure("GitHub sent no tag for the latest release: %.200s" % result.stdout.strip())
 	elif "HTTP 404" in result.stderr:
 		latest = ""
 	else:
@@ -311,12 +344,10 @@ def check_latest(repo):
 			raise Failure("the feed URL %s does not answer." % feed)
 		print("The latest release %s carries the feed." % latest)
 		return
-	result = subprocess.run(["gh", "api", "--paginate", "repos/%s/releases?per_page=100" % repo, "--jq", '.[] | "\\(.tag_name) \\(.draft)"'],
-		capture_output=True, text=True)
+	result = subprocess.run(["gh", "api", "--paginate", "--slurp", "repos/%s/releases?per_page=100" % repo], capture_output=True, text=True)
 	if result.returncode != 0:
 		raise Failure("the releases of %s cannot be read: %s" % (repo, result.stderr.strip()))
-	published = [tag for tag, draft in (line.split() for line in result.stdout.splitlines() if line.strip())
-		if draft == "false" and APP_TAG.fullmatch(tag)]
+	published = app_releases(result.stdout)
 	if published:
 		raise Failure("the latest release is %s, not a version of the app, although these versions are published: %s, so the feed URL breaks. Mark the newest version as latest."
 			% (latest or "none", ", ".join(published)))
