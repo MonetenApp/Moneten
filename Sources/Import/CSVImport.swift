@@ -68,32 +68,6 @@ public enum CSVField: String, CaseIterable, Sendable, Codable, CodingKeyRepresen
 		case .creditorID: ["gläubiger-id", "gläubiger id", "glaeubiger-id", "creditor id"]
 		}
 	}
-
-	/// Header words that name the account or the bank of the counterparty in an exported file, such as "Account" and
-	/// "Bank", but name the own account or the name of a bank in the files of other programs. A column under one of
-	/// them holds the field only when most of its values fit, and only after the keywords of `keys` found no column.
-	var valueCheckedKeys: [String] {
-		switch self {
-		case .iban: ["account", "konto"]
-		case .bic: ["bank"]
-		default: []
-		}
-	}
-
-	/// Whether a cell has the form of the field: an IBAN or an account number of digits, or a BIC or a bank code of digits.
-	func fits(_ cell: String) -> Bool {
-		let value = cell.filter { !$0.isWhitespace }
-		let isDigits = !value.isEmpty && value.allSatisfy { $0.isASCII && $0.isNumber }
-		switch self {
-		case .iban: return (isDigits && value.count <= 34) || MoneyMoneyMigration.isIBAN(value)
-		case .bic:
-			guard !isDigits else { return value.count <= 11 }
-			// Upper case, as BICs are written, so that a bank name such as "Postbank" does not pass as one.
-			return [8, 11].contains(value.count) && value.allSatisfy { $0.isASCII && ($0.isUppercase || $0.isNumber) }
-				&& value.prefix(6).allSatisfy(\.isLetter)
-		default: return false
-		}
-	}
 }
 
 /// The text encodings of a CSV file that the app reads.
@@ -329,10 +303,10 @@ public struct CSVFile: Sendable {
 					layout.columns[field] = column
 				}
 			}
-			for field in CSVField.allCases where layout.columns[field] == nil && !field.valueCheckedKeys.isEmpty {
-				if let column = field.valueCheckedKeys.lazy.compactMap({ normalized.firstIndex(of: $0) }).first, !layout.columns.values.contains(column),
-					try mostFit(field, column: column, layout: layout) {
-					layout.columns[field] = column
+			if Self.exportHeaders.contains(where: { normalized.starts(with: $0) }) {
+				for (field, column) in [(CSVField.iban, Self.exportAccount), (.bic, Self.exportBank)]
+					where layout.columns[field] == nil && !layout.columns.values.contains(column) {
+					if try exportColumnFits(field, column: column, layout: layout) { layout.columns[field] = column }
 				}
 			}
 		}
@@ -340,16 +314,51 @@ public struct CSVFile: Sendable {
 		return layout
 	}
 
-	/// Whether more than half of the filled cells of the column in the dated rows of the layout fit the field.
-	private func mostFit(_ field: CSVField, column: Int, layout: CSVLayout) throws -> Bool {
+	/// The leading columns of the transaction export in English and in German, as `normalize` writes them. Moneten
+	/// writes the English ones and adds more after them. Other programs use "Account", "Konto", and "Bank" for the own
+	/// account, a card, a ledger account, or the name of a bank, so only these layouts give the columns a field.
+	static let exportHeaders = [
+		["Date", "Value date", "Category", "Name", "Purpose", "Account", "Bank", "Amount", "Currency"],
+		["Datum", "Wertstellung", "Kategorie", "Name", "Verwendungszweck", "Konto", "Bank", "Betrag", "Währung"],
+	].map { $0.map(normalize) }
+	static let exportAccount = 5
+	static let exportBank = 6
+
+	/// Whether the account or bank column of an export holds the field: more than half of its filled cells in the dated
+	/// rows fit, and they are not one value in more than two rows, such as the own IBAN in a file of several accounts.
+	private func exportColumnFits(_ field: CSVField, column: Int, layout: CSVLayout) throws -> Bool {
 		var fitting = 0, other = 0
+		var values = Set<String>()
 		for row in try dataRows(layout) {
 			try Task.checkCancellation()
 			guard let cell = Self.cell(row.cells, column) else { continue }
-			if field.fits(cell) { fitting += 1 } else { other += 1 }
+			if values.count < 2 { values.insert(cell) }
+			let fits = field == .iban ? Self.isAccount(cell) : Self.isBank(cell, iban: Self.cell(row.cells, Self.exportAccount))
+			if fits { fitting += 1 } else { other += 1 }
 		}
-		return fitting > other
+		return fitting > other && (values.count > 1 || fitting + other <= 2)
 	}
+
+	/// An IBAN with a valid checksum, or an account number of five digits or more. Shorter numbers are ledger
+	/// accounts or amounts.
+	static func isAccount(_ cell: String) -> Bool {
+		let value = cell.filter { !$0.isWhitespace }
+		return MoneyMoneyMigration.isIBAN(value) || (value.count >= 5 && value.allSatisfy { $0.isASCII && $0.isNumber })
+	}
+
+	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row,
+	/// or any country when the row has no IBAN, so that a bank name such as "POSTBANK" does not pass as one.
+	static func isBank(_ cell: String, iban: String?) -> Bool {
+		let value = cell.filter { !$0.isWhitespace }
+		if value.count == 8, value.allSatisfy({ $0.isASCII && $0.isNumber }) { return true }
+		guard [8, 11].contains(value.count), value.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }),
+			value.prefix(6).allSatisfy(\.isLetter) else { return false }
+		let country = String(value.dropFirst(4).prefix(2))
+		if let iban, MoneyMoneyMigration.isIBAN(iban) { return TextFolding.accountKey(iban).hasPrefix(country) }
+		return countries.contains(country)
+	}
+
+	private static let countries = Set(Locale.Region.isoRegions.map(\.identifier).filter { $0.count == 2 && $0.allSatisfy(\.isLetter) })
 
 	/// The date orders that every booking date and value date of the layout fits, day first first. Two
 	/// orders mean that the file does not decide, and the preview asks the user to check. A value that

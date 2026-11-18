@@ -241,9 +241,9 @@ The app SHALL assign CSV columns to transaction fields by common header keywords
 - **WHEN** a file has the headers "Date", "Payee", "Memo", and "Amount"
 - **THEN** the preview assigns them to booking date, name, purpose, and amount
 
-### Requirement: CSV account and bank columns by their values
+### Requirement: CSV account and bank columns of an exported file
 
-The app SHALL assign a column with the header "Account" or "Konto" to the counterparty account, and a column with the header "Bank" to the counterparty bank code, only when no other header names that field and more than half of the filled cells of the column are account numbers or IBANs, or bank codes or BICs. The import keeps the cells of the column as written.
+The app SHALL assign the column "Account" or "Konto" to the counterparty account and the column "Bank" to the counterparty bank code only when the header row starts with the nine columns of the transaction export, in English or German and in their order. More columns may follow. In a file with other headers, these columns hold no field.
 
 #### Scenario: Account and bank columns of an exported file
 
@@ -252,14 +252,42 @@ The app SHALL assign a column with the header "Account" or "Konto" to the counte
 - **WHEN** the file is imported
 - **THEN** the first transaction has the counterparty IBAN DE02120300000000202051 and the BIC BYLADEM1001
 - **AND** the second transaction has the counterparty account "0000202051" and the bank code "12030000"
-- **AND** the German headers "Konto" and "Bank" give the same
+- **AND** the German headers "Datum", "Wertstellung", "Kategorie", "Name", "Verwendungszweck", "Konto", "Bank", "Betrag", and "Währung" give the same
+- **AND** the same nine headers followed by "Own account" and "Booking text" give the same
 
-#### Scenario: Account and bank columns with names
+#### Scenario: Account and bank columns in a file with other headers
 
 - **GIVEN** a file with the headers "Buchungstag", "Empfänger", "Konto", "Bank", and "Betrag"
-- **AND** the rows have "Girokonto" and "Tagesgeld" under Konto and "Sparkasse Musterstadt" and "Volksbank Beispiel" under Bank
+- **AND** the rows have "0000202051" and "0000202052" under Konto and "12030000" and "BYLADEM1001" under Bank
 - **WHEN** the preview opens
 - **THEN** the columns "Konto" and "Bank" hold no field
+
+### Requirement: CSV account and bank columns by their values
+
+The app SHALL assign an account or bank column of an exported file only when more than half of its filled cells fit and its filled cells are not one value in more than two rows. An account fits as an IBAN with a valid checksum or as five or more digits. A bank fits as a BIC whose letters 5 and 6 are a country, the IBAN country of the row when it has one, or as eight digits. The import keeps the cells as written.
+
+#### Scenario: A bank name in capitals under Bank
+
+- **GIVEN** a file with the headers "Date", "Name", "Bank", and "Amount"
+- **AND** one row with "POSTBANK" under Bank
+- **WHEN** the file is imported
+- **THEN** the transaction has no counterparty BIC
+- **AND** in a file with the nine headers of the export, rows with the IBAN DE02120300000000202051 under Account and "POSTBANK", "COMMERZBANK", and "SPARKASSE" under Bank give no counterparty BIC
+
+#### Scenario: A card number or a ledger account under Account
+
+- **GIVEN** a file with the headers "Account", "Date", "Payee", and "Amount"
+- **AND** the rows have "4111111111111111" and "4111 1111 1111 1111" under Account
+- **WHEN** the file is imported
+- **THEN** no transaction has a counterparty account
+- **AND** in a file with the nine headers of the export, rows with "1200", "4930", and "1250" under Account give no counterparty account
+
+#### Scenario: The own IBAN in every row
+
+- **GIVEN** a file with the nine headers of the export
+- **AND** three rows with "DE02120300000000202051" under Account
+- **WHEN** the file is imported
+- **THEN** no transaction has a counterparty account
 
 ### Requirement: CSV data boundary
 
