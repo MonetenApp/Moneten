@@ -219,12 +219,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
 	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top. Nil without a bank
-	/// balance, and when the initial balance would be above `Money.maxMinorUnits`, because a stored value is never clamped.
-	public func initialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int64? {
-		exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar).flatMap(Int64.init(limitedAmount:))
-	}
-
-	/// The initial balance that meets the bank balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
+	/// balance. The value is exact, so that the caller refuses one above `Money.maxMinorUnits` instead of clamping it.
 	func exactInitialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int128? {
 		bankBalanceMinor.map { Int128($0) - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}
