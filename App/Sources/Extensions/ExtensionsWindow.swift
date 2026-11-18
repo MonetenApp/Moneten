@@ -64,7 +64,11 @@ struct ExtensionsWindow: View {
 				.onAppear { library.alerts.isSheetOnScreen = true }
 		}
 		.onAppear { library.alerts.isViewOnScreen = true }
-		.onDisappear { library.alerts.isViewOnScreen = false }
+		.onDisappear {
+			library.alerts.isViewOnScreen = false
+			// A sheet that goes with the view, for example at the lock, can end without `onDismiss`.
+			library.alerts.isSheetOnScreen = false
+		}
 	}
 
 	@ViewBuilder

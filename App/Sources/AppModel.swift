@@ -336,10 +336,11 @@ final class AppModel {
 
 	/// The alerts of the main window, which show once no sheet is on it.
 	@ObservationIgnored let alerts = SheetAlerts(window: "main")
-	/// A message for an alert of the main window. Nil closes the alert, as its OK button does.
+	/// The first message for an alert of the main window. Setting a message puts it in line after the others,
+	/// and nil closes the first one, as its OK button does.
 	var alert: AlertMessage? {
 		get { alerts.message }
-		set { alerts.message = newValue }
+		set { if let newValue { alerts.post(newValue) } else { alerts.closeFirst() } }
 	}
 	/// The file import that runs. There is one at a time, and a lock cancels it.
 	var fileImport: FileImport?
@@ -687,8 +688,10 @@ final class AppModel {
 		fileImport?.cancel()
 		migrationTask?.cancel()
 		exportTask?.cancel()
-		// The alert on screen closes, as the result of an import did. One that waits for a sheet shows after the unlock.
-		if alerts.panel != nil { alert = nil }
+		// The alerts on screen close before the lock screen draws, and they show again after the unlock. They
+		// have only an OK button, so no decision waits in them.
+		alerts.isViewOnScreen = false
+		extensions.alerts.isViewOnScreen = false
 		autoRefresh.isUnlocked = false
 		notices.clearBadge()
 		sync.cancelAll()

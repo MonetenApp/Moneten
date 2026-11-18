@@ -55,7 +55,11 @@ struct MainView: View {
 				}
 		}
 		.onAppear { model.alerts.isViewOnScreen = true }
-		.onDisappear { model.alerts.isViewOnScreen = false }
+		.onDisappear {
+			model.alerts.isViewOnScreen = false
+			// A sheet that goes with the view, for example at the lock, can end without `onDismiss`.
+			model.alerts.isSheetOnScreen = false
+		}
 	}
 }
 
