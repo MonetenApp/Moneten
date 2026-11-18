@@ -675,6 +675,12 @@ The app SHALL fetch the value of a securities account through the custody accoun
 - **WHEN** the app refreshes a giro account and a securities account of the login
 - **THEN** the balance and the transactions go with HKTAN, and the custody account balance goes without HKTAN
 
+#### Scenario: Another server with a similar name
+
+- **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
+- **WHEN** the app refreshes a giro account and a securities account of the login
+- **THEN** every order goes with or without HKTAN as the bank parameters say
+
 ### Requirement: Value of a holding from its quantity and its price
 
 The app SHALL count a holding without a value on a page of the custody account balance without a total with its quantity times its price, and a nominal amount at a price in percent with the nominal amount times the price divided by 100, in the currency of the security. When a holding has no value and the app cannot compute one, the account fails, so that the app never shows a sum that leaves out a holding.
@@ -700,7 +706,7 @@ The app SHALL count a holding without a value on a page of the custody account b
 
 ### Requirement: Bonds as units with a value 100 times too large
 
-The app SHALL read a holding as units at a price in percent as a nominal amount, and divide its values by 100, when a bank test showed that the FinTS server of the account sends a bond so with a value 100 times too large. Every other server keeps the values of the bank.
+The app SHALL read a holding as units at a price in percent as a nominal amount, and divide its market value and its accrued interest by 100, when a bank test showed that the FinTS server of the account sends a bond so with a value 100 times too large. Every other server keeps the values of the bank.
 
 #### Scenario: Bond as units at a server that sends its value 100 times too large
 
@@ -716,7 +722,7 @@ The app SHALL read a holding as units at a price in percent as a nominal amount,
 
 ### Requirement: Holdings in more than one currency
 
-The app SHALL count each holding of a page of the custody account balance without a total with its value in the currency of the account, when the values of the holdings have more than one currency and the bank also sends the value of each holding in the currency of the account.
+The app SHALL count each holding of a page of the custody account balance without a total with its value and its accrued interest in the currency of the account, which the bank can send next to a value in another currency. When a holding has no value in the currency of the account, the account fails, also when every holding of the page has its value in the same other currency, because the app never converts a value.
 
 #### Scenario: Holdings in another currency with a value in the currency of the account
 
@@ -724,16 +730,44 @@ The app SHALL count each holding of a page of the custody account balance withou
 - **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD that the bank also states as 920,00 €, and a holding worth 500,00 €
 - **THEN** "Depot" shows 1.420,00 €
 
+#### Scenario: Every holding with a first value in another currency
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD that the bank also states as 920,00 €, and a holding worth 500,00 USD that the bank also states as 460,00 €
+- **THEN** "Depot" shows 1.380,00 €
+
 #### Scenario: Holding in another currency without a value in the currency of the account
 
 - **WHEN** the bank answers the custody account balance of the euro account "Depot" without a total, with a holding worth 1.000,00 USD and a holding worth 500,00 €
 - **THEN** "Depot" shows "The bank sent no value for this securities account."
 
-#### Scenario: Another server with a similar name
+#### Scenario: Every holding only in another currency
 
-- **GIVEN** a login whose FinTS server is brokerage-hbci-other.consorsbank.de or brokerage-hbci.other.consorsbank.de
-- **WHEN** the app refreshes a giro account and a securities account of the login
-- **THEN** every order goes with or without HKTAN as the bank parameters say
+- **GIVEN** the euro account "Depot" showed 24.518,37 € on 12.11.2026
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with 10 shares at the price 110,00 USD without a value
+- **THEN** "Depot" shows "The bank sent no value for this securities account."
+- **AND** "Depot" keeps 24.518,37 €
+
+### Requirement: Holdings show the values that the account counts
+
+The app SHALL show each holding of a page of the custody account balance without a total with the value and the accrued interest that the value of the account counts.
+
+#### Scenario: Holding with a second value in the currency of the account
+
+- **GIVEN** the euro account "Depot"
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with a holding worth 1.000,00 USD with the accrued interest 10,00 USD that the bank also states as 920,00 € with the accrued interest 9,20 €, and a holding worth 500,00 €
+- **THEN** the first holding shows 929,20 € and the second holding shows 500,00 €
+- **AND** "Depot" shows 1.429,20 €
+
+### Requirement: Value of a page without a total as the sum of its holdings
+
+The app SHALL round the value and the accrued interest of each holding of a page of the custody account balance without a total to the minor unit of the currency, add them, and round a computed sum again, so that the value of the account is the sum of the values that its holdings show.
+
+#### Scenario: Accrued interest below a cent
+
+- **WHEN** the bank answers the custody account balance of "Depot" without a total, with two holdings of 3 shares each at the price 0,3345 € without a value and with the accrued interest 0,0015 €
+- **THEN** each holding shows 1,00 €
+- **AND** "Depot" shows 2,00 €
 
 ### Requirement: Recognize a securities account by its jobs
 

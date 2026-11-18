@@ -695,7 +695,7 @@ struct FinTSConnectorTests {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
-		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326", "7654328", "7654329"]
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326", "7654328", "7654329", "7654330", "7654331"]
 			.map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
 		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
@@ -746,9 +746,25 @@ struct FinTSConnectorTests {
 		#expect(computed.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 120_000, currency: "EUR"), Money(minorUnits: 5_000, currency: "EUR"),
 			Money(minorUnits: 98_000, currency: "EUR")])
 		#expect(computed.holdings?.last?.isNominal == true && computed.holdings?.last?.nominalCurrency == "EUR")
-		// Holdings in two currencies count with the values in the currency of the account.
+		// Holdings in two currencies count with the values in the currency of the account, and each row shows the value in euro that the balance counts.
 		guard case let .fetched(converted) = report.outcomes[depots[7].accountID] else { Issue.record("depot in two currencies not fetched"); return }
 		#expect(converted.balance == Money(minorUnits: 142_000, currency: "EUR"))
+		#expect(converted.holdings?.map(\.marketValue) == [Money(minorUnits: 92_000, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR")])
+		// The accrued interest of 0,0015 € rounds to 0,00 € in the row, so 3 times 0,3345 € shows 1,00 €, and the balance is the 2,00 € of the rows.
+		guard case let .fetched(fractions) = report.outcomes[depots[8].accountID] else { Issue.record("depot with fractions of a cent not fetched"); return }
+		#expect(fractions.balance == Money(minorUnits: 200, currency: "EUR"))
+		#expect(fractions.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 100, currency: "EUR"), Money(minorUnits: 100, currency: "EUR")])
+		// The row shows the second value and the second accrued interest, both in euro.
+		guard case let .fetched(interest) = report.outcomes[depots[9].accountID] else { Issue.record("depot with accrued interest in two currencies not fetched"); return }
+		#expect(interest.balance == Money(minorUnits: 142_920, currency: "EUR"))
+		#expect(interest.holdings?.first?.marketValue == Money(minorUnits: 92_000, currency: "EUR"))
+		#expect(interest.holdings?.first?.accruedInterest == Money(minorUnits: 920, currency: "EUR"))
+		#expect(interest.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 92_920, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR")])
+		// On a page without a total, the balance is the sum of the values that the rows show.
+		for result in [computed, converted, fractions, interest] {
+			let rows = (result.holdings ?? []).compactMap { $0.value(in: "EUR")?.minorUnits }
+			#expect(rows.count == result.holdings?.count && result.balance.map { [$0.minorUnits] } == [rows.reduce(0, +)])
+		}
 
 		guard case let .fetched(giro) = report.outcomes[Self.giro.accountID] else { Issue.record("giro not fetched"); return }
 		#expect(giro.balance == Money(minorUnits: 109_620, currency: "EUR"))

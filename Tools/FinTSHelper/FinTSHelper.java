@@ -1732,7 +1732,7 @@ public class FinTSHelper {
 	/// The value of a securities account as its balance, on the day of the statement. hbci4java adds an
 	/// entry for each page of the statement, and the total of a page (HOLP) is optional in MT535, so the
 	/// value is the sum over the pages of their total, or else of the values of their holdings with their
-	/// accrued interest (`pageValue`). FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), MT 535, page 171, defines
+	/// accrued interest (`counted`). FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), MT 535, page 171, defines
 	/// C:19A HOLP "Gesamtwert der Depotbestände der Nachricht" as "Summe der Beträge aus B:19A: (d.h. sowohl
 	/// Kurswerte als auch Stückzinsen)", and hbci4java keeps of each holding the first HOLD and ACRU, which
 	/// that page puts in the currency of HOLP. A page without holdings and without a total, as of an empty
@@ -1754,10 +1754,15 @@ public class FinTSHelper {
 		List<BigDecimalValue> pages = new ArrayList<>();
 		List<Object> positions = new ArrayList<>();
 		for (GVRWPDepotList.Entry page : statement) {
-			for (GVRWPDepotList.Entry.Gattung g : page.getEntries()) positions.add(position(g, bondsAsUnits));
-			if (page.total != null) pages.add(page.total);
-			else if (page.getEntries().length == 0) pages.add(zero);
-			else pages.add(pageValue(page.getEntries(), raw, zero.getCurr(), bondsAsUnits));
+			if (page.total != null || page.getEntries().length == 0) {
+				for (GVRWPDepotList.Entry.Gattung g : page.getEntries()) positions.add(position(g, bondsAsUnits));
+				pages.add(page.total != null ? page.total : zero);
+				continue;
+			}
+			List<Counted> counted = java.util.Arrays.stream(page.getEntries()).map(g -> counted(g, raw.get(g), zero.getCurr(), bondsAsUnits)).toList();
+			if (counted.contains(null)) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
+			for (int i = 0; i < counted.size(); i++) positions.add(position(page.getEntries()[i], bondsAsUnits, counted.get(i).value(), counted.get(i).accrued()));
+			pages.add(sum(counted.stream().map(Counted::worth).toList()));
 		}
 		BigDecimalValue total = sum(pages);
 		if (total == null) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
@@ -1765,31 +1770,33 @@ public class FinTSHelper {
 			"date", statement.length == 0 ? null : day(statement[0].timestamp)), "errors", List.of(), "securities", true, "holdings", positions);
 	}
 
-	/// The value of a page without a total: the sum of its holdings, each with its first value. When those have more than
-	/// one currency, each holding counts with its value in `currency`, the currency of the account, which a bank can send
-	/// as a second HOLD. Null when a holding has no value that counts, so that no sum leaves out a holding.
-	static BigDecimalValue pageValue(GVRWPDepotList.Entry.Gattung[] holdings, Map<GVRWPDepotList.Entry.Gattung, RawHolding> raw, String currency,
-		boolean bondsAsUnits) {
-		BigDecimalValue first = sum(java.util.Arrays.stream(holdings).map(g -> worth(g, raw.get(g), null, bondsAsUnits)).toList());
-		return first != null ? first : sum(java.util.Arrays.stream(holdings).map(g -> worth(g, raw.get(g), currency, bondsAsUnits)).toList());
-	}
+	/// What a holding of a page without a total counts: the value (HOLD) and the accrued interest (ACRU) of the bank that
+	/// count, each null when the bank sent none, and `worth`, what the holding adds to the page.
+	record Counted(BigDecimalValue value, BigDecimalValue accrued, BigDecimalValue worth) {}
 
-	/// What a holding adds to a page without a total: its market value and its accrued interest in `currency`, or in
-	/// the currency of its first value when `currency` is null. The values come from `raw` when it was paired, and
-	/// else from hbci4java. Without a value of the bank, the market value is `computed`, rounded with the accrued
-	/// interest to the minor unit of its currency, as the app rounds the value of the row of the holding. Null when
-	/// the holding has no market value in that currency, or has accrued interest but none in the currency of the value.
-	static BigDecimalValue worth(GVRWPDepotList.Entry.Gattung g, RawHolding raw, String currency, boolean bondsAsUnits) {
+	/// A holding of a page without a total in `currency`, the currency of the account, which a bank can send as a second
+	/// HOLD and ACRU next to the ones in the currency of the security. The app never converts a value, so a holding counts
+	/// only in the currency of the account, also when every holding of the page has its first value in the same other
+	/// currency. The values come from `raw` when it was paired, and else from hbci4java. Without a value of the bank, the
+	/// market value is `computed`. `worth` adds the market value and the accrued interest as the app adds them for the row
+	/// of the holding: the value and the accrued interest of the bank are amounts rounded to the minor unit of the
+	/// currency, and the sum rounds once more for a computed market value, so that the page is worth the sum of its rows.
+	/// Null when the holding has no market value in `currency`, or has accrued interest but none in `currency`, so that no
+	/// sum leaves out a holding.
+	static Counted counted(GVRWPDepotList.Entry.Gattung g, RawHolding raw, String currency, boolean bondsAsUnits) {
 		List<BigDecimalValue> held = raw != null ? raw.held() : g.depotwert == null ? List.of() : List.of(g.depotwert);
 		List<BigDecimalValue> accrued = raw != null ? raw.accrued() : g.stueckzinsbetrag == null ? List.of() : List.of(g.stueckzinsbetrag);
+		if (unitBond(g, bondsAsUnits)) {
+			held = held.stream().map(FinTSHelper::hundredth).toList();
+			accrued = accrued.stream().map(FinTSHelper::hundredth).toList();
+		}
+		BigDecimalValue value = pick(held, currency), interest = pick(accrued, currency);
 		BigDecimalValue computed = held.isEmpty() ? computed(g, bondsAsUnits) : null;
-		List<BigDecimalValue> values = computed != null ? List.of(computed) : unitBond(g, bondsAsUnits) ? held.stream().map(FinTSHelper::hundredth).toList() : held;
-		BigDecimalValue market = pick(values, currency);
-		if (market == null) return null;
-		BigDecimalValue interest = pick(accrued, market.getCurr());
-		if (!accrued.isEmpty() && interest == null) return null;
-		BigDecimal sum = interest == null ? market.getValue() : market.getValue().add(interest.getValue());
-		return new BigDecimalValue(computed == null ? sum : rounded(sum, market.getCurr()), market.getCurr());
+		BigDecimal market = value != null ? rounded(value.getValue(), currency)
+			: computed != null && currency.equals(computed.getCurr()) ? computed.getValue() : null;
+		if (market == null || !accrued.isEmpty() && interest == null) return null;
+		BigDecimal sum = interest == null ? market : market.add(rounded(interest.getValue(), currency));
+		return new Counted(value, interest, new BigDecimalValue(rounded(sum, currency), currency));
 	}
 
 	/// The first of `values` in `currency`, or the first of all when `currency` is null.
@@ -1812,11 +1819,12 @@ public class FinTSHelper {
 	static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
 	/// The currencies whose minor unit is not the hundredth, with the number of their decimal places, as the app rounds an amount.
+	/// Keep it equal to `Currency.exponent(of:)` in `Sources/Domain/Money.swift`, which has the same list.
 	static final Map<String, Integer> DECIMAL_PLACES = Map.ofEntries(Map.entry("JPY", 0), Map.entry("KRW", 0), Map.entry("ISK", 0), Map.entry("CLP", 0),
 		Map.entry("VND", 0), Map.entry("XOF", 0), Map.entry("XAF", 0), Map.entry("BHD", 3), Map.entry("KWD", 3), Map.entry("OMR", 3), Map.entry("JOD", 3),
 		Map.entry("TND", 3));
 
-	/// `amount` rounded to the minor unit of `currency`, half away from zero.
+	/// `amount` rounded to the minor unit of `currency`, half away from zero, as `Money.init(_:currency:)` rounds with `.plain`.
 	static BigDecimal rounded(BigDecimal amount, String currency) {
 		return amount.setScale(DECIMAL_PLACES.getOrDefault(currency.toUpperCase(java.util.Locale.ROOT), 2), java.math.RoundingMode.HALF_UP);
 	}
@@ -1836,7 +1844,7 @@ public class FinTSHelper {
 		return bondsAsUnits && g.saldo_type == GVRWPDepotList.Entry.SALDO_TYPE_STCK && percent(g.price);
 	}
 
-	/// A value of a bond of `BONDS_AS_UNITS`, which the server sends 100 times too large.
+	/// A value or accrued interest of a bond of `BONDS_AS_UNITS`, which the server sends 100 times too large.
 	static BigDecimalValue hundredth(BigDecimalValue value) {
 		return value == null || value.getValue() == null ? value : new BigDecimalValue(value.getValue().divide(HUNDRED), value.getCurr());
 	}
@@ -1898,16 +1906,22 @@ public class FinTSHelper {
 	/// (ACRU), the purchase price with its currency or "%" and the purchase day (70E), and the exchange rate
 	/// (92B), in which one unit of the base costs the rate in the quoted currency. hbci4java keeps the rate as a
 	/// double, and `BigDecimal.valueOf` writes its shortest decimal text. A bond of a server of `BONDS_AS_UNITS` is a
-	/// nominal amount with its value divided by 100. A position without a value gets none here, because the app
-	/// computes it from the quantity and the price as `computed` does. Nothing of a position goes to stderr.
+	/// nominal amount with its value and its accrued interest divided by 100. A position without a value gets none here,
+	/// because the app computes it from the quantity and the price as `computed` does. Nothing of a position goes to stderr.
 	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits) {
+		boolean unit = unitBond(g, bondsAsUnits);
+		return position(g, bondsAsUnits, unit ? hundredth(g.depotwert) : g.depotwert, unit ? hundredth(g.stueckzinsbetrag) : g.stueckzinsbetrag);
+	}
+
+	/// The position with the value and the accrued interest that the page counts, such as a second HOLD in the currency
+	/// of the account (`counted`), so that the row shows what the value of the account adds.
+	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits, BigDecimalValue value, BigDecimalValue accrued) {
 		Map<String, Object> rate = present(g.xchg_cur1) && present(g.xchg_cur2) && g.xchg_kurs > 0
 			? message("rate", "base", g.xchg_cur1.trim(), "quoted", g.xchg_cur2.trim(), "rate", BigDecimal.valueOf(g.xchg_kurs).toPlainString()) : null;
 		return message("holding", "name", text(g.name), "isin", text(g.isin), "wkn", text(g.wkn),
 			"quantity", g.saldo == null ? null : g.saldo.getValue().toPlainString(),
 			"nominal", nominal(g, bondsAsUnits) ? true : null, "currency", text(g.curr),
-			"price", amount(g.price, g.timestamp_price), "value", amount(unitBond(g, bondsAsUnits) ? hundredth(g.depotwert) : g.depotwert, null),
-			"accrued", amount(g.stueckzinsbetrag, null),
+			"price", amount(g.price, g.timestamp_price), "value", amount(value, null), "accrued", amount(accrued, null),
 			"purchase", amount(g.einstandspreis, g.kauf), "rate", rate);
 	}
 
