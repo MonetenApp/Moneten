@@ -2036,11 +2036,20 @@ enum DemoData {
 					let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
 					let amount = Int64(-(i % 9_000) - 100)
 					return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
-						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)", counterpartyIBAN: madeUpIBAN(i % 500))
 				}
 				_ = try? model.merge(.file(ts), into: account.id)
 			}
 		}
+	}
+
+	/// The IBAN of one of 500 made-up counterparties at the made-up bank code 12030000, with valid check digits, so
+	/// that a regular expression on `remote_account:` reads it in its electronic form and in groups of four.
+	static func madeUpIBAN(_ n: Int) -> String {
+		let bban = "12030000" + String(format: "%010d", 1_000_000 + n)
+		// D is 13 and E is 14, and the check digits count as 00 while they are computed.
+		let remainder = (bban + "131400").reduce(0) { ($0 * 10 + Int(String($1))!) % 97 }
+		return "DE" + String(format: "%02d", 98 - remainder) + bban
 	}
 
 	/// Ten years of a current account: salary and rent, an overdraft in the first year, and a few

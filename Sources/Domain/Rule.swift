@@ -58,9 +58,11 @@ public struct RuleSubject: Sendable {
 		}
 	}
 
-	/// The texts that a regular expression reads: an account in each of its forms, any other field as it is.
+	/// The texts that a regular expression reads: an account in each of its forms, any other field as it is. The forms are
+	/// made when the first regular expression reads the field, so many rules parse an IBAN once.
 	func patternTexts(of field: RuleField) -> [String] {
-		field == .localAccount || field == .remoteAccount ? text(of: field).flatMap(IBAN.patternTexts) : text(of: field)
+		guard field == .localAccount || field == .remoteAccount else { return text(of: field) }
+		return derived.patternTexts(of: field) { text(of: field).flatMap(IBAN.patternTexts) }
 	}
 
 	func text(of field: RuleField) -> [String] {
@@ -79,12 +81,13 @@ public struct RuleSubject: Sendable {
 	}
 }
 
-/// The amount and the folded words of one `RuleSubject`, made on first use. A subject usually stays on one thread, so the
-/// lock is never contended.
+/// The amount, the folded words, and the account forms of one `RuleSubject`, made on first use. A subject usually stays on
+/// one thread, so the lock is never contended.
 private final class Derived: Sendable {
 	private struct Values {
 		var amount: Decimal?
 		var words: [RuleField: [[Substring]]] = [:]
+		var patternTexts: [RuleField: [String]] = [:]
 	}
 
 	private let values = Mutex(Values())
@@ -104,6 +107,13 @@ private final class Derived: Sendable {
 		let words = fold()
 		values.withLock { $0.words[field] = words }
 		return words
+	}
+
+	func patternTexts(of field: RuleField, _ make: () -> [String]) -> [String] {
+		if let texts = values.withLock({ $0.patternTexts[field] }) { return texts }
+		let texts = make()
+		values.withLock { $0.patternTexts[field] = texts }
+		return texts
 	}
 }
 

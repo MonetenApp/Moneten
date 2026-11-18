@@ -776,14 +776,19 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.sources.map(\.accountID) == [bank.id])
 	}
 
-	@Test("An account number that is no IBAN of a known country matches only with its bank code")
-	func plainNumberNeedsBankCode() throws {
-		let other = Account(position: 0, name: "Other", kind: .giro, source: .offline, accountNumber: "4711", bankCode: "10010010")
+	/// Only text in the shape of an IBAN whose check digits fail matches without a bank code. Text that merely starts with
+	/// the country code of an IBAN country, such as "DE4711", is an account number of its bank.
+	@Test("An account number that is not shaped like an IBAN matches only with its bank code",
+		arguments: ["4711", "DE4711", "Depot 4711", "FR-4711", "de.max@example.com"])
+	func plainNumberNeedsBankCode(number: String) throws {
+		let other = Account(position: 0, name: "Other", kind: .giro, source: .offline, accountNumber: number, bankCode: "10010010")
 		let item: [String: Any] = ["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR",
-			"accountNumber": "4711", "bankCode": "12030000"]
+			"accountNumber": number, "bankCode": "12030000"]
 		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist([item]), categories: try plist(categories),
 			transactions: try plist(["creator": "MoneyMoney", "transactions": [Any]()]), into: Ledger(accounts: [other]))
+		let giro = try #require(p.accounts.first)
 		#expect(p.accounts.map(\.name) == ["Giro"])
+		#expect(p.sources.map(\.accountID) == [giro.id])
 	}
 
 	@Test("Rules come over with the categories, and the report mentions rules only when the export has none")

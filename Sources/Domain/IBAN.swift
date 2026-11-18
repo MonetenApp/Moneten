@@ -35,10 +35,14 @@ public struct IBAN: Hashable, Sendable {
 
 	/// The IBAN in groups of four characters, as people read and type it: "DE02 1203 0000 0000 2020 51".
 	public var formatted: String {
-		let characters = Array(electronic)
-		return stride(from: 0, to: characters.count, by: 4)
-			.map { String(characters[$0..<min($0 + 4, characters.count)]) }
-			.joined(separator: " ")
+		// The electronic form is ASCII, so each byte is one character.
+		var bytes: [UInt8] = []
+		bytes.reserveCapacity(electronic.utf8.count * 5 / 4)
+		for (i, byte) in electronic.utf8.enumerated() {
+			if i > 0, i % 4 == 0 { bytes.append(UInt8(ascii: " ")) }
+			bytes.append(byte)
+		}
+		return String(decoding: bytes, as: UTF8.self)
 	}
 
 	/// The Bankleitzahl inside a German IBAN, characters 5 to 12.
@@ -70,12 +74,15 @@ public struct IBAN: Hashable, Sendable {
 	}
 
 	/// ISO 7064 MOD 97-10: the first four characters move to the end, letters become 10 to 35, and
-	/// the number must leave the remainder 1. The check digits are digits.
+	/// the number must leave the remainder 1. The check digits are digits. It reads the bytes of the text, because a rule
+	/// parses an IBAN for each row. A byte outside ASCII fails the check, as any character other than a letter or a digit
+	/// does.
 	private static func hasValidChecksum(_ iban: String) -> Bool {
-		guard iban.dropFirst(2).prefix(2).allSatisfy({ $0.isASCII && $0.isNumber }) else { return false }
+		let bytes = Array(iban.utf8)
+		let digits = UInt8(ascii: "0")...UInt8(ascii: "9")
+		guard bytes.count > 4, digits.contains(bytes[2]), digits.contains(bytes[3]) else { return false }
 		var remainder = 0
-		for character in iban.dropFirst(4) + iban.prefix(4) {
-			guard character.isASCII, let ascii = character.asciiValue else { return false }
+		for ascii in bytes[4...] + bytes[..<4] {
 			let value: Int
 			switch ascii {
 			case UInt8(ascii: "0")...UInt8(ascii: "9"): value = Int(ascii - UInt8(ascii: "0"))

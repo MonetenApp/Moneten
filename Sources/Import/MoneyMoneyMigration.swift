@@ -380,8 +380,9 @@ public struct MoneyMoneyMigration: Sendable {
 			let ibanText = Self.string(item["iban"]) ?? number.flatMap { IBAN($0) == nil ? nil : $0 }
 			let iban = ibanText.flatMap(IBAN.init)
 			// An account whose bank sent an invalid IBAN keeps that text as its account number (`Account.takeIBAN(_:)`), and
-			// MoneyMoney gives it as the IBAN or as the account number with the BIC as `bankCode`. Text with the country code of
-			// an IBAN country is no plain account number, so it matches without a bank code.
+			// MoneyMoney gives it as the IBAN or as the account number with the BIC as `bankCode`. Text in the shape of an IBAN
+			// whose check digits fail is no plain account number, so it matches without a bank code. Any other text matches only
+			// with its bank code.
 			let invalidIBAN: String? = [Self.string(item["iban"]), number].compactMap { $0 }.first(where: Self.isInvalidIBAN).map(TextFolding.accountKey)
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
 			var balanceMinor: Int64?
@@ -574,13 +575,20 @@ public struct MoneyMoneyMigration: Sendable {
 		return money
 	}
 
-	/// Text that starts with the country code of an IBAN country but is no valid IBAN.
+	/// Text in the shape of an IBAN whose check digits do not fit: after folding only ASCII letters and digits, the country
+	/// code of an IBAN country, two digits, and the length of an IBAN of that country. Text that merely starts with a
+	/// country code, such as "DE4711" or "FR-4711", is an account number of its bank and matches only with its bank code.
 	private static func isInvalidIBAN(_ text: String) -> Bool {
 		do {
 			_ = try IBAN(parsing: text)
 			return false
 		} catch {
-			return error != .country
+			// The error `checksum` means that the country and the length fit.
+			guard error == .checksum else { return false }
+			let compact = TextFolding.accountKey(text).utf8
+			let isDigit = { (c: UInt8) in c >= UInt8(ascii: "0") && c <= UInt8(ascii: "9") }
+			return compact.allSatisfy { isDigit($0) || ($0 >= UInt8(ascii: "A") && $0 <= UInt8(ascii: "Z")) }
+				&& compact.dropFirst(2).prefix(2).allSatisfy(isDigit)
 		}
 	}
 

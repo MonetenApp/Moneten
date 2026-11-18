@@ -492,6 +492,30 @@ struct LedgerTests {
 		}
 	}
 
+	@Test("A regular expression on the counterparty account finds the same rows as the rule when rows share a counterparty")
+	func sharedCounterpartyRegex() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let counterparties: [String?] = ["DE02120300000000202051", "4711", "DE02120300000000202051", nil, "DE03120300000000202051", "4711", nil]
+		let rows = counterparties.enumerated().map { i, iban in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + i), amountMinor: -100 * Int64(i + 1), name: "Kunde \(i)",
+				counterpartyIBAN: iban)
+		}
+		let l = Ledger(accounts: [giro], transactions: rows)
+		let queries = ["remote_account:/^DE02 1203/", "remote_account:/^DE021203/", "remote_account:/^4711$/", "NOT remote_account:/^DE02/",
+			"remote_account:/^DE03/ OR remote_account:/^4711$/", "remote_account:/^$/", "remote_account:/DE02/ AND name:/Kunde [02]/"]
+		for query in queries {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched = l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted()
+			let ruled = rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name).sorted()
+			#expect(searched == ruled, "\(query)")
+		}
+		var f = TransactionFilter()
+		f.searchText = "remote_account:/^DE02 1203/"
+		#expect(l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted() == ["Kunde 0", "Kunde 2"])
+	}
+
 	@Test("Search for finds the row it starts from, also with quotation marks in the name")
 	func searchForName() {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
