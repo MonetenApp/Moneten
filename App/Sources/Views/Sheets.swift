@@ -195,9 +195,9 @@ struct AccountSettingsSheet: View {
 					}
 					Section("Bank details") {
 						LabeledContent("Currency", value: original.currency)
-						if let iban = original.iban { LabeledContent("IBAN") { Text(Format.iban(iban)).textSelection(.enabled) } }
+						if let iban = original.iban { LabeledContent("IBAN") { Text(iban.formatted).textSelection(.enabled) } }
 						if let bic = original.bic { LabeledContent("BIC") { Text(bic).textSelection(.enabled) } }
-						if let number = original.accountNumber, number != original.iban { LabeledContent("Account number", value: number) }
+						if let number = original.accountNumber, number != original.iban?.electronic { LabeledContent("Account number", value: number) }
 						if let owner = original.owner { LabeledContent("Account owner", value: owner) }
 					}
 					Section {

@@ -182,7 +182,7 @@ public struct NewAccount: Sendable {
 	public var currency: String { listed.currency }
 	public var accountNumber: String { listed.accountNumber }
 	public var bankCode: String? { listed.bankCode }
-	public var iban: String? { listed.iban }
+	public var iban: IBAN? { listed.iban }
 	public var bic: String? { listed.bic }
 	public var owner: String? { listed.owner }
 	/// The number that later refreshes ask for, as `AccountRequest.remoteID`.

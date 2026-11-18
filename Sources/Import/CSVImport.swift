@@ -343,7 +343,7 @@ public struct CSVFile: Sendable {
 	/// accounts or amounts.
 	static func isAccount(_ cell: String) -> Bool {
 		let value = cell.filter { !$0.isWhitespace }
-		return MoneyMoneyMigration.isIBAN(value) || (value.count >= 5 && value.allSatisfy { $0.isASCII && $0.isNumber })
+		return IBAN(value) != nil || (value.count >= 5 && value.allSatisfy { $0.isASCII && $0.isNumber })
 	}
 
 	/// A bank code of eight digits, or a BIC in capitals whose letters 5 and 6 are the country of the IBAN of the row.
@@ -355,7 +355,7 @@ public struct CSVFile: Sendable {
 		guard [8, 11].contains(value.count), value.allSatisfy({ $0.isASCII && ($0.isUppercase || $0.isNumber) }),
 			value.prefix(6).allSatisfy(\.isLetter) else { return false }
 		let country = String(value.dropFirst(4).prefix(2))
-		if let iban, MoneyMoneyMigration.isIBAN(iban) { return TextFolding.accountKey(iban).hasPrefix(country) }
+		if let iban, let parsed = IBAN(iban) { return parsed.electronic.hasPrefix(country) }
 		return value.count == 11 && countries.contains(country)
 	}
 
@@ -525,7 +525,7 @@ public struct CSVFile: Sendable {
 			}
 			var t = Transaction(accountID: placeholder, bookingDate: day, valueDate: valueDate,
 				amountMinor: money.minorUnits, currency: cur,
-				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn), counterpartyBIC: Self.cell(row, bicColumn),
+				name: Self.cell(row, nameColumn) ?? "", purpose: Self.cell(row, purposeColumn) ?? "", counterpartyIBAN: Self.cell(row, ibanColumn).map(IBAN.electronicForm), counterpartyBIC: Self.cell(row, bicColumn),
 				bookingText: Self.cell(row, bookingTextColumn), endToEndReference: Self.cell(row, endToEndReferenceColumn), mandateReference: Self.cell(row, mandateReferenceColumn),
 				creditorID: Self.cell(row, creditorIDColumn), comment: Self.cell(row, commentColumn))
 			if t.name.isEmpty, t.purpose.isEmpty, let text = t.bookingText { t.name = text }

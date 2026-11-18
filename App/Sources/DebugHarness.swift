@@ -289,7 +289,7 @@ final class DebugHarness {
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
-				iban: "DE02120300000000202051"))
+				iban: IBAN("DE02120300000000202051")))
 		// "<name>": a migrated savings account without an IBAN and a subnumber, with the account number 9 of the made-up bank.
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
@@ -1407,7 +1407,7 @@ final class DebugHarness {
 			let help = TransactionCell.helpText(t).components(separatedBy: "\n")
 			let labels = [TransactionDetail.bookingText(""), .returnReason(""), .endToEndReference(""), .mandateReference(""), .creditorID(""),
 				.originalAmount(Money(minorUnits: 0, currency: "USD")), .deviatingParty("", recipient: true), .valueDate(Day.today()),
-				.iban(""), .bic("")].map(\.label)
+				.iban(IBAN("DE02120300000000202051")!), .bic("")].map(\.label)
 			let shown = help.dropFirst(3).map { $0.components(separatedBy: ":").first ?? "" }
 			let table = self.transactionTables().first
 			let visible = table.map { $0.rows(in: $0.visibleRect) } ?? NSRange()
@@ -2058,11 +2058,20 @@ enum DemoData {
 					let slot = newAccounts > 0 ? n * count / accounts.count + i / accounts.count : i
 					let amount = Int64(-(i % 9_000) - 100)
 					return Transaction(accountID: account.id, bookingDate: today.adding(days: -(slot / 8)), amountMinor: amount,
-						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)")
+						name: names[i % names.count], purpose: i % 3 == 0 ? "" : "Purpose \(i)", counterpartyIBAN: madeUpIBAN(i % 500))
 				}
 				_ = try? model.merge(.file(ts), into: account.id)
 			}
 		}
+	}
+
+	/// The IBAN of one of 500 made-up counterparties at the made-up bank code 12030000, with valid check digits, so
+	/// that a regular expression on `remote_account:` reads it in its electronic form and in groups of four.
+	static func madeUpIBAN(_ n: Int) -> String {
+		let bban = "12030000" + String(format: "%010d", 1_000_000 + n)
+		// D is 13 and E is 14, and the check digits count as 00 while they are computed.
+		let remainder = (bban + "131400").reduce(0) { ($0 * 10 + Int(String($1))!) % 97 }
+		return "DE" + String(format: "%02d", 98 - remainder) + bban
 	}
 
 	/// Ten years of a current account: salary and rent, an overdraft in the first year, and a few
@@ -2172,7 +2181,7 @@ enum DemoData {
 			let savings = model.ledger.accounts.first(where: { $0.name == "Tagesgeld" }) else { return }
 		var g = giro
 		g.initialBalanceMinor = 250_000
-		g.iban = "DE02120300000000202051"
+		g.iban = IBAN("DE02120300000000202051")
 		model.save(account: g)
 		var s = savings
 		s.initialBalanceMinor = 1_000_000

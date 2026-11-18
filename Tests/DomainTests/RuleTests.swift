@@ -250,7 +250,20 @@ struct RuleTests {
 			#expect(try matches("local_account:DE0?1203*", RuleSubject(localAccounts: [value])), "\(value)")
 		}
 		#expect(try !matches("local_account:DE0?1203*", RuleSubject(localAccounts: ["DE89370400440532013000"])))
-		#expect(Format.iban(iban) == "DE02 1203 0000 0000 2020 51")
+	}
+
+	@Test("A regular expression on an account reads the text as stored and a valid IBAN also without and with groups of four")
+	func regexOnAccounts() throws {
+		let earlier = "DE02 1203 0000 0000 2020 51", electronic = "DE02120300000000202051"
+		for text in [earlier, electronic] {
+			for pattern in ["/^DE02 1203/", "/^DE021203/", "/2020 51$/"] {
+				#expect(try matches("remote_account:\(pattern)", RuleSubject(remoteAccounts: [text])), "\(pattern) \(text)")
+				#expect(try matches("local_account:\(pattern)", RuleSubject(localAccounts: [text])), "\(pattern) \(text)")
+			}
+		}
+		// Text that is not a valid IBAN reads only as it is.
+		#expect(try !matches("remote_account:/^DE03 1203/", RuleSubject(remoteAccounts: ["DE03120300000000202051"])))
+		#expect(try matches("remote_account:/^0099/", RuleSubject(remoteAccounts: ["0099887766"])))
 	}
 
 	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))

@@ -42,7 +42,7 @@ public enum TransactionCSV {
 		lines.reserveCapacity(rows.count + 1)
 		for (i, t) in rows.enumerated() {
 			if i % 1_000 == 0 { try Task.checkCancellation() }
-			let own = accounts[t.accountID].map { $0.iban ?? $0.accountNumber ?? $0.name } ?? ""
+			let own = accounts[t.accountID].map { $0.iban?.electronic ?? $0.accountNumber ?? $0.name } ?? ""
 			let fields = [day(t.bookingDate), day(t.valueDate), categoryPath(t.categoryID, in: ledger), t.name, t.purpose, t.counterpartyIBAN ?? "",
 				t.counterpartyBIC ?? "", amount(t.amountMinor, t.currency), t.currency, own, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "",
 				t.creditorID ?? "", t.comment ?? "", t.isChecked ? "X" : "", t.isPending ? "X" : ""]

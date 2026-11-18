@@ -42,6 +42,9 @@ struct SearchQuery {
 
 	private let root: Node?
 	private let watch: RegexWatch
+	/// The forms of each account text that this pass read. Many rows share a counterparty, and parsing an IBAN for each
+	/// row took longer than the regular expression.
+	private let accountForms = AccountForms()
 
 	var gaveUp: Bool { watch.gaveUp || watch.budget.gaveUp }
 
@@ -62,7 +65,7 @@ struct SearchQuery {
 		guard let root else { return true }
 		return withoutActuallyEscaping(account) { account in
 			withoutActuallyEscaping(categoryName) { categoryName in
-				Self.holds(root, Row(transaction: t, searchText: searchText, account: account, categoryName: categoryName))
+				Self.holds(root, Row(transaction: t, searchText: searchText, account: account, categoryName: categoryName, accountForms: accountForms))
 			}
 		}
 	}
@@ -72,8 +75,9 @@ struct SearchQuery {
 		let searchText: String
 		let account: () -> Account?
 		let categoryName: () -> String?
+		let accountForms: AccountForms
 
-		/// The values of a field as a rule reads them.
+		/// The values of a field as a regular expression of a rule reads them, an account in each of its forms.
 		func forEachText(of field: RuleField, _ body: (String) -> Void) {
 			let t = transaction
 			switch field {
@@ -84,8 +88,8 @@ struct SearchQuery {
 			case .mandate: body(t.mandateReference ?? "")
 			case .creditorID: body(t.creditorID ?? "")
 			case .comment: body(t.comment ?? "")
-			case .localAccount: if let a = account() { a.iban.map(body); a.accountNumber.map(body) }
-			case .remoteAccount: t.counterpartyIBAN.map(body)
+			case .localAccount: if let a = account() { [a.iban?.electronic, a.accountNumber].compactMap { $0 }.flatMap(accountForms.of).forEach(body) }
+			case .remoteAccount: t.counterpartyIBAN.map(accountForms.of)?.forEach(body)
 			case .currency: body(t.currency)
 			}
 		}
@@ -122,9 +126,13 @@ struct SearchQuery {
 		/// The joined text can run long where each value alone does not, as `\s` matches the joining line break, so it
 		/// has a watch of its own. When it gives up, the rows read each value.
 		let lineWatch: RegexWatch
+		/// A term on `remote_account:` reads only the counterparty IBAN, so the rows of one counterparty have one outcome.
+		/// Every row reads such a term, because the search text does not hold the IBAN, and many rows share a counterparty.
+		let counterpartyOutcomes: CounterpartyOutcomes?
 
 		init(_ regex: NSRegularExpression, field: RuleField?, watch: RegexWatch) {
 			self.watch = watch
+			counterpartyOutcomes = field == .remoteAccount ? CounterpartyOutcomes() : nil
 			lineWatch = RegexWatch(budget: watch.budget)
 			let pattern = regex.pattern
 			// Anchors of the whole text, inline options, and quantifiers that never give back read the joined values
@@ -143,6 +151,16 @@ struct SearchQuery {
 
 		func holds(_ row: Row) -> Bool {
 			if watch.gaveUp { return false }
+			guard let counterpartyOutcomes else { return reads(row) }
+			let key = row.transaction.counterpartyIBAN
+			if let known = counterpartyOutcomes.known[key] { return known }
+			let found = reads(row)
+			// A watch that gave up ends the search, and its `false` says nothing about the counterparty.
+			if !watch.gaveUp { counterpartyOutcomes.known[key] = found }
+			return found
+		}
+
+		private func reads(_ row: Row) -> Bool {
 			// Folding a text that is not ASCII can change its letters, as "e" and a combining accent become "é".
 			if let required, !required.occurs(in: row.searchText), row.searchText.utf8.allSatisfy({ $0 < 0x80 }) { return false }
 			var values: [String] = []
@@ -350,7 +368,7 @@ enum SearchText {
 	static func of(_ t: Transaction, account: Account?, categoryName: String?) -> String {
 		// Separate lets with their types, because the compiler of CI gave up on one expression for all parts.
 		let fields: [String] = [t.name, t.purpose, t.bookingText ?? "", t.endToEndReference ?? "", t.mandateReference ?? "", t.creditorID ?? "", t.comment ?? ""]
-		let numbers: [String?] = [t.counterpartyIBAN, account?.iban, account?.accountNumber]
+		let numbers: [String?] = [t.counterpartyIBAN, account?.iban?.electronic, account?.accountNumber]
 		let accountNumbers: [String] = numbers.map { (number: String?) -> String in number.map(TextFolding.accountKey) ?? "" }
 		let names: [String] = [t.counterpartyBIC ?? "", account?.name ?? "", categoryName ?? ""]
 		let amounts: [String] = Ledger.amountTexts(t.amountMinor, decimals: t.amount.decimalPlaces)
@@ -513,4 +531,22 @@ private struct AmountBounds {
 			}
 		}
 	}
+}
+
+/// The texts that a regular expression reads for each distinct account text, `IBAN.patternTexts(of:)` made once per
+/// search pass. A pass runs on one thread.
+private final class AccountForms {
+	private var forms: [String: [String]] = [:]
+
+	func of(_ text: String) -> [String] {
+		if let known = forms[text] { return known }
+		let made = IBAN.patternTexts(of: text)
+		forms[text] = made
+		return made
+	}
+}
+
+/// Whether a regular expression on `remote_account:` matches each counterparty IBAN that this search pass read.
+private final class CounterpartyOutcomes {
+	var known: [String?: Bool] = [:]
 }

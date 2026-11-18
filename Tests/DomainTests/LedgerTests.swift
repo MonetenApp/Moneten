@@ -216,7 +216,7 @@ struct LedgerTests {
 	@Test("An IBAN written with a no-break or a narrow no-break space is found by the plain IBAN, as the rule finds it", arguments: ["\u{00A0}", "\u{202F}"])
 	func searchIBANWithOtherSpaces(_ space: String) throws {
 		let iban = ["DE02", "1203", "0000", "0000", "2020", "51"].joined(separator: space)
-		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: iban)
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .offline, iban: try IBAN(parsing: iban))
 		let other = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .offline, iban: "DE89370400440532013000")
 		let rows = [
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -1_250, name: "Markt", purpose: "REWE"),
@@ -465,7 +465,7 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 11), amountMinor: -90, name: "Miete.", purpose: "Mai")]
 		let l = Ledger(accounts: [giro], transactions: all)
 		let queries = [#"name:"Stadtwerke Musterstadt""#, "name:Stadt*", "purpose:November", #"purpose:"Abschlag November""#, "comment:strom",
-			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000",
+			"booking_text:lastschrift", "reference:E2E-1", "mandate:M-1", "creditor_id:DE98ZZZ*", "remote_account:DE89370400440532013000", "remote_account:/^DE89 3704/", "remote_account:/^DE893704/", "local_account:/^DE02 1203/", "local_account:/^DE021203/",
 			#"local_account:"DE02 1203 0000 0000 2020 51""#, "local_account:4711", "currency:USD", "name:baeckerei", "name:*gutbrot", "name:*ecke*", "name:Stadtwerke*", "purpose:/^Abschlag/", "name:/gutbrot$/", #"local_account:/\A4711/"#, #"booking_text:/\ALAST/"#, #"purpose:/zahlung\z/"#, "name:/(?-m)^b/", #"name:/gutbrot\D*+$/"#, "name:caf*", "name:*e", #"purpose:/kaffee\s$/"#, #"/kaffee\s$/"#, #"/gutbrot\D*+$/"#, "comment:/^$/", "/^$/",
 			"purpose:Zeitung", "name:markt", "name:kiosk*", "Name:Stadtwerke*", "NAME:=baeckerei", "name==*gutbrot", "name=caf*", "name!=Stadtwerke*", "name<>*e",
 			"true", "NOT false", "comment:strom OR false",
@@ -490,6 +490,30 @@ struct LedgerTests {
 			#expect(l.rows(in: .account(giro.id), filter: f).rows.isEmpty, "\(query)")
 			#expect(!all.contains { rule.matches(RuleSubject($0, account: giro)) }, "\(query)")
 		}
+	}
+
+	@Test("A regular expression on the counterparty account finds the same rows as the rule when rows share a counterparty")
+	func sharedCounterpartyRegex() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let counterparties: [String?] = ["DE02120300000000202051", "4711", "DE02120300000000202051", nil, "DE03120300000000202051", "4711", nil]
+		let rows = counterparties.enumerated().map { i, iban in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1 + i), amountMinor: -100 * Int64(i + 1), name: "Kunde \(i)",
+				counterpartyIBAN: iban)
+		}
+		let l = Ledger(accounts: [giro], transactions: rows)
+		let queries = ["remote_account:/^DE02 1203/", "remote_account:/^DE021203/", "remote_account:/^4711$/", "NOT remote_account:/^DE02/",
+			"remote_account:/^DE03/ OR remote_account:/^4711$/", "remote_account:/^$/", "remote_account:/DE02/ AND name:/Kunde [02]/"]
+		for query in queries {
+			var f = TransactionFilter()
+			f.searchText = query
+			let rule = try Rule(parsing: query)
+			let searched = l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted()
+			let ruled = rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name).sorted()
+			#expect(searched == ruled, "\(query)")
+		}
+		var f = TransactionFilter()
+		f.searchText = "remote_account:/^DE02 1203/"
+		#expect(l.rows(in: .account(giro.id), filter: f).rows.map(\.name).sorted() == ["Kunde 0", "Kunde 2"])
 	}
 
 	@Test("Search for finds the row it starts from, also with quotation marks in the name")
