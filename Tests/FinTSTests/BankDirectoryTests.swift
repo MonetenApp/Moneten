@@ -180,6 +180,6 @@ struct LoginHintTests {
 			#expect(hint.source.scheme == "https", "\(hint.label)")
 			#expect(!hint.help.isEmpty)
 		}
-		#expect(Set(hints.map(\.label)).count == 5)
+		#expect(Set(hints.map(\.label)).count == 6)
 	}
 }
