@@ -76,12 +76,13 @@ checked_current_feed() {
 # Succeeds when the tag $1 is a stable version of the app, such as v1.2.3.
 app_tag() { printf '%s\n' "$1" | grep -qxE 'v[0-9]+\.[0-9]+\.[0-9]+'; }
 
-# Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
-# no stable release of the app exists makes this the first release, so a network error never starts
-# an empty feed. GitHub marks the only published release as the latest one even when it was created
-# with --latest=false, so ext-v0.1.0 or bank-data can be the latest release before the first version
-# of the app. That counts as no release of the app, but only while no published release has the tag
-# of a stable version: a feed that starts again at revision 1 would drop the versions of the old one.
+# Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only a list of every release
+# that GitHub sent in full, with no published stable version of the app, makes this the first
+# release, so a network error never starts an empty feed. GitHub marks the only published release as
+# the latest one even when it was created with --latest=false, so ext-v0.1.0 or bank-data can be the
+# latest release before the first version of the app. A 404 for the latest release is no proof
+# either, because GitHub leaves a release marked as a pre-release out of it. Each copy of the app
+# refuses a feed that starts again at revision 1, so the list decides in every case.
 current_feed() {
 	set -- -sS -o "$WORK/latest.json" -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
@@ -97,12 +98,10 @@ current_feed() {
 		FEED_ARGS="--feed $WORK/current.xml"
 		return
 	fi
-	if [ -n "$LATEST" ]; then
-		gh api --paginate "repos/$REPO/releases?per_page=100" -q '.[] | "\(.tag_name) \(.draft)"' > "$WORK/releases.txt" \
-			|| fail "The releases of $REPO cannot be read."
-		APP_RELEASES=$(awk '$2 == "false" && $1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ { printf "%s%s", sep, $1; sep = ", " }' "$WORK/releases.txt")
-		[ -z "$APP_RELEASES" ] || fail "The latest release is $LATEST, not a version of the app, although these versions are published: $APP_RELEASES. Mark the newest version as the latest release."
-	fi
+	gh api --paginate "repos/$REPO/releases?per_page=100" -q '.[] | "\(.tag_name) \(.draft)"' > "$WORK/releases.txt" \
+		|| fail "The releases of $REPO cannot be read."
+	APP_RELEASES=$(awk '$2 == "false" && $1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ { printf "%s%s", sep, $1; sep = ", " }' "$WORK/releases.txt")
+	[ -z "$APP_RELEASES" ] || fail "The latest release is ${LATEST:-none}, not a version of the app, although these versions are published: $APP_RELEASES. Mark the newest version as the latest release."
 	FEED_ARGS=--first-release
 	echo "No stable release of the app yet${LATEST:+ (the latest release is $LATEST)}: this is the first feed."
 }
@@ -110,7 +109,7 @@ current_feed() {
 # Fails unless GitHub reports v$1 as the latest release, which carries the feed of the feed URL.
 check_latest() {
 	LATEST=$(gh api "repos/$REPO/releases/latest" -q .tag_name) || fail "GitHub does not answer for the latest release."
-	[ "$LATEST" = "v$1" ] || fail "The latest release is ${LATEST:-none}, not v$1, so the feed URL misses its feed."
+	[ "$LATEST" = "v$1" ] || fail "The latest release is ${LATEST:-none}, not v$1, so the feed URL misses its feed. v$1 is public now, so a second publish stops at \"is not a draft\". Mark v$1 as the latest release, then do the rest of publish by hand as docs/releasing.md describes."
 }
 
 preflight() {
@@ -501,15 +500,20 @@ check_feeds() {
 }
 
 # current_feed and check_latest with stubs of curl and gh in place of GitHub. STUB_LATEST is the tag
-# of the latest release, empty for none, STUB_RELEASES the lines "tag draft" of every release, and
-# STUB_FEED the file at the feed URL, empty for none. Each case names the feed arguments it expects,
-# "first" or "feed", or else a part of the message of its failure.
+# of the latest release, empty for none, or "!" and the HTTP status of an error. STUB_RELEASES holds
+# the lines "tag draft" of every release, or "fail" for a list that cannot be read. STUB_FEED is the
+# file at the feed URL, empty for none. Each case names the feed arguments it expects, "first" or
+# "feed", or else a part of the message of its failure.
 check_latest_rule() { (
 	curl() {
 		for URL; do :; done
 		while [ $# -gt 1 ]; do [ "$1" != -o ] || OUTPUT=$2; shift; done
 		case "$URL" in
-		*/releases/latest) if [ -z "$STUB_LATEST" ]; then printf 404; else printf '{"tag_name": "%s"}' "$STUB_LATEST" > "$OUTPUT"; printf 200; fi ;;
+		*/releases/latest) case "$STUB_LATEST" in
+			"") printf 404 ;;
+			!*) printf %s "${STUB_LATEST#!}" ;;
+			*) printf '{"tag_name": "%s"}' "$STUB_LATEST" > "$OUTPUT"; printf 200 ;;
+			esac ;;
 		"$FEED_URL") [ -n "$STUB_FEED" ] && cp "$STUB_FEED" "$OUTPUT" || return 22 ;;
 		*) return 7 ;;
 		esac
@@ -517,7 +521,8 @@ check_latest_rule() { (
 	gh() {
 		case "$*" in
 		*/releases/latest*) [ -n "$STUB_LATEST" ] && printf '%s\n' "$STUB_LATEST" ;;
-		*) printf %b "$STUB_RELEASES" ;;
+		*) [ "$STUB_RELEASES" != fail ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; return 1; }
+			printf %b "$STUB_RELEASES" ;;
 		esac
 	}
 	printf '<rss/>\n' > "$WORK/stub-feed.xml"
@@ -542,12 +547,16 @@ check_latest_rule() { (
 	v0.1.0|v0.1.0 false\next-v0.1.0 false\n|feed|feed
 	v0.1.0|v0.1.0 false\n||has no readable
 	ext-v0.1.0|ext-v0.2.0 false\nv0.1.0 false\next-v0.1.0 false\n|feed|Mark the newest version as the latest release
+	|v0.1.0 false\next-v0.1.0 false\n|feed|The latest release is none, not a version of the app, although these versions are published: v0.1.0
+	|fail||cannot be read
+	ext-v0.1.0|fail||cannot be read
+	!502|||GitHub answered 502
 	EOF
 	STUB_LATEST=v0.1.0; (check_latest 0.1.0) || fail "check_latest refused v0.1.0 as the latest release."
 	for STUB_LATEST in ext-v0.1.0 v0.0.9 ""; do
 		(check_latest 0.1.0) 2>/dev/null && fail "check_latest accepted ${STUB_LATEST:-none} as the latest release v0.1.0."
 	done
-	echo "A latest release that is no version of the app starts the first feed while no version is published, and a version without a readable feed fails."
+	echo "No latest release, or one that is no version of the app, starts the first feed only when a full list of the releases shows no published version, and a version without a readable feed fails."
 ); }
 
 # The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the

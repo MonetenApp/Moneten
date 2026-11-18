@@ -3,7 +3,7 @@ name: Bank data
 # Publishes the bank list between releases of the app (add-software-update, group 6). A run by hand on
 # main with "publish" builds blz.properties from the hbci4java jar that Tools/FinTSProbeJava/dependencies.lock
 # pins and BankData/corrections.properties, signs it with the update key, and uploads it with its signature
-# to the release bank-data, which is never the latest release. Without "publish", and on a pull request
+# to the release bank-data, which is never the latest release once the app has a version. Without "publish", and on a pull request
 # that changes these files, it makes a dry run that signs with a throwaway key and publishes nothing.
 # docs/releasing.md lists the one-time setup.
 
@@ -102,8 +102,8 @@ jobs:
           done
           cmp "$RUNNER_TEMP/published/blz.properties" dist/bank-data/blz.properties
           python3 scripts/bank-data.py verify --public-key "$PUBLIC_KEY" "$RUNNER_TEMP/published/blz.properties"
-          # bank-data must never be the latest release. Before the first version of the app, no latest
-          # release, or ext-v0.1.0 as the latest one, is fine. A version as the latest release must carry the feed.
+          # A version of the app as the latest release must carry the feed. Before the first version of
+          # the app, no latest release, or bank-data or ext-v0.1.0 as the latest one, is fine.
           python3 scripts/bank-data.py check-latest --repo "$REPO" || { echo "::error::The latest release breaks the feed URL. See the message above."; exit 1; }
       - name: Remove the update key
         if: always()

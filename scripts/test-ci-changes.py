@@ -37,6 +37,7 @@ MENTIONS = {
 	("scripts/build-app.sh", "docs/releasing.md", 'private key in the Keychain. See docs/releasing.md."'),
 	("scripts/release.sh", "docs/releasing.md", 'docs/releasing.md explains how the owner adds it."'),
 	("scripts/release.sh", "docs/releasing.md", 'no FinTS product ID. See docs/releasing.md."'),
+	("scripts/release.sh", "docs/releasing.md", 'publish by hand as docs/releasing.md describes."'),
 	("scripts/check-localization.py", "CONTRIBUTING.md", 'CONTRIBUTING.md explains it.")'),
 }
 

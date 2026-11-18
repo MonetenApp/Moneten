@@ -20,9 +20,9 @@
                          build the files and sign them with a throwaway key, check them, check that one
                          changed byte fails, and publish nothing
   bank-data.py check-latest --repo OWNER/NAME
-                         after an upload: fail when bank-data is the latest release, when the latest
-                         release is a version of the app whose feed URL does not answer, or when it is
-                         no version of the app although one is published. Reads GitHub with gh and curl.
+                         after an upload: fail when the latest release is a version of the app whose
+                         feed URL does not answer, or when it is no version of the app, such as bank-data,
+                         although one is published. Reads GitHub with gh and curl.
 
 The app runs the same checks with BankData.verify and BankData.isReadableBankList in Sources/FinTS.
 Checking needs OpenSSL 3 or later, and so does signing without sign_update. The workflow signs with
@@ -294,9 +294,10 @@ APP_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 
 def check_latest(repo):
 	"""The feed URL of the app follows the latest release. GitHub marks the only published release as the
-	latest one even when it was created with --latest=false, so ext-v0.1.0 can be the latest release
-	before the first version of the app. That is fine while no version is published: the first version
-	takes the mark with --latest."""
+	latest one even when it was created with --latest=false, so ext-v0.1.0 or bank-data can be the latest
+	release before the first version of the app. That is fine while no version is published: the first
+	version takes the mark with --latest. GitHub leaves a release marked as a pre-release out of the
+	latest release, so only the full list of releases shows that no version is published."""
 	result = subprocess.run(["gh", "api", "repos/%s/releases/latest" % repo, "--jq", ".tag_name"], capture_output=True, text=True)
 	if result.returncode == 0:
 		latest = result.stdout.strip()
@@ -304,8 +305,6 @@ def check_latest(repo):
 		latest = ""
 	else:
 		raise Failure("GitHub does not answer for the latest release: %s" % result.stderr.strip())
-	if latest == "bank-data":
-		raise Failure("bank-data is the latest release, so the feed URL breaks. Mark the newest version as latest.")
 	if APP_TAG.fullmatch(latest):
 		feed = "https://github.com/%s/releases/latest/download/appcast.xml" % repo
 		if subprocess.run(["curl", "-fsSIL", "--retry", "3", "-o", os.devnull, feed]).returncode != 0:
@@ -319,8 +318,8 @@ def check_latest(repo):
 	published = [tag for tag, draft in (line.split() for line in result.stdout.splitlines() if line.strip())
 		if draft == "false" and APP_TAG.fullmatch(tag)]
 	if published:
-		raise Failure("the latest release is %s, not a version of the app, although these versions are published: %s. Mark the newest version as latest."
-			% (latest, ", ".join(published)))
+		raise Failure("the latest release is %s, not a version of the app, although these versions are published: %s, so the feed URL breaks. Mark the newest version as latest."
+			% (latest or "none", ", ".join(published)))
 	print("No version of the app is published yet%s, so there is no feed to check." % (" (the latest release is %s)" % latest if latest else ""))
 
 

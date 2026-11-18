@@ -119,10 +119,17 @@ class BankDataTests(unittest.TestCase):
 		self.assertNotEqual(run("verify", "--public-key", public, str(path)).returncode, 0)
 
 
+# STUB_LATEST is the tag of the latest release, empty for none, or "error" for an answer other than 404.
+# STUB_RELEASES holds the lines "tag draft" of every release, or "fail" for a list that cannot be read.
 GH_STUB = """#!/bin/sh
 case "$*" in
-*/releases/latest*) [ -n "$STUB_LATEST" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }; echo "$STUB_LATEST" ;;
-*) printf "$STUB_RELEASES" ;;
+*/releases/latest*)
+	[ "$STUB_LATEST" != error ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+	[ -n "$STUB_LATEST" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+	echo "$STUB_LATEST" ;;
+*)
+	[ "$STUB_RELEASES" != fail ] || { echo "gh: Bad Gateway (HTTP 502)" >&2; exit 1; }
+	printf "$STUB_RELEASES" ;;
 esac
 """
 CURL_STUB = """#!/bin/sh
@@ -151,7 +158,8 @@ class CheckLatestTests(unittest.TestCase):
 
 	def test_no_version_of_the_app_skips_the_feed(self):
 		for latest, releases in (("ext-v0.1.0", "ext-v0.1.0 false\\nv0.1.0 true\\n"), ("", ""),
-				("ext-v0.2.0", "ext-v0.2.0 false\\nv0.1.0-beta.1 false\\n")):
+				("ext-v0.2.0", "ext-v0.2.0 false\\nv0.1.0-beta.1 false\\n"),
+				("bank-data", "bank-data false\\next-v0.1.0 false\\n")):
 			result = self.check(latest, releases, feed=False)
 			self.assertEqual(result.returncode, 0, result.stderr)
 			self.assertIn("No version of the app is published yet", result.stdout)
@@ -162,15 +170,32 @@ class CheckLatestTests(unittest.TestCase):
 		self.assertNotEqual(result.returncode, 0)
 		self.assertIn("does not answer", result.stderr)
 
-	def test_bank_data_as_the_latest_release_fails(self):
-		result = self.check("bank-data", "bank-data false\\n", feed=True)
+	def test_bank_data_as_the_latest_release_fails_once_a_version_is_published(self):
+		result = self.check("bank-data", "bank-data false\\nv0.1.0 false\\n", feed=True)
 		self.assertNotEqual(result.returncode, 0)
-		self.assertIn("bank-data is the latest release", result.stderr)
+		self.assertIn("the latest release is bank-data", result.stderr)
 
 	def test_another_latest_release_fails_once_a_version_is_published(self):
 		result = self.check("ext-v0.2.0", "ext-v0.2.0 false\\nv0.1.0 false\\n", feed=True)
 		self.assertNotEqual(result.returncode, 0)
 		self.assertIn("v0.1.0", result.stderr)
+
+	def test_no_latest_release_fails_once_a_version_is_published(self):
+		# GitHub leaves a release marked as a pre-release out of the latest release.
+		result = self.check("", "v0.1.0 false\\n", feed=True)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("the latest release is none", result.stderr)
+
+	def test_an_error_for_the_latest_release_fails(self):
+		result = self.check("error", "ext-v0.1.0 false\\n", feed=True)
+		self.assertNotEqual(result.returncode, 0)
+		self.assertIn("does not answer for the latest release", result.stderr)
+
+	def test_a_list_that_cannot_be_read_fails(self):
+		for latest in ("", "ext-v0.1.0", "bank-data"):
+			result = self.check(latest, "fail", feed=True)
+			self.assertNotEqual(result.returncode, 0, latest)
+			self.assertIn("cannot be read", result.stderr)
 
 
 if __name__ == "__main__":
