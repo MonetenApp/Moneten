@@ -11,7 +11,7 @@ The URLs come from the bank list of hbci4java (`blz.properties`, changed 2026-10
 | DKB | Yes ([DKB](https://www.dkb.de/geschaeftskunden/electronic-banking)) | `https://fints.dkb.de/fints`. The old server was switched off on 2024-11-25 ([ifun.de](https://www.ifun.de/dkb-neue-freigabemethoden-und-serverwechsel-fuer-finanzsoftware-243660/)) | DKB app (decoupled), chipTAN. Every login and every download needs an approval | Unknown. DKB moves its securities business to Upvest from late 2026 |
 | Consorsbank | Yes ([FAQ](https://www.consorsbank.de/web/Wissen/FAQ/kontokarten/HBCI-Schnittstelle-Konto-und-Zahlungsverkehrsprogramm)) | `https://brokerage-hbci.consorsbank.de/hbci` | Consorsbank app (push) since August 2025. A TAN at every login | Yes, holdings ([FAQ](https://www.consorsbank.de/web/Wissen/FAQ/kontokarten/HBCI-Schnittstelle-unterstuetzte-Funktionen)). Securities transactions not listed |
 | flatex | Only for the clearing account ([Lexware](https://help.lexware.de/de-form/articles/661667-lexware-office-flatex-anbinden)) | `https://konto.biw-bank.de/hbci/` in hbci4java, which the project bank list corrects to `https://banking.flatexdegiro.com/hbci` for 10130800, 30330800, and 76030800 (#234, `BankData/corrections.properties`). Check with a real bank (#11) | Unknown | Unknown. flatex documents only a CSV export of depot transactions |
-| HypoVereinsbank | Yes, after switching it on in online banking ([fino](https://kws.help.fino.digital/en/support/solutions/articles/80000616994-hypovereinsbank-unicredit)) | `https://hbci-01.hypovereinsbank.de/bank/hbci` | photoTAN, appTAN | Unknown. Transactions start at the first FinTS download |
+| HypoVereinsbank | Yes, after switching it on in online banking ([fino](https://kws.help.fino.digital/en/support/solutions/articles/80000616994-hypovereinsbank-unicredit)). No page of the bank says so (checked 2026-11-18) | `https://hbci-01.hypovereinsbank.de/bank/hbci` | photoTAN, appTAN, both for FinTS ([HVB](https://www.hypovereinsbank.de/hvb/services/online-banking/tan-verfahren)) | Unknown. Transactions start at the first FinTS download |
 | Sparkasse | Yes ([fino](https://depotwechsel.help.fino.digital/en/support/solutions/articles/80000616998-sparkasse)) | One server per region, such as `https://banking-be3.s-fints-pt-be.de/fints30` | pushTAN, chipTAN | Unknown |
 
 Every bank asks for a decoupled approval or a TAN at login, so the first FinTS test needs decoupled TAN handling from the start (`NEED_PT_DECOUPLED` in hbci4java).
@@ -126,6 +126,13 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 3. Only with an access that has not logged in on www.ing.de for 90 days: record the code and the text of the lock. Expected: 9942 "Bitte erneuern Sie ihre Authentifizierung. Einfach unter ING.de einloggen." and the hint of the app.
 4. During the lock, refresh by hand two or three times and record after each one whether ING counts the login toward the block of the PIN, for example a warning of a block to come, or 3938 or 9930 at the next login. The automatic refresh pauses after 2 such refreshes in a row (`RefreshError.lockedLoginLimit`), and this step decides whether that limit can go. Stop at the first warning of a block, because a third failed login may block the PIN and the online banking.
 5. Log in on www.ing.de with the QR log-in once, and with the user name and the password once. Record which one unlocks FinTS, and after how long.
+
+### Run 5: HypoVereinsbank (issue #243)
+
+1. Before the first login, record whether the FinTS access is switched on in the online banking. If it is not, log in once and record the code and the text of the bank, then switch it on and record where the online banking offers it.
+2. Add the login with the 10-digit Direct Banking number and the PIN. Record whether the server takes that number as the login name, and any sentence the bank shows a new user, such as that only new transactions arrive.
+3. Refresh the giro account. Record whether the bank parameters allow CAMT (HKCAZ), or whether the bank sends MT940 and MT942. If it sends MT942, record one pending row and its booked version: is the entry date of the `:61:` line the day on which the bank books the row?
+4. Refresh a savings account in euros, such as "Sparkonto". If the bank sends CAMT, compare each entry with the website for the sign, the date, and the booking state, and record each entry that differs.
 
 ### What each run records
 
