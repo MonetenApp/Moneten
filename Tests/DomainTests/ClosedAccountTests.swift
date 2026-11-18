@@ -144,7 +144,7 @@ struct ClosedAccountTests {
 	@Test("Closing clears the error of the last refresh, because no refresh of a closed account clears it")
 	func refreshError() throws {
 		var failed = giro
-		failed.refreshError = RefreshError(message: "The bank is not available.", date: Date(timeIntervalSince1970: 1_763_337_600))
+		failed.refreshError = RefreshError(failure: .network("The bank is not available."), date: Date(timeIntervalSince1970: 1_763_337_600))
 		let result = try ledger([failed], []).closing(closed(failed), today: day)
 		#expect(result.account.refreshError == nil)
 	}
@@ -342,7 +342,7 @@ struct ClosedAccountTests {
 	func lateStatus() {
 		var account = closed(giro)
 		account.record(.refreshed(Date(timeIntervalSince1970: 1_763_400_000)))
-		account.record(.failed(RefreshError(message: "The bank is not available.", date: Date(timeIntervalSince1970: 1_763_400_000))))
+		account.record(.failed(RefreshError(failure: .network("The bank is not available."), date: Date(timeIntervalSince1970: 1_763_400_000))))
 		#expect(account.refreshedAt == nil && account.refreshError == nil)
 	}
 
