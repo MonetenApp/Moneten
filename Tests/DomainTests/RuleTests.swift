@@ -266,6 +266,13 @@ struct RuleTests {
 		#expect(try matches("remote_account:/^0099/", RuleSubject(remoteAccounts: ["0099887766"])))
 	}
 
+	@Test("A regular expression on each account field of one subject reads the texts of that field")
+	func regexOnBothAccountFields() throws {
+		let s = RuleSubject(localAccounts: ["DE02120300000000202051"], remoteAccounts: ["DE89370400440532013000"])
+		#expect(try matches("local_account:/^DE02 1203/ AND remote_account:/^DE89 3704/", s))
+		#expect(try !matches("local_account:/^DE02/ AND remote_account:/^DE02/", s))
+	}
+
 	@Test("A regular expression that does not end stops, and the rule matches no further row", .timeLimit(.minutes(1)))
 	func regexThatDoesNotEnd() throws {
 		let rule = try Rule(parsing: "/^+?49/")

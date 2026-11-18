@@ -777,9 +777,10 @@ struct MoneyMoneyMigrationTests {
 	}
 
 	/// Only text in the shape of an IBAN whose check digits fail matches without a bank code. Text that merely starts with
-	/// the country code of an IBAN country, such as "DE4711", is an account number of its bank.
+	/// the country code of an IBAN country, such as "DE4711", is an account number of its bank. So is text of the length
+	/// of a German IBAN without digits after the country code, or with a character other than a letter or a digit.
 	@Test("An account number that is not shaped like an IBAN matches only with its bank code",
-		arguments: ["4711", "DE4711", "Depot 4711", "FR-4711", "de.max@example.com"])
+		arguments: ["4711", "DE4711", "Depot 4711", "FR-4711", "de.max@example.com", "DEPOT00000000000004711", "DE02-12030000000020205"])
 	func plainNumberNeedsBankCode(number: String) throws {
 		let other = Account(position: 0, name: "Other", kind: .giro, source: .offline, accountNumber: number, bankCode: "10010010")
 		let item: [String: Any] = ["uuid": "A1", "name": "Giro", "group": false, "indentation": 0, "type": "Giro account", "currency": "EUR",
