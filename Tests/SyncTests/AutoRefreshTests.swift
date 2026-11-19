@@ -268,7 +268,9 @@ final class AutoRefreshTests {
 		#expect(bank.coordinator.states[kartenbank.id] == .failed(.needsUser(.secondFactor)))
 
 		// Two hours later the same rows come again: nothing new, so no second notification, and the access with the TAN stays out.
-		clock += 2 * 3600 + 120
+		// The coordinator records the end of the first refresh with the real time, which on a busy runner lies minutes after
+		// `start`, so the two hours count from now.
+		clock = Date() + 2 * 3600 + 120
 		#expect(bank.ledger.dueAccounts(at: clock).keys.sorted() == [musterbank.id, beispielbank.id].sorted())
 		let firstRefresh = bank.ledger.account(giro.id)?.refreshedAt
 		auto.tick()
