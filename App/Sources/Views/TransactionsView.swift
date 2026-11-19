@@ -1067,7 +1067,7 @@ struct CategoryChoices: View {
 			.disabled(!model.ledger.canAssign(c, to: transactions))
 		}
 		Divider()
-		Button("Add category") { model.sheet = .newCategory(isGroup: false, assigning: ids) }
+		Button("Add category") { model.sheet = .newCategory(assigning: ids) }
 	}
 
 	/// The same choices as a menu at the pointer, for the category ribbon.
@@ -1090,7 +1090,7 @@ struct CategoryChoices: View {
 			menu.addItem(item)
 		}
 		menu.addItem(.separator())
-		menu.addItem(ActionMenuItem(title: String(localized: "Add category")) { model.sheet = .newCategory(isGroup: false, assigning: ids) })
+		menu.addItem(ActionMenuItem(title: String(localized: "Add category")) { model.sheet = .newCategory(assigning: ids) })
 		menu.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
 	}
 

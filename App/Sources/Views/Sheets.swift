@@ -126,7 +126,6 @@ struct NameSheet: View {
 
 struct NewCategorySheet: View {
 	@Environment(AppModel.self) private var model
-	let isGroup: Bool
 	/// The transactions to move into the new category.
 	var assigning: Set<UUID> = []
 	@State private var name = ""
@@ -137,14 +136,14 @@ struct NewCategorySheet: View {
 		var parentID: UUID?
 	}
 
-	private var kind: SheetKind { .newCategory(isGroup: isGroup, assigning: assigning) }
+	private var kind: SheetKind { .newCategory(assigning: assigning) }
 
 	var body: some View {
 		let check = model.ledger.checkCategoryName(name, in: parentID)
-		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: check.acceptedName != nil, onConfirm: {
+		SheetFrame(title: "Add Category", canConfirm: check.acceptedName != nil, onConfirm: {
 			// A taken name keeps the sheet open, and the footer says why.
 			guard let accepted = check.acceptedName else { return false }
-			Task { await model.addCategory(name: accepted, isGroup: isGroup, parentID: parentID, assigning: assigning) }
+			Task { await model.addCategory(name: accepted, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {

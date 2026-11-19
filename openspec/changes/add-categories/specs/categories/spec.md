@@ -50,12 +50,30 @@ The app SHALL accept a name for a new or renamed category or category group only
 
 ### Requirement: Add a category group
 
-The app SHALL create a category group with "Add Category Group". A group holds no transactions of its own. Its name follows the requirement "Name of a category".
+The app SHALL create a category group with "Add Category Group". A group holds no transactions of its own. Its name follows the requirement "Name of a category". The new group appears selected as "New group" in edit mode at the end of the selected group, of the group that holds the selected category, or else of the top level. A collapsed group that gets the new group expands. A name taken at that level gives "New group 2", "New group 3", and so on.
 
 #### Scenario: New group
 
 - **WHEN** the user chooses "Add Category Group" and types "Mobility"
 - **THEN** the sidebar shows the empty group "Mobility"
+
+#### Scenario: New group inside the selected group
+
+- **GIVEN** the collapsed category group "Living" with the category "Rent" is selected
+- **WHEN** the user chooses "Add Category Group", types "Energy", and presses Return
+- **THEN** "Living" is expanded and shows "Rent" and then the selected group "Energy"
+
+#### Scenario: New group beside the selected category
+
+- **GIVEN** the category "Rent" inside the group "Living" is selected
+- **WHEN** the user chooses "Add Category Group"
+- **THEN** the row "New group" appears inside "Living" after "Rent", in edit mode
+
+#### Scenario: New group at the top level
+
+- **GIVEN** the category "Groceries" at the top level is selected, and the top level holds "New group" already
+- **WHEN** the user chooses "Add Category Group"
+- **THEN** the row "New group 2" appears at the end of the top level, above "Uncategorized", in edit mode
 
 #### Scenario: Name taken by a category
 

@@ -544,6 +544,51 @@ final class DebugHarness {
 			.insertText(argument, replacementRange: NSRange(location: NSNotFound, length: 0))
 		// Focuses the first secure field of the sheet on screen and logs what macOS sees of it, for the check that the password manager does not offer it.
 		case "securefield": secureField()
+		// "account" or "category" adds a group as "Add Account Group" or "Add Category Group" does, with its row in edit mode.
+		// "account twice" and "category twice" start the second command while the first waits for the table, as two quick
+		// clicks do, and log the names of the level by hash.
+		case "addgroup":
+			let parts = argument.split(separator: " ")
+			let kind = parts.first.map(String.init) ?? ""
+			let runs = parts.count > 1 && parts[1] == "twice" ? 2 : 1
+			let adds = (0..<runs).map { _ in Task { kind == "category" ? await model.addCategoryGroup() : await model.addGroup() } }
+			Task {
+				for add in adds { await add.value }
+				log("addgroup", ("", .choice(kind, of: ["account", "category"], otherwise: "account")), ("runs", .count(runs)))
+			}
+		// The row in edit mode, the field that has the focus, and the selected group with its place, names by hash.
+		case "naming": logNaming()
+		#if DEBUG || PERF_HARNESS
+		// "context <row> account|category" chooses "Add Account Group" or "Add Category Group" in the context menu of sidebar
+		// row <row>, as the user does. The item does what the item of the Account menu does, so it follows the rule of
+		// "menuitem" for that item (HarnessRun.menuAction), and "menuitem Account|Add Account Group" chooses the one of the
+		// menu bar. The log says whether the item was found and whether it was enabled. The add menu below the sidebar
+		// opens only on a click, which an app in the background does not pass on, and its items call the same functions.
+		case "groupmenu": groupMenu(argument)
+		// "<name>" draws the sidebar list of the main window as it is, with a row in edit mode, into "<name>-sidebarlist.png".
+		// "sidebarsnapshot" draws a second sidebar, whose own row in edit mode would end the edit mode of the window.
+		case "sidebarlistsnapshot": sidebarListSnapshot(argument)
+		// "accounts on|off" or "categories on|off" shows or hides the rows of a sidebar section, as its header does.
+		case "section":
+			let parts = argument.split(separator: " ")
+			let shown = parts.last != "off"
+			if parts.first == "categories" { model.showsCategoriesSection = shown } else { model.showsAccountsSection = shown }
+			log("section", ("", .choice(String(parts.first ?? ""), of: ["accounts", "categories"])), ("shown", .flag(shown)))
+		// Moves the focus of the main window to the sidebar list, as a click on another sidebar row does.
+		case "namefocus":
+			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
+			log("namefocus", ("moved", .flag(window.makeFirstResponder(list))))
+		#endif
+		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it.
+		case "namekey":
+			let keys: [StaticString] = ["return", "escape"]
+			guard keys.contains(where: { "\($0)" == argument }), let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
+				let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber, context: nil,
+					characters: argument == "escape" ? "\u{1b}" : "\r", charactersIgnoringModifiers: argument == "escape" ? "\u{1b}" : "\r", isARepeat: false,
+					keyCode: argument == "escape" ? 53 : 36) else { return log("namekey rejected") }
+			guard HarnessRun.mayKey(argument, on: surface(of: window), fakeBank: usesFakeBank) else { return log("namekey refused") }
+			window.sendEvent(event)
+			log("namekey", ("", .choice(argument, of: keys)))
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
 		// Logs "refresh refused" when an access of the refresh is not the made-up bank or a local service (HarnessRun.mayReach).
 		case "refresh", "refreshenforced":
@@ -1031,6 +1076,12 @@ final class DebugHarness {
 		// "<group>|on" or "<group>|off" expands or collapses a group, as its disclosure triangle does.
 		case "expand":
 			let parts = argument.components(separatedBy: "|")
+			#if DEBUG || PERF_HARNESS
+			// A category group, through the function of its disclosure triangle.
+			if model.ledger.groups.first(where: { $0.name == parts[0] }) == nil, let c = model.ledger.categories.first(where: { $0.isGroup && $0.name == parts[0] }) {
+				return model.setExpanded(category: c.id, parts.last != "off")
+			}
+			#endif
 			guard var g = model.ledger.groups.first(where: { $0.name == parts[0] }) else { return log("expand no group") }
 			g.isExpanded = parts.last != "off"
 			model.save(group: g)
@@ -1127,7 +1178,11 @@ final class DebugHarness {
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
-			case "newGroup": model.sheet = .newGroup
+			#if DEBUG || PERF_HARNESS
+			// "Add Account Group" as the menus run it, since the sheet that asked for the name is gone (#480): a new empty
+			// group, selected, with its sidebar row in edit mode. "naming" and "namekey" go on from there.
+			case "newGroup": Task { await model.addGroup() }
+			#endif
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }
@@ -1143,7 +1198,7 @@ final class DebugHarness {
 			// What ⌘K does, for a run without a key window, where SwiftUI disables the menu commands.
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
-			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			case "newCategory": model.sheet = .newCategory(assigning: model.visibleSelection)
 			#if DEBUG || PERF_HARNESS
 			// What "Add Comment..." and ⇧⌘K do with the selected rows.
 			case "comment": model.sheet = .comment(model.visibleSelection)
@@ -1190,7 +1245,7 @@ final class DebugHarness {
 			model.save(category: c)
 			log("restrict done")
 		// What "Add category" in "Assign Category" does with the selected rows.
-		case "newcategory": Task { await model.addCategory(name: argument, isGroup: false, parentID: nil, assigning: model.visibleSelection) }
+		case "newcategory": Task { await model.addCategory(name: argument, parentID: nil, assigning: model.visibleSelection) }
 		// "<account>": what "Create Offsetting Entry" with that offline account does with the selected rows, and the menu it shows.
 		case "offsetting":
 			let targets = model.ledger.offsettingTargets(for: model.visibleSelection.compactMap { model.ledger.row($0) })
@@ -2688,6 +2743,76 @@ final class DebugHarness {
 			Task { @MainActor in use(item) }
 		}
 	}
+
+	/// For the checks of "Name a new group in the sidebar": the row in edit mode, whether the main window has a field
+	/// with the focus and its text, the name of the selected group, its parent, and the names of its level in order.
+	private func logNaming() {
+		guard let model else { return }
+		let window = NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+		let editor = window?.firstResponder as? NSTextView
+		// Whether the field with the focus lies inside the part of the sidebar on screen.
+		let list = sidebarList()
+		let inSidebar = editor.flatMap { e in list.map { (e.delegate as? NSView)?.isDescendant(of: $0) == true } } ?? false
+		let visible = editor.flatMap { e in list.map { $0.visibleRect.intersects(e.convert(e.bounds, to: $0)) } } ?? false
+		var values: [(StaticString, LogValue)] = [("row", .state(model.namingRow)), ("editor", .flag(editor != nil)), ("insidebar", .flag(inSidebar)),
+			("text", editor.map { .hash($0.string) } ?? .presence(false)), ("visible", .flag(visible)),
+			("sections", .list([.flag(model.showsAccountsSection), .flag(model.showsCategoriesSection)]))]
+		switch model.selection {
+		case let .group(id):
+			let group = model.ledger.group(id)
+			values += [("selected", group.map { .hash($0.name) } ?? .presence(false)), ("parent", .presence(group?.parentID != nil)),
+				("level", .list(model.ledger.accountTree(in: group?.parentID).map { item in
+					switch item { case let .group(g): .hash(g.name); case let .account(a): .hash(a.name) }
+				}))]
+		case let .category(id):
+			let category = model.ledger.category(id)
+			let parent = category?.parentID.flatMap(model.ledger.category)
+			values += [("selected", category.map { .hash($0.name) } ?? .presence(false)), ("parent", parent.map { .hash($0.name) } ?? .presence(false)),
+				("expanded", .flag(parent?.isExpanded ?? true)), ("level", .list(model.ledger.childCategories(of: category?.parentID).map { .hash($0.name) }))]
+		default: values.append(("selected", .presence(false)))
+		}
+		log(LogLine("naming", values: values))
+	}
+
+	#if DEBUG || PERF_HARNESS
+	private func groupMenu(_ argument: String) {
+		let parts = argument.split(separator: " ").map(String.init)
+		let category = parts.last == "category"
+		let item = category ? "Add Category Group" : "Add Account Group"
+		guard parts.count == 3, parts[0] == "context", let row = Int(parts[1]),
+			HarnessRun.mayChoose(HarnessRun.menuAction(menu: "Account", item: item), reaching: [], fakeBank: usesFakeBank) else {
+			return log("groupmenu refused")
+		}
+		guard let menu = contextMenu(row: row, sidebar: true) else { return log("groupmenu", ("found", .flag(false))) }
+		menu.update()
+		// SwiftUI gives a menu item no identifier, so the item is found by the text that the user reads, in the language of this run.
+		guard let index = menu.items.firstIndex(where: { $0.title == String(localized: String.LocalizationValue(item)) }) else {
+			return log("groupmenu", ("found", .flag(false)))
+		}
+		log("groupmenu", ("found", .flag(true)), ("enabled", .flag(menu.items[index].isEnabled)), ("category", .flag(category)))
+		if menu.items[index].isEnabled { menu.performActionForItem(at: index) }
+	}
+
+	/// The sidebar material takes its look from what lies behind the window, and a cache of the list draws the rows as
+	/// they were drawn last, so the picture shows the rows of the appearance at the start of the run.
+	private func sidebarListSnapshot(_ name: String) {
+		guard let file = ownFile(name + "-sidebarlist", "png") else { return log("sidebarlistsnapshot refused") }
+		guard let list = sidebarList(), let rep = list.bitmapImageRepForCachingDisplay(in: list.visibleRect) else { return log("sidebarlistsnapshot no list") }
+		list.cacheDisplay(in: list.visibleRect, to: rep)
+		let size = list.visibleRect.size
+		let image = NSImage(size: size, flipped: false) { rect in
+			NSColor.windowBackgroundColor.setFill()
+			rect.fill()
+			rep.draw(in: rect)
+			return true
+		}
+		list.effectiveAppearance.performAsCurrentDrawingAppearance {
+			guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+			try? png.write(to: file)
+		}
+		log("snapshot sidebarlist", ("width", .count(Int(size.width))), ("height", .count(Int(size.height))))
+	}
+	#endif
 
 	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
 	private func logSidebarRows() {
