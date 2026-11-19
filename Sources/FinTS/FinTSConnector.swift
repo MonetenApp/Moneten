@@ -35,10 +35,10 @@ public struct FinTSAccount: Sendable, Equatable {
 	public var remoteID: String { iban ?? (subnumber.map { "\(number)/\($0)" } ?? number) }
 
 	/// The account as the setup adds it to the app, in `group` and linked to `access`. Without a
-	/// product name it is named after its type.
+	/// product name, or with one of only white space, it is named after its type.
 	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
 		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
-		var account = Account(groupID: group, position: 0, name: productName ?? kind.title, kind: kind, source: .bank, currency: currency,
+		var account = Account(groupID: group, position: 0, name: productName.flatMap(Account.acceptedName) ?? kind.title, kind: kind, source: .bank, currency: currency,
 			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
 		account.takeIBAN(iban)
 		return account
@@ -267,7 +267,7 @@ public struct FinTSConnector: BankConnector {
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
-						let request = try ask.request(server: command.url.flatMap { URL(string: $0) })
+						let request = try ask.request(server: command.url.flatMap { URL(string: $0) }, bankCode: command.bankCode)
 						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
 							approvals[id] = task

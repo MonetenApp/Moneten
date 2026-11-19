@@ -102,28 +102,7 @@ extension AppModel {
 	/// returns whether the user confirmed. "Uncategorized" cannot be removed.
 	@discardableResult
 	func confirmRemove(_ row: SidebarSelection) -> Bool {
-		let question = NSAlert()
-		switch row {
-		case let .account(id):
-			guard let a = ledger.account(id) else { return false }
-			question.messageText = String(localized: "Are you sure you want to remove the account \(a.name)?")
-			question.informativeText = a.kind == .portfolio
-				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings.")
-				: String(localized: "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings.")
-		case let .group(id):
-			guard let g = ledger.group(id) else { return false }
-			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
-			question.informativeText = String(localized: "The accounts and groups in it are kept and move to the top level.")
-		case let .category(id):
-			guard let c = ledger.category(id), !c.isDefault else { return false }
-			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")
-			question.informativeText = String(localized: "The transactions will be retained and become uncategorized.")
-		case .search:
-			return false
-		}
-		question.addButton(withTitle: String(localized: "Remove")).hasDestructiveAction = true
-		question.addButton(withTitle: String(localized: "Cancel"))
-		guard question.runModal() == .alertFirstButtonReturn else { return false }
+		guard let question = removeQuestion(row), question.runModal() == .alertFirstButtonReturn else { return false }
 		Task {
 			switch row {
 			case let .account(id): await remove(account: id)
@@ -133,6 +112,33 @@ extension AppModel {
 			}
 		}
 		return true
+	}
+
+	/// The question of `confirmRemove(_:)`, or nil for a row that cannot be removed. The debug harness takes a
+	/// picture of it without the modal loop.
+	func removeQuestion(_ row: SidebarSelection) -> NSAlert? {
+		let question = NSAlert()
+		switch row {
+		case let .account(id):
+			guard let a = ledger.account(id) else { return nil }
+			question.messageText = String(localized: "Are you sure you want to remove the account \(a.name)?")
+			question.informativeText = a.kind == .portfolio
+				? String(localized: "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
+				: String(localized: "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings.")
+		case let .group(id):
+			guard let g = ledger.group(id) else { return nil }
+			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
+			question.informativeText = String(localized: "The accounts and groups in it are kept and move to the top level.")
+		case let .category(id):
+			guard let c = ledger.category(id), !c.isDefault else { return nil }
+			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")
+			question.informativeText = String(localized: "The transactions will be retained and become uncategorized.")
+		case .search:
+			return nil
+		}
+		question.addButton(withTitle: String(localized: "Remove")).hasDestructiveAction = true
+		question.addButton(withTitle: String(localized: "Cancel"))
+		return question
 	}
 
 	func openSettingsOfSelection() {
@@ -154,7 +160,13 @@ extension AppModel {
 			warning.addButton(withTitle: String(localized: "Set Database Password..."))
 			warning.addButton(withTitle: String(localized: "Back Up Anyway"))
 			warning.addButton(withTitle: String(localized: "Cancel"))
-			switch warning.runModal() {
+			#if DEBUG || PERF_HARNESS
+			// The debug harness answers the warning, which needs a screen, and logs what the user would see.
+			let response = DebugHarness.shared?.alertAnswer?(warning) ?? warning.runModal()
+			#else
+			let response = warning.runModal()
+			#endif
+			switch response {
 			case .alertFirstButtonReturn: sheet = .setPassword; return
 			case .alertSecondButtonReturn: break
 			default: return
@@ -166,7 +178,12 @@ extension AppModel {
 			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac.")
 			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac.")
 		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
+		#if DEBUG || PERF_HARNESS
+		let answer = DebugHarness.shared?.savePanelAnswer
+		guard let url = answer.map({ $0(panel) }) ?? (panel.runModal() == .OK ? panel.url : nil) else { return }
+		#else
 		guard panel.runModal() == .OK, let url = panel.url else { return }
+		#endif
 		do {
 			try store.backup(to: url)
 			alert = AlertMessage(title: String(localized: "Backup Database"), message: String(localized: "The copy has been saved."))
@@ -328,6 +345,9 @@ extension AppModel {
 						problems.append("\(name): \(error)")
 					}
 				}
+				// Without a stored file, as after a cancel, there is nothing to load, and loading the whole ledger again would keep
+				// the sheet open for seconds after "Cancel".
+				guard !storedFiles.isEmpty else { return }
 				do { try await reloadFileImport(from: store) }
 				catch { problems.append(String(localized: "The imported transactions could not be loaded: \(String(describing: error))")) }
 			}
