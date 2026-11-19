@@ -247,7 +247,7 @@ final class AccountSetup {
 				let listing = SetupListing(list.accounts.map { $0.account(access: access, bank: bank, group: groupID) }, in: model.ledger)
 				self.listing = listing
 				selected = Set(candidates.filter { !$0.isPresent }.map(\.id))
-				if let connectingAccount { connecting = listing.connecting(connectingAccount) }
+				if let account = connectingAccount.flatMap({ model.ledger.account($0) }) { connecting = listing.connecting(account) }
 				step = .accounts
 			} catch {
 				loginFailed(error, userIDHelp: userIDHelp, bankName: bankName)

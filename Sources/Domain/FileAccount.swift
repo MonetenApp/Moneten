@@ -16,14 +16,15 @@ public enum FileAccount: Hashable, Sendable {
 		case unknown
 	}
 
-	/// Of several accounts with the number of the file, such as a portfolio and a giro account of one
-	/// broker, the one in the `currency` of the file comes first, then an open account, then a non-portfolio account.
-	/// The selected account keeps the file unless another match ranks higher.
+	/// Of several accounts with the number of the file, such as two accounts of one broker in other
+	/// currencies, the one in the `currency` of the file comes first, then an open account. The selected
+	/// account keeps the file unless another match ranks higher. A portfolio never takes a file, so a file
+	/// that names only a portfolio is a file of an unknown account.
 	public func destination(selected: Account, accounts: [Account], currency: String) -> Destination {
-		func rank(_ account: Account) -> Int { (account.currency == currency ? 4 : 0) + (account.isClosed ? 0 : 2) + (account.kind != .portfolio ? 1 : 0) }
-		let others = accounts.filter { $0.id != selected.id && matches($0) }
+		func rank(_ account: Account) -> Int { (account.currency == currency ? 2 : 0) + (account.isClosed ? 0 : 1) }
+		let others = accounts.filter { $0.id != selected.id && $0.takesImportedTransactions && matches($0) }
 		let best = others.max { rank($0) < rank($1) }
-		if matches(selected), rank(selected) >= best.map(rank) ?? 0 { return .selected }
+		if selected.takesImportedTransactions, matches(selected), rank(selected) >= best.map(rank) ?? 0 { return .selected }
 		return best.map(Destination.other) ?? .unknown
 	}
 

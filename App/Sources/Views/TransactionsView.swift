@@ -78,9 +78,12 @@ struct HeaderView: View {
 						switch account.source {
 						case .migrated:
 							Text("Taken over from MoneyMoney. Not connected to a bank yet.")
-							// The assistant finds the account at its bank and offers to connect it.
-							Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
-								.controlSize(.small)
+							// The assistant finds the account at its bank and offers to connect it. It leaves a closed account
+							// as it is, so a closed account has no offer.
+							if !account.isClosed {
+								Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
+									.controlSize(.small)
+							}
 						case .offline: Text("Offline account")
 						case .bank: AccountRefreshLine(account: account)
 						}

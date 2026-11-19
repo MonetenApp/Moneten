@@ -178,8 +178,9 @@ struct FileAccountImportTests {
 		#expect(euro.destination == .other(old))
 		var openPortfolio = new
 		openPortfolio.kind = .portfolio
+		// A portfolio takes no file, so the closed giro account takes it.
 		let open = try TransactionFileImporter.accountDecision(names, selected: savings, accounts: [old, openPortfolio, savings], currency: "EUR")
-		#expect(open.destination == .other(openPortfolio))
+		#expect(open.destination == .other(old))
 	}
 
 	@Test("Field 25 preserves hyphenated account numbers for every MT940 line ending", arguments: ["\n", "\r\n", "\r"])

@@ -87,15 +87,8 @@ The app SHALL create the account groups and accounts of the source with their na
 
 #### Scenario: No bank access yet
 
-- **WHEN** the user selects a migrated account
+- **WHEN** the user selects an open migrated account
 - **THEN** the account shows that it is not connected to a bank and offers to connect it
-
-#### Scenario: Connect from the account
-
-- **GIVEN** the migrated account "Giro" with the IBAN DE02120300000000202051 and no bank access
-- **WHEN** the user selects "Giro" and clicks "Connect..."
-- **THEN** the add account assistant opens with DE02120300000000202051 as the bank entry
-- **AND** a migrated account without an IBAN starts with its Bankleitzahl 12030000, and one with neither starts with an empty entry
 
 ### Requirement: Categories
 
@@ -495,7 +488,7 @@ The app SHALL match an account of the source with an existing account of the app
 
 ### Requirement: Connect a migrated account to its bank
 
-The app SHALL attach a bank access to a migrated account when the add account assistant finds an account with the same IBAN, or the same bank code and account number, and the same currency. The account keeps its transactions, categories, comments, and checkmarks, and the first refresh adds no duplicates. The assistant prefers an open account to a closed one.
+The app SHALL attach a bank access to a migrated account when the add account assistant finds an account with the same IBAN, or the same bank code and account number, and the same currency. A portfolio and an account of another type never match. The account keeps its transactions, categories, comments, and checkmarks, and the first refresh adds no duplicates. The assistant prefers an open account to a closed one.
 
 #### Scenario: Add the bank after the migration
 
@@ -510,6 +503,13 @@ The app SHALL attach a bank access to a migrated account when the add account as
 - **WHEN** the bank reports that IBAN in EUR
 - **THEN** the assistant offers to connect "Giro" and leaves "Giro (alt)" as it is
 
+#### Scenario: A portfolio with the number of a giro account
+
+- **GIVEN** the migrated portfolio "Depot" with the Bankleitzahl 12030000 and the account number 202051, in EUR
+- **WHEN** the bank reports the giro account 202051 in EUR and no portfolio
+- **THEN** the assistant adds the giro account as a new account and leaves "Depot" without an access
+- **AND** "Connect..." in "Depot" chooses nothing, and the row of the giro account does not offer "Depot"
+
 #### Scenario: Another currency
 
 - **GIVEN** the migrated account "Giro USD" in USD with the IBAN DE02120300000000202051
@@ -518,7 +518,7 @@ The app SHALL attach a bank access to a migrated account when the add account as
 
 ### Requirement: Ask which migrated account to connect
 
-The app SHALL let the user choose the account to connect when more than one open migrated account matches an account of the bank, and when one open migrated account matches more than one account of the bank, such as a migrated account without a subaccount number. Until the user chooses, the assistant adds a new account. "Connect..." of a migrated account chooses that account in the one row that it matches, and in no row when it matches several.
+The app SHALL let the user choose the account to connect when more than one open migrated account matches an account of the bank, and when one open migrated account matches more than one account of the bank, such as a migrated account without a subaccount number. Until the user chooses, the assistant adds a new account.
 
 #### Scenario: Several open accounts with the same IBAN
 
@@ -527,19 +527,46 @@ The app SHALL let the user choose the account to connect when more than one open
 - **THEN** the assistant asks which account to connect, with "New account" selected
 - **AND** it connects "Haushalt" only when the user chooses it
 
-#### Scenario: Connect one of several accounts with the same IBAN
-
-- **GIVEN** the open migrated accounts "Giro" and "Haushalt", both in EUR with the IBAN DE02120300000000202051
-- **WHEN** the user clicks "Connect..." in "Haushalt" and the bank reports that IBAN in EUR
-- **THEN** the assistant asks which account to connect, with "Haushalt" selected
-
 #### Scenario: Several subaccounts of one account number
 
 - **GIVEN** the open migrated account "Sparen" with the account number 9 and the Bankleitzahl 12030000, without an IBAN and without a subaccount number
 - **WHEN** the bank reports the subaccounts 01 and 02 of the account number 9
 - **THEN** the assistant offers "Sparen" in both rows, with "New account" selected
 - **AND** it connects "Sparen" only to the row where the user chooses it, and adds the other subaccount as a new account
-- **AND** "Connect..." in "Sparen" leaves "New account" selected in both rows
+
+### Requirement: Connect from a migrated account
+
+The app SHALL offer "Connect..." in the header of an open migrated account without a bank access. It opens the add account assistant with the IBAN of the account, else its Bankleitzahl, as the bank entry. When the account matches exactly one account of the bank, counting accounts that the app has connected already, and that row is a choice, the row has the account chosen. In every other case the rows stay as the assistant sets them.
+
+#### Scenario: Connect from the account
+
+- **GIVEN** the migrated account "Giro" with the IBAN DE02120300000000202051 and no bank access
+- **WHEN** the user selects "Giro" and clicks "Connect..."
+- **THEN** the add account assistant opens with DE02120300000000202051 as the bank entry
+- **AND** a migrated account without an IBAN starts with its Bankleitzahl 12030000, and one with neither starts with an empty entry
+
+#### Scenario: A closed migrated account
+
+- **WHEN** the user selects the closed migrated account "Giro (alt)"
+- **THEN** the header shows no "Connect...", because the assistant leaves a closed account as it is
+
+#### Scenario: Connect one of several accounts with the same IBAN
+
+- **GIVEN** the open migrated accounts "Giro" and "Haushalt", both in EUR with the IBAN DE02120300000000202051
+- **WHEN** the user clicks "Connect..." in "Haushalt" and the bank reports that IBAN in EUR
+- **THEN** the assistant asks which account to connect, with "Haushalt" selected
+
+#### Scenario: Connect an account without a subaccount number
+
+- **GIVEN** the open migrated account "Sparen" with the account number 9 and the Bankleitzahl 12030000, without a subaccount number
+- **WHEN** the user clicks "Connect..." in "Sparen" and the bank reports the subaccounts 01 and 02 of the account number 9
+- **THEN** both rows have "New account" selected
+
+#### Scenario: One subaccount connected already
+
+- **GIVEN** the subaccount 01 of the account number 9 is connected as "Sparkonto 01", and the open migrated account "Sparen" has the account number 9 without a subaccount number
+- **WHEN** the user clicks "Connect..." in "Sparen" and the bank reports the subaccounts 01 and 02
+- **THEN** the assistant offers "Sparen" in the row of 02, with "New account" selected
 
 ### Requirement: Portfolio accounts
 

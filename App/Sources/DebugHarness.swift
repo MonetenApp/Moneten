@@ -352,6 +352,8 @@ final class DebugHarness {
 		#if DEBUG || PERF_HARNESS
 		// "<account name>": "Connect..." in the header of the migrated account, which "setup" then drives.
 		case "connectmigrated":
+			// It starts a bank setup, so it runs only against the made-up bank.
+			guard HarnessRun.mayReach(.fints, fakeBank: usesFakeBank) else { return log("connectmigrated refused") }
 			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.source == .migrated }) else { return log("connectmigrated", ("", .word("no account"))) }
 			model.navigate(to: .account(account.id))
 			model.addAccount(group: account.groupID, connecting: account)
