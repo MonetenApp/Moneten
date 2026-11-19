@@ -14,6 +14,12 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 		self = monthly ? .month(bar.start) : .custom(bar.start, last)
 	}
 
+	/// The period of "Custom...", or nil when the end lies before the start, which no row could fall in. Both dates
+	/// belong to the period.
+	public static func custom(from start: Day, to end: Day) -> PeriodChoice? {
+		end < start ? nil : .custom(start, end)
+	}
+
 	/// The period of a bar in a category chart.
 	public init(start: Day, chartPeriod: ChartPeriod) {
 		switch chartPeriod {
@@ -39,7 +45,7 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 
 /// The filter bar that the pin saves for the next launch: the period choice and every filter but the search text.
 public struct SavedFilterBar: Hashable, Sendable, Codable {
-	public let period: PeriodChoice
+	public private(set) var period: PeriodChoice
 	let status: TransactionFilter.Status
 	let amount: TransactionFilter.AmountFilter
 	let categoryID: UUID?
@@ -61,9 +67,11 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		}
 	}
 
-	/// Nil for data that is not a saved filter bar, which then restores nothing.
+	/// Nil for data that is not a saved filter bar, which then restores nothing. A version before #474 saved a custom
+	/// period with its end before its start, in which no row falls, so such a period comes back with its dates swapped.
 	public init?(data: Data) {
-		guard let saved = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+		guard var saved = try? JSONDecoder().decode(Self.self, from: data) else { return nil }
+		if case let .custom(start, end) = saved.period, PeriodChoice.custom(from: start, to: end) == nil { saved.period = .custom(end, start) }
 		self = saved
 	}
 

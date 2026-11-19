@@ -706,13 +706,13 @@ final class SelfTest {
 			"{\"type\":\"account\",\"number\":\"202051\",\"kind\":\"1\",\"currency\":\"EUR\"}");
 
 		String valued = FinTSHelper.Json.write(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR")));
+			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR")), false, "EUR", false)));
 		fixture.add(valued);
 		expect("securities account with the total of the bank", valued,
 			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"24518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
 				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"10000.00\",\"currency\":\"EUR\"}}]}");
 		expect("securities account without a total is the sum of its holdings", FinTSHelper.Json.write(FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR")),
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "EUR")), false, "EUR", false)),
 			"{\"type\":\"result\",\"account\":\"7654321\",\"balance\":{\"type\":\"balance\",\"amount\":\"14518.37\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
 				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"10000.00\",\"currency\":\"EUR\"}},"
 				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"4518.37\",\"currency\":\"EUR\"}}]}");
@@ -739,7 +739,7 @@ final class SelfTest {
 		nominal.price = new BigDecimalValue(new BigDecimal("98.5"), "%");
 		nominal.einstandspreis = new BigDecimalValue(new BigDecimal("97"), "%");
 		String positions = FinTSHelper.Json.write(FinTSHelper.alone("7654326", () -> FinTSHelper.value("7654326",
-			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("5925.10"), "EUR"), share, nominal), false, "EUR")));
+			holdings("2026-11-12", new BigDecimalValue(new BigDecimal("5925.10"), "EUR"), share, nominal), false, "EUR", false)));
 		fixture.add(positions);
 		expect("securities account with its positions", positions,
 			"{\"type\":\"result\",\"account\":\"7654326\",\"balance\":{\"type\":\"balance\",\"amount\":\"5925.10\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},"
@@ -753,29 +753,29 @@ final class SelfTest {
 		GVRWPDepotList.Entry.Gattung unnamed = holding("10.00", "EUR");
 		unnamed.price = new BigDecimalValue(new BigDecimal("10"), "EUR");
 		unnamed.xchg_kurs = 1.1;
-		expect("a position without a name, a price day, and a pair of currencies sends no rate", FinTSHelper.Json.write(FinTSHelper.position(unnamed)),
+		expect("a position without a name, a price day, and a pair of currencies sends no rate", FinTSHelper.Json.write(FinTSHelper.position(unnamed, false)),
 			"{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"price\":{\"type\":\"amount\",\"amount\":\"10\",\"currency\":\"EUR\"},"
 				+ "\"value\":{\"type\":\"amount\",\"amount\":\"10.00\",\"currency\":\"EUR\"}}");
 
 		GVRWPDepotList pages = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("10000.00"), "EUR"), holding("10000.00", "EUR"));
 		pages.addEntry(holdings("2026-11-12", null, holding("15000.50", "EUR")).getEntries()[0]);
-		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false, "EUR").get("balance").toString(),
+		expect("securities account in two pages is the sum of both", FinTSHelper.value("7654321", pages, false, "EUR", false).get("balance").toString(),
 			"{type=balance, amount=25000.50, currency=EUR, date=2026-11-12}");
 
 		String noValue = FinTSHelper.Json.write(FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
-			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false, "EUR")));
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), holding("4518.37", "USD")), false, "EUR", false)));
 		fixture.add(noValue);
 		expect("securities account without a value fails", noValue,
 			"{\"type\":\"accountFailed\",\"kind\":\"unsupported\",\"text\":\"The bank sent no value for this securities account.\",\"account\":\"7654322\"}");
 		GVRWPDepotList.Entry.Gattung unvalued = holding("1.00", "EUR");
 		unvalued.depotwert = null;
 		expect("securities account with a holding without a value fails", FinTSHelper.alone("7654322", () -> FinTSHelper.value("7654322",
-			holdings("2026-11-12", null, holding("10000.00", "EUR"), unvalued), false, "EUR")).get("text"), "The bank sent no value for this securities account.");
-		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR")));
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), unvalued), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		String empty = FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, "EUR", false)));
 		fixture.add(empty);
 		expect("empty securities account is worth 0", empty,
 			"{\"type\":\"result\",\"account\":\"7654325\",\"balance\":{\"type\":\"balance\",\"amount\":\"0\",\"currency\":\"EUR\",\"date\":\"2026-11-13\"},\"errors\":[],\"securities\":true,\"holdings\":[]}");
-		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null))
+		expect("empty securities account without a currency counts in euro", String.valueOf(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", holdings("2026-11-13", null), false, null, false))
 			.get("balance")), "{type=balance, amount=0, currency=EUR, date=2026-11-13}");
 
 		// The MT535 example of FinTS 4.1 Messages - Finanzdatenformate (20.01.2014), pages 172 to 174: the
@@ -783,30 +783,31 @@ final class SelfTest {
 		GVRWPDepotList.Entry.Gattung bond = holding("6294.65", "EUR");
 		bond.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("1.72"), "EUR");
 		expect("a holding counts with its accrued interest", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, holding("5270", "EUR"), holding("5460", "EUR"), bond), false, "EUR")).get("balance")),
+			holdings("2026-11-12", null, holding("5270", "EUR"), holding("5460", "EUR"), bond), false, "EUR", false)).get("balance")),
 			"{type=balance, amount=17026.37, currency=EUR, date=2026-11-12}");
-		GVRWPDepotList noted = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("24518.37", "EUR"));
+		valuesFromQuantities();
+		GVRWPDepotList noted =holdings("2026-11-12", new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("24518.37", "EUR"));
 		noted.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
-		expect("a statement with a note keeps its value", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321", noted, false, "EUR"))
+		expect("a statement with a note keeps its value", String.valueOf(FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321", noted, false, "EUR", false))
 			.get("balance")), "{type=balance, amount=24518.37, currency=EUR, date=2026-11-12}");
 		GVRWPDepotList noEntries = new GVRWPDepotList();
 		noEntries.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "3010", "Keine Einträge vorhanden", null));
 		expect("an answer with a note and without a statement shows the note", FinTSHelper.Json.write(FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325",
-			noEntries, false, "EUR"))), "{\"type\":\"result\",\"account\":\"7654325\",\"errors\":[{\"type\":\"error\",\"code\":\"3010\",\"text\":\"Keine Einträge vorhanden\"}]}");
+			noEntries, false, "EUR", false))), "{\"type\":\"result\",\"account\":\"7654325\",\"errors\":[{\"type\":\"error\",\"code\":\"3010\",\"text\":\"Keine Einträge vorhanden\"}]}");
 		GVRWPDepotList unexplained = new GVRWPDepotList();
 		unexplained.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "0020", "Auftrag ausgeführt", null));
-		expect("an answer without entries and without 3010 fails", FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", unexplained, false, "EUR"))
+		expect("an answer without entries and without 3010 fails", FinTSHelper.alone("7654325", () -> FinTSHelper.value("7654325", unexplained, false, "EUR", false))
 			.get("text"), "The bank sent no value for this securities account.");
 
 		GVRWPDepotList refused = new GVRWPDepotList();
 		refused.jobStatus.addRetVal(new HBCIRetVal(null, null, null, "9160", "Erforderliche Auftragsreferenz fehlt", null));
-		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false, "EUR")));
+		String refusedLine = FinTSHelper.Json.write(FinTSHelper.alone("7654323", () -> FinTSHelper.value("7654323", refused, false, "EUR", false)));
 		fixture.add(refusedLine);
 		expect("securities account that the bank refuses", refusedLine,
 			"{\"type\":\"result\",\"account\":\"7654323\",\"errors\":[{\"type\":\"error\",\"code\":\"9160\",\"text\":\"Erforderliche Auftragsreferenz fehlt\"}]}");
 
 		expect("securities account in part fails", FinTSHelper.alone("7654321", () -> FinTSHelper.value("7654321",
-			holdings("2026-11-12", null, holding("10000.00", "EUR")), true, "EUR")).get("code"), "3040");
+			holdings("2026-11-12", null, holding("10000.00", "EUR")), true, "EUR", false)).get("code"), "3040");
 
 		// With allowedGVs set, the choice never asks the handler.
 		expect("jobs of a securities account with HKWPD", FinTSHelper.jobs(null, allowing("30", "HKWPD", "HKSAL")), "[WPDepotList]");
@@ -860,6 +861,201 @@ final class SelfTest {
 		}
 		expect("other banks and other servers of the domain: HKTAN as their parameters say", String.join(" | ", others),
 			String.join(" | ", java.util.Collections.nCopies(4, "HKSAL=N HKKAZ=N HKCAZ=N HKWPD=J HKTAN=N")));
+	}
+
+	/// A page without a total whose holdings lack a value, send a bond as units, or have values in two currencies (#241).
+	static void valuesFromQuantities() {
+		GVRWPDepotList.Entry.Gattung shares = unvalued("4", "12.50", "EUR"), bond = unvalued("1000", "98", "%");
+		bond.saldo_type = GVRWPDepotList.Entry.SALDO_TYPE_WERT;
+		bond.curr = "EUR";
+		String computed = FinTSHelper.Json.write(FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, holding("1200.00", "EUR"), shares, bond), false, "EUR", false)));
+		fixture.add(computed);
+		expect("holdings without a value count with their quantity times their price", computed,
+			"{\"type\":\"result\",\"account\":\"7654328\",\"balance\":{\"type\":\"balance\",\"amount\":\"2230.00\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"1200.00\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"4\",\"price\":{\"type\":\"amount\",\"amount\":\"12.50\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1000\",\"nominal\":true,\"currency\":\"EUR\",\"price\":{\"type\":\"amount\",\"amount\":\"98\",\"currency\":\"%\"}}]}");
+		// 3 times 0,3345 € is 1,0035 €. The app rounds the accrued interest of 0,0015 € to 0,00 € when it reads the row,
+		// so each row shows 1,00 €, and the account is worth the 2,00 € of its rows, not the 2,02 € of 1,005 € rounded twice.
+		GVRWPDepotList.Entry.Gattung fractions = unvalued("3", "0.3345", "EUR");
+		fractions.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("0.0015"), "EUR");
+		String fractionLine = FinTSHelper.Json.write(FinTSHelper.alone("7654330", () -> FinTSHelper.value("7654330", holdings("2026-11-12", null, fractions, fractions),
+			false, "EUR", false)));
+		fixture.add(fractionLine);
+		expect("a computed value rounds with its accrued interest rounded first, as the row of the holding shows it", fractionLine,
+			"{\"type\":\"result\",\"account\":\"7654330\",\"balance\":{\"type\":\"balance\",\"amount\":\"2.00\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"3\",\"price\":{\"type\":\"amount\",\"amount\":\"0.3345\",\"currency\":\"EUR\"},"
+				+ "\"accrued\":{\"type\":\"amount\",\"amount\":\"0.0015\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"3\",\"price\":{\"type\":\"amount\",\"amount\":\"0.3345\",\"currency\":\"EUR\"},"
+				+ "\"accrued\":{\"type\":\"amount\",\"amount\":\"0.0015\",\"currency\":\"EUR\"}}]}");
+		// 0,005 € and 0,0049 € of the bank are 0,01 € and 0,00 € in the rows of the app.
+		GVRWPDepotList.Entry.Gattung halfCent = holding("0.005", "EUR");
+		halfCent.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("0.0049"), "EUR");
+		expect("a value of the bank rounds as the row of the holding shows it", balance(holdings("2026-11-12", null, halfCent, halfCent), false),
+			"{type=balance, amount=0.02, currency=EUR, date=2026-11-12}");
+		// The app reads -0,005 € as -0,01 € and adds the 0,01 € of accrued interest: 0,00 €, not the 0,01 € of 0,005 €.
+		GVRWPDepotList.Entry.Gattung negativeHalfCent = holding("-0.005", "EUR");
+		negativeHalfCent.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("0.01"), "EUR");
+		expect("a negative value of the bank rounds as the row of the holding shows it", balance(holdings("2026-11-12", null, negativeHalfCent), false),
+			"{type=balance, amount=0.00, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList.Entry.Gattung yen = unvalued("3", "0.5", "JPY");
+		expect("a computed value rounds to the minor unit of its currency", balance(holdings("2026-11-12", null, yen), "JPY", false),
+			"{type=balance, amount=2, currency=JPY, date=2026-11-12}");
+		// Point P1 of the review: no value in euro, so no value of the euro account.
+		expect("holdings computed only in another currency fail the account", FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, unvalued("10", "110", "USD")), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("holdings valued only in another currency fail the account", FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, holding("1000.00", "USD"), holding("500.00", "USD")), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+
+		GVRWPDepotList.Entry.Gattung unpriced = unvalued("10", null, null);
+		expect("a holding without a value and without a price fails the account", FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, holding("10000.00", "EUR"), unpriced), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		GVRWPDepotList.Entry.Gattung unquantified = unvalued("1", "12.50", "EUR");
+		unquantified.saldo = null;
+		expect("a holding without a value and without a quantity fails the account", String.valueOf(FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, unquantified), false, "EUR", false)).get("text")), "The bank sent no value for this securities account.");
+		GVRWPDepotList.Entry.Gattung foreignBond = unvalued("1000", "98", "%");
+		foreignBond.saldo_type = GVRWPDepotList.Entry.SALDO_TYPE_WERT;
+		expect("a bond without a value and without the currency of the security fails the account", FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, foreignBond), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		GVRWPDepotList.Entry.Gattung unitsAtPercent = unvalued("1000", "98", "%");
+		unitsAtPercent.curr = "EUR";
+		expect("units at a price in percent without a value fail the account", FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328",
+			holdings("2026-11-12", null, unitsAtPercent), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("a page with a total keeps the total, also when a holding lacks a value", balance(holdings("2026-11-12",
+			new BigDecimalValue(new BigDecimal("24518.37"), "EUR"), holding("10000.00", "EUR"), unpriced), false), "{type=balance, amount=24518.37, currency=EUR, date=2026-11-12}");
+
+		// A bond of 1.000 units at 98 % that a bank sends with the value 98.000,00 €.
+		GVRWPDepotList.Entry.Gattung unitBond = holding("98000.00", "EUR");
+		unitBond.saldo = new BigDecimalValue(new BigDecimal("1000"), "");
+		unitBond.price = new BigDecimalValue(new BigDecimal("98"), "%");
+		unitBond.curr = "EUR";
+		String divided = FinTSHelper.Json.write(FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328", holdings("2026-11-12", null, unitBond), false, "EUR", true)));
+		expect("a server that sends bonds as units: the bond counts its value divided by 100 as a nominal amount", divided,
+			"{\"type\":\"result\",\"account\":\"7654328\",\"balance\":{\"type\":\"balance\",\"amount\":\"980.00\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1000\",\"nominal\":true,\"currency\":\"EUR\",\"price\":{\"type\":\"amount\",\"amount\":\"98\",\"currency\":\"%\"},"
+				+ "\"value\":{\"type\":\"amount\",\"amount\":\"980.00\",\"currency\":\"EUR\"}}]}");
+		expect("any other server: the bond keeps the value of the bank", balance(holdings("2026-11-12", null, unitBond), false),
+			"{type=balance, amount=98000.00, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList.Entry.Gattung unitBondUnvalued = unvalued("1000", "98", "%");
+		unitBondUnvalued.curr = "EUR";
+		expect("a server that sends bonds as units: a bond without a value counts as a nominal amount", balance(holdings("2026-11-12", null, unitBondUnvalued), true),
+			"{type=balance, amount=980.00, currency=EUR, date=2026-11-12}");
+		// 10 shares at 120 € are 1.200,00 €, and the bank sends 1.199,99 €, so a computed value would show.
+		GVRWPDepotList.Entry.Gattung unitShare = holding("1199.99", "EUR");
+		unitShare.saldo = new BigDecimalValue(new BigDecimal("10"), "");
+		unitShare.price = new BigDecimalValue(new BigDecimal("120"), "EUR");
+		expect("a server that sends bonds as units: a share with a price in euro keeps its value", balance(holdings("2026-11-12", null, unitShare), true),
+			"{type=balance, amount=1199.99, currency=EUR, date=2026-11-12}");
+		GVRWPDepotList.Entry.Gattung unitBondInterest = holding("98000.00", "EUR");
+		unitBondInterest.saldo = new BigDecimalValue(new BigDecimal("1000"), "");
+		unitBondInterest.price = new BigDecimalValue(new BigDecimal("98"), "%");
+		unitBondInterest.curr = "EUR";
+		unitBondInterest.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("1500.00"), "EUR");
+		expect("a server that sends bonds as units: the accrued interest of the bond counts divided by 100", balance(holdings("2026-11-12", null, unitBondInterest), true),
+			"{type=balance, amount=995.00, currency=EUR, date=2026-11-12}");
+		expect("a server that sends bonds as units: the row of the bond shows its accrued interest divided by 100", FinTSHelper.Json.write(
+			FinTSHelper.position(unitBondInterest, true).get("accrued")), "{\"type\":\"amount\",\"amount\":\"15.00\",\"currency\":\"EUR\"}");
+		expect("no server sends bonds as units until a bank test shows one", FinTSHelper.bondsAsUnits("brokerage-hbci.consorsbank.de/hbci") + " "
+			+ FinTSHelper.bondsAsUnits("fints.musterbank.example/fints") + " " + FinTSHelper.bondsAsUnits(null), "false false false");
+
+		// The holdings of a page in two currencies, as the raw MT535 of the answer gives them.
+		String twoValues = mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00"), fin("DE0001234567", ":19A::HOLD//EUR500,"));
+		GVRWPDepotList dollars = rawHoldings(twoValues, holding("1000.00", "USD"), holding("500.00", "EUR"));
+		String converted = FinTSHelper.Json.write(FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329", dollars, false, "EUR", false)));
+		fixture.add(converted);
+		expect("holdings in two currencies count with the values in the currency of the account", converted,
+			"{\"type\":\"result\",\"account\":\"7654329\",\"balance\":{\"type\":\"balance\",\"amount\":\"1420.00\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"920.00\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"500\",\"currency\":\"EUR\"}}]}");
+		GVRWPDepotList.Entry.Gattung withInterest = holding("1000.00", "USD");
+		withInterest.stueckzinsbetrag = new BigDecimalValue(new BigDecimal("10.00"), "USD");
+		String interestLine = FinTSHelper.Json.write(FinTSHelper.alone("7654331", () -> FinTSHelper.value("7654331", rawHoldings(mt535(fin("US0001234567",
+			":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00", ":19A::ACRU//USD10,00", ":19A::ACRU//EUR9,20"), fin("DE0001234567", ":19A::HOLD//EUR500,00")),
+			withInterest, holding("500.00", "EUR")), false, "EUR", false)));
+		fixture.add(interestLine);
+		expect("accrued interest in the currency of the account counts with it, and the row shows both", interestLine,
+			"{\"type\":\"result\",\"account\":\"7654331\",\"balance\":{\"type\":\"balance\",\"amount\":\"1429.20\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"920.00\",\"currency\":\"EUR\"},"
+				+ "\"accrued\":{\"type\":\"amount\",\"amount\":\"9.20\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"500.00\",\"currency\":\"EUR\"}}]}");
+		// Point P2 of the review: each first value in dollars, each second value in euro.
+		expect("holdings whose first values are all in another currency count with the values in the currency of the account", balance(rawHoldings(mt535(
+			fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00"), fin("US0001234568", ":19A::HOLD//USD500,00", ":19A::HOLD//EUR460,00")),
+			holding("1000.00", "USD"), holding("500.00", "USD")), false), "{type=balance, amount=1380.00, currency=EUR, date=2026-11-12}");
+		expect("accrued interest only in the other currency fails the account", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00", ":19A::ACRU//USD10,00"), fin("DE0001234567", ":19A::HOLD//EUR500,00")),
+				withInterest, holding("500.00", "EUR")), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("a value in the currency of the account and a computed one count together", balance(rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00",
+			":19A::HOLD//EUR920,00"), fin("DE0001234567")), holding("1000.00", "USD"), shares), false), "{type=balance, amount=970.00, currency=EUR, date=2026-11-12}");
+		expect("a holding without a value in the currency of the account fails the account", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00"), fin("DE0001234567", ":19A::HOLD//EUR500,00")), holding("1000.00", "USD"), holding("500.00", "EUR")),
+			false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("a raw answer with another count of holdings is not used", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00")), holding("1000.00", "USD"), holding("500.00", "EUR")),
+			false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("a raw answer with more holdings than hbci4java read is not used", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00"), fin("DE0001234567", ":19A::HOLD//EUR500,00"),
+				fin("DE0001234568", ":19A::HOLD//EUR300,00")), holding("1000.00", "USD"), holding("500.00", "EUR")), false, "EUR", false)).get("text"),
+			"The bank sent no value for this securities account.");
+		expect("a raw answer whose first accrued interest differs from the one of hbci4java is not used", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//EUR920,00", ":19A::ACRU//USD11,00", ":19A::ACRU//EUR9,20"),
+				fin("DE0001234567", ":19A::HOLD//EUR500,00")), withInterest, holding("500.00", "EUR")), false, "EUR", false)).get("text"),
+			"The bank sent no value for this securities account.");
+		expect("a raw answer whose first value differs from the one of hbci4java is not used", FinTSHelper.alone("7654329", () -> FinTSHelper.value("7654329",
+			rawHoldings(twoValues, holding("1001.00", "USD"), holding("500.00", "EUR")), false, "EUR", false)).get("text"), "The bank sent no value for this securities account.");
+		expect("a negative value in the raw answer", balance(rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD1000,00", ":19A::HOLD//NEUR20,00"),
+			fin("DE0001234567", ":19A::HOLD//EUR500,00")), holding("1000.00", "USD"), holding("500.00", "EUR")), false), "{type=balance, amount=480.00, currency=EUR, date=2026-11-12}");
+		expect("a server that sends bonds as units divides each value of the bond", balance(rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD100000,00",
+			":19A::HOLD//EUR92000,00"), fin("DE0001234567", ":19A::HOLD//EUR500,00")), percent(holding("100000.00", "USD")), holding("500.00", "EUR")), true),
+			"{type=balance, amount=1420.00, currency=EUR, date=2026-11-12}");
+	}
+
+	/// The balance that `value` gives for `list` of a euro account.
+	static String balance(GVRWPDepotList list, boolean bondsAsUnits) {
+		return balance(list, "EUR", bondsAsUnits);
+	}
+
+	/// The balance that `value` gives for `list` of an account in `currency`.
+	static String balance(GVRWPDepotList list, String currency, boolean bondsAsUnits) {
+		return String.valueOf(FinTSHelper.alone("7654328", () -> FinTSHelper.value("7654328", list, false, currency, bondsAsUnits)).get("balance"));
+	}
+
+	/// A holding of `quantity` units at `price` in `currency` without a value, or without a price when `price` is null.
+	static GVRWPDepotList.Entry.Gattung unvalued(String quantity, String price, String currency) {
+		GVRWPDepotList.Entry.Gattung g = holding("0", "EUR");
+		g.depotwert = null;
+		g.saldo = new BigDecimalValue(new BigDecimal(quantity), "");
+		if (price != null) g.price = new BigDecimalValue(new BigDecimal(price), currency);
+		return g;
+	}
+
+	static GVRWPDepotList.Entry.Gattung percent(GVRWPDepotList.Entry.Gattung g) {
+		g.price = new BigDecimalValue(new BigDecimal("92"), "%");
+		return g;
+	}
+
+	/// One page of `holdings` without a total, with `raw` as the MT535 text of the answer, split in two segments as
+	/// hbci4java keeps it.
+	static GVRWPDepotList rawHoldings(String raw, GVRWPDepotList.Entry.Gattung... holdings) {
+		GVRWPDepotList list = holdings("2026-11-12", null, holdings);
+		int half = raw.length() / 2;
+		list.storeResult("content.data535", raw.substring(0, half));
+		list.storeResult("content_2.data535", raw.substring(half));
+		return list;
+	}
+
+	/// A made-up MT535 statement of the account 7654329 with the holdings `fins`.
+	static String mt535(String... fins) {
+		return "\r\n:16R:GENL\r\n:28E:1/ONLY\r\n:13A::STAT//535\r\n:20C::SEME//NONREF\r\n:23G:NEWM\r\n:98A::STAT//20261112\r\n:22F::STTY//CUST\r\n"
+			+ ":97A::SAFE//12030000/7654329\r\n:17B::ACTI//Y\r\n:16S:GENL\r\n" + String.join("", fins) + ":16R:ADDINFO\r\n:16S:ADDINFO\r\n-\r\n";
+	}
+
+	/// One holding of an MT535 statement with the fields `amounts`.
+	static String fin(String isin, String... amounts) {
+		return ":16R:FIN\r\n:35B:ISIN " + isin + "\r\nMusterwerte\r\n:93B::AGGR//UNIT/1,\r\n" + String.join("", java.util.Arrays.stream(amounts).map(a -> a + "\r\n").toList())
+			+ ":16S:FIN\r\n";
 	}
 
 	/// The card statement DKKKU of a credit card, with made-up data as hbci4java keeps it from DIKKU (task 1.19).
@@ -1384,7 +1580,22 @@ final class SelfTest {
 		answers.add("482915");
 		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\nHinweis\n\nBitte TAN eingeben", 0, new StringBuffer());
 		expect("a TAN request offers the methods to change to", asked.get(0),
-			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"methods\":" + methods + "}");
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"method\":\"pushTAN 2.0\",\"methods\":" + methods + "}");
+
+		// hbci4java asks for no method when the bank allows a single one, as Oberbank with only xTAN by SMS (#236), so the
+		// TAN request names that method, from which the app knows that the bank offers no app.
+		PassportData single = passportData();
+		single.twostepMechs = new ArrayList<>(List.of("901"));
+		single.tanMethod = "901";
+		FinTSHelper.Passport.loaded = single;
+		FinTSHelper.Passport onlySMS = new FinTSHelper.Passport();
+		FinTSHelper.Passport.loaded = null;
+		asked.clear();
+		answers.add("482915");
+		callback.callback(onlySMS, FinTSHelper.Callback.NEED_PT_TAN, "mobileTAN\n\nBitte geben Sie die xTAN aus der SMS ein.", 0, new StringBuffer());
+		expect("a TAN request of the single method that the bank allows names it", asked.get(0),
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte geben Sie die xTAN aus der SMS ein.\",\"current\":\"901\","
+				+ "\"method\":\"mobileTAN\",\"methods\":[{\"type\":\"method\",\"id\":\"901\",\"name\":\"mobileTAN\",\"medium\":true,\"delivery\":\"sms\"}]}");
 
 		history(passport, callback, asked, answers);
 

@@ -128,6 +128,83 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 - **WHEN** the bank offers a method for its website only and not for its FinTS server
 - **THEN** the app says that the bank supports this method only on the website
 
+#### Scenario: OLB-Sign only on the website of OLB
+
+- **GIVEN** an access whose FinTS address is on a host that ends in ".olb.de", such as `hbci.olb.de`
+- **AND** the TAN methods that the bank allows, also a single one, the methods to choose from, or the method of the challenge, contain only "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method or to enter a TAN for a transfer of 25,00 € from DE02120300000000202051
+- **THEN** the dialog says that OLB offers OLB-Sign only on its website, and that the user approves the order with appTAN, which works with finance software
+- **AND** for the login it says to log in with appTAN, and for a request that fetches data it says to approve the request with appTAN
+
+#### Scenario: OLB-Sign offered
+
+- **GIVEN** an access on the host `hbci.olb.de` whose dialog names the TAN methods "OLB-Sign" and "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method
+- **THEN** the dialog shows no note about OLB-Sign
+
+#### Scenario: Other bank without OLB-Sign
+
+- **GIVEN** an access on the host `hbci.neelmeyer.de` or `fints.musterbank.example` whose dialog names only "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method
+- **THEN** the dialog shows no note about OLB-Sign
+
+### Requirement: Method of the website that the FinTS server does not offer
+
+The app SHALL show a method of the bank's website that its FinTS server does not offer as a method that cannot be chosen, with the reason. When the FinTS server offers the user a single method, so that the app asks for no choice, the dialog of the TAN gives the reason.
+
+#### Scenario: Security App of Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 70120700, whose FinTS server is "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **AND** the FinTS server offers the methods "smsTAN" and "TAN-Generator", neither of them an approval in an app
+- **WHEN** the app asks the user for the TAN method at the login
+- **THEN** the dialog says that the FinTS server needs a confirmation to allow the login
+- **AND** the user can choose "smsTAN" or "TAN-Generator"
+- **AND** the dialog shows "Oberbank Security App", which the user cannot choose, with the reason that Oberbank offers the Security App only for its internet banking and not for finance software
+
+#### Scenario: Oberbank offers an app
+
+- **GIVEN** an access with the Bankleitzahl 70120700
+- **AND** the FinTS server offers "smsTAN" and one of "Security App", "SecurityApp", and "appTAN", or "smsTAN" and a method that the bank parameters mark as an approval in an app
+- **WHEN** the app asks the user for the TAN method
+- **THEN** the dialog shows only the methods of the FinTS server
+
+#### Scenario: A name that only starts with "App" at Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 70120700
+- **AND** the FinTS server offers "smsTAN" and "Appsecure", neither of them an approval in an app by the bank parameters
+- **WHEN** the app asks the user for the TAN method
+- **THEN** the dialog shows "smsTAN", "Appsecure", and "Oberbank Security App", which the user cannot choose
+
+#### Scenario: Oberbank offers only smsTAN
+
+- **GIVEN** an access with the Bankleitzahl 70120700
+- **AND** the FinTS server offers the user only "smsTAN", so the app asks for no TAN method
+- **WHEN** the FinTS server asks for the TAN of the login
+- **THEN** the dialog shows the challenge "Bitte geben Sie die xTAN aus der SMS ein." and a field for the TAN
+- **AND** the dialog says that Oberbank offers the Security App only for its internet banking and not for finance software
+
+#### Scenario: TAN after the choice at Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 70120700, whose FinTS server offers "smsTAN" and "TAN-Generator"
+- **AND** the user chose "smsTAN"
+- **WHEN** the FinTS server asks for the TAN of the login
+- **THEN** the dialog says that Oberbank offers the Security App only for its internet banking and not for finance software
+
+#### Scenario: Approval in an app at Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 70120700
+- **AND** the FinTS server offers "smsTAN" and "Security App", or only a method that the bank parameters mark as an approval in an app
+- **WHEN** the FinTS server asks for the TAN or the approval of the login
+- **THEN** the dialog says nothing about the Security App
+
+#### Scenario: Another bank on the FinTS server of Oberbank
+
+- **GIVEN** an access with the Bankleitzahl 99090000, whose FinTS server is also "https://www.bv-activebanking.de/hbciTunnel/hbciTransfer.jsp"
+- **AND** the FinTS server offers "smsTAN" and "TAN-Generator"
+- **WHEN** the app asks the user for the TAN method
+- **THEN** the dialog shows only "smsTAN" and "TAN-Generator"
+- **AND** the dialog of the TAN after the choice says nothing about the Security App
+
 ### Requirement: Choose the TAN medium
 
 The app SHALL fetch the list of TAN media from the bank when the selected method needs the name of a medium, for example a phone or a card, and let the user choose one. The app remembers the choice for the access.

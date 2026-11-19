@@ -54,6 +54,14 @@ struct FinTSAccountTests {
 		#expect(try row.transaction(of: request).counterpartyIBAN == stored)
 	}
 
+	@Test("An account whose bank reports an empty product name is named after its type", arguments: ["", "   "])
+	func emptyProductName(product: String) {
+		let listed = FinTSAccount(number: "202051", subnumber: nil, iban: "DE02120300000000202051", bic: nil, productName: product, kind: .giro, owner: nil, currency: "EUR")
+		#expect(listed.account(access: Self.access, bank: Self.bank, group: nil).name == "Giro account")
+		let named = FinTSAccount(number: "202051", subnumber: nil, iban: "DE02120300000000202051", bic: nil, productName: " Giro Direkt ", kind: .giro, owner: nil, currency: "EUR")
+		#expect(named.account(access: Self.access, bank: Self.bank, group: nil).name == "Giro Direkt")
+	}
+
 	@Test("An account with a subnumber and no IBAN is named after its type and fetched by number and subnumber")
 	func withSubnumber() {
 		let listed = FinTSAccount(number: "9", subnumber: "01", iban: nil, bic: nil, productName: nil, kind: .savings, owner: nil, currency: "USD")

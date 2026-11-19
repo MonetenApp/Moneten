@@ -14,8 +14,6 @@ final class FileImport {
 	nonisolated var isCanceled: Bool { canceled.withLock { $0 } }
 	/// The file that names another account, which the sheet asks about instead of showing the progress.
 	private(set) var question: AccountQuestion?
-	@ObservationIgnored var isPresented = false
-	@ObservationIgnored private var dismissal: CheckedContinuation<Void, Never>?
 	@ObservationIgnored private var waiting: CheckedContinuation<AccountQuestion.Answer?, Never>?
 	/// The CSV file that waits for the user, which the sheet shows instead of the progress.
 	private(set) var preview: CSVPreviewModel?
@@ -39,17 +37,6 @@ final class FileImport {
 	func beginStoring(_ count: Int, resumingAfterCancel: Bool) {
 		if resumingAfterCancel { canceled.withLock { $0 = false } }
 		storing = count
-	}
-
-	func waitForDismissal() async {
-		guard isPresented else { return }
-		await withCheckedContinuation { dismissal = $0 }
-	}
-
-	func sheetDismissed() {
-		isPresented = false
-		dismissal?.resume()
-		dismissal = nil
 	}
 
 	func answer(_ choice: AccountQuestion.Answer?) {

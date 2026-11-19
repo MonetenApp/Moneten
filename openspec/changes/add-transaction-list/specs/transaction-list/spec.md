@@ -108,7 +108,7 @@ The app SHALL draw a transaction that the bank has not yet booked with a hatched
 
 ### Requirement: New transactions are marked
 
-The app SHALL show a mark on the row of each transaction that the user has not seen before. The mark stays while the view is open in which the user first sees the transaction, and it is gone when the user leaves that view.
+The app SHALL show a mark on the row of each transaction that the user has not seen before. The mark stays while the view is open in which the user first sees the transaction. It is gone when the user leaves that view, closes the main window, locks or quits the app, or checks the row. A transaction that a refresh adds while the view of its account is open counts as seen when the user leaves that view, closes the main window, or locks or quits the app.
 
 #### Scenario: After a refresh
 
@@ -116,6 +116,26 @@ The app SHALL show a mark on the row of each transaction that the user has not s
 - **WHEN** the user opens "Giro"
 - **THEN** the 3 rows carry the mark for new transactions
 - **AND** the mark is gone when the user returns to "Giro" later
+
+#### Scenario: Refresh while the account is open
+
+- **GIVEN** the user looks at "Giro"
+- **WHEN** a refresh adds a transaction of -12,00 € to "Giro"
+- **THEN** its row carries the mark for new transactions while "Giro" stays open
+- **AND** the mark is gone when the user selects "Savings" and returns to "Giro"
+
+#### Scenario: Close the main window
+
+- **GIVEN** the user opened "Giro", and 2 of its rows carry the mark for new transactions
+- **WHEN** the user closes the main window and opens it again with "Giro" selected
+- **THEN** no row of "Giro" carries the mark
+
+#### Scenario: Check a marked row
+
+- **GIVEN** the user opened "Giro", and the rows of -30,00 € and -3,20 € carry the mark for new transactions
+- **WHEN** the user checks the row of -30,00 €
+- **THEN** that row no longer carries the mark
+- **AND** the row of -3,20 € keeps it until the user leaves "Giro"
 
 ### Requirement: Text can be selected and copied
 

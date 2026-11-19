@@ -29,6 +29,26 @@ extension ReconcileTests {
 		}
 	}
 
+	/// Spec "Candidate eligibility and ties": live positions use the booking day, the creation time, and the UUID. These two
+	/// stored rents tie on everything up to the UUID, so only the UUID decides which one takes the bank's fields (gate of #496).
+	@Test("Two stored pending rents that tie up to their UUID pair by the lower UUID, in every storage order")
+	func uuidBreaksTheLastTie() {
+		var low = stored(rent(1))
+		low.createdAt = Date(timeIntervalSince1970: 1)
+		low.id = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
+		var high = low
+		high.id = UUID(uuidString: "00000000-0000-0000-0000-00000000000B")!
+		#expect(low.id.uuidString < high.id.uuidString)
+		for order in permutations([low, high]) {
+			let r = merge(refresh([rent(1, purpose: "BANK")]), stored: order, at: noon(20, month: 11))
+			#expect(r.updated.map(\.id) == [low.id])
+			#expect(r.updated.map(\.purpose) == ["BANK"])
+			#expect(r.added.isEmpty)
+			let after = history(order, after: r)
+			#expect(after.first { $0.id == high.id }?.purpose != "BANK")
+		}
+	}
+
 	@Test("Gate 5: 6,144 booked comparisons keep main's legacy pairing")
 	func gate5LegacyComparisons() async {
 		for seed in 0..<6_144 {

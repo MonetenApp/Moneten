@@ -94,6 +94,6 @@ public final class BankLookup {
 	/// A bank that the login can go to. The entry of a merged bank is one too: its Bankleitzahl may still be
 	/// the one the bank uses, so the first step shows `BankDirectory.Entry.mergerNote` and goes on.
 	private static func usable(_ bank: BankDirectory.Entry) -> State {
-		bank.bank.url == nil ? .failed(String(localized: "\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank.")) : .found(bank)
+		bank.bank.url == nil ? .failed(String(localized: "\(bank.bank.name) does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account.")) : .found(bank)
 	}
 }

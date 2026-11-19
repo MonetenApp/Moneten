@@ -671,6 +671,119 @@ struct LedgerTests {
 		#expect(search("\u{2212}23,45") == ["Bäckerei Gutbrot"])
 	}
 
+	@Test("An amount word finds the whole amount and not a longer amount that holds it")
+	func searchWholeAmount() {
+		let l = Ledger(accounts: [giro], transactions: [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -4_999, name: "Kiosk"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -14_999, name: "Elektromarkt"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 4_999, name: "Erstattung"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 2), amountMinor: -124_999, name: "Möbelhaus"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -1_000, name: "Vermieter", purpose: "Rechnung 149,99 Kundennummer 4711"),
+		])
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.rows(in: .account(giro.id), filter: f).rows.map(\.name)
+		}
+		// Without a sign the amount finds both signs, with a sign only its own. The purpose "Rechnung 149,99" holds
+		// "49,99" as text, which a search word finds inside words.
+		#expect(found("49,99") == ["Kiosk", "Erstattung", "Vermieter"])
+		#expect(found("49.99") == ["Kiosk", "Erstattung"])
+		#expect(found("-49,99") == ["Kiosk"])
+		#expect(found("-49.99") == ["Kiosk"])
+		#expect(found("+49,99") == ["Erstattung"])
+		#expect(found("149,99") == ["Elektromarkt", "Vermieter"])
+		#expect(found("-149,99") == ["Elektromarkt"])
+		#expect(found("149.99") == ["Elektromarkt"])
+		// The list shows thousands separators, so an amount copied from there finds its row.
+		#expect(found("1.249,99") == ["Möbelhaus"])
+		#expect(found("-1.249,99") == ["Möbelhaus"])
+		#expect(found("1,249.99") == ["Möbelhaus"])
+		#expect(found("1249,99") == ["Möbelhaus"])
+		#expect(found("249,99").isEmpty)
+		#expect(found("99") == ["Vermieter"])
+		#expect(found("4711") == ["Vermieter"])
+		#expect(found("10") == ["Vermieter"])
+
+		// A part of a split transaction is found by its own amount and by the amount of the transaction, each as a whole.
+		let split = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -14_999, name: "Elektromarkt")
+		let parts = [SplitPart(transactionID: split.id, position: 0, amountMinor: -10_000, comment: "Kabel"),
+			SplitPart(transactionID: split.id, position: 1, amountMinor: -4_999, comment: "Adapter")]
+		let splitLedger = Ledger(accounts: [giro], transactions: [split], parts: parts)
+		func foundParts(_ text: String) -> [String?] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return splitLedger.rows(in: .account(giro.id), filter: f).rows.map(\.comment)
+		}
+		#expect(foundParts("-149,99") == ["Kabel", "Adapter"])
+		#expect(foundParts("49,99") == ["Adapter"])
+		#expect(foundParts("100") == ["Kabel"])
+		#expect(foundParts("1.000,00").isEmpty)
+	}
+
+	@Test("An amount word compares the exact value, as amount= in a rule does, also without the integer part or with more zeros")
+	func searchExactAmountValue() throws {
+		let day = Day(year: 2026, month: 11, day: 5)
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: day, amountMinor: 1_230, currency: "KWD", name: "Basar"),
+			Transaction(accountID: giro.id, bookingDate: day.adding(days: -1), amountMinor: 1_234, currency: "KWD", name: "Souk"),
+			Transaction(accountID: giro.id, bookingDate: day.adding(days: -2), amountMinor: -99, name: "Kiosk"),
+			Transaction(accountID: giro.id, bookingDate: day.adding(days: -3), amountMinor: -14_999, name: "Elektromarkt"),
+			Transaction(accountID: giro.id, bookingDate: day.adding(days: -4), amountMinor: 0, name: "Nullbuchung"),
+		]
+		let l = Ledger(accounts: [giro], transactions: rows)
+		func found(_ text: String) -> [String] {
+			var f = TransactionFilter()
+			f.searchText = text
+			return l.rows(in: .account(giro.id), filter: f).rows.map(\.name)
+		}
+		// The search text also holds 1.234 KWD rounded to two decimals, "1.23", which an amount word does not read.
+		#expect(found("1.23") == ["Basar"])
+		#expect(found("+1.23") == ["Basar"])
+		#expect(found("1,23") == ["Basar"])
+		#expect(found("1.230") == ["Basar"])
+		#expect(found("1.2340") == ["Souk"])
+		#expect(found("1,234") == ["Souk"])
+		// A word without the integer part reads as 0,99, as the amount of a rule does.
+		#expect(found(".99") == ["Kiosk"])
+		#expect(found(",99") == ["Kiosk"])
+		#expect(found("0,990") == ["Kiosk"])
+		#expect(found("149,990") == ["Elektromarkt"])
+
+		// The search with a sign finds the rows of the rule with the same amount.
+		// Zero has no sign: -0 and +0 find it under either sign, as amount=-0 does in a rule.
+		#expect(found("-0") == ["Nullbuchung"])
+		#expect(found("-0,00") == ["Nullbuchung"])
+		#expect(found("+0") == ["Nullbuchung"])
+		for (word, amount) in [("+1.23", "1.23"), ("+1.2340", "1.2340"), ("-0,99", "-0,99"), ("-149,990", "-149,99"),
+				("-0", "-0"), ("-0,00", "-0,00"), ("+0", "0")] {
+			let rule = try Rule(parsing: "amount=\(amount)")
+			#expect(found(word) == rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name), "\(word)")
+		}
+		for amount in [".99", ",99"] {
+			let rule = try Rule(parsing: "amount=-\(amount)")
+			#expect(found(amount) == rows.filter { rule.matches(RuleSubject($0, account: giro)) }.map(\.name), "\(amount)")
+		}
+	}
+
+	@Test("The search text holds the amounts from amountPlace on, the exact amount first, and a part the amounts of its transaction after its own")
+	func amountPlace() throws {
+		let t = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -12_344, currency: "KWD",
+			name: "Basar", purpose: "Teppich", counterpartyBIC: "TESTDEFFXXX", comment: "Reise")
+		let part = SplitPart(transactionID: t.id, position: 0, amountMinor: -10_000, comment: "Kissen")
+		let l = Ledger(accounts: [giro], transactions: [t], parts: [part, SplitPart(transactionID: t.id, position: 1, amountMinor: -2_344, comment: "Lampe")])
+		let places = try #require(l.searchText[part.id]).split(separator: "\u{1}", omittingEmptySubsequences: false)
+		let amountPlace = SearchText.amountPlace, perAmount = SearchText.textsPerAmount
+		#expect(places.count == amountPlace + 2 * perAmount)
+		#expect(places[amountPlace - 1] == "")
+		#expect(places[amountPlace - 3] == "testdeffxxx")
+		#expect(places[amountPlace] == "-10")
+		#expect(places[amountPlace + perAmount] == "-12.344")
+		let transactionAmounts: [String] = places[(amountPlace + perAmount)...].map(String.init)
+		let amountTexts: [String] = Ledger.amountTexts(-12_344, decimals: 3)
+		#expect(transactionAmounts == amountTexts)
+	}
+
 	@Test("The search text holds each amount as typed: plain, with comma or point, and with two decimals")
 	func amountSearchText() {
 		func text(_ minor: Int64, _ currency: String = "EUR") -> [String] {
@@ -853,7 +966,7 @@ struct LedgerTests {
 		notSetYet.initialBalanceIsSet = false
 		#expect(ledger(notSetYet, pending: false).proposedCalibration(of: notSetYet, today: today, refresh: .idle) == nil)
 		var failed = unexplained
-		failed.refreshError = RefreshError(message: "The transactions could not be fetched.", date: Date())
+		failed.refreshError = RefreshError(failure: .network("The transactions could not be fetched."), date: Date())
 		#expect(ledger(failed, pending: false).proposedCalibration(of: failed, today: today, refresh: .idle) == nil)
 	}
 
@@ -1263,6 +1376,16 @@ struct LedgerTests {
 		#expect(ledger.accountsWithTransactions.isEmpty)
 	}
 
+	@Test("A custom period applies both dates and refuses an end before the start")
+	func customPeriod() {
+		let start = Day(year: 2025, month: 4, day: 1), end = Day(year: 2026, month: 3, day: 31)
+		#expect(PeriodChoice.custom(from: start, to: end) == .custom(start, end))
+		#expect(PeriodChoice.custom(from: start, to: end)?.range() == DayRange(start: start, end: end))
+		#expect(PeriodChoice.custom(from: start, to: start) == .custom(start, start))
+		#expect(PeriodChoice.custom(from: Day(year: 2026, month: 10, day: 18), to: Day(year: 2025, month: 1, day: 1)) == nil)
+		#expect(PeriodChoice.custom(from: start, to: start.adding(days: -1)) == nil)
+	}
+
 	@Test("A view resets the filter that its filter bar does not show")
 	func resetHidden() {
 		let groceries = Domain.Category(position: 0, name: "Groceries")
@@ -1341,5 +1464,15 @@ struct LedgerTests {
 		let month = try #require(SavedFilterBar(data: SavedFilterBar(period: .month(october), filter: TransactionFilter()).data))
 		#expect(month.filter(in: ledger(), today: launch).period == DayRange(start: october, end: Day(year: 2025, month: 10, day: 31)))
 		#expect(SavedFilterBar(data: Data("pin".utf8)) == nil)
+	}
+
+	@Test("A saved custom period with its end before its start comes back with the dates swapped")
+	func savedReversedCustomPeriod() throws {
+		let start = Day(year: 2025, month: 4, day: 1), end = Day(year: 2026, month: 3, day: 31)
+		let reversed = try #require(SavedFilterBar(data: SavedFilterBar(period: .custom(end, start), filter: TransactionFilter()).data))
+		#expect(reversed.period == .custom(start, end))
+		#expect(reversed.filter(in: ledger()).period == DayRange(start: start, end: end))
+		let kept = try #require(SavedFilterBar(data: SavedFilterBar(period: .custom(start, start), filter: TransactionFilter()).data))
+		#expect(kept.period == .custom(start, start))
 	}
 }

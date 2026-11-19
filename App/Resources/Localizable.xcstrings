@@ -156,12 +156,12 @@
       },
       "extractionState" : "manual"
     },
-    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank." : {
+    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen."
+            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen, oder Sie importieren eine Datei mit ihren Umsätzen in ein Offline-Konto."
           }
         }
       },
@@ -1138,22 +1138,22 @@
       },
       "extractionState" : "manual"
     },
-    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
     },
-    "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
@@ -1406,6 +1406,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Wort ohne Feld durchsucht keine Kontonummern und IBANs. local_account: und remote_account: tun das."
+          }
+        }
+      }
+    },
+    "About Backups" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über die Datensicherung"
           }
         }
       }
@@ -1804,22 +1814,22 @@
         }
       }
     },
-    "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
     },
-    "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
@@ -2435,6 +2445,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Korb"
+          }
+        }
+      }
+    },
+    "Before the first login, ask your customer adviser at Oberbank for the HBCI access with xTAN by SMS. Oberbank stores your mobile number with a change of the Electronic Banking contract and confirms the access in writing. Log in after that." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bitten Sie vor der ersten Anmeldung Ihre Kundenberaterin oder Ihren Kundenberater bei der Oberbank um den HBCI-Zugang mit xTAN per SMS. Die Oberbank hinterlegt Ihre Mobilfunknummer mit einer Änderung des Electronic-Banking-Vertrags und bestätigt den Zugang schriftlich. Melden Sie sich erst danach an."
           }
         }
       }
@@ -5003,6 +5024,17 @@
         }
       }
     },
+    "Guide of Oberbank" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anleitung der Oberbank"
+          }
+        }
+      }
+    },
     "Guide of Postbank" : {
       "localizations" : {
         "de" : {
@@ -5130,6 +5162,17 @@
       },
       "extractionState" : "manual"
     },
+    "Help page of OLB" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der OLB"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Help page of the Volksbanken Raiffeisenbanken" : {
       "localizations" : {
         "de" : {
@@ -5217,6 +5260,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wenn die Bank verlangt, den Zugang neu einzurichten, etwa nach einem neuen TAN-Verfahren oder einer abgebrochenen Authentifizierung, wählen Sie „Zugangsdaten bearbeiten...“ und bestätigen Sie die Zugangsdaten."
+          }
+        }
+      }
+    },
+    "If the login fails, ask your customer adviser at Oberbank whether the HBCI access with xTAN is switched on for you." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn die Anmeldung fehlschlägt, fragen Sie Ihre Kundenberaterin oder Ihren Kundenberater bei der Oberbank, ob der HBCI-Zugang mit xTAN für Sie freigeschaltet ist."
           }
         }
       }
@@ -6039,6 +6093,16 @@
         }
       }
     },
+    "macOS names no home folder for your user account, so Moneten does not know where its data folder is. Moneten quits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS nennt für Ihr Benutzerkonto keinen Benutzerordner, daher weiß Moneten nicht, wo sein Datenordner liegt. Moneten wird beendet."
+          }
+        }
+      }
+    },
     "Main Window" : {
       "localizations" : {
         "de" : {
@@ -6218,6 +6282,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten %1$@ benötigt macOS %2$@ oder neuer."
+          }
+        }
+      }
+    },
+    "Moneten cannot find your home folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten findet Ihren Benutzerordner nicht"
           }
         }
       }
@@ -7315,6 +7389,17 @@
         }
       }
     },
+    "Oberbank offers the Security App only for its internet banking, not for finance software." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Oberbank bietet die Security App nur für ihr Internetbanking an, nicht für Finanzsoftware."
+          }
+        }
+      }
+    },
     "Offline account" : {
       "localizations" : {
         "de" : {
@@ -7344,6 +7429,50 @@
           }
         }
       }
+    },
+    "OLB expects the Banking-Zugangsnummer and the PIN of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB erwartet die Banking-Zugangsnummer und die PIN ihres Onlinebankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this order with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diesen Auftrag mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this request with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diese Anfrage mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Melden Sie sich mit appTAN an, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them." : {
       "localizations" : {
@@ -9760,6 +9889,16 @@
       },
       "extractionState" : "manual"
     },
+    "The account group is empty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kontengruppe ist leer."
+          }
+        }
+      }
+    },
     "The account has been closed" : {
       "localizations" : {
         "de" : {
@@ -10756,6 +10895,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The end lies before the start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Ende liegt vor dem Anfang"
+          }
+        }
+      }
     },
     "The export contains no categorization rules. Copy them from the category settings of MoneyMoney into the category settings of Moneten." : {
       "localizations" : {
