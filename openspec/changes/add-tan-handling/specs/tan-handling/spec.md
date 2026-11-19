@@ -542,7 +542,7 @@ The app SHALL show only one dialog for two-factor authentication at a time. A fu
 
 ### Requirement: The dialog opens over the account settings and the calibration window
 
-The app SHALL open the dialog on top of the account settings, or on top of the calibration window when it is open over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed. The calibration window does not open while the dialog shows on the account settings.
+The app SHALL open the dialog on top of the account settings, or on top of the calibration window when it is open over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed. The calibration window does not open while the dialog shows on the account settings, nor while it still slides out.
 
 #### Scenario: TAN while the calibration window is open
 

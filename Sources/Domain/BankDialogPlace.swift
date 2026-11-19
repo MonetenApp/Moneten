@@ -32,7 +32,7 @@ public enum BankDialogPlace: Sendable, Equatable {
 /// window that is gone, such as the dismissal of a window over a sheet that another sheet replaced, never ends the
 /// window on screen. The sheet under the window gets a new number at each change, so that a window never opens over
 /// a sheet that is gone, such as the calibration window that the unlock reopens one turn later (issue #504).
-public struct OverSheetState: Sendable, Equatable {
+public struct OverSheetState: Sendable {
 	/// One opening of the window.
 	public struct Token: Sendable, Equatable {
 		fileprivate let number: Int
@@ -57,10 +57,11 @@ public struct OverSheetState: Sendable, Equatable {
 		current = nil
 	}
 
-	/// Opens the window over the sheet with the number `sheet`. Nil, and nothing opens, when that sheet is gone, or while
-	/// a dialog of the bank shows on it: the dialog would move to the window while it is on screen.
+	/// Opens the window over the sheet with the number `sheet`. Nil, and nothing opens, when that sheet is gone, while a
+	/// dialog of the bank shows on it, which would move to the window while it is on screen, or while the window is open
+	/// or still slides out, so that a dialog of the bank that waits for the slide out never meets the new window.
 	public mutating func open(over sheet: Int, whileBankDialogShows: Bool) -> Token? {
-		guard sheet == self.sheet, !whileBankDialogShows else { return nil }
+		guard sheet == self.sheet, !whileBankDialogShows, phase == .none else { return nil }
 		openings += 1
 		let token = Token(number: openings)
 		current = token

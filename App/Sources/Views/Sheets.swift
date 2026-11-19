@@ -196,6 +196,9 @@ struct AccountSettingsSheet: View {
 	@State private var calibrating = false
 	/// The opening of the calibration window on screen or sliding out, for `OverSheetState`.
 	@State private var calibration: OverSheetState.Token?
+	/// The openings of the calibration window whose dismissal has not come yet, oldest first. Each `onDismiss` belongs
+	/// to the oldest, also when the time limit already ended it and a newer window opened.
+	@State private var undismissed: [OverSheetState.Token] = []
 	/// The number of the sheet of these settings (`OverSheetState.sheet`), so that the calibration window never opens
 	/// over another sheet that took their place.
 	@State private var sheetNumber: Int?
@@ -311,7 +314,7 @@ struct AccountSettingsSheet: View {
 			// out waits for its `onDismiss` (`BankDialogPlace`).
 			.sheet(isPresented: $calibrating, onDismiss: {
 				calibrationBalance = ""
-				if let calibration { model.overSheetDismissed(calibration) }
+				if !undismissed.isEmpty { model.overSheetDismissed(undismissed.removeFirst()) }
 			}) {
 				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
 					.bankDialog(at: .overSheet, of: model)
@@ -347,6 +350,7 @@ struct AccountSettingsSheet: View {
 	private func openCalibration(over number: Int? = nil) {
 		guard let number = number ?? sheetNumber, let token = model.openOverSheet(over: number) else { return }
 		calibration = token
+		undismissed.append(token)
 		calibrating = true
 	}
 

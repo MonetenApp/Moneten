@@ -73,7 +73,11 @@ struct OverSheetStateTests {
 		#expect(closing(first, in: &state))
 		state.sheetChanged()
 		let second = try #require(open(&state))
+		// The first window cannot close the second one, and a window closes only once.
+		#expect(!closing(first, in: &state))
+		#expect(state.phase == .open)
 		#expect(closing(second, in: &state))
+		#expect(!closing(second, in: &state))
 		// The first window reports its dismissal only now.
 		state.dismissed(first)
 		#expect(state.phase == .closing)
@@ -98,6 +102,32 @@ struct OverSheetStateTests {
 		#expect(state.phase == .none)
 		state.dismissed(second)
 		#expect(state.phase == .none)
+	}
+
+	@Test("Calibrate while the calibration window still slides out opens nothing, so the dialog of the bank waits for the slide out")
+	func notWhileSlidingOut() throws {
+		var state = OverSheetState()
+		let first = try #require(open(&state))
+		#expect(closing(first, in: &state))
+		#expect(open(&state) == nil)
+		#expect(state.phase == .closing)
+		state.dismissed(first)
+		#expect(state.phase == .none)
+	}
+
+	@Test("A dismissal with the token of an older window, such as one whose time limit ended before it reported, leaves the newer window open")
+	func olderDismissal() throws {
+		var state = OverSheetState()
+		let first = try #require(open(&state))
+		#expect(closing(first, in: &state))
+		// The time limit ended the first window, and the user opened the second one.
+		state.dismissed(first)
+		let second = try #require(open(&state))
+		// The first window reports its dismissal only now.
+		state.dismissed(first)
+		#expect(state.phase == .open)
+		#expect(closing(second, in: &state))
+		#expect(state.phase == .closing)
 	}
 
 	@Test("A change of the sheet, such as the lock, ends the window on top of it")
