@@ -41,8 +41,19 @@ struct DateField: View {
 		return Day.calendar(like: gregorian)
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// The day that "datefield today <yyyymmdd>" of the debug harness sets, so that a check of the completion runs
+	/// in January or December as the spec writes it. Nil uses the real day.
+	static var debugToday: Day?
+	#endif
+
 	private func completed(_ text: String) -> Day? {
-		Day(typed: text, today: .today(), order: DateOrder(locale: .current), expectsFuture: expectsFuture)
+		#if DEBUG || PERF_HARNESS
+		let today = Self.debugToday ?? .today()
+		#else
+		let today = Day.today()
+		#endif
+		return Day(typed: text, today: today, order: DateOrder(locale: .current), expectsFuture: expectsFuture)
 	}
 
 	/// The day of a text. A text that returns to the one the field wrote, such as after Undo, brings its day back.

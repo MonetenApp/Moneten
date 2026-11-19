@@ -21,6 +21,22 @@ struct MigrationSheet: View {
 	/// instead of asking MoneyMoney.
 	static var fixtureFolder: URL?
 	static var simulatedFailure: MoneyMoneyExporter.Failure?
+	/// The case of the step that the sheet showed last, for "migrationstate" of the debug harness, which reads it only
+	/// while the model shows this sheet.
+	static var shownStep: LogValue?
+
+	/// The case of the step without its values, so that new progress alone is not a new step.
+	private var stepCase: String {
+		switch step {
+		case .intro: "intro"
+		case .working: "working"
+		case .summary: "summary"
+		case .nothingNew: "nothingNew"
+		case .fileAccount: "fileAccount"
+		case .done: "done"
+		case .failed: "failed"
+		}
+	}
 	#endif
 
 	@State private var step = Step.intro
@@ -40,7 +56,7 @@ struct MigrationSheet: View {
 			}
 			if case .failed(_, offersFileImport: true) = step {
 				Button("Import File...") {
-					fileAccountID = model.selectedAccount?.id ?? model.ledger.accounts.first?.id
+					fileAccountID = model.selectedAccount.flatMap { $0.takesImportedTransactions ? $0.id : nil } ?? importTargets.first?.id
 					step = .fileAccount
 				}.keyboardShortcut("i")
 			}
@@ -54,12 +70,12 @@ struct MigrationSheet: View {
 				}
 			case .fileAccount:
 				Section {
-					if model.ledger.accounts.isEmpty {
+					if importTargets.isEmpty {
 						Text("Add an account before importing transactions.")
 						Button("Add Account...") { model.addAccount() }
 					} else {
 						Picker("Account", selection: $fileAccountID) {
-							ForEach(model.ledger.accounts) { account in
+							ForEach(importTargets) { account in
 								Text(account.name).tag(Optional(account.id))
 							}
 						}
@@ -107,20 +123,7 @@ struct MigrationSheet: View {
 				} footer: {
 					Text(MoneyMoneyMigration.Report.balanceRule).foregroundStyle(.secondary)
 				}
-				if !report.notes.isEmpty {
-					Section("Notes") {
-						ScrollView {
-							VStack(alignment: .leading, spacing: 10) {
-								ForEach(Array(report.notes.enumerated()), id: \.offset) { i, note in
-									if i > 0 { Divider() }
-									Text(note).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
-								}
-							}
-						}
-						// About 70 characters fit on a line of the sheet.
-						.frame(height: min(report.notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
-					}
-				}
+				notes(report.notes)
 			case let .failed(message, _):
 				Section {
 					Label(message, systemImage: "exclamationmark.triangle")
@@ -131,6 +134,9 @@ struct MigrationSheet: View {
 		}
 		.environment(\.sheetHasScrollAreas, true)
 		.onDisappear { model.migrationTask?.cancel() }
+		#if DEBUG || PERF_HARNESS
+		.onChange(of: stepCase, initial: true) { Self.shownStep = .state(step) }
+		#endif
 		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
 			Button("Save Report...") {
 				if case let .done(_, report) = step { reportText = report.text() }
@@ -179,6 +185,11 @@ struct MigrationSheet: View {
 		}
 	}
 
+	/// The accounts that "Import File..." offers. A portfolio takes no file.
+	private var importTargets: [Account] {
+		model.ledger.accounts.filter(\.takesImportedTransactions)
+	}
+
 	private var canConfirm: Bool {
 		if case .fileAccount = step { return fileAccountID != nil }
 		return true
@@ -224,6 +235,10 @@ struct MigrationSheet: View {
 			LabeledContent("Categories", value: plan.categories.count.formatted())
 			LabeledContent("Rules", value: plan.categories.filter { !$0.rule.isEmpty }.count.formatted())
 			LabeledContent("Transactions", value: plan.transactions.count.formatted())
+			if let days = plan.transactionDays {
+				LabeledContent("Oldest transaction", value: Format.day(days.lowerBound))
+				LabeledContent("Newest transaction", value: Format.day(days.upperBound))
+			}
 			if !plan.updatedAccounts.isEmpty || !plan.updatedTransactions.isEmpty || !plan.updatedCategories.isEmpty {
 				LabeledContent("Updated", value: String(localized: "\(plan.updatedAccounts.count) accounts, \(plan.updatedTransactions.count) transactions, \(plan.updatedCategories.count) category colors"))
 			}
@@ -231,8 +246,29 @@ struct MigrationSheet: View {
 			Text("This will be imported")
 		} footer: {
 			if plan.skippedTransactions > 0 || plan.skippedAccounts > 0 {
-				Text("Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions.formatted()) transactions.")
+				// Built as a String, so its numbers take the format of the region, as the counts above do.
+				Text(verbatim: String(localized: "Already present and skipped: \(plan.skippedAccounts) accounts, \(plan.skippedTransactions) transactions."))
 					.foregroundStyle(.secondary)
+			}
+		}
+		notes(plan.notes)
+	}
+
+	/// What cannot be migrated and what the user should check, before the import and in the report after it.
+	@ViewBuilder
+	private func notes(_ notes: [String]) -> some View {
+		if !notes.isEmpty {
+			Section("Notes") {
+				ScrollView {
+					VStack(alignment: .leading, spacing: 10) {
+						ForEach(Array(notes.enumerated()), id: \.offset) { i, note in
+							if i > 0 { Divider() }
+							Text(note).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+						}
+					}
+				}
+				// About 70 characters fit on a line of the sheet.
+				.frame(height: min(notes.reduce(0) { $0 + CGFloat($1.count / 70 + 1) * 17 + 21 }, 180))
 			}
 		}
 	}

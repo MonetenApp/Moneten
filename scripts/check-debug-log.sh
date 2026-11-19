@@ -126,17 +126,14 @@ lines() {
 	{ wc -l <"$LOG"; } 2>/dev/null || echo 0
 }
 
-# Sends the command in $2 and the rest every half second until a line written after the first send matches $1, for up
-# to 30 seconds. The app can get the command more than once, so a press that a repeat would change goes out with send.
-# With $from set to a count of lines from before an earlier send, it looks at the lines after that send instead.
-poll() {
+# Waits up to 30 seconds for a line after the first $seen lines of the log that matches $1. While it waits, it sends the
+# command in $2 and the rest every half second, or nothing when $2 is missing.
+waitfor() {
 	pattern=$1
 	shift
-	seen=${from:-$(lines)}
-	from=
 	deadline=$(($(date +%s) + 30))
 	while :; do
-		send "$@"
+		[ $# = 0 ] || send "$@"
 		sleep 0.5
 		tail -n +"$((seen + 1))" "$LOG" 2>/dev/null | grep -q "$pattern" && return
 		alive || { echo "The app exited while waiting for \"$pattern\"." >&2; tail -20 "$WORK/app.log" >&2; exit 1; }
@@ -148,12 +145,48 @@ poll() {
 	done
 }
 
+# Sends the command in $2 and the rest every half second until a line written after the first send matches $1, for up
+# to 30 seconds. The app can get the command more than once, so poll sends only a command that reads, such as "state"
+# or "alertstate". A command that changes state goes out once, with send or once (issue #510).
+# With $from set to a count of lines from before an earlier send, it looks at the lines after that send instead.
+poll() {
+	pattern=$1
+	shift
+	seen=${from:-$(lines)}
+	from=
+	waitfor "$pattern" "$@"
+}
+
+# Sends the command in $2 and the rest once and waits up to 30 seconds for a line written after the send that matches $1.
+# It is for a command that changes state and logs what it did, such as an export, a drop, or a crash report decision.
+once() {
+	pattern=$1
+	shift
+	seen=$(lines)
+	send "$@"
+	waitfor "$pattern"
+}
+
+# Waits until the main window shows an alert, then closes it with one "alert". A second "alert" could close the next one.
+closealert() {
+	poll "^alertstate title=[0-9a-f]" alertstate
+	once "^alert title=[0-9a-f]" alert
+}
+
+# Puts the focus in the first field of the sheet on top once the field shows, and waits until it has the focus.
+focusfirst() {
+	poll "^focusfield count=[1-9]" focusfield
+	send focusfield 0
+	poll "^focusfield .*position=0 editor=true$" focusfield
+}
+
 poll "^phase=failed" state
 rmdir "$DATA/Database/Moneten.sqlite"
 send create check-debug-log
 poll "phase=unlocked" state
 # ⌘, opens the settings while the app is unlocked, and a lock closes them. While the app is locked, ⌘, opens nothing.
-poll "^settings window=true .* tab=general " settings open
+send settings open
+poll "^settings window=true .* tab=general " settings state
 send lock
 poll "^settings window=false sheet=false visible=false " settings state
 send settings open
@@ -163,15 +196,20 @@ send unlock check-debug-log
 poll "phase=unlocked" state
 # A lock also closes the settings while the password prompt of an unlock setting waits on the "Security" tab, and the
 # prompt does not come back with the next unlock.
-poll "^settings window=true .* tab=general " settings open
+send settings open
+poll "^settings window=true .* tab=general " settings state
 send settings "tab security"
-poll "^settings window=true sheet=true " settings "press 1"
+# The "Security" tab shows four switches and "General" six. A press before the tab shows would turn a switch of "General".
+poll "^settings window=true .* tab=security switches=[a-z]*,[a-z]*,[a-z]*,[a-z]* stored=" settings state
+send settings "press 1"
+poll "^settings window=true sheet=true " settings state
 send lock
 poll "^settings window=false sheet=false visible=false " settings state
 poll "^windows scenes=main$" windows
 send unlock check-debug-log
 poll "phase=unlocked" state
-poll "^settings window=true sheet=false visible=true tab=security " settings open
+send settings open
+poll "^settings window=true sheet=false visible=true tab=security " settings state
 send settings "tab general"
 poll "^settings window=true .* tab=general " settings state
 # The window that macOS keeps after a close closes again when something puts it on screen while the app is locked. The
@@ -189,9 +227,9 @@ cat >"$DATA/export.json" <<-'EOF'
 	"accesses": [], "categories": [], "transactions": [], "deletedTransactions": [], "holdings": [],
 	"portfolioValues": [{"accountID": "6F1C2A1E-0000-4000-8000-000000000001", "day": "Erika Mustermann", "value": "1.00", "currency": "EUR"}]}
 EOF
-poll "^importall " importall "$DATA/export.json"
+once "^importall " importall "$DATA/export.json"
 # A full import of the empty database with an access named after a person, which only a full import can name freely.
-poll "^exportall done$" exportall "$DATA/start.json"
+once "^exportall done$" exportall "$DATA/start.json"
 python3 -I - "$DATA/start.json" "$DATA/access.json" <<-'EOF'
 	import json, sys
 	data = json.load(open(sys.argv[1]))
@@ -199,10 +237,10 @@ python3 -I - "$DATA/start.json" "$DATA/access.json" <<-'EOF'
 		"bankName": "Erika Mustermann Private Access", "userID": "emuster42"}]
 	json.dump(data, open(sys.argv[2], "w"))
 EOF
-poll "^importall done$" importall "$DATA/access.json"
+once "^importall done$" importall "$DATA/access.json"
 poll "^ext access 0 source=extension state=idle$" extstate
-poll "^exportall " exportall "$DATA/missing/export.json"
-poll "^alert " alert
+once "^exportall " exportall "$DATA/missing/export.json"
+closealert
 # An export right after a sheet closes, and its alert closed as fast as the harness can. The alert waits until the
 # sheet has slid out, so the close never meets the slide in AppKit (issue #300). The last run waits for the alert.
 for run in 1 2 3; do
@@ -214,7 +252,7 @@ for run in 1 2 3; do
 	from=$start
 	poll "^exportall done$" alertstate
 	[ "$run" = 3 ] && poll "^alertstate title=[0-9a-f]* shown=true$" alertstate
-	poll "^alert title=[0-9a-f]" alert
+	closealert
 done
 send sheet newAccount
 send setup "entry 12030000"
@@ -239,34 +277,34 @@ poll "status account=1 kind=savings refreshing=false .*error=[^-]" status
 for account in Girokonto Tagesgeld Kreditkarte; do
 	poll "^rows " rows "$account"
 done
-poll "^snapshot .*error" errorsnapshot Tagesgeld
+once "^snapshot .*error" errorsnapshot Tagesgeld
 poll "^ext account savings .*failed=" extstate
 send refresh Kreditkarte
 poll "^ext access [0-9] source=fints state=failed failure=bank code=invalid$" extstate
 poll "status account=2 kind=creditCard refreshing=false .*error=invalid " status
 send select Girokonto
-poll "^filterbar account .*account=[0-9]" filterbar "account Tagesgeld"
-poll "^filterbar account .*account=all" filterbar account
+once "^filterbar account .*account=[0-9]" filterbar "account Tagesgeld"
+once "^filterbar account .*account=all" filterbar account
 poll "^phase=" state
 send search Miete
 poll "^phase=.*visible=1 " state
-poll "^split saved=true parts=2" split 25,00
+once "^split saved=true parts=2" split 25,00
 poll "^splitstate parts=2 pending=0 selected=[0-9]* checked=0 review=none sheet=none$" splitstate
 send search ""
 poll "^phase=" state
 send selectRows 1
-poll "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
+once "^exportcontextcsv rows=" exportcontextcsv "$DATA/context.csv"
 poll "^exportstatus running=false" exportstatus
-poll "^exportcsv rows=" exportcsv "$DATA/rows.csv"
+once "^exportcsv rows=" exportcsv "$DATA/rows.csv"
 send cancelexport
 poll "^exportstatus running=false" exportstatus
-poll "^snapshot " snapshot check
+once "^snapshot " snapshot check
 printf '%s\n' "Buchungstag;Valuta;Empfänger;Verwendungszweck;Betrag" "09.11.2026;Wartungsarbeiten;Erika Mustermann;Gehalt November;4.711,23" \
 	"10.11.2026;10.11.2026;Wohnbau Musterstadt eG;Miete;-950,00" >"$WORK/Erika Mustermann.csv"
 send filterbar "pin on"
 send filterbar "amount withdrawals"
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
-poll "^csvhandoff prepared$" csvhandoff prepare
+once "^csvhandoff prepared$" csvhandoff prepare
 for header in "" "Date;Name;Amount"; do
 	printf '%s\n' "$header" '03/04/2026;Kiosk;1,234' '05/06/2026;Kiosk;2,345' >"$WORK/handoff.csv"
 	send importfile "$WORK/handoff.csv"
@@ -283,7 +321,7 @@ for header in "" "Date;Name;Amount"; do
 	send importanswer named
 	from=$start
 	poll "^importfile done" state
-	poll "^alert " alert
+	closealert
 	poll "^csvhandoff accounts=1 count=2 amounts=ok days=ok$" csvhandoff "state 3579 40520810"
 done
 send importfile "$WORK/Erika Mustermann.csv"
@@ -297,7 +335,7 @@ start=$(lines)
 send key return
 from=$start
 poll "^importfile done" state
-poll "^alert " alert
+closealert
 send importfile "$WORK/Erika Mustermann.csv"
 poll "^csv state .*canImport=true" csv state
 poll "^topsheet shown=true$" topsheet
@@ -305,11 +343,11 @@ start=$(lines)
 send key return
 from=$start
 poll "^importfile done" state
-poll "^alert " alert
+closealert
 poll "^pin=true period=all status=all amount=withdrawals filter=amount category=all account=all saved=true$" state
 send filterbar "pin off"
 poll "^rows " rows Girokonto
-poll "^gave up$" search "currency:/^+?49/"
+once "^gave up$" search "currency:/^+?49/"
 send search ""
 cat >"$WORK/Erika Mustermann.xml" <<-'EOF'
 	<?xml version="1.0" encoding="UTF-8"?>
@@ -326,7 +364,7 @@ start=$(lines)
 send importanswer selected
 from=$start
 poll "^importfile done" state
-poll "^alert " alert
+closealert
 send select Girokonto
 poll "^phase=" state
 for part in explicit missing repeat later; do
@@ -353,7 +391,7 @@ start=$(lines)
 send importanswer selected
 from=$start
 poll "^importfile done" state
-poll "^alert " alert
+closealert
 # A preview whose rows hold names and purposes, and whose problem names a cell of the file.
 printf '%s\n' "Buchungstag;Empfänger;Verwendungszweck;Betrag" "11.11.2026;Tankstelle Beispiel;Kartenzahlung;-42,50" \
 	"Miete 12;Beispiel GmbH;Sparen;-1,00" >"$WORK/Kontoauszug.csv"
@@ -365,27 +403,27 @@ start=$(lines)
 send key escape
 from=$start
 poll "^importfile done" state
-poll "^alert " alert
+closealert
 send selectRows 1
 send newcategory Haushaltskasse
 poll "selection=category" state
 send selectRows 1
-poll "^mainkey escape .*category=[0-9]" mainkey escape
-poll "^droprows category=" droprows Haushaltskasse
-poll "^movecategory position=" movecategory "Haushaltskasse||0"
-poll "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
-poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>Mustermann"
-poll "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>DE02120300000000202051"
+once "^mainkey escape .*category=[0-9]" mainkey escape
+once "^droprows category=" droprows Haushaltskasse
+once "^movecategory position=" movecategory "Haushaltskasse||0"
+once "^dropcategory hover=false" dropcategory "Haushaltskasse|Haushaltskasse"
+once "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>Mustermann"
+once "^rule error=RuleSyntaxError position=1$" rule "Haushaltskasse|amount>DE02120300000000202051"
 poll "^unknown command$" "Erika Mustermann"
-poll "^snapshot window 0 " snapshot erika-mustermann
-poll "^snapshot sidebar " sidebarsnapshot "Erika Mustermann"
-poll "^ext error=PackageProblem$" extrun "$DATA/Erika Mustermann.lua|Result|"
-poll "^ext error=NSError$" extrun "$WORK/Check.lua|Result|$DATA/fixture.json"
-poll "^ext error=PackageProblem$" extaccess "$DATA/Erika Mustermann.lua||Check Bank"
-poll "^ext error=NSError$" extaccess "$WORK/Check.lua|$DATA/fixture.json|Check Bank"
+once "^snapshot window 0 " snapshot erika-mustermann
+once "^snapshot sidebar " sidebarsnapshot "Erika Mustermann"
+once "^ext error=PackageProblem$" extrun "$DATA/Erika Mustermann.lua|Result|"
+once "^ext error=NSError$" extrun "$WORK/Check.lua|Result|$DATA/fixture.json"
+once "^ext error=PackageProblem$" extaccess "$DATA/Erika Mustermann.lua||Check Bank"
+once "^ext error=NSError$" extaccess "$WORK/Check.lua|$DATA/fixture.json|Check Bank"
 
 send extfile "$WORK/Check.lua"
-poll "^ext allowed unverified extension=$(digest Check)$" extconfirm
+once "^ext allowed unverified extension=$(digest Check)$" extconfirm
 send extaccess "Check||Check Bank"
 poll "^ext prompt login" extprompt
 # The status line names the bank of the access that waits for the login.
@@ -419,7 +457,7 @@ poll "^ext print extension=$(digest "Erika Mustermann") characters=16$" state
 from=$start
 poll "^ext result object count=2$" state
 # A catalog in a folder that does not exist, under a path with a name: the error quotes the path.
-poll "^ext catalog unreachable error=" extcatalog "file://$WORK/Erika%20Mustermann/catalog/"
+once "^ext catalog unreachable error=" extcatalog "file://$WORK/Erika%20Mustermann/catalog/"
 # A name as the argument of a command that takes one of a few words.
 send sheet changePassword
 poll "^key rejected$" key "Erika Mustermann"
@@ -450,15 +488,15 @@ send key tab
 send key return
 poll "^splitstate parts=2 .*sheet=none$" splitstate
 send selectRows 2
-poll "^deleteparts refused=true selected=2$" deleteparts
+once "^deleteparts refused=true selected=2$" deleteparts
 send alert
 poll "^topsheet shown=false$" topsheet
-poll "^undosplit sheet=undoSplit$" undosplit
+once "^undosplit sheet=undoSplit$" undosplit
 poll "^topsheet shown=true$" topsheet
 send key escape
 poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^topsheet shown=false$" topsheet
-poll "^undosplit sheet=undoSplit$" undosplit
+once "^undosplit sheet=undoSplit$" undosplit
 poll "^topsheet shown=true$" topsheet
 send key return
 poll "^splitstate parts=0 .*sheet=none$" splitstate
@@ -481,7 +519,7 @@ for entry in 5,00 +5,00 -5,00; do
 	send type "$entry"
 	send key return
 	poll "^splitstate parts=3 .*sheet=none$" splitstate
-	poll "^exportall done$" exportall "$WORK/remainder.json"
+	once "^exportall done$" exportall "$WORK/remainder.json"
 	python3 - "$WORK/remainder.json" "$entry" <<-'EOF'
 	import json, sys
 	data = json.load(open(sys.argv[1]))
@@ -493,7 +531,7 @@ for entry in 5,00 +5,00 -5,00; do
 	EOF
 	send alert
 	poll "^topsheet shown=false$" topsheet
-	poll "^undosplit sheet=undoSplit$" undosplit
+	once "^undosplit sheet=undoSplit$" undosplit
 	poll "^topsheet shown=true$" topsheet
 	send key return
 	poll "^splitstate parts=0 .*sheet=none$" splitstate
@@ -501,35 +539,35 @@ done
 send split 7%
 poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^topsheet shown=false$" topsheet
-poll "^undosplit sheet=undoSplit$" undosplit
+once "^undosplit sheet=undoSplit$" undosplit
 poll "^topsheet shown=true$" topsheet
 send key return
 poll "^splitstate parts=0 .*sheet=none$" splitstate
 send split 19%
 poll "^splitstate parts=2 .*sheet=none$" splitstate
-poll "^snapshot split-menu " splitmenusnapshot
+once "^snapshot split-menu " splitmenusnapshot
 send split 5,00
 poll "^splitstate parts=3 .*sheet=none$" splitstate
 send vatsettings
 poll "^vatstate rates=2 matches=true error=false$" vatstate "1900,700"
-poll "^focusfield .*position=0 editor=true$" focusfield 0
+focusfirst
 send type 20
 # Each press of Save goes out once: a second Save finds the field empty and shows the error, and poll sends its
 # command again every half second while a loaded Mac has not yet answered the first.
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,700,2000"
 send vatbutton change-1
-poll "^focusfield .*position=0 editor=true$" focusfield 0
+focusfirst
 send type 8,1
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=false$" vatstate "1900,810,2000"
-poll "^focusfield .*position=0 editor=true$" focusfield 0
+focusfirst
 send type 7,125
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
 send vatbutton change-0
 send vatbutton cancel
-poll "^focusfield .*position=0 editor=true$" focusfield 0
+focusfirst
 send type "Erika Mustermann"
 send vatbutton save
 poll "^vatstate rates=3 matches=true error=true$" vatstate "1900,810,2000"
@@ -538,9 +576,9 @@ for count in 2 1 0; do
 	poll "^vatstate rates=$count " vatstate
 done
 poll "^vatstate rates=0 matches=true error=false$" vatstate
-poll "^snapshot split-menu " splitmenusnapshot
+once "^snapshot split-menu " splitmenusnapshot
 for rate in 19 7; do
-	poll "^focusfield .*position=0 editor=true$" focusfield 0
+	focusfirst
 	send type "$rate"
 	send vatbutton save
 done
@@ -549,30 +587,47 @@ send vatclose
 send search ""
 poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 # "Look for New Accounts..." on an account named in the argument: the log names neither the account nor the access.
-poll "^lookfornew setup=true$" lookfornew Girokonto
+once "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
 send setup cancel
-poll "^alert " alert
+# An alert that is still open would keep the migration sheet from opening. The cancel shows none, so this closes one only
+# when alertstate sees it.
+start=$(lines)
+poll "^alertstate " alertstate
+if tail -n +"$((start + 1))" "$LOG" | grep -q "^alertstate title=[0-9a-f]"; then once "^alert title=[0-9a-f]" alert; fi
+# Each Return goes out once, after the sheet shows the step that it confirms. A second Return would confirm the next step.
 send migrationfixture "$PWD/Fixtures/moneymoney"
-sleep 0.5
-poll "^migration step=5 completed=5 total=5$" key return
-poll "^migration step=6 completed=5 total=5$" key return
+poll "^migrationstate step=intro$" migrationstate
+poll "^topsheet shown=true$" topsheet
+start=$(lines)
 send key return
-poll "^crash inject frames=1 pending=true" crashinject private
-poll "^crash url characters=" crashurl
+from=$start
+poll "^migrationstate step=summary$" migrationstate
+from=$start
+poll "^migration step=5 completed=5 total=5$" migrationstate
+start=$(lines)
+send key return
+from=$start
+poll "^migrationstate step=done$" migrationstate
+from=$start
+poll "^migration step=6 completed=5 total=5$" migrationstate
+send key return
+poll "^migrationstate step=none$" migrationstate
+once "^crash inject frames=1 pending=true" crashinject private
+once "^crash url characters=" crashurl
 for value in DE02120300000000202051 "Erika Mustermann" /Users/erika; do
 	if grep -F -- "$value" "$WORK/debug/crash-report.txt" "$WORK/debug/crash-url.txt"; then
 		echo "The crash report contains personal data." >&2
 		exit 1
 	fi
 done
-poll "^crash decision pending=false copied=true" crashdecision copy
-poll "^crash inject frames=3 pending=true" crashinject
-poll "^crash decision pending=false copied=false" crashdecision decline
-poll "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|1800000000"
-poll "^crash decision pending=false copied=true" crashdecision copy
+once "^crash decision pending=false copied=true" crashdecision copy
+once "^crash inject frames=3 pending=true" crashinject
+once "^crash decision pending=false copied=false" crashdecision decline
+once "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|1800000000"
+once "^crash decision pending=false copied=true" crashdecision copy
 # The password of "Unlock automatically" goes into the keychain file of the run, as the crash report key did at launch.
-poll "^security setting=unlockAutomatically result=changed .*keychainAutomatic=true" security "unlockAutomatically on check-debug-log"
+once "^security setting=unlockAutomatically result=changed .*keychainAutomatic=true" security "unlockAutomatically on check-debug-log"
 send quit
 for service in "Moneten crash report key" "Moneten database password for automatic unlock"; do
 	security find-generic-password -s "$service" "$KEYCHAIN" >/dev/null \

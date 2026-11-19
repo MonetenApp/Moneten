@@ -36,6 +36,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 1.30 Pending file transactions already stored. ReconcileTests verifies seven-day duplicate skipping, closest-day and stable tie choice, one-to-one counts, and user fields. FileImportTests verifies the daily FUTR entry after a bank takeover and after the bank row was stored first.
 - [x] 1.31 Amounts beyond the range of the app. Verified by FileImportTests "A CSV amount whose minor units do not fit is rejected with its line, instead of turning into another amount", "An MT940 file with a transaction that cannot be read is rejected with its line", and "A CAMT file with an entry that cannot be read is rejected with its line", which fail before `Money(fitting:currency:)` (#275).
+- [x] 1.32 A portfolio never takes a file (issues #513 and #521). FileAccountTests "A file that names a portfolio asks for the selected account or a new offline account, and a selected portfolio never keeps a file" and "Of two accounts with the number of a file, the one in the currency of the file takes it, and a portfolio never does" fail before `FileAccount.destination` leaves portfolios out. FileAccountImportTests "An open account outranks a closed match, below the file currency" now expects the closed giro account in place of an open portfolio. `importFiles` refuses a portfolio, and the storing of each file checks its account once more. "Import File..." after a failed migration lists no portfolio.
 
 ## 2. Changes to the first build
 
@@ -89,7 +90,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 3. Integration
 
-- [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [x] 3.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 and 19 November 2026 (owner decision), with made-up CSV, CAMT, and MT940 files and bank refreshes through the scripted connector (`fetchfile`): 164 of 170 scenarios passed and none failed. Not checkable in the harness, each covered by a unit test that was read: "Reread a confirmed CSV for a target currency" (the Perf half passed; CSVPreviewTests "A target-currency reread retains the confirmed CSV layout"), "Keep the file transaction's user fields" (ReconcileTests `skippedFileUserFields`), "An exact repeat preserves a cleared comment" (PendingPairingTests `gate3ClearedComment`), "An agreeing identity preserves cleared user fields" (PendingPairingTests `gate3KnownIdentityKeepsClearedFields`), "Candidate eligibility and ties" (PendingPairingFuzzTests "Gate 5: mixed booked candidates retain absolute stable positions" for the creation time, and `uuidBreaksTheLastTie` "Two stored pending rents that tie up to their UUID pair by the lower UUID, in every storage order" for the UUID; it failed with the comparison of the UUIDs reversed), and "Open an existing v17 database" (FileIdentitySchemaTests `fileIdentityUpgrade`); no file format brings a pending row with user fields, and the harness cannot set tie order or make a v17 database. The sentence of the requirement "Import command" that a selected portfolio disables the command fails, and no scenario names it (#513). Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 

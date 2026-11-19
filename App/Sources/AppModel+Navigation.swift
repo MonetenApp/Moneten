@@ -2,6 +2,7 @@ import AppKit
 import Domain
 import Foundation
 import Import
+import SwiftUI
 import UniformTypeIdentifiers
 
 /// Back and forward through the views, as in a browser. Observable, so that the menu and the
@@ -175,8 +176,11 @@ extension AppModel {
 		let panel = NSSavePanel()
 		panel.title = String(localized: "Backup Database")
 		panel.message = hasPassword
-			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac.")
-			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac.")
+			? String(localized: "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac.")
+			: String(localized: "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac.")
+		let help = NSHostingView(rootView: Link("About Backups", destination: AppCommands.backupHelpPage).padding(8))
+		help.frame.size = help.fittingSize
+		panel.accessoryView = help
 		panel.nameFieldStringValue = "Moneten-\(Day.today()).sqlite"
 		#if DEBUG || PERF_HARNESS
 		let answer = DebugHarness.shared?.savePanelAnswer
@@ -196,7 +200,7 @@ extension AppModel {
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
 		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
-		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
+		guard account.takesImportedTransactions, !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = String(localized: "Import Transactions")
 		panel.message = String(localized: "CSV, CAMT (camt.052, camt.053), and MT940 files are supported.")
@@ -211,8 +215,8 @@ extension AppModel {
 
 	/// A CSV file with the header row of a saved profile imports without the preview, unless `alwaysPreview` is set.
 	func importFiles(_ urls: [URL], into account: Account, alwaysPreview: Bool) async {
-		// One import runs at a time. A canceled one ends at its next row, line, or entry.
-		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
+		// One import runs at a time. A canceled one ends at its next row, line, or entry. A portfolio takes no file.
+		guard account.takesImportedTransactions, !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		guard sheet == nil else { return NSSound.beep() }
 		guard let importStore = store else { return }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
@@ -322,8 +326,13 @@ extension AppModel {
 					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
 					if isNew { save(account: into) }
 					// A new account that could not be saved, or one that the user deleted during the import.
-					guard ledger.account(into.id) != nil else {
+					guard let current = ledger.account(into.id) else {
 						problems.append(isNew ? String(localized: "\(name): The account \"\(into.name)\" could not be saved.") : String(localized: "\(name): The account \"\(into.name)\" does not exist."))
+						continue
+					}
+					// The last check of the account that the file goes into, whatever path chose it.
+					guard current.takesImportedTransactions else {
+						problems.append(String(localized: "\(name): The portfolio \"\(into.name)\" takes no transactions from a file."))
 						continue
 					}
 					do {

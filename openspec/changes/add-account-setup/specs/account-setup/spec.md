@@ -383,6 +383,21 @@ The app SHALL ask for the login data in the second step with the field names tha
 - **WHEN** the assistant shows the second step
 - **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
 
+#### Scenario: OLB
+
+- **GIVEN** the user chose OLB with the Bankleitzahl 28020050, whose FinTS address is on the host `hbci.olb.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "Access number"
+- **AND** the line under it says that OLB expects the Banking-Zugangsnummer and the PIN of its online banking
+- **WHEN** the bank rejects the PIN of the first login
+- **THEN** the message repeats that line
+
+#### Scenario: Bankhaus Neelmeyer
+
+- **GIVEN** the user chose Bankhaus Neelmeyer with the Bankleitzahl 29020000, whose FinTS address is on the host `hbci.neelmeyer.de`
+- **WHEN** the assistant shows the second step
+- **THEN** the first field has the label "User ID" and no hint, because no public page of the bank names its FinTS login
+
 #### Scenario: Baader Bank and the brokers on it
 
 - **GIVEN** the user chose Baader Bank with the Bankleitzahl 70033100, whose FinTS address is `https://fints.baaderbank.de`

@@ -172,20 +172,27 @@ struct AccountSettingsSheet: View {
 	@State private var opened: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
+	@State private var calibrating = false
+	/// The balance typed in the calibration window on top of the settings, while it is open.
+	@State private var calibrationBalance = ""
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
-	/// What the lock keeps of the settings: the edited account, the account as the settings opened, and the fields.
+	/// What the lock keeps of the settings: the edited account, the account as the settings opened, the fields, and
+	/// whether the calibration window is open on top of them with its typed balance.
 	private struct Input: Hashable, Sendable {
 		var account: Account?
 		var opened: Account?
 		var initialBalance: String
 		var color: Color
 		var originalColor: Color
+		var calibrating: Bool
+		var calibrationBalance: String
 	}
 
 	private var input: Input {
-		Input(account: account, opened: opened, initialBalance: initialBalance, color: color, originalColor: originalColor)
+		Input(account: account, opened: opened, initialBalance: initialBalance, color: color, originalColor: originalColor,
+			calibrating: calibrating, calibrationBalance: calibrationBalance)
 	}
 
 	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
@@ -240,13 +247,12 @@ struct AccountSettingsSheet: View {
 									.marksUnreadableAmount(initialBalance)
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
-								Button("Calibrate") {
-									if let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
-										initialBalance = Format.editableAmount(value, original.currency)
-									}
+								// A portfolio shows the values of its bank, so an initial balance would change none of them.
+								if original.kind != .portfolio {
+									Button("Calibrate...") { calibrating = true }
+										.accessibilityIdentifier("calibrate")
+										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
-								.disabled(original.reportedBalance == nil)
-								.help("Make the booked transactions meet the balance of the bank")
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)
@@ -272,6 +278,12 @@ struct AccountSettingsSheet: View {
 				}
 			}
 			.keepsInput(input, of: .accountSettings(accountID))
+			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
+			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
+			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
+			.sheet(isPresented: $calibrating, onDismiss: { calibrationBalance = "" }) {
+				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
+			}
 			.onAppear {
 				account = original
 				opened = original
@@ -286,9 +298,21 @@ struct AccountSettingsSheet: View {
 					initialBalance = held.initialBalance
 					color = held.color
 					originalColor = held.originalColor
+					calibrationBalance = held.calibrationBalance
+					// The calibration window opens again one turn later, on top of the settings that are on screen then.
+					if held.calibrating { DispatchQueue.main.async { calibrating = true } }
 				}
 			}
 		}
+	}
+
+	/// The calibration window saved `saved`. The field shows its initial balance, and the settings take it as the
+	/// value they opened with, so that OK neither enters it again nor brings back a value typed before, also when
+	/// the calibration kept the value. Only a confirmed calibration calls this, never a refresh or Cancel.
+	private func tookCalibration(_ saved: Account) {
+		account?.initialBalanceMinor = saved.initialBalanceMinor
+		opened?.initialBalanceMinor = saved.initialBalanceMinor
+		initialBalance = Format.editableAmount(saved.initialBalanceMinor, saved.currency)
 	}
 }
 
@@ -297,6 +321,11 @@ struct AccountSettingsSheet: View {
 struct CalibrationSheet: View {
 	@Environment(AppModel.self) private var model
 	let accountID: UUID
+	/// Called with the account after OK saved it, for the account settings under the window.
+	var onSaved: (Account) -> Void = { _ in }
+	/// The typed balance for the account settings under the window, which keep it in their input across a lock. Without
+	/// it, the window is a sheet of its own and keeps its input as `SheetKind.calibration`.
+	var keptBalance: Binding<String>? = nil
 	@State private var balance = ""
 
 	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
@@ -315,6 +344,8 @@ struct CalibrationSheet: View {
 			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
 				guard let current = model.ledger.account(accountID), let a = calibrated(current) else { return true }
 				model.save(account: a)
+				// A failed write leaves the ledger as it was and posts an alert, and the settings keep what was typed.
+				if let saved = model.ledger.account(accountID), saved.initialBalanceMinor == a.initialBalanceMinor { onSaved(saved) }
 				return true
 			}) {
 				Section {
@@ -335,12 +366,18 @@ struct CalibrationSheet: View {
 					}
 				}
 			}
-			.keepsInput(balance, of: .calibration(accountID))
+			.keepsInput(balance, of: keptBalance == nil ? .calibration(accountID) : nil)
+			.onChange(of: balance) { if let keptBalance, keptBalance.wrappedValue != balance { keptBalance.wrappedValue = balance } }
 			.onAppear {
 				let today = Day.today()
 				let value = model.proposedCalibration(of: account)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
 				balance = Format.editableAmount(value.minorUnits, value.currency)
-				if let held: String = model.heldInput(for: .calibration(accountID)) { balance = held }
+				if let keptBalance {
+					// The settings under the window brought its balance back after the unlock.
+					if !keptBalance.wrappedValue.isEmpty { balance = keptBalance.wrappedValue }
+				} else if let held: String = model.heldInput(for: .calibration(accountID)) {
+					balance = held
+				}
 			}
 		}
 	}

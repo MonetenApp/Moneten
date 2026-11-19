@@ -84,9 +84,9 @@ final class CommerzbankGroupSelfTest {
 
 	static void tanLength() {
 		SelfTest.expect("typed TAN with its method and the length of the bank parameters", tanRequest("900", "10"),
-			"{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\",\"maxLength\":10}");
-		SelfTest.expect("typed TAN of a method without a length", tanRequest("900", null), "{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\"}");
-		SelfTest.expect("typed TAN of a method with a length that is no number", tanRequest("900", "zehn"), "{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\"}");
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\",\"method\":\"photoTAN\",\"maxLength\":10}");
+		SelfTest.expect("typed TAN of a method without a length", tanRequest("900", null), "{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\",\"method\":\"photoTAN\"}");
+		SelfTest.expect("typed TAN of a method with a length that is no number", tanRequest("900", "zehn"), "{\"type\":\"ask\",\"kind\":\"tan\",\"current\":\"900\",\"method\":\"photoTAN\"}");
 	}
 
 	static final String GIRO = "DE02120300000000202051", SAVINGS = "1234567890";

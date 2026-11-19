@@ -427,7 +427,7 @@ public struct Ledger: Sendable {
 	}
 
 	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
-	/// balance miss that balance. It compares through `Account.initialBalanceMeetingBankBalance(of:calendar:)`,
+	/// balance miss that balance. It compares through `Account.exactInitialBalanceMeetingBankBalance(of:calendar:)`,
 	/// the rule that derives the initial balance, so neither a pending row nor a row booked after that day
 	/// raises one. Nil before the initial balance is set, because the next full refresh derives it. `refresh` is
 	/// the state of the refresh of its access.
@@ -684,6 +684,21 @@ public struct Ledger: Sendable {
 		// An import of 2,000 rows into 50,000 sorts again but builds the search text of the new rows only.
 		if needsSort { sortAndIndex() }
 		countNew()
+	}
+
+	/// The new transactions of an account count as seen, after `Store.markSeen` wrote it. Only the flag changes, so the
+	/// order and the search texts stay: `update` would build the search text of each row again, about 100 ms for the
+	/// 50,000 rows of an import, on the main thread.
+	public mutating func markSeen(account id: UUID) {
+		guard newTransactionCounts[id] != nil else { return }
+		for i in transactions.indices where transactions[i].accountID == id && transactions[i].isNew {
+			transactions[i].isNew = false
+			let tid = transactions[i].id
+			if partRows[tid] != nil {
+				for j in partRows[tid]!.indices { partRows[tid]![j].isNew = false }
+			}
+		}
+		newTransactionCounts[id] = nil
 	}
 
 	/// Takes over a merge that the database stored: removes the dropped rows, upserts the others and

@@ -889,14 +889,17 @@ public class FinTSHelper {
 			return message("method", "id", id, "name", name, "medium", "2".equals(info.getProperty("needtanmedia")) ? true : null, "delivery", delivery);
 		}
 
-		/// Adds the method of a typed TAN and the longest TAN that the bank parameters announce for it (HITANS), from which
-		/// the app takes the length of the TAN field of some banks (Sources/FinTS/CommerzbankGroup.swift).
+		/// Adds the method of a typed TAN, its name, and the longest TAN that the bank parameters announce for it (HITANS),
+		/// from which the app takes the length of the TAN field of some banks (Sources/FinTS/CommerzbankGroup.swift). The app
+		/// tells by the name whether OLB offers OLB-Sign (Sources/FinTS/OLBGroup.swift).
 		static void tanMethod(HBCIPassport passport, Map<String, Object> request) {
 			if (!(passport instanceof AbstractPinTanPassport p)) return;
 			String current = p.getCurrentTANMethod(false);
 			if (!present(current)) return;
 			request.put("current", current);
 			Properties info = p.getTwostepMechanisms() == null ? null : p.getTwostepMechanisms().get(current);
+			String name = info == null ? null : StringUtil.normalize(info.getProperty("name"));
+			if (present(name)) request.put("method", name);
 			String length = info == null ? null : StringUtil.normalize(info.getProperty("maxlentan2step"));
 			if (length != null && length.matches("\\d{1,3}")) request.put("maxLength", Integer.parseInt(length));
 		}

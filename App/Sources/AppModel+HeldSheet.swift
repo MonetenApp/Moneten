@@ -62,10 +62,12 @@ extension AppModel {
 private struct KeepsInput<Input: Hashable & Sendable>: ViewModifier {
 	@Environment(AppModel.self) private var model
 	let input: Input
-	let sheet: SheetKind
+	/// Nil for a sheet on top of another sheet, which keeps the input in its own.
+	let sheet: SheetKind?
 
 	func body(content: Content) -> some View {
 		content.onChange(of: input, initial: true) { _, new in
+			guard let sheet else { return }
 			model.heldSheet.record(new, of: sheet)
 			#if DEBUG || PERF_HARNESS
 			if model.phase == .unlocked { model.debugSheetInput = AnyHashable(new) }
@@ -75,8 +77,9 @@ private struct KeepsInput<Input: Hashable & Sendable>: ViewModifier {
 }
 
 extension View {
-	/// The sheet keeps `input` across a lock. It takes it back with `AppModel.heldInput(for:)` when it appears.
-	func keepsInput<Input: Hashable & Sendable>(_ input: Input, of sheet: SheetKind) -> some View {
+	/// The sheet keeps `input` across a lock. It takes it back with `AppModel.heldInput(for:)` when it appears. A sheet
+	/// on top of another sheet passes nil and hands its input to the sheet under it.
+	func keepsInput<Input: Hashable & Sendable>(_ input: Input, of sheet: SheetKind?) -> some View {
 		modifier(KeepsInput(input: input, sheet: sheet))
 	}
 }

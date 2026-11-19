@@ -618,6 +618,16 @@
         }
       }
     },
+    "%@: The portfolio \"%@\" takes no transactions from a file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: Das Depot „%2$@“ übernimmt keine Umsätze aus einer Datei."
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -1138,22 +1148,22 @@
       },
       "extractionState" : "manual"
     },
-    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
     },
-    "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
@@ -1406,6 +1416,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Wort ohne Feld durchsucht keine Kontonummern und IBANs. local_account: und remote_account: tun das."
+          }
+        }
+      }
+    },
+    "About Backups" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über die Datensicherung"
           }
         }
       }
@@ -1864,12 +1884,102 @@
         }
       }
     },
-    "Already present and skipped: %lld accounts, %@ transactions." : {
+    "Already present and skipped: %lld accounts, %lld transactions." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bereits vorhanden und übersprungen: %1$lld Konten, %2$@ Umsätze."
+            "value" : "Bereits vorhanden und übersprungen: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konto"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konten"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsatz"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsätze"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already present and skipped: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg account"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg accounts"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transaction"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transactions"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2644,16 +2754,6 @@
         }
       }
     },
-    "Calibrate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kalibrieren"
-          }
-        }
-      }
-    },
     "Calibrate %@" : {
       "localizations" : {
         "de" : {
@@ -3155,6 +3255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden mit"
+          }
+        }
+      }
+    },
+    "Connect..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden..."
           }
         }
       }
@@ -4440,6 +4550,16 @@
         }
       }
     },
+    "Enter the correct balance at the end of today, and the initial balance changes by the difference" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den richtigen Saldo am Ende des heutigen Tages eingeben, und der Anfangssaldo ändert sich um die Differenz"
+          }
+        }
+      }
+    },
     "Enter the name of the bank, an IBAN, or a Bankleitzahl." : {
       "localizations" : {
         "de" : {
@@ -5103,6 +5223,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hilfeseite der ING"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Help page of OLB" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der OLB"
           }
         }
       },
@@ -6048,16 +6179,6 @@
         }
       }
     },
-    "Make the booked transactions meet the balance of the bank" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gebuchten Umsätze an den Saldo der Bank anpassen"
-          }
-        }
-      }
-    },
     "Mandate reference" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6869,6 +6990,16 @@
         }
       }
     },
+    "Newest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuester Umsatz"
+          }
+        }
+      }
+    },
     "Next" : {
       "localizations" : {
         "de" : {
@@ -7365,12 +7496,66 @@
         }
       }
     },
+    "OLB expects the Banking-Zugangsnummer and the PIN of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB erwartet die Banking-Zugangsnummer und die PIN ihres Onlinebankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this order with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diesen Auftrag mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this request with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diese Anfrage mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Melden Sie sich mit appTAN an, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ältere Umsätze fehlen möglicherweise. Wählen Sie „Konto aktualisieren (erzwungen)“ mit der Wahltaste, um sie abzurufen."
+          }
+        }
+      }
+    },
+    "Oldest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ältester Umsatz"
           }
         }
       }
@@ -9779,6 +9964,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The account group is empty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kontengruppe ist leer."
+          }
+        }
+      }
     },
     "The account has been closed" : {
       "localizations" : {
