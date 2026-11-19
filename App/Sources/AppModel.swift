@@ -1542,6 +1542,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .account(id) { selection = nil }
 			}
+			forgetInHistory(.account(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account."), message: String(describing: error))
 		}
@@ -1558,6 +1559,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
+			forgetInHistory(.group(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account group."), message: String(describing: error))
 		}
@@ -1839,6 +1841,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
+			for id in removed { forgetInHistory(.category(id)) }
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the category."), message: String(describing: error))
 		}
