@@ -34,7 +34,14 @@ The app SHALL hide the characters of a PIN or password while the user types it, 
 
 ### Requirement: Check a PIN against the rules of the bank
 
-The app SHALL check a PIN against the rules that the bank publishes for it before it sends the PIN, and it SHALL name the broken rule. The rules cover digits only, the minimum length, and the maximum length.
+The app SHALL check a PIN against the rules that the bank publishes for it before it sends the PIN, and it SHALL name the broken rule. The rules cover digits only, the minimum length, and the maximum length. A saved PIN that breaks a rule is deleted.
+
+#### Scenario: Saved PIN breaks a new rule
+
+- **GIVEN** the app has the PIN "123456" of "Musterbank" saved, and "Musterbank" now accepts at most 5 digits
+- **WHEN** the automatic refresh runs
+- **THEN** the app sends nothing to the bank and deletes the saved PIN
+- **AND** the next manual refresh asks for the PIN
 
 #### Scenario: Letters in a numeric PIN
 

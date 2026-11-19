@@ -202,7 +202,8 @@ public final class SessionBroker {
 		self.store = store
 		pins.merge(saved.filter { !undeleted.contains($0.key) }) { _, saved in saved }
 		loginData.merge(logins.filter { !undeleted.contains($0.key) }) { _, saved in saved }
-		savedPINs = Set(saved.keys).union(logins.keys)
+		// A marked access never counts as saved: its row is not loaded, so nothing of it is kept beyond a failed refresh.
+		savedPINs = Set(saved.keys).union(logins.keys).subtracting(undeleted)
 	}
 
 	/// Forgets every PIN in memory, the answers of the bank to rejected PINs, and the store of saved PINs, when the
@@ -295,7 +296,7 @@ public final class SessionBroker {
 			}
 		default:
 			if case let .fail(.pinRejected(message)) = event { rejections[access] = message }
-			if !savedPINs.contains(access) {
+			if !savedPINs.contains(access) || undeleted.contains(access) {
 				pins[access] = nil
 				loginData[access] = nil
 			}
@@ -345,28 +346,34 @@ public final class SessionBroker {
 			return
 		}
 		guard savedPINs.contains(access) else { return }
+		deleteSaved(of: access, from: store, failure: .rejectedNotRemoved, isLogin: isLogin)
+	}
+
+	/// Deletes the saved PIN or login data that the broker must never send again, with a second try. When both fail, the
+	/// failure is reported once and the access is marked: its row is never loaded again, the next unlock deletes it, and it
+	/// no longer counts as saved, so a failed refresh forgets an unsaved answer of the access.
+	private func deleteSaved(of access: UUID, from store: any SavedPINStore, failure kind: SavedPINFailure.Kind, isLogin: Bool) {
+		savedPINs.remove(access)
 		do {
 			do { try store.removeSavedPIN(of: access) } catch { try store.removeSavedPIN(of: access) }
-			savedPINs.remove(access)
 			undeleted.remove(access)
 		} catch {
-			// Reported once, also when the end of the refresh tries again.
 			if undeleted.insert(access).inserted {
-				onStoreFailure(SavedPINFailure(kind: .rejectedNotRemoved, access: access, isLogin: isLogin, reason: String(describing: error)))
+				onStoreFailure(SavedPINFailure(kind: kind, access: access, isLogin: isLogin, reason: String(describing: error)))
 			}
 		}
 	}
 
 	/// The PIN or the login data in memory does not fit the request: a PIN breaks the rules of the bank, or login data
-	/// answered other fields. It is never sent, so it leaves the memory and the database. Otherwise a new answer with saving
-	/// off would stay beside the old row, and the next automatic refresh would send it. A deletion that fails marks the access,
-	/// so the row is never loaded again and the next unlock deletes it.
+	/// answered other fields. It is never sent, so it leaves the memory and the database, as a rejected one does. Otherwise a
+	/// new answer with saving off would stay beside the old row, and the next automatic refresh would send it.
 	private func forgetUnfitting(of access: UUID) {
+		let isLogin = loginData[access] != nil
 		pins[access] = nil
 		loginData[access] = nil
 		toSave.remove(access)
-		guard savedPINs.remove(access) != nil else { return }
-		if (try? store?.removeSavedPIN(of: access)) == nil { undeleted.insert(access) }
+		guard savedPINs.contains(access), let store else { return }
+		deleteSaved(of: access, from: store, failure: .notRemoved, isLogin: isLogin)
 	}
 
 	/// What the app requests from the bank after `answer`: the list of media for a method that needs a
@@ -425,6 +432,8 @@ public final class SessionBroker {
 public struct SavedPINFailure: Error {
 	public enum Kind: Sendable, Equatable {
 		case notSaved, rejectedNotRemoved
+		/// A saved PIN that breaks the rules of the bank, or saved login data for other fields, could not be deleted.
+		case notRemoved
 	}
 
 	public let kind: Kind
@@ -440,13 +449,15 @@ public struct SavedPINFailure: Error {
 		case (.notSaved, true): String(localized: "Could not save the login data.")
 		case (.rejectedNotRemoved, false): String(localized: "Could not remove the rejected PIN.")
 		case (.rejectedNotRemoved, true): String(localized: "Could not remove the rejected login data.")
+		case (.notRemoved, false): String(localized: "Could not remove the saved PIN.")
+		case (.notRemoved, true): String(localized: "Could not remove the saved login data.")
 		}
 	}
 
 	public var message: String {
 		switch kind {
 		case .notSaved: reason
-		case .rejectedNotRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
+		case .rejectedNotRemoved, .notRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
 		}
 	}
 }

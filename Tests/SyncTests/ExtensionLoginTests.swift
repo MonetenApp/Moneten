@@ -214,6 +214,38 @@ struct ExtensionLoginTests {
 		#expect(coordinator.states[Self.service.id] == .failed(.needsUser(.login)))
 	}
 
+	@Test("Saved login data that does not fit and cannot be deleted, also after a restart, never counts as saved: an unsaved new answer whose refresh fails is forgotten, and no automatic refresh sends it")
+	func undeletableMismatchAcrossRestart() async throws {
+		let defaults = try #require(UserDefaults(suiteName: "MonetenTests-\(UUID().uuidString)"))
+		let failing = FailingRemovalStore(failures: .max)
+		try failing.saveLogin(Self.saved, for: Self.service.id)
+		var failures: [SavedPINFailure] = []
+		let first = SessionBroker(defaults: defaults)
+		first.onStoreFailure = { failures.append($0) }
+		try first.open(failing)
+		await #expect(throws: SyncFailure.needsUser(.login)) {
+			_ = try await first.ask(Self.swapped, for: Self.service, accountNames: [], attended: false)
+		}
+		#expect(failures.map(\.kind) == [.notRemoved])
+		#expect(failures.first?.title == "Could not remove the saved login data.")
+		first.forgetPINs()
+
+		// After a restart the deletion fails again, and the row stays in the database.
+		let restarted = SyncCoordinator(broker: SessionBroker(defaults: defaults))
+		try restarted.broker.open(failing)
+		#expect(failing.logins == [Self.service.id: Self.saved])
+		#expect(restarted.broker.savedPINs.isEmpty)
+		restarted.refresh(RefreshRequest(access: Self.service, accounts: [Self.giro]), with: ScriptedConnector([.ask(Self.swapped), .fail(.offline)]), attended: true)
+		await until { restarted.broker.current != nil }
+		restarted.broker.answer(.login([Secret("neu-geheim"), Secret("erika")]), to: try #require(restarted.broker.current).id)
+		await until { !restarted.isRefreshing }
+		let automatic = ScriptedConnector([.ask(Self.swapped)])
+		restarted.refresh(RefreshRequest(access: Self.service, accounts: [Self.giro]), with: automatic, attended: false)
+		await until { !restarted.isRefreshing }
+		#expect(automatic.answers.all.isEmpty)
+		#expect(restarted.states[Self.service.id] == .failed(.needsUser(.login)))
+	}
+
 	@Test("A setup that joins an access the app has gives it the login data only when the setup finished, saved on request or when that access had saved login data")
 	func setupJoinsAnAccess() async throws {
 		let known = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
