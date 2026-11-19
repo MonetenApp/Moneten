@@ -87,8 +87,10 @@ The app SHALL create the account groups and accounts of the source with their na
 
 #### Scenario: No bank access yet
 
-- **WHEN** the user selects an open migrated account
-- **THEN** the account shows that it is not connected to a bank and offers to connect it
+- **GIVEN** the open migrated account "Giro" without a bank access
+- **WHEN** the user selects "Giro"
+- **THEN** the header shows the notice "This account has no bank access yet, so it cannot be refreshed."
+- **AND** the notice has "Connect..." as a button filled with the blue of the system and a white label, at the normal size of a button, also in a window that is not active
 
 ### Requirement: Categories
 
@@ -549,7 +551,7 @@ The app SHALL let the user choose the account to connect when more than one open
 
 ### Requirement: Connect from a migrated account
 
-The app SHALL offer "Connect..." in the header of an open migrated account without a bank access. It opens the add account assistant with the IBAN of the account, else its Bankleitzahl, as the bank entry. When the account matches exactly one account of the bank, counting accounts that the app has connected already, and that row is a choice, the row has the account chosen. In every other case the rows stay as the assistant sets them.
+The app SHALL offer "Connect..." in a notice in the header of an open migrated account without a bank access. It opens the add account assistant with the IBAN of the account, else its Bankleitzahl, as the bank entry. When the account matches exactly one account of the bank, counting accounts that the app has connected already, and that row is a choice, the row has the account chosen. In every other case the rows stay as the assistant sets them.
 
 #### Scenario: Connect from the account
 
@@ -561,7 +563,80 @@ The app SHALL offer "Connect..." in the header of an open migrated account witho
 #### Scenario: A closed migrated account
 
 - **WHEN** the user selects the closed migrated account "Giro (alt)"
-- **THEN** the header shows no "Connect...", because the assistant leaves a closed account as it is
+- **THEN** the header says that the account came from the source app and is not connected to a bank
+- **AND** it shows no notice and no "Connect...", because the assistant leaves a closed account as it is
+
+### Requirement: Mark of an account without a bank access in the sidebar
+
+The app SHALL show the symbol of a network with a slash on the left of the sidebar row of an open migrated account without a bank access, in the secondary color, with the help tag "Not connected to a bank". The color mark of the account stays.
+
+#### Scenario: Only the account that needs connecting
+
+- **GIVEN** the open migrated account "Girokonto" without a bank access, the offline account "Bargeld", the closed migrated account "Giro (alt)", and the account "Tagesgeld" of a bank access
+- **WHEN** the sidebar shows them
+- **THEN** only the row of "Girokonto" shows the mark, on the left of its color mark, and the help tag of the mark says "Not connected to a bank"
+- **AND** the rows of "Bargeld", "Giro (alt)", and "Tagesgeld" show no mark
+
+#### Scenario: A long name
+
+- **GIVEN** the open migrated account "Gemeinschaftskonto Haushalt und Urlaub Familie Mustermann" without a bank access, with a balance of 1.234,56 €
+- **WHEN** the sidebar is 240 points wide
+- **THEN** the row shows the mark, the color mark, the start of the name with an ellipsis, and 1.234,56 €
+
+#### Scenario: Connected
+
+- **WHEN** the user connects "Girokonto" to its bank
+- **THEN** its row shows no mark
+
+### Requirement: Refresh commands and accounts without a bank access
+
+The app SHALL say that an account has no bank access yet and offer "Connect..." for it when a refresh command finds no account to refresh but an open migrated account without a bank access. Every refresh command of the main window does this, also ⌘R, the refresh button under the sidebar, and the context menu of the account. "Connect..." opens the add account assistant for the selected account when the command covers it, else for the first such account in the order of the sidebar.
+
+#### Scenario: Only migrated accounts
+
+- **GIVEN** the open migrated accounts "Giro" and "Sparen" without a bank access, and no other account
+- **WHEN** the user presses ⌘R
+- **THEN** the app contacts no bank
+- **AND** it says "The accounts are not connected to a bank yet." with the buttons "Connect..." and "Cancel"
+- **AND** "Connect..." opens the add account assistant for "Giro"
+
+#### Scenario: One migrated account
+
+- **GIVEN** the open migrated account "Sparen" without a bank access
+- **WHEN** the user selects "Sparen" and chooses "Refresh Account"
+- **THEN** the app says "“Sparen” is not connected to a bank yet." with the buttons "Connect..." and "Cancel"
+- **AND** "Connect..." opens the add account assistant for "Sparen"
+
+#### Scenario: Connected accounts besides migrated ones
+
+- **GIVEN** the account "Girokonto" of a bank access and the open migrated account "Sparen" without a bank access
+- **WHEN** the user presses ⌘R
+- **THEN** the app refreshes "Girokonto" and says nothing about "Sparen"
+
+#### Scenario: Context menu of a migrated account
+
+- **GIVEN** the open migrated account "Sparen" without a bank access
+- **WHEN** the user opens the context menu of "Sparen" in the sidebar
+- **THEN** "Refresh Account" is enabled, and choosing it says "“Sparen” is not connected to a bank yet." with "Connect..."
+- **AND** the menu has no "Edit Login Data..." and no "Look for New Accounts..."
+
+#### Scenario: Menu bar popover
+
+- **GIVEN** the open migrated account "Giro" without a bank access, and no other account
+- **WHEN** the user opens the popover of the menu bar icon
+- **THEN** "Refresh All Accounts" in the popover is disabled, because the popover shows no alert and the main window can be closed
+
+#### Scenario: Lock right after Connect
+
+- **GIVEN** the alert for "Giro" is open
+- **WHEN** the user clicks "Connect..." and the app locks before the alert has slid out
+- **THEN** the add account assistant does not open, also not after the unlock
+
+#### Scenario: Nothing to connect
+
+- **GIVEN** the offline account "Cash" and the closed migrated account "Giro (alt)", and no other account
+- **WHEN** the user looks at "Refresh All Accounts"
+- **THEN** the command is disabled
 
 #### Scenario: Connect one of several accounts with the same IBAN
 

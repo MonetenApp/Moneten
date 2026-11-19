@@ -144,7 +144,7 @@ The helper sends an account that allows no job that it knows, and that is no sec
 
 DKB asks for an approval in the DKB app at every login and every download (`docs/research/bank-access.md`). When DKB reports no TAN method for the login, the connector turns `SyncFailure.noTANMethod` into `SyncFailure.noTANMethodOfBank`, whose next step names the DKB app and "Edit Login Data...". The mapping is the last step of every run of the helper, so the setup and a refresh show the same text.
 
-"Refresh after a payment" in add-account-refresh is not built yet (#28, #29, v0.2). DKB carries out a transfer later, so a refresh right after it would ask for one more approval in the DKB app without showing the transfer. Whether the app skips that refresh at DKB is decided with the payments, in issue #232.
+"Refresh after a payment" is not built yet. It moved from add-account-refresh to add-sepa-transfers on 19 November 2026 (#28, #29, v0.2). DKB carries out a transfer later, so a refresh right after it would ask for one more approval in the DKB app without showing the transfer. Whether the app skips that refresh at DKB is decided with the payments, in issue #232.
 
 ### Targobank
 

@@ -162,4 +162,13 @@ struct SyncModelTests {
 		#expect(FlickerCode(hex: "1") == nil)
 		#expect(FlickerCode(hex: "XY") == nil)
 	}
+
+	@Test("The login dialog of an extension access starts with the user ID of the access in its first field, and every secret empty")
+	func loginStartValues() {
+		let password = LoginRequest(service: "Demo TAN")
+		#expect(password.startValues(userID: "erika") == ["erika", ""])
+		#expect(password.startValues(userID: "") == ["", ""])
+		let key = LoginRequest(service: "Demo JSON", fields: [LoginRequest.Field(label: "API key", isSecret: true), LoginRequest.Field(label: "Customer", isSecret: false)])
+		#expect(key.startValues(userID: "erika") == ["", ""])
+	}
 }

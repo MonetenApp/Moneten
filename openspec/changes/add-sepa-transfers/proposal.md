@@ -14,6 +14,7 @@ A banking app that can only read still sends its user to the bank website for ev
 - Confirmation with a TAN, transmission, and a clear result. An order with an unknown result is never sent again by the app.
 - Instant payments where the bank supports them, with a status check after transmission.
 - A record of every transmitted order.
+- A refresh of the account after the bank accepted a payment, the action button of the toolbar, and the note that a TAN covers only the login. These requirements and their tasks moved here from `add-account-refresh` (task 1.28), `add-main-window` (task 1.13), and `add-tan-handling` (task 1.3) on 19 November 2026 (owner decision).
 
 ## Capabilities
 
@@ -23,7 +24,9 @@ A banking app that can only read still sends its user to the bank website for ev
 
 ### Modified Capabilities
 
-None.
+- `account-refresh`: adds "Refresh after a payment". The change `add-account-refresh` introduces the capability.
+- `main-window`: adds "The action button follows the view". The change `add-main-window` introduces the capability.
+- `tan-handling`: adds "Mark a TAN that covers only the login". The change `add-tan-handling` introduces the capability.
 
 ## Impact
 
@@ -32,7 +35,7 @@ None.
 - Modules: `Domain` owns the payment states and all field checks. `FinTSConnector` sends the orders. `Storage` saves every state. `App` owns the payment window.
 - Depends on the change `add-fints-banking` for the bank access and the bank's parameter data.
 - Depends on the change `add-tan-handling` for the TAN dialog.
-- Depends on the change `add-account-refresh`, which refreshes the account after a payment.
+- Depends on the change `add-account-refresh` for the refresh that runs after a payment, and on `add-main-window` for the toolbar.
 - Depends on the change `add-software-update` for current bank data such as the BIC directory.
 - Decisions: [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md), [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md).
 

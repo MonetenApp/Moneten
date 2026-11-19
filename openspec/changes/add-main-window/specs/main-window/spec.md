@@ -248,20 +248,6 @@ The app SHALL show a toolbar with these controls from left to right. The lock bu
 - **WHEN** the user selects "Outbox"
 - **THEN** the view switch is disabled
 
-### Requirement: The action button follows the view
-
-The app SHALL name the action button in the toolbar after the main action of the current view. It reads "Bank transfer" in account, category, and dashboard views, "Batch transfer" in the outbox, "Standing order" in the scheduled view, and "Add template" in the templates view.
-
-#### Scenario: Outbox
-
-- **WHEN** the user selects "Outbox"
-- **THEN** the action button reads "Batch transfer"
-
-#### Scenario: Account
-
-- **WHEN** the user selects the account "Girokonto" and clicks the action button
-- **THEN** a payment window opens with "Girokonto" as the source account
-
 ### Requirement: Back and forward
 
 The app SHALL keep a history of the views that the user visited in this session. "Back" (⌘[) and "Previous view" in the toolbar return to the view before. "Forward" (⌘]) and "Next view" go the other way. Each command is disabled when there is no view in its direction.

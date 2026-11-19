@@ -46,8 +46,10 @@ struct MenuBarPopover: View {
 					BackgroundProblemButton(problem: problem)
 				}
 				HStack {
+					// The alert that offers "Connect..." would wait unseen in a closed main window, so the button stays
+					// disabled while no account can be refreshed.
 					Button("Refresh All Accounts") { model.refresh(.all) }
-						.disabled(!model.canRefresh(.all) || !model.autoRefresh.isOnline)
+						.disabled(!model.canRefresh(.all, offeringConnect: false) || !model.autoRefresh.isOnline)
 					Spacer()
 					Button("Open Moneten") { open(nil) }
 				}
