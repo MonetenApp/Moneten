@@ -16,7 +16,7 @@ public final class FlickerCodeSize {
 	public private(set) var showsWarning = false
 	@ObservationIgnored private let defaults: UserDefaults
 
-	public init(defaults: UserDefaults = .standard) {
+	public init(defaults: UserDefaults) {
 		self.defaults = defaults
 		let saved = defaults.double(forKey: Self.widthKey)
 		width = Self.widths.contains(saved) ? saved : 240

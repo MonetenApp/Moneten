@@ -119,7 +119,7 @@ struct HoldingsStatusLine: View {
 			if let value = h.value(in: model.ledger.account(h.accountID)?.currency ?? "EUR") { sums.add(value) }
 		}
 		// An empty sum takes the currency of the portfolio, as the status line of the transactions does.
-		let firstRowCurrency = shown.first.flatMap { model.ledger.account($0.accountID)?.currency }
+		let firstRowCurrency = model.ledger.sumCurrency(of: shown, portfolios: model.selectedPortfolios ?? [])
 		HStack(spacing: 12) {
 			Group {
 				if let status = model.refreshStatus {

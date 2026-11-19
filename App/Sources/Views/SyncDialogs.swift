@@ -20,6 +20,17 @@ extension SessionBroker {
 	var sheet: SyncSheet? { current.map(SyncSheet.prompt) ?? requesting.map(SyncSheet.requesting) }
 }
 
+extension View {
+	/// Shows the dialog of the broker as a sheet of this view while `place` is where it shows (`BankDialogPlace`). The
+	/// broker opens and closes it, so the dialog never closes itself.
+	func bankDialog(at place: BankDialogPlace, of model: AppModel) -> some View {
+		sheet(item: Binding(get: { model.bankDialogPlace == place ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
+			SyncDialog(broker: model.sync.broker, sheet: sheet)
+				.interactiveDismissDisabled()
+		}
+	}
+}
+
 /// The dialog for the request on screen: the PIN sheet, "Two-Factor Authentication", the login of an
 /// extension, its browser window, or the question about a new host.
 /// The broker decides when it opens and closes, so the buttons answer the broker and never dismiss.
@@ -165,7 +176,7 @@ struct TwoFactorSheet: View {
 	@State private var medium = ""
 	@State private var confirmCancel = false
 	@State private var imageEnlarged = false
-	@State private var flickerSize = FlickerCodeSize()
+	@State private var flickerSize = FlickerCodeSize(defaults: AppSettings.defaults)
 
 	/// The dialog grows with an enlarged image or flicker code.
 	private var width: CGFloat {

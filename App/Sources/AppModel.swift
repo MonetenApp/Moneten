@@ -78,20 +78,20 @@ enum Preference {
 	static let vatRates = "vatRates"
 
 	static var rates: [VATRate] {
-		VATRate.list(hundredths: UserDefaults.standard.array(forKey: vatRates) as? [Int64] ?? [])
+		VATRate.list(hundredths: AppSettings.defaults.array(forKey: vatRates) as? [Int64] ?? [])
 	}
 
 	/// The values of settings the user has not changed.
 	static func registerDefaults() {
 		adoptLegacyDomain()
-		UserDefaults.standard.register(defaults: [vatRates: VATRate.standard.map(\.hundredths)])
+		AppSettings.defaults.register(defaults: [vatRates: VATRate.standard.map(\.hundredths)])
 	}
 
 	/// Copies the settings of the bundle identifier before the rename to Moneten (ADR 0013) once.
-	/// Runs with their own data folder skip it, so tests never write the real settings.
+	/// Runs with their own data folder skip it: their settings start empty in that folder (AppSettings).
 	private static func adoptLegacyDomain() {
 		guard DataFolder.requestedPath == nil else { return }
-		let d = UserDefaults.standard, done = "adoptedSettingsOfMonetenMoneten"
+		let d = AppSettings.defaults, done = "adoptedSettingsOfMonetenMoneten"
 		guard !d.bool(forKey: done) else { return }
 		for (key, value) in d.persistentDomain(forName: "io.github.alexander-schneider.MonetenMoneten") ?? [:] where d.object(forKey: key) == nil {
 			d.set(value, forKey: key)
@@ -120,7 +120,7 @@ final class AppModel {
 	let vault = Vault(folder: .current, keychainOverride: AppKeychain.requestedPath)
 	let crashes: CrashReportController
 	/// The refreshes of the bank accesses and their dialogs.
-	let sync = SyncCoordinator(broker: SessionBroker(defaults: .standard, scope: DataFolder.current.databaseFile.path))
+	let sync = SyncCoordinator(broker: SessionBroker(defaults: AppSettings.defaults, scope: DataFolder.current.databaseFile.path))
 	/// The FinTS connector of the setup and of every refresh.
 	let fints = AppModel.makeFinTSConnector()
 	/// The installed extensions and the catalog.
@@ -171,7 +171,7 @@ final class AppModel {
 	var isTransferringTransactions: Bool { fileImport != nil || exportTask != nil || isStoringMigration }
 	@ObservationIgnored private var trailRows = 0
 	/// "Automatically refresh accounts" and the notification settings of the "General" tab.
-	let refreshSettings = RefreshSettings(defaults: .standard)
+	let refreshSettings = RefreshSettings(defaults: AppSettings.defaults)
 	let autoRefresh: AutoRefresh
 	let notices = Notices()
 	private let announcer: NewTransactionsAnnouncer
@@ -212,7 +212,7 @@ final class AppModel {
 			guard selection != oldValue else { return }
 			// The user left the view, so its rows lose the mark of new transactions ("New transactions are marked").
 			leaveVisit()
-			UserDefaults.standard.set(selection?.preferenceValue, forKey: Preference.selectedRow)
+			AppSettings.defaults.set(selection?.preferenceValue, forKey: Preference.selectedRow)
 			// The selected rows go in a drawing of their own, and the table of the new view follows one drawing
 			// later: SwiftUI stopped the app in AttributeGraph when a table saw a change of its selection in the
 			// drawing that removed it (issue #135). Every view change clears them, so that no hidden row stays
@@ -278,14 +278,14 @@ final class AppModel {
 	}
 	/// The pin of the filter bar. Turning it on saves the filter bar, and each later change saves it again.
 	/// Turning it off sets every filter to "Show All" and clears the search.
-	var isFilterBarPinned = UserDefaults.standard.bool(forKey: Preference.pinFilterBar) {
+	var isFilterBarPinned = AppSettings.defaults.bool(forKey: Preference.pinFilterBar) {
 		didSet {
 			guard isFilterBarPinned != oldValue else { return }
-			UserDefaults.standard.set(isFilterBarPinned, forKey: Preference.pinFilterBar)
+			AppSettings.defaults.set(isFilterBarPinned, forKey: Preference.pinFilterBar)
 			if isFilterBarPinned {
 				saveFilterBar()
 			} else {
-				UserDefaults.standard.removeObject(forKey: Preference.savedFilterBar)
+				AppSettings.defaults.removeObject(forKey: Preference.savedFilterBar)
 				savedBar = nil
 				choose(period: .all)
 				filter = TransactionFilter()
@@ -302,12 +302,12 @@ final class AppModel {
 		let bar = SavedFilterBar(period: period, filter: filter)
 		guard bar != savedBar else { return }
 		savedBar = bar
-		UserDefaults.standard.set(bar.data, forKey: Preference.savedFilterBar)
+		AppSettings.defaults.set(bar.data, forKey: Preference.savedFilterBar)
 	}
 
 	/// Shows the saved filter bar of a pin that is on. The first view then resets the filter it does not show.
 	private func restoreFilterBar() {
-		guard isFilterBarPinned, let data = UserDefaults.standard.data(forKey: Preference.savedFilterBar),
+		guard isFilterBarPinned, let data = AppSettings.defaults.data(forKey: Preference.savedFilterBar),
 			let saved = SavedFilterBar(data: data) else { return }
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
@@ -316,11 +316,11 @@ final class AppModel {
 	/// Set by the debug harness: the next `save(account:)` fails, as a full disk would.
 	@ObservationIgnored var failsNextAccountSave = false
 	#endif
-	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
+	private var viewModes = ViewModes(stored: AppSettings.defaults.string(forKey:), store: { AppSettings.defaults.set($1, forKey: $0) })
 	/// The view mode of the selected view. Account views and category views each keep their own.
 	var viewMode: ViewMode {
 		get { viewModes[viewKind] }
-		set { viewModes.set(newValue, for: viewKind) { UserDefaults.standard.set($1, forKey: $0) } }
+		set { viewModes.set(newValue, for: viewKind) { AppSettings.defaults.set($1, forKey: $0) } }
 	}
 	/// A view without a selection draws no chart, so its mode is that of the account views.
 	private var viewKind: ViewModes.Kind {
@@ -329,17 +329,17 @@ final class AppModel {
 		case .account?, .group?, nil: .accounts
 		}
 	}
-	var balanceMode: BalanceMode = BalanceMode(rawValue: UserDefaults.standard.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
-		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
+	var balanceMode: BalanceMode = BalanceMode(rawValue: AppSettings.defaults.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
+		didSet { AppSettings.defaults.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
 	var chartPeriod: ChartPeriod = .month
 	/// The checkmark controls of the list. Hiding them keeps the stored checkmarks.
-	var showsCheckmarks = UserDefaults.standard.object(forKey: Preference.showsCheckmarks) as? Bool ?? true {
-		didSet { UserDefaults.standard.set(showsCheckmarks, forKey: Preference.showsCheckmarks) }
+	var showsCheckmarks = AppSettings.defaults.object(forKey: Preference.showsCheckmarks) as? Bool ?? true {
+		didSet { AppSettings.defaults.set(showsCheckmarks, forKey: Preference.showsCheckmarks) }
 	}
 	/// The balance at the end of each day in the list of a single account.
-	var showsDailyBalance = UserDefaults.standard.bool(forKey: Preference.showsDailyBalance) {
-		didSet { UserDefaults.standard.set(showsDailyBalance, forKey: Preference.showsDailyBalance) }
+	var showsDailyBalance = AppSettings.defaults.bool(forKey: Preference.showsDailyBalance) {
+		didSet { AppSettings.defaults.set(showsDailyBalance, forKey: Preference.showsDailyBalance) }
 	}
 	/// The cells of the transaction table read the selection, so a change of it waits for a drawing before the
 	/// table goes, like a change of the ledger (issue #135).
@@ -392,10 +392,19 @@ final class AppModel {
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
 			// A sheet that the unlock gave back takes its input until it closes.
 			if let oldValue { heldSheet.close(oldValue) }
+			// A window on top of the sheet goes with it, and a late report of that window changes nothing.
+			overSheet.sheetChanged()
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
+	}
+	/// The window on top of the open sheet, such as the calibration window over the account settings. The dialog of
+	/// the bank shows on it while it is open, and waits while it slides out (`BankDialogPlace`).
+	var overSheet = OverSheetState()
+	/// Where the dialog of the bank shows now, nil while it waits.
+	var bankDialogPlace: BankDialogPlace? {
+		BankDialogPlace(sheet: sheet != nil, crashReport: crashes.pending != nil, overSheet: overSheet.phase)
 	}
 	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
@@ -723,7 +732,7 @@ final class AppModel {
 		if selection == nil {
 			restoreFilterBar()
 			// The row of the last session, or the first row when it no longer exists.
-			selection = UserDefaults.standard.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger, searches: savedSearches) }
+			selection = AppSettings.defaults.string(forKey: Preference.selectedRow).flatMap { SidebarSelection(preferenceValue: $0, in: ledger, searches: savedSearches) }
 				?? firstSidebarRow
 		}
 		lastActivity = Date()
@@ -1091,7 +1100,20 @@ final class AppModel {
 		sheet = .categorySettings(categoryID)
 	}
 
+	/// Changes the rows of the open view in place (issue #154). An assignment that takes its last shown rows out of
+	/// the view would remove the table in the update that changes its rows, so it comes with a new table, and the
+	/// view shows its placeholder for no rows (issue #223).
 	func assign(category: UUID?, to ids: Set<UUID>) {
+		let changes = assignment(of: category, to: ids)
+		if tableKey.portfolios == nil, let scope = tableKey.selection?.scope, ledger.leavesNoRows(in: scope, filter: tableKey.filter, saving: changes) {
+			// The ledger can change while the placeholder waits for its drawing, so the rows are read again.
+			Task { await replacingTable { commit(assignment(of: category, to: ids)) } }
+		} else {
+			commit(changes)
+		}
+	}
+
+	private func assignment(of category: UUID?, to ids: Set<UUID>) -> (transactions: [Transaction], parts: [SplitPart]) {
 		let target = category == ledger.defaultCategory?.id ? nil : category
 		let changed = ids.compactMap { ledger.row($0) }.map { t -> Transaction in
 			var t = t
@@ -1099,7 +1121,7 @@ final class AppModel {
 			t.categorizedBy = target == nil ? .none : .manual
 			return t
 		}
-		commit(ledger.changes(from: changed))
+		return ledger.changes(from: changed)
 	}
 
 	/// What a drag from this app carries: rows of the transaction list, a category, or a group or an account of the sidebar.
@@ -1539,7 +1561,9 @@ final class AppModel {
 		do {
 			try sync.broker.removeSavedPIN(of: access)
 		} catch {
-			alert = AlertMessage(title: String(localized: "Could not remove the saved PIN."), message: String(describing: error))
+			let title = accesses[access].flatMap(secretName(of:)) == nil ? String(localized: "Could not remove the saved PIN.")
+				: String(localized: "Could not remove the saved login data.")
+			alert = AlertMessage(title: title, message: String(describing: error))
 		}
 	}
 
@@ -1555,6 +1579,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .account(id) { selection = nil }
 			}
+			forgetInHistory(.account(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account."), message: String(describing: error))
 		}
@@ -1571,6 +1596,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
+			forgetInHistory(.group(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account group."), message: String(describing: error))
 		}
@@ -1710,7 +1736,7 @@ final class AppModel {
 	/// `offeringConnect` false it counts only accounts to refresh, for a place that shows no alert.
 	func canRefresh(_ scope: RefreshScope, offeringConnect: Bool = true) -> Bool {
 		phase == .unlocked && !isStoringMigration
-			&& (!ledger.refreshAccounts(scope).isEmpty || offeringConnect && ledger.connectOffer(scope, selected: nil) != nil)
+			&& (ledger.canRefresh(scope) || offeringConnect && ledger.connectOffer(scope, selected: nil) != nil)
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
@@ -1874,6 +1900,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
+			for id in removed { forgetInHistory(.category(id)) }
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the category."), message: String(describing: error))
 		}

@@ -43,6 +43,25 @@ struct BrowseHistoryTests {
 		#expect(history.back.isEmpty && history.forward.isEmpty)
 	}
 
+	@Test("After A, S, A, and Back to S, removing the open S lets Back open A and leaves Forward disabled")
+	func removedOpenEntryBetweenEqualViews() {
+		var history = walk(["A", "S", "A"])
+		#expect(history.goBack(from: "A") == "S")
+		// Removing the open search leaves no open view.
+		history.forget("S", current: nil)
+		#expect(history.back == ["A"] && history.forward.isEmpty)
+		#expect(history.goBack(from: nil) == "A")
+		#expect(history.back.isEmpty && history.forward.isEmpty)
+	}
+
+	@Test("Without an open view, Back and Forward keep their steps when they lead to different views")
+	func noOpenViewKeepsDifferentSteps() {
+		var history = walk(["A", "S", "B"])
+		#expect(history.goBack(from: "B") == "S")
+		history.forget("S", current: nil)
+		#expect(history.back == ["A"] && history.forward == ["B"])
+	}
+
 	@Test("A step by hand drops the forward steps, and a step to the open view is no step")
 	func stepByHand() {
 		var history = walk(["A", "B", "C"])

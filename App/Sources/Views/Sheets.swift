@@ -194,6 +194,14 @@ struct AccountSettingsSheet: View {
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
 	@State private var calibrating = false
+	/// The opening of the calibration window on screen or sliding out, for `OverSheetState`.
+	@State private var calibration: OverSheetState.Token?
+	/// The openings of the calibration window whose dismissal has not come yet, oldest first. Each `onDismiss` belongs
+	/// to the oldest, also when the time limit already ended it and a newer window opened.
+	@State private var undismissed: [OverSheetState.Token] = []
+	/// The number of the sheet of these settings (`OverSheetState.sheet`), so that the calibration window never opens
+	/// over another sheet that took their place.
+	@State private var sheetNumber: Int?
 	/// The balance typed in the calibration window on top of the settings, while it is open.
 	@State private var calibrationBalance = ""
 	@State private var color = Color.accentColor
@@ -270,7 +278,7 @@ struct AccountSettingsSheet: View {
 									.monospacedDigit()
 								// A portfolio shows the values of its bank, so an initial balance would change none of them.
 								if original.kind != .portfolio {
-									Button("Calibrate...") { calibrating = true }
+									Button("Calibrate...") { openCalibration() }
 										.accessibilityIdentifier("calibrate")
 										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
@@ -284,16 +292,29 @@ struct AccountSettingsSheet: View {
 							Picker("Refresh", selection: binding.refreshInterval) {
 								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
 							}
-							LabeledContent("PIN") {
-								Button("Remove saved PIN") { confirmRemovePIN = true }
-									.disabled(!model.sync.broker.savedPINs.contains(access.id))
+							// An extension names its secret as its login dialog does, such as "Remove saved Password".
+							if let secret = model.secretName(of: access) {
+								LabeledContent(secret) {
+									Button("Remove saved \(secret)") { confirmRemovePIN = true }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
+							} else {
+								LabeledContent("PIN") {
+									Button("Remove saved PIN") { confirmRemovePIN = true }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
 							}
 						}
-						.alert("Remove the saved PIN of “\(access.bankName)”?", isPresented: $confirmRemovePIN) {
+						.alert(model.secretName(of: access) == nil ? Text("Remove the saved PIN of “\(access.bankName)”?")
+							: Text("Remove the saved login data of “\(access.bankName)”?"), isPresented: $confirmRemovePIN) {
 							Button("OK") { model.removeSavedPIN(of: access.id) }
 							Button("Cancel", role: .cancel) {}
 						} message: {
-							Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+							if model.secretName(of: access) == nil {
+								Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+							} else {
+								Text("The login data is removed for every account of this access. The next refresh asks for it.")
+							}
 						}
 					}
 				}
@@ -302,10 +323,19 @@ struct AccountSettingsSheet: View {
 			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
 			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
 			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
-			.sheet(isPresented: $calibrating, onDismiss: { calibrationBalance = "" }) {
+			// A TAN dialog that comes while the window is open shows on top of it, and one that comes while it slides
+			// out waits for its `onDismiss` (`BankDialogPlace`).
+			.sheet(isPresented: $calibrating, onDismiss: {
+				calibrationBalance = ""
+				if !undismissed.isEmpty { model.overSheetDismissed(undismissed.removeFirst()) }
+			}) {
 				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
+					.bankDialog(at: .overSheet, of: model)
 			}
+			.onChange(of: calibrating) { _, open in if !open, let calibration { model.closeOverSheet(calibration) } }
 			.onAppear {
+				let number = sheetNumber ?? model.overSheet.sheet
+				sheetNumber = number
 				account = original
 				opened = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
@@ -321,10 +351,20 @@ struct AccountSettingsSheet: View {
 					originalColor = held.originalColor
 					calibrationBalance = held.calibrationBalance
 					// The calibration window opens again one turn later, on top of the settings that are on screen then.
-					if held.calibrating { DispatchQueue.main.async { calibrating = true } }
+					// It stays closed when another sheet took the place of the settings before that turn.
+					if held.calibrating { DispatchQueue.main.async { openCalibration(over: number) } }
 				}
 			}
 		}
+	}
+
+	/// Opens the calibration window on top of the settings, unless a dialog of the bank shows on them or another sheet
+	/// took their place (`OverSheetState`).
+	private func openCalibration(over number: Int? = nil) {
+		guard let number = number ?? sheetNumber, let token = model.openOverSheet(over: number) else { return }
+		calibration = token
+		undismissed.append(token)
+		calibrating = true
 	}
 
 	/// The calibration window saved `saved`. The field shows its initial balance, and the settings take it as the

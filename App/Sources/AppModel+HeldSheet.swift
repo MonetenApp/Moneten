@@ -83,3 +83,29 @@ extension View {
 		modifier(KeepsInput(input: input, sheet: sheet))
 	}
 }
+
+/// A window on top of the open sheet, such as the calibration window over the account settings. The dialog of the bank
+/// shows on the top window, so that it never meets the other window on the same sheet (issue #504). `OverSheetState`
+/// holds the rules; only the time limit for a window that never reports its dismissal is here.
+extension AppModel {
+	/// Opens the window on top of the sheet with the number `sheet` (`OverSheetState.sheet`), unless that sheet is gone or
+	/// a dialog of the bank shows on it. Returns the token of the opening, nil when nothing opens.
+	func openOverSheet(over sheet: Int) -> OverSheetState.Token? {
+		overSheet.open(over: sheet, whileBankDialogShows: sync.broker.sheet != nil)
+	}
+
+	/// The window of `token` starts to slide out. The dialog of the bank waits for `overSheetDismissed(_:)`, and at most
+	/// 3 seconds for a window that never reports it, so that the dialog never waits for good.
+	func closeOverSheet(_ token: OverSheetState.Token) {
+		guard overSheet.closing(token) else { return }
+		Task { [weak self] in
+			try? await Task.sleep(for: .seconds(3))
+			self?.overSheetDismissed(token)
+		}
+	}
+
+	/// The window of `token` has slid out, and the dialog of the bank can show on the sheet.
+	func overSheetDismissed(_ token: OverSheetState.Token) {
+		overSheet.dismissed(token)
+	}
+}

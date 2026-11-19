@@ -349,7 +349,7 @@ struct AccountResult: Decodable {
 	/// `server` is the FinTS address of the bank, whose rules some positions follow.
 	func outcome(of account: AccountRequest, server: URL?) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
-			return (.failed(shownError?.failure ?? .bank(BankMessage(text: String(localized: "The bank sent nothing for this account.")))), [])
+			return (.failed(shownError?.failure ?? .nothingSent), [])
 		}
 		let money = try balance.map { try Self.money($0.amount, $0.currency) }
 		let fetched = try transactions.map { t in

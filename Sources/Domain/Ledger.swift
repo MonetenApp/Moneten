@@ -189,6 +189,13 @@ public struct Ledger: Sendable {
 		return found.map(\.id)
 	}
 
+	/// The currency of a sum of positions without an amount: that of the portfolio of the first shown position, or
+	/// else that of the first of `portfolios`, so that a group of USD portfolios without positions shows 0 USD and
+	/// not the euro (issue #334).
+	public func sumCurrency(of shown: [Holding], portfolios: [UUID]) -> String? {
+		shown.first.flatMap { account($0.accountID)?.currency } ?? portfolios.lazy.compactMap { self.account($0)?.currency }.first
+	}
+
 	/// The profit or loss of all positions of the accounts with a purchase price, in the currency of each value.
 	public func totalGain(of accountIDs: [UUID]) -> MoneySums {
 		var sums = MoneySums()
@@ -617,6 +624,19 @@ public struct Ledger: Sendable {
 			} else if matches(t) { rows.append(t) }
 		}
 		return TransactionSearchResult(rows: rows, gaveUp: query.gaveUp)
+	}
+
+	/// Whether saving `changes` takes the last shown rows out of `scope` with `filter`. The table of such a view goes
+	/// in the update that changes its rows, so the app replaces it instead of changing its rows in place (issue #223).
+	/// It copies the ledger only when every shown row is among the changed ones.
+	public func leavesNoRows(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter(),
+		saving changes: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
+		let changed = Set(changes.transactions.map(\.id)).union(changes.parts.map(\.id))
+		let shown = rows(in: scope, filter: filter).rows
+		guard !shown.isEmpty, shown.allSatisfy({ changed.contains($0.id) }) else { return false }
+		var after = self
+		after.update(changes.transactions, parts: changes.parts)
+		return after.rows(in: scope, filter: filter).rows.isEmpty
 	}
 
 	// MARK: Changes

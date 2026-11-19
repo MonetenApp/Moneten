@@ -41,6 +41,12 @@ final class AppUpdater: NSObject {
 			return updater?.automaticallyChecksForUpdates ?? false
 		}
 		set {
+			// Sparkle keeps the value in the standard defaults of the bundle ID, which a run with settings of its own
+			// leaves alone (AppSettings), so such a run keeps the value and changes nothing.
+			guard AppSettings.suite == nil else {
+				withMutation(keyPath: \.checksAutomatically) {}
+				return UpdateLog.write("update check setting kept: harness")
+			}
 			withMutation(keyPath: \.checksAutomatically) { updater?.automaticallyChecksForUpdates = newValue }
 		}
 	}
@@ -48,7 +54,7 @@ final class AppUpdater: NSObject {
 	/// "Participate in beta tests and display pre-release versions", off by default. The general
 	/// settings write it, and the updater reads it before each check.
 	static let betaKey = "offerPreReleaseVersions"
-	static var offersPreReleases: Bool { UserDefaults.standard.bool(forKey: betaKey) }
+	static var offersPreReleases: Bool { AppSettings.defaults.bool(forKey: betaKey) }
 	/// The highest revision of the feeds that the app read, the floor of `FeedRevision`.
 	private static let feedFloorKey = "highestFeedRevision"
 	/// The element in each item of the feed that holds the revision of the feed (`scripts/release-notes.py`).
@@ -57,9 +63,9 @@ final class AppUpdater: NSObject {
 
 	/// The floor of `FeedRevision`: in the user defaults for the feed of a release, in memory for a test feed.
 	private var feedFloor: Int? {
-		get { Self.debugFeed == nil ? UserDefaults.standard.object(forKey: Self.feedFloorKey) as? Int : debugFloor }
+		get { Self.debugFeed == nil ? AppSettings.defaults.object(forKey: Self.feedFloorKey) as? Int : debugFloor }
 		set {
-			if Self.debugFeed == nil { UserDefaults.standard.set(newValue, forKey: Self.feedFloorKey) } else { debugFloor = newValue }
+			if Self.debugFeed == nil { AppSettings.defaults.set(newValue, forKey: Self.feedFloorKey) } else { debugFloor = newValue }
 		}
 	}
 

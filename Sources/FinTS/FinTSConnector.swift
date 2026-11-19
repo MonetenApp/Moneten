@@ -448,7 +448,7 @@ private extension UserAnswer {
 		case let .tanMethod(id): id
 		case let .tanMedium(name): name
 		case let .host(decision): decision.rawValue
-		case let .login(fields): fields.first?.value ?? ""
+		case let .login(fields, _): fields.first?.value ?? ""
 		}
 	}
 }

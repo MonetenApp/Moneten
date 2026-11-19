@@ -9,7 +9,8 @@ extension SchemaTests {
 	func starterRecord() throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
-		try Schema.migrator.migrate(queue, upTo: "v31")
+		// A database at v32, the last migration before the record, which upgrades to v33.
+		try Schema.migrator.migrate(queue, upTo: "v32")
 		let earlier = UUID()
 		try queue.write { db in
 			try db.execute(sql: """

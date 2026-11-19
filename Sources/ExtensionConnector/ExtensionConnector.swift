@@ -70,7 +70,12 @@ public struct ExtensionConnector: BankConnector {
 
 	/// The labels of the login fields: those of the manifest for the service, else "Username" and "Password".
 	func loginFields(for service: String) -> [LoginRequest.Field] {
-		guard let fields = package.manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
+		Self.loginFields(in: package.manifest, service: service)
+	}
+
+	/// The login fields of `service` in `manifest`, also for the account settings, which name the secret as the login dialog does.
+	public static func loginFields(in manifest: Manifest?, service: String) -> [LoginRequest.Field] {
+		guard let fields = manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
 		return fields.map { LoginRequest.Field(label: $0.label, isSecret: $0.secret ?? false) }
 	}
 
@@ -252,7 +257,7 @@ private final class ScriptRun {
 	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason,
 		restore: (@Sendable (String) async -> AccessState?)? = nil) async throws -> ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
-		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
+		guard case let .login(values, _) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
 		else { throw CancellationError() }
 		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
 		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""
@@ -333,7 +338,7 @@ private final class ScriptRun {
 			await session.rejected(.loginRejected)
 			throw SyncFailure.loginRejected
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: String(localized: "The login of \(connector.package.name) returned a value that is not valid.")))
+		default: throw SyncFailure.invalidLogin(extensionName: connector.package.name)
 		}
 	}
 
@@ -349,11 +354,11 @@ private final class ScriptRun {
 			let accounts = items.compactMap(ListedAccount.init)
 			var seen: Set<String> = []
 			if let twice = accounts.first(where: { !seen.insert($0.remoteID).inserted }) {
-				throw SyncFailure.bank(BankMessage(text: String(localized: "\(connector.package.name) lists the account \(twice.number) in \(twice.currency) twice, so Moneten cannot tell the two apart.")))
+				throw SyncFailure.accountListedTwice(extensionName: connector.package.name, accountNumber: twice.number, currency: twice.currency)
 			}
 			return accounts
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: String(localized: "ListAccounts of \(connector.package.name) returned no list of accounts.")))
+		default: throw SyncFailure.noAccountList(extensionName: connector.package.name)
 		}
 	}
 
@@ -410,7 +415,7 @@ private final class ScriptRun {
 			do {
 				interaction = try mapping(purpose).interaction(for: table)
 			} catch {
-				throw SyncFailure.bank(BankMessage(text: error.message))
+				throw error.failure ?? SyncFailure.bank(BankMessage(text: error.message))
 			}
 			switch interaction {
 			case let .allowHost(host):
@@ -420,7 +425,7 @@ private final class ScriptRun {
 				try await connector.services.saveDecision(decision, host)
 				guard decision == .allowed else {
 					hosts.deny(host)
-					throw SyncFailure.bank(BankMessage(text: String(localized: "The login page \(host) is not a host that the extension may contact.")))
+					throw SyncFailure.hostNotAllowed(host)
 				}
 				hosts.insert(host)
 				// The same table, now with the host allowed, opens the browser window.

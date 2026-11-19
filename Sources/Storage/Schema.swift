@@ -54,6 +54,18 @@ struct SavedPINRecord: Codable, FetchableRecord, PersistableRecord, TableRecord 
 	var pin: String
 }
 
+/// A row of the table "savedLogin": the login data of an extension access that the user asked to save, with
+/// every value in the order of the login dialog and the fields that they answered. Like a saved PIN, it lives only in
+/// this table of the encrypted database and goes with its access.
+struct SavedLoginRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
+	static let databaseTableName = "savedLogin"
+	var accessID: UUID
+	/// The key and the secrecy of each field, as JSON.
+	var fields: [SavedLogin.Field]
+	/// The values as a JSON list of text.
+	var values: [String]
+}
+
 enum Schema {
 	static var migrator: DatabaseMigrator {
 		var m = DatabaseMigrator()
@@ -448,9 +460,17 @@ enum Schema {
 					arguments: [columns.iban, columns.accountNumber, row["id"]])
 			}
 		}
+		// Saved login data of extensions (issue #536): one row for each access whose login data the user asked to
+		// save. The saved PINs of FinTS stay in "savedPIN". It comes after v31.
+		m.registerMigration("v32") { db in
+			try db.create(table: "savedLogin") { t in
+				t.column("accessID", .blob).primaryKey().references("access", onDelete: .cascade)
+				t.column("fields", .text).notNull()
+				t.column("values", .text).notNull()
+			}
+		}
 		// The record of the starter set: the key of a starter category (issue #207). Only a new starter set fills it, so
-		// every category stored before has none and keeps its name when the interface language changes. It is v33 and
-		// not v32, because the change of #536 adds v32. It comes after v31.
+		// every category stored before has none and keeps its name when the interface language changes. It comes after v32.
 		m.registerMigration("v33") { db in
 			try db.alter(table: "category") { t in t.add(column: "starterKey", .text) }
 		}

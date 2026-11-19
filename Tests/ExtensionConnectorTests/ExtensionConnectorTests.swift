@@ -194,7 +194,7 @@ import Testing
 
 	@Test func tableWithoutChallengeFieldsIsNotValid() async throws {
 		let session = TestSession()
-		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login of Demo returned a value that is not valid."))) {
+		await #expect(throws: SyncFailure.invalidLogin(extensionName: "Demo")) {
 			_ = try await Self.refresh(session.connector(demo(Self.calls.replacingOccurrences(of: "print(\"InitializeSession\")", with: "return {foo = \"bar\"}"))), session)
 		}
 		#expect(session.asked.withLock { $0.count } == 1)

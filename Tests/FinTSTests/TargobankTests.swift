@@ -87,4 +87,16 @@ struct TargobankTests {
 			#expect(rows.map(\.purpose) == [""])
 		}
 	}
+
+	/// `Character.isNumber` accepts digits of other scripts too, so the check must keep its test for ASCII (#499).
+	@Test("An account number of 16 Arabic-Indic or full-width digits is no card number, and 16 ASCII digits are one")
+	func cardNumberTakesOnlyASCIIDigits() {
+		let arabicIndic = String(repeating: "\u{0661}\u{0662}\u{0663}\u{0664}", count: 4)
+		let fullWidth = String(repeating: "\u{FF11}\u{FF12}\u{FF13}\u{FF14}", count: 4)
+		for number in [arabicIndic, fullWidth] {
+			#expect(number.count == 16 && number.allSatisfy(\.isNumber))
+			#expect(!Targobank.isCardNumber(number))
+		}
+		#expect(Targobank.isCardNumber(Self.card.remoteID))
+	}
 }
