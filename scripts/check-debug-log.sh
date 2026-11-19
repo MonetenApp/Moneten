@@ -590,7 +590,11 @@ poll "^migrationfailure: unknown failure$" migrationfailure "$MIGRATION_UNKNOWN"
 once "^lookfornew setup=true$" lookfornew Girokonto
 poll "^setup purpose=newAccounts " setup ""
 send setup cancel
-closealert
+# An alert that is still open would keep the migration sheet from opening. The cancel shows none, so this closes one only
+# when alertstate sees it.
+start=$(lines)
+poll "^alertstate " alertstate
+if tail -n +"$((start + 1))" "$LOG" | grep -q "^alertstate title=[0-9a-f]"; then once "^alert title=[0-9a-f]" alert; fi
 # Each Return goes out once, after the sheet shows the step that it confirms. A second Return would confirm the next step.
 send migrationfixture "$PWD/Fixtures/moneymoney"
 poll "^migrationstate step=intro$" migrationstate

@@ -974,15 +974,18 @@ final class DebugHarness {
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			MigrationSheet.simulatedFailure = nil
+			MigrationSheet.shownStep = nil
 			model.sheet = .migration
 		case "migrationfailure":
 			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
 			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }
 			MigrationSheet.simulatedFailure = failure
+			MigrationSheet.shownStep = nil
 			model.sheet = .migration
 		// The step that the migration sheet shows, or "none" without the sheet. A check waits for a step before it presses
 		// Return, because a Return that comes twice confirms the next step too.
-		case "migrationstate": log("migrationstate", ("step", MigrationSheet.shownStep ?? .word("none")))
+		case "migrationstate":
+			log("migrationstate", ("step", model.sheet == .migration ? MigrationSheet.shownStep ?? .word("none") : .word("none")))
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
@@ -1011,6 +1014,7 @@ final class DebugHarness {
 				#if DEBUG || PERF_HARNESS
 				MigrationSheet.fixtureFolder = nil
 				MigrationSheet.simulatedFailure = nil
+				MigrationSheet.shownStep = nil
 				#endif
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
