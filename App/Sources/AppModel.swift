@@ -1087,7 +1087,20 @@ final class AppModel {
 		sheet = .categorySettings(categoryID)
 	}
 
+	/// Changes the rows of the open view in place (issue #154). An assignment that takes its last shown rows out of
+	/// the view would remove the table in the update that changes its rows, so it comes with a new table, and the
+	/// view shows its placeholder for no rows (issue #223).
 	func assign(category: UUID?, to ids: Set<UUID>) {
+		let changes = assignment(of: category, to: ids)
+		if tableKey.portfolios == nil, let scope = tableKey.selection?.scope, ledger.leavesNoRows(in: scope, filter: tableKey.filter, saving: changes) {
+			// The ledger can change while the placeholder waits for its drawing, so the rows are read again.
+			Task { await replacingTable { commit(assignment(of: category, to: ids)) } }
+		} else {
+			commit(changes)
+		}
+	}
+
+	private func assignment(of category: UUID?, to ids: Set<UUID>) -> (transactions: [Transaction], parts: [SplitPart]) {
 		let target = category == ledger.defaultCategory?.id ? nil : category
 		let changed = ids.compactMap { ledger.row($0) }.map { t -> Transaction in
 			var t = t
@@ -1095,7 +1108,7 @@ final class AppModel {
 			t.categorizedBy = target == nil ? .none : .manual
 			return t
 		}
-		commit(ledger.changes(from: changed))
+		return ledger.changes(from: changed)
 	}
 
 	/// What a drag from this app carries: rows of the transaction list, a category, or a group or an account of the sidebar.
@@ -1551,6 +1564,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .account(id) { selection = nil }
 			}
+			forgetInHistory(.account(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account."), message: String(describing: error))
 		}
@@ -1567,6 +1581,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
+			forgetInHistory(.group(id))
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the account group."), message: String(describing: error))
 		}
@@ -1868,6 +1883,7 @@ final class AppModel {
 				filter.dropMissing(in: ledger)
 				if case let .category(sel) = selection, removed.contains(sel) { selection = nil }
 			}
+			for id in removed { forgetInHistory(.category(id)) }
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not remove the category."), message: String(describing: error))
 		}
