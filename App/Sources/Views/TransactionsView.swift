@@ -145,6 +145,7 @@ struct HeaderView: View {
 /// The assistant finds the account at its bank and offers to connect it.
 struct ConnectNotice: View {
 	@Environment(AppModel.self) private var model
+	@Environment(\.controlActiveState) private var activeState
 	let account: Account
 
 	var body: some View {
@@ -156,7 +157,9 @@ struct ConnectNotice: View {
 				.buttonStyle(.borderedProminent)
 				.controlSize(.regular)
 				.tint(.accentColor)
-				.foregroundStyle(.white)
+				// The band sets its own text color, which the button would take. White suits the accent fill. In a window
+				// that is not active, macOS fills the button gray, where white would fade and the color of the band reads.
+				.foregroundStyle(activeState == .inactive ? Palette.onBand : Color.white)
 		}
 		.padding(.top, 4)
 	}
