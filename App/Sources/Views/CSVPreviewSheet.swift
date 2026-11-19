@@ -249,7 +249,7 @@ struct CSVPreviewView: View {
 					}
 					.pickerStyle(.radioGroup)
 					if !model.answeredDateOrder {
-						Label("Every booking date fits both orders. Choose the order that the file uses.", systemImage: "questionmark.circle")
+						Label("The file does not show whether the day or the month comes first. Choose the order that the file uses.", systemImage: "questionmark.circle")
 							.foregroundStyle(.orange)
 					}
 				} else {

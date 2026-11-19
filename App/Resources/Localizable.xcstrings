@@ -1,16 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Every booking date fits both orders. Choose the order that the file uses." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jedes Buchungsdatum passt zu beiden Reihenfolgen. Wählen Sie die Reihenfolge, die die Datei verwendet."
-          }
-        }
-      }
-    },
     "\"Apply to all transactions\" also replaces categories that you assigned by hand, and transactions that no longer match leave this category." : {
       "localizations" : {
         "de" : {
@@ -11409,6 +11399,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The file does not show whether the day or the month comes first. Choose the order that the file uses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei zeigt nicht, ob der Tag oder der Monat zuerst steht. Wählen Sie die Reihenfolge, die die Datei verwendet."
+          }
+        }
+      }
     },
     "The file has format version %lld, and this version of Moneten reads up to version %lld. Install a newer version of Moneten to import it." : {
       "localizations" : {

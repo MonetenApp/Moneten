@@ -125,6 +125,41 @@ struct CSVProfileTests {
 		#expect(!question.allowsImport(preview))
 	}
 
+	@Test("A repeated booking date or value date title, also with spaces around it, keeps no answer, so the file asks", .bug("https://github.com/MonetenApp/Moneten/pull/525"), arguments: [
+		("Date,Date,Name,Amount\n11/03/2026,05/06/2026,Kiosk,-1.00\n", CSVField.bookingDate, 1),
+		("Date, Date ,Name,Amount\n11/03/2026,05/06/2026,Kiosk,-1.00\n", CSVField.bookingDate, 1),
+		("Date,Value date,Value date,Name,Amount\n11/03/2026,11/04/2026,05/06/2026,Kiosk,-1.00\n", CSVField.valueDate, 2),
+		("Date,Value date, Value date,Name,Amount\n11/03/2026,11/04/2026,05/06/2026,Kiosk,-1.00\n", CSVField.valueDate, 2),
+	])
+	func repeatedTitle(text: String, field: CSVField, moved: Int) throws {
+		let file = try CSVFile(data: Data(text.utf8))
+		let hasValueDate = field == .valueDate
+		var layout = CSVLayout(encoding: file.encoding, columns: [.bookingDate: 0, .name: hasValueDate ? 3 : 2, .amount: hasValueDate ? 4 : 3],
+			dateOrder: .dayMonthYear, decimalMark: nil)
+		if hasValueDate { layout.columns[.valueDate] = 1 }
+		let answer = try #require(DateOrderAnswer(order: .dayMonthYear, layout: layout, header: file.header))
+		var profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter, dateOrderAnswer: answer)
+		#expect(!profile.answersDateOrder)
+		// An older version that keeps the unknown answer points the field at the other column of the same title.
+		profile.layout.columns[field] = moved
+		#expect(!profile.answersDateOrder)
+		let match = CSVProfile.match(for: file, in: [profile], detected: profile.layout)
+		#expect(match == .same(profile))
+		#expect(match.answeredDateOrder(in: file) == nil)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+	}
+
+	@Test("An answer stops counting when only the title of the value date column changes")
+	func valueDateTitle() throws {
+		let answer = DateOrderAnswer(order: .dayMonthYear, bookingDate: "Date", valueDate: "Value date")
+		let layout = CSVLayout(encoding: .utf8, columns: [.bookingDate: 0, .valueDate: 1, .name: 2, .amount: 3], dateOrder: .dayMonthYear, decimalMark: nil)
+		#expect(answer.answers(layout, header: ["Date", "Value date", "Name", "Amount"]))
+		#expect(!answer.answers(layout, header: ["Date", "Valuta", "Name", "Amount"]))
+		var without = layout
+		without.columns[.valueDate] = nil
+		#expect(!answer.answers(without, header: ["Date", "Value date", "Name", "Amount"]))
+	}
+
 	@Test("An added empty title still suggests the saved column mapping")
 	func emptyTitles() throws {
 		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))

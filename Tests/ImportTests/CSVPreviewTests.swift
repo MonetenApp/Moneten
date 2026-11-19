@@ -399,6 +399,19 @@ struct CSVPreviewTests {
 		#expect(try decided.preview(decided.detectedLayout(), currency: "EUR").ambiguousDate == nil)
 	}
 
+	@Test("A booking date that fits one order decides over value dates that outvote it, and the value dates warn", .bug("https://github.com/MonetenApp/Moneten/pull/525"))
+	func bookingDatesOutvoteValueDates() throws {
+		let data = Data("Date,Value date,Name,Amount\n11/13/2026,13/11/2026,Kiosk,-4.20\n11/03/2026,13/11/2026,Bakery,-2.00\n".utf8)
+		let file = try CSVFile(data: data)
+		let layout = try file.detectedLayout()
+		#expect(try file.dateOrders(layout) == [.monthDayYear])
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.ambiguousDate == nil)
+		#expect(preview.problem == nil)
+		#expect(preview.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 13), Day(year: 2026, month: 11, day: 3)])
+		#expect(preview.parsed.warnings == [.unreadableValueDate(line: 2, cell: "13/11/2026"), .unreadableValueDate(line: 3, cell: "13/11/2026")])
+	}
+
 	@Test("A file whose dates fit both orders gives the booking dates as the file writes them, and one that decides gives none")
 	func rawDates() throws {
 		let file = try CSVFile(data: Data("Date,Payee,Amount\n11/03/2026,Kiosk,-1.50\n11/04/2026,Bakery,-2.00\n".utf8))

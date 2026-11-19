@@ -366,8 +366,8 @@ public struct CSVFile: Sendable {
 	/// orders mean that the file does not decide, and the preview asks the user for the order. A value that
 	/// fits no order, such as "pending" as a value date, decides nothing, and neither does one that reads
 	/// as the same day in both, such as "2026-10-31" or "01.01.2026". When the dates fit no single order,
-	/// the order that most of them fit comes alone, unless every booking date fits both orders: then the
-	/// booking dates decide, and both orders come.
+	/// the booking dates decide: the order that they fit comes alone, or both come when every booking
+	/// date fits both orders. Only when the booking dates contradict each other, the order that most dates fit comes alone.
 	public func dateOrders(_ layout: CSVLayout) throws -> [DateOrder] {
 		try dateEvidence(layout).orders
 	}
@@ -384,7 +384,10 @@ public struct CSVFile: Sendable {
 		var counts = Dictionary(uniqueKeysWithValues: DateOrder.allCases.map { ($0, 0) })
 		var deciding = 0
 		var example: AmbiguousDate?
-		// Whether no booking date fits only one order, and the first that reads as two different days.
+		// The booking dates alone: how many each order reads of those that decide, whether no booking date fits
+		// only one order, and the first that reads as two different days.
+		var bookingCounts = counts
+		var bookingDeciding = 0
 		var bookingFitsBoth = true
 		var bookingExample: AmbiguousDate?
 		var rawDates: [String] = []
@@ -396,6 +399,10 @@ public struct CSVFile: Sendable {
 				let days = DateOrder.allCases.map { $0.day(booking) }
 				if days.contains(where: { $0 != nil }), days.contains(nil) { bookingFitsBoth = false }
 				if bookingExample == nil { bookingExample = ambiguous(booking) }
+				if days.contains(where: { $0 != nil }), Set(days).count > 1 {
+					for (order, day) in zip(DateOrder.allCases, days) where day != nil { bookingCounts[order]! += 1 }
+					bookingDeciding += 1
+				}
 			}
 			for value in [booking, Self.cell(row.cells, layout.columns[.valueDate])].compactMap({ $0 }) {
 				let days = DateOrder.allCases.map { $0.day(value) }
@@ -408,9 +415,12 @@ public struct CSVFile: Sendable {
 		guard deciding > 0 else { return ([.dayMonthYear], nil, []) }
 		let fitting = DateOrder.allCases.filter { counts[$0] == deciding }
 		if fitting.isEmpty {
-			// The value dates contradict each other. When every booking date fits both orders, the booking dates
-			// decide, so the user chooses, and each value date that the answer cannot read warns.
+			// The value dates contradict the booking dates or each other, and the booking dates decide. When every
+			// booking date fits both orders, the user chooses. When they fit one order, it wins over the value dates.
+			// Either way, each value date that the order cannot read warns.
 			if bookingFitsBoth, let bookingExample { return (DateOrder.allCases, bookingExample, rawDates) }
+			let bookingFitting = DateOrder.allCases.filter { bookingCounts[$0] == bookingDeciding }
+			if bookingDeciding > 0, bookingFitting.count == 1 { return (bookingFitting, nil, []) }
 			return ([DateOrder.allCases.max { counts[$0]! < counts[$1]! }!], nil, [])
 		}
 		return fitting.count > 1 ? (fitting, example, rawDates) : (fitting, nil, [])

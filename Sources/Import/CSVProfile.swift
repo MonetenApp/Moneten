@@ -147,10 +147,14 @@ extension DateOrderAnswer {
 	}
 
 	/// Whether the answer holds for `layout` in a file with the titles `header`: the same order, and date columns
-	/// with the same titles.
+	/// with the same titles. A title that occurs more than once, also with spaces around it, such as "Date" and
+	/// " Date ", cannot tell which column the user answered, so the answer does not hold.
 	public func answers(_ layout: CSVLayout, header: [String]) -> Bool {
-		order == layout.dateOrder && bookingDate == Self.title(layout.columns[.bookingDate], in: header)
+		func trimmed(_ title: String) -> String { title.trimmingCharacters(in: .whitespaces) }
+		func once(_ title: String) -> Bool { header.lazy.filter { trimmed($0) == trimmed(title) }.count == 1 }
+		return order == layout.dateOrder && bookingDate == Self.title(layout.columns[.bookingDate], in: header)
 			&& valueDate == Self.title(layout.columns[.valueDate], in: header)
+			&& once(bookingDate) && valueDate.map(once) != false
 	}
 
 	private static func title(_ column: Int?, in header: [String]) -> String? {
