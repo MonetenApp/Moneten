@@ -459,6 +459,36 @@ struct PerformanceTests {
 		#expect(sorted == 0)
 	}
 
+	@Test("Leaving an account counts 50,000 imported rows as seen within a frame, and the next visit finds nothing new")
+	func leaveAfterLargeImport() {
+		let imported = Account(position: 0, name: "Account 7", kind: .giro, source: .offline)
+		let other = Account(position: 1, name: "Account 8", kind: .giro, source: .offline)
+		var ts = (0..<50_000).map { i in
+			Transaction(accountID: imported.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: -420, name: "Shop", purpose: "Purpose \(i)", isNew: true)
+		}
+		ts += (0..<1_000).map { i in
+			Transaction(accountID: other.id, bookingDate: Day(year: 2026, month: 10, day: 1 + i % 28), amountMinor: -100, name: "Bakery", purpose: "Bread \(i)", isNew: true)
+		}
+		let base = Ledger(accounts: [imported, other], transactions: ts)
+		var ledger = base
+		var marks = NewMarks()
+		var seen = 0
+		// The import came while "Account 7" was open, so its rows are new when the user leaves it.
+		let leave = fastest {
+			ledger = base
+			marks = NewMarks()
+			seen = marks.leave(account: imported.id, in: ledger)
+			ledger.markSeen(account: imported.id)
+		}
+		print("leave after an import of 50,000 rows \(leave)")
+		#expect(seen == 50_000)
+		#expect(ledger.newTransactionCounts[imported.id, default: 0] == 0)
+		#expect(ledger.newTransactionCounts[other.id] == 1_000)
+		#expect(ledger.transactions(ofAccount: imported.id).allSatisfy { !$0.isNew })
+		#expect(marks.open(account: imported.id, in: ledger) == 0)
+		#expect(leave < budget(.milliseconds(50)))
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!

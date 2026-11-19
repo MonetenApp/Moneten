@@ -105,6 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+	@MainActor func applicationWillTerminate(_ notification: Notification) {
+		model?.applicationWillTerminate()
+	}
 }
 
 struct AppCommands: Commands {
