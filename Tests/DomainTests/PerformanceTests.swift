@@ -493,13 +493,18 @@ struct PerformanceTests {
 			seen = marks.leave(account: imported.id, in: ledger)
 			ledger.markSeen(account: imported.id)
 		}
-		print("leave after an import of 50,000 rows \(leave)")
+		print("leave after an import of 50,000 rows \(leave), budget \(budget(.milliseconds(50)))")
 		#expect(seen == 50_000)
 		#expect(ledger.newTransactionCounts[imported.id, default: 0] == 0)
 		#expect(ledger.newTransactionCounts[other.id] == 1_000)
 		#expect(ledger.transactions(ofAccount: imported.id).allSatisfy { !$0.isNew })
 		#expect(marks.open(account: imported.id, in: ledger) == 0)
+		// 6 to 10 ms in release, at a load of 20 to 28. A debug build took 17 to 69 ms at the same load, so the budget holds
+		// for a release build only, as for the other ledger budgets: `scripts/test.sh -c release -Xswiftc -enable-testing
+		// --filter PerformanceTests`, which CI runs as its own step.
+		#if !DEBUG
 		#expect(leave < budget(.milliseconds(50)))
+		#endif
 	}
 
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
