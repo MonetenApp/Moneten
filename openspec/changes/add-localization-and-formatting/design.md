@@ -57,7 +57,11 @@ The formats of dates and numbers follow the region of macOS and not the language
 
 ### Starter categories follow the language at creation
 
-`StarterCategories.make(language:)` already holds both sets. The app picks the set by the language of the interface when it creates the database. A later change of the language does not rename them, because the user may have changed them.
+`StarterCategories.make(language:)` already holds both sets. The app picks the set by the language of the interface when it creates the database. A later change of the language renames only what the user has not changed.
+
+When the app opens the database, `StarterCategories.renamed(in:to:)` gives the categories of an unchanged starter set of the other language with the names of the interface language, and the app stores them before it shows the ledger (#207). The ids stay, so the transactions keep their categories, and the rule of "Salary" is the same in both sets. A group counts only when it has exactly its starter subcategories, each unchanged, and nothing else, because a group with one more or one less subcategory may be the work of the user. A group whose new name a top-level category already has keeps its old name, because two categories of one name would make a match by name, as in an imported file, ambiguous. The default category takes the new name while it has the name of the other set, so the migration then recognizes the renamed set by it. The check does not ask the default category for the language of the set, so a set whose default category the user renamed follows the language as well. A failed write keeps the old names and does not keep the database closed, and the next open tries again.
+
+Alternative: remove the unchanged set of the other language and add the new set. New ids would move the transactions of the removed categories to the default category.
 
 The migration from MoneyMoney and "Import All Data" replace an untouched starter set. They recognize the set in either language, because a database created in English can open with a German interface and the other way round, and a database of an earlier English-only build has the English set. The name of the default category tells the language of the set, "Uncategorized" or "Unkategorisiert". When the user renamed it, the language of the interface decides. Only that one set counts, so an empty group of the user named like a group of the other set stays.
 

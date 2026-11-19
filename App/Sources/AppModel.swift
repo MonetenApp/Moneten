@@ -700,7 +700,14 @@ final class AppModel {
 		self.store = store
 		lockSettings = try store.lockSettings()
 		unlockSettings = try store.unlockMethods()
-		let loaded = try store.loadLedger()
+		var loaded = try store.loadLedger()
+		// An unchanged starter set of the other language takes the names of the interface language. A failed
+		// write keeps the old names, which the next open tries again, and does not keep the database closed.
+		let renamed = StarterCategories.renamed(in: loaded, to: starterLanguage)
+		if !renamed.isEmpty, (try? store.save(categories: renamed)) != nil {
+			let byID = Dictionary(uniqueKeysWithValues: renamed.map { ($0.id, $0) })
+			loaded.replace(categories: loaded.categories.map { byID[$0.id] ?? $0 })
+		}
 		ledgerChange = "load"
 		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })

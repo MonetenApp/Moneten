@@ -62,6 +62,34 @@ The app SHALL offer a "Language" menu on the "General" tab of the settings with 
 - **WHEN** the user sets "Language" to "System" and restarts the app
 - **THEN** the interface is German
 
+### Requirement: An unchanged starter set follows the language
+
+The app SHALL give an unchanged starter set of the other language the names of the interface language when it opens the database. A group of the starter set counts as unchanged only when it has exactly its starter subcategories, each unchanged, and nothing else. A changed group, a category of the user, and a starter group whose new name a top-level category of the user already has keep their names. The default category takes the new name while it has the name of the other set.
+
+#### Scenario: Switch to German
+
+- **GIVEN** a database created in English with the unchanged starter group "Living" and its subcategories "Rent", "Groceries", "Electricity", and "Internet & Phone"
+- **AND** 3 transactions in "Groceries"
+- **WHEN** the app opens the database with a German interface
+- **THEN** the sidebar shows "Wohnen" with "Miete", "Lebensmittel", "Strom", and "Internet & Telefon", and no "Living"
+- **AND** the 3 transactions are in "Lebensmittel"
+- **AND** the default category is "Unkategorisiert"
+
+#### Scenario: Changed group stays
+
+- **GIVEN** a database created in German whose starter group "Wohnen" has the extra subcategory "Garten"
+- **WHEN** the app opens the database with an English interface
+- **THEN** "Wohnen" keeps its name and its five subcategories
+- **AND** the unchanged group "Einnahmen" is now "Income"
+
+#### Scenario: Group of the user with the name of a starter group
+
+- **GIVEN** a database created in English with the unchanged starter set and the group "Wohnen" of the user with the subcategory "Garten"
+- **WHEN** the app opens the database with a German interface
+- **THEN** the group "Wohnen" of the user keeps "Garten"
+- **AND** "Living" keeps its name, so the sidebar shows no second "Wohnen"
+- **AND** the unchanged group "Mobility" is now "Mobilität"
+
 ### Requirement: Text from a bank stays as received
 
 The app SHALL show text that a bank or an extension delivers in its original wording. That includes the purpose of a transaction, booking texts, names, and messages of the bank server.

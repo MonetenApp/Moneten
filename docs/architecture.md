@@ -57,7 +57,7 @@ The sync state machine described below is in `Domain`. The payment state machine
 
 `Domain` has no dependencies so that every rule about money, categories, and transaction identity can be tested in milliseconds without a database, a network, or a bank.
 
-The libraries, `Domain` included, may call `String(localized:)`, but only to build a text that the user reads, such as an error message or a note. A localized text is never data, never a key, and never compared to decide what the code does, because its value changes with the language of the interface. `StarterCategories` writes the German and English names itself, so a database keeps the names it was created with. The app holds the one String Catalog, `App/Resources/Localizable.xcstrings`. The tests run without it, so they read English. The extension host process has no catalog either, so it sends the reason of a stop or a refusal as `HostStop`, and the app writes the text.
+The libraries, `Domain` included, may call `String(localized:)`, but only to build a text that the user reads, such as an error message or a note. A localized text is never data, never a key, and never compared to decide what the code does, because its value changes with the language of the interface. `StarterCategories` writes the German and English names itself, so a database keeps the names it was created with, except that an unchanged starter set takes the names of a new interface language when the database opens. The app holds the one String Catalog, `App/Resources/Localizable.xcstrings`. The tests run without it, so they read English. The extension host process has no catalog either, so it sends the reason of a stop or a refusal as `HostStop`, and the app writes the text.
 
 ## Every bank speaks through one protocol
 
