@@ -362,6 +362,19 @@ final class AppModel {
 	/// The rule that "Create Rule" puts into the settings of a category. The settings take it when they open,
 	/// and it is saved only when the user confirms them.
 	@ObservationIgnored var ruleDraft: (categoryID: UUID, rule: String)?
+	/// The input of the open sheet, which the lock keeps in memory so that the sheet shows again after the unlock.
+	/// The input belongs to the database file that was open at the lock (`DatabaseStamp`).
+	@ObservationIgnored var heldSheet = HeldSheet<SheetKind, any Sendable, DatabaseStamp>()
+	/// True while an unlock with the password opens the database, the only open that can give the held sheet back.
+	@ObservationIgnored private var isUnlocking = false
+	/// The sheet that the unlock gives back, from the unlock until `showHeldSheet()` opens it. The alerts wait for it.
+	@ObservationIgnored var returningSheet: SheetKind?
+	#if DEBUG || PERF_HARNESS
+	/// The last input that a sheet wrote while the app was unlocked, and the one that "sheetinput mark" remembered,
+	/// for the command "sheetinput" of the debug harness.
+	@ObservationIgnored var debugSheetInput: AnyHashable?
+	@ObservationIgnored var debugSheetInputMark: AnyHashable?
+	#endif
 
 	/// The alerts of the main window, which show once no sheet is on it.
 	@ObservationIgnored let alerts = SheetAlerts(window: "main")
@@ -377,6 +390,8 @@ final class AppModel {
 		didSet {
 			guard sheet != oldValue else { return }
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
+			// A sheet that the unlock gave back takes its input until it closes.
+			if let oldValue { heldSheet.close(oldValue) }
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
@@ -459,7 +474,7 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
-		alerts.hasSheet = { [weak self] in self?.sheet != nil }
+		alerts.hasSheet = { [weak self] in self?.sheet != nil || self?.returningSheet != nil }
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
@@ -495,6 +510,8 @@ final class AppModel {
 
 	private func startOpening() async {
 		guard opening == nil else { return }
+		// A launch or "Try Again" may open another database than the one that was locked.
+		dropHeldSheet()
 		phase = .starting
 		// A second running copy of the app, such as one in the Downloads folder, opens nothing in this data folder.
 		if folderLock == nil {
@@ -594,6 +611,7 @@ final class AppModel {
 		guard folderLock != nil else { return }
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
+			dropHeldSheet()
 			// `create` removed the entries of a database that was here before, so every unlock setting is off.
 			unlockSettings = []
 			hasPassword = password != nil
@@ -618,6 +636,9 @@ final class AppModel {
 	@discardableResult
 	func unlock(password: String, offered: Set<Vault.PasswordEntry> = []) async -> UnlockResult {
 		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
+		// Only an unlock of the file that was locked gets the held sheet back (`open`).
+		isUnlocking = true
+		defer { isUnlocking = false }
 		do {
 			try await openAway { vault, upgrading in
 				offered.isEmpty
@@ -632,6 +653,7 @@ final class AppModel {
 		} catch is OpenOvertaken {
 			return phase == .unlocked ? .unlocked : .busy
 		} catch {
+			dropHeldSheet()
 			phase = .failed(vault.explanation(of: error))
 			return .failed
 		}
@@ -692,6 +714,13 @@ final class AppModel {
 				?? firstSidebarRow
 		}
 		lastActivity = Date()
+		// The held sheet returns only when this open is the unlock of the database file that was locked. The stamp is
+		// taken now that the store is open, so it names the file that the store reads, also when another file took the
+		// place of the database between the start of the unlock and the open. A launch, a new database, and a file
+		// that changed while the app was locked drop it. A change after this stamp is a change on disk of the open
+		// store, which closes the database and drops the input (`checkDisk`).
+		returningSheet = heldSheet.unlock(database: isUnlocking ? vault.databaseStamp() : nil)
+		isUnlocking = false
 		phase = .unlocked
 		watchDisk()
 		extensions.open(store)
@@ -742,6 +771,18 @@ final class AppModel {
 		accesses = [:]
 		bankNotices = BankNotices()
 		bankHistories = [:]
+		// Only the lock keeps the input of the open sheet, for the file as the store left it. Any other close ends
+		// this database for good. The held input is not observed, so this changes no view in the drawing that shows
+		// the lock screen (issue #151).
+		if next == .locked {
+			heldSheet.lock(closing: sheet, database: vault.databaseStamp())
+			returningSheet = nil
+			#if DEBUG || PERF_HARNESS
+			debugSheetInput = nil
+			#endif
+		} else {
+			dropHeldSheet()
+		}
 		sheet = nil
 		// A name half typed into a new group is lost, and the group keeps the name it has in the database.
 		namingRow = nil

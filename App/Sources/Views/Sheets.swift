@@ -102,6 +102,8 @@ struct SheetButtons<Content: View>: View {
 }
 
 struct NameSheet: View {
+	@Environment(AppModel.self) private var model
+	let kind: SheetKind
 	var title: LocalizedStringKey
 	var placeholder: LocalizedStringKey
 	/// The name the field starts with, such as the current name for a rename.
@@ -117,6 +119,8 @@ struct NameSheet: View {
 				TextField(placeholder, text: $name, prompt: Text("Required"))
 			}
 		}
+		.keepsInput(name, of: kind)
+		.onAppear { if let held: String = model.heldInput(for: kind) { name = held } }
 	}
 }
 
@@ -126,6 +130,13 @@ struct NewCategorySheet: View {
 	var assigning: Set<UUID> = []
 	@State private var name = ""
 	@State private var parentID: UUID?
+
+	struct Input: Hashable, Sendable {
+		var name: String
+		var parentID: UUID?
+	}
+
+	private var kind: SheetKind { .newCategory(assigning: assigning) }
 
 	var body: some View {
 		let check = model.ledger.checkCategoryName(name, in: parentID)
@@ -145,8 +156,13 @@ struct NewCategorySheet: View {
 				if check == .taken { CategoryNameTaken(parentID: parentID) }
 			}
 		}
+		.keepsInput(Input(name: name, parentID: parentID), of: kind)
 		.onAppear {
 			if case let .category(id) = model.selection, let c = model.ledger.category(id) { parentID = c.isGroup ? c.id : c.parentID }
+			if let held: Input = model.heldInput(for: kind) {
+				name = held.name
+				parentID = held.parentID
+			}
 		}
 	}
 }
@@ -178,8 +194,27 @@ struct AccountSettingsSheet: View {
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
 	@State private var calibrating = false
+	/// The balance typed in the calibration window on top of the settings, while it is open.
+	@State private var calibrationBalance = ""
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
+
+	/// What the lock keeps of the settings: the edited account, the account as the settings opened, the fields, and
+	/// whether the calibration window is open on top of them with its typed balance.
+	private struct Input: Hashable, Sendable {
+		var account: Account?
+		var opened: Account?
+		var initialBalance: String
+		var color: Color
+		var originalColor: Color
+		var calibrating: Bool
+		var calibrationBalance: String
+	}
+
+	private var input: Input {
+		Input(account: account, opened: opened, initialBalance: initialBalance, color: color, originalColor: originalColor,
+			calibrating: calibrating, calibrationBalance: calibrationBalance)
+	}
 
 	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
 	private func typedInitialBalance(in currency: String) -> Money? {
@@ -263,10 +298,12 @@ struct AccountSettingsSheet: View {
 					}
 				}
 			}
+			.keepsInput(input, of: .accountSettings(accountID))
 			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
-			// that its save posts waits in `SheetAlerts` until the settings have slid out too.
-			.sheet(isPresented: $calibrating) {
-				CalibrationSheet(accountID: accountID, onSaved: tookCalibration).environment(model)
+			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
+			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
+			.sheet(isPresented: $calibrating, onDismiss: { calibrationBalance = "" }) {
+				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
 			}
 			.onAppear {
 				account = original
@@ -274,6 +311,18 @@ struct AccountSettingsSheet: View {
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
+				// After the unlock, the settings show the input from before the lock. Saving merges it with the
+				// account as it is now, as for a refresh that ended while the settings were open.
+				if let held: Input = model.heldInput(for: .accountSettings(accountID)) {
+					account = held.account
+					opened = held.opened
+					initialBalance = held.initialBalance
+					color = held.color
+					originalColor = held.originalColor
+					calibrationBalance = held.calibrationBalance
+					// The calibration window opens again one turn later, on top of the settings that are on screen then.
+					if held.calibrating { DispatchQueue.main.async { calibrating = true } }
+				}
 			}
 		}
 	}
@@ -295,6 +344,9 @@ struct CalibrationSheet: View {
 	let accountID: UUID
 	/// Called with the account after OK saved it, for the account settings under the window.
 	var onSaved: (Account) -> Void = { _ in }
+	/// The typed balance for the account settings under the window, which keep it in their input across a lock. Without
+	/// it, the window is a sheet of its own and keeps its input as `SheetKind.calibration`.
+	var keptBalance: Binding<String>? = nil
 	@State private var balance = ""
 
 	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
@@ -335,10 +387,18 @@ struct CalibrationSheet: View {
 					}
 				}
 			}
+			.keepsInput(balance, of: keptBalance == nil ? .calibration(accountID) : nil)
+			.onChange(of: balance) { if let keptBalance, keptBalance.wrappedValue != balance { keptBalance.wrappedValue = balance } }
 			.onAppear {
 				let today = Day.today()
 				let value = model.proposedCalibration(of: account)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
 				balance = Format.editableAmount(value.minorUnits, value.currency)
+				if let keptBalance {
+					// The settings under the window brought its balance back after the unlock.
+					if !keptBalance.wrappedValue.isEmpty { balance = keptBalance.wrappedValue }
+				} else if let held: String = model.heldInput(for: .calibration(accountID)) {
+					balance = held
+				}
 			}
 		}
 	}
@@ -370,9 +430,14 @@ struct GroupSettingsSheet: View {
 				}
 			}
 		}
+		.keepsInput(group, of: .groupSettings(groupID))
 		.onAppear {
 			group = model.ledger.group(groupID)
+			// The stored group, also after the unlock: nothing writes it while the app is locked, so it is the group as
+			// the settings opened before the lock.
 			opened = group
+			// The input is optional: nil from `heldInput` means that nothing returns, and the group stays as loaded.
+			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)), let held { group = held }
 		}
 	}
 }
@@ -393,7 +458,11 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
+		.keepsInput(text, of: .comment(ids))
+		.onAppear {
+			text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? ""
+			if let held: String = model.heldInput(for: .comment(ids)) { text = held }
+		}
 	}
 }
 
@@ -412,6 +481,27 @@ struct TransactionSheet: View {
 	/// The suggestions for the name as it stands. Only a change of the name searches again, never a redraw.
 	@State private var suggestions: [Transaction] = []
 	@FocusState private var nameHasFocus: Bool
+
+	/// The text of the date fields as the user typed it, also while it is not a date yet.
+	@State private var dateText = ""
+	@State private var valueDateText = ""
+
+	/// What the lock keeps of the fields, and the account that a new transaction goes into.
+	struct Input: Hashable, Sendable {
+		var accountID: UUID?
+		var date: Day?
+		var dateText: String
+		var hasValueDate: Bool
+		var valueDate: Day?
+		var valueDateText: String
+		var draft: TransactionDraft
+		var comment: String
+	}
+
+	private var input: Input {
+		Input(accountID: account?.id, date: date, dateText: dateText, hasValueDate: hasValueDate, valueDate: valueDate,
+			valueDateText: valueDateText, draft: draft, comment: comment)
+	}
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
@@ -438,7 +528,7 @@ struct TransactionSheet: View {
 			}
 			if editable {
 				Section {
-					DateField(title: "Date", day: $date)
+					DateField(title: "Date", day: $date, typed: $dateText)
 					if existing != nil {
 						LabeledContent("Value date") {
 							HStack {
@@ -449,7 +539,7 @@ struct TransactionSheet: View {
 								.labelsHidden()
 								.accessibilityIdentifier("valuedate-switch")
 								if hasValueDate {
-									DateField(title: "Value date", day: $valueDate, identifier: "valuedate")
+									DateField(title: "Value date", day: $valueDate, identifier: "valuedate", typed: $valueDateText)
 										.labelsHidden()
 								}
 							}
@@ -496,8 +586,19 @@ struct TransactionSheet: View {
 			}
 		}
 		.onChange(of: draft.amount) { problem = nil }
+		.keepsInput(input, of: .transaction(transactionID))
 		.onAppear {
 			load()
+			// A new transaction takes its input only in the account that it was started in.
+			if let held: Input = model.heldInput(for: .transaction(transactionID)), transactionID != nil || held.accountID == account?.id {
+				date = held.date
+				dateText = held.dateText
+				hasValueDate = held.hasValueDate
+				valueDate = held.valueDate
+				valueDateText = held.valueDateText
+				draft = held.draft
+				comment = held.comment
+			}
 			nameHasFocus = editable
 		}
 	}
