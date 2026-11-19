@@ -474,14 +474,14 @@ extension Account {
 	/// Takes the fields that the account settings edit from `edited`, the account as the settings showed
 	/// it. The balance and the status of a refresh that ended while the settings were open stay. The type
 	/// changes only when the user changed it from the type of `opened`, the account as the settings
-	/// opened, to one of the `AccountKind.choices` of the current type. A portfolio stays a portfolio, also
+	/// opened, to one of the `Account.kindChoices` of the current account. A portfolio stays a portfolio, also
 	/// one that a refresh made while the settings were open. The initial balance, too, counts as entered only
 	/// when the user changed it from that of `opened`, so a derived value that a refresh set meanwhile stays.
 	/// The name changes only when the user changed it from that of `opened`, so a stored name with white space
 	/// around it stays as it is. An empty name keeps the old name, because an account always has a name.
 	public mutating func takeSettings(from edited: Account, opened: Account) {
 		if edited.name != opened.name { name = Self.acceptedName(edited.name) ?? name }
-		if edited.kind != opened.kind, kind.choices?.contains(edited.kind) == true { kind = edited.kind }
+		if edited.kind != opened.kind, kindChoices?.contains(edited.kind) == true { kind = edited.kind }
 		isClosed = edited.isClosed
 		if edited.initialBalanceMinor != opened.initialBalanceMinor { enterInitialBalance(edited.initialBalanceMinor) }
 		color = edited.color

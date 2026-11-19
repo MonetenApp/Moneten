@@ -8,7 +8,7 @@ Accounts and account groups are the frame for everything else in the app. This c
 
 ### Requirement: Account types
 
-The app SHALL give every account one of the types "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Portfolio", or "Other". The bank or the extension sets the type when the account is added. A later refresh does not change the type, except that a refresh that fetches the value of a securities account makes the account a "Portfolio".
+The app SHALL give every account one of the types "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Portfolio", "Cash", or "Other". The bank or the extension sets the type when the account is added. A later refresh does not change the type, except that a refresh that fetches the value of a securities account makes the account a "Portfolio".
 
 #### Scenario: Type from the bank
 
@@ -95,7 +95,7 @@ The app SHALL derive the type of a new account from its number and its name when
 
 ### Requirement: Change the account type
 
-The app SHALL let the user change the type of an account under "Account type" among "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", and "Other". The type "Portfolio" cannot be chosen and cannot be changed, because it decides that the account shows securities.
+The app SHALL let the user change the type of an account under "Account type" among "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", and "Other". An account without a bank access also offers "Cash", and so does the setup of an offline account. The menu always offers the current type of the account. The type "Portfolio" cannot be chosen and cannot be changed, because it decides that the account shows securities.
 
 #### Scenario: Correct a wrong type
 
@@ -107,6 +107,26 @@ The app SHALL let the user change the type of an account under "Account type" am
 
 - **WHEN** the user opens the settings of a portfolio
 - **THEN** the settings show the type "Portfolio" without a menu
+
+#### Scenario: Account of a bank access
+
+- **GIVEN** the giro account "Giro" of a bank access
+- **WHEN** the user opens the menu "Account type" in the settings of "Giro"
+- **THEN** the menu lists "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", and "Other"
+- **AND** the menu does not list "Cash"
+
+#### Scenario: Offline account
+
+- **GIVEN** the offline account "Wallet" with the type "Giro account"
+- **WHEN** the user opens the menu "Account type" in the settings of "Wallet"
+- **THEN** the menu lists "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Cash", and "Other"
+
+#### Scenario: Cash account that a bank access connected later
+
+- **GIVEN** the account "Kasse" with the type "Cash" that the migration brought and that a bank access connected later
+- **WHEN** the user opens the menu "Account type" in the settings of "Kasse"
+- **THEN** the menu lists "Giro account", "Savings account", "Fixed term deposit", "Loan account", "Credit card", "Cash", and "Other"
+- **AND** "Cash" is selected
 
 ### Requirement: Account settings window
 

@@ -16,10 +16,12 @@ public enum AccountKind: String, Codable, Sendable, CaseIterable {
 		}
 	}
 
-	/// The types that the menu "Account type" offers for an account of this type, or nil for a portfolio.
-	/// "Portfolio" decides that an account shows securities, so the user can neither choose it nor leave it.
-	public var choices: [AccountKind]? {
-		self == .portfolio ? nil : Self.allCases.filter { $0 != .portfolio }
+	/// The types that a user can choose for an account, in the order of the menu "Account type". "Portfolio"
+	/// decides that an account shows securities, so the user never chooses it. "Cash" is a type of an account
+	/// without a bank access, so an account of a bank access does not offer it. The account settings and the
+	/// setup of an offline account both take this list, so the two menus cannot drift apart.
+	public static func choices(hasBankAccess: Bool) -> [AccountKind] {
+		allCases.filter { $0 != .portfolio && !(hasBankAccess && $0 == .cash) }
 	}
 }
 
@@ -151,6 +153,15 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	}
 
 	public var isOffline: Bool { source == .offline }
+
+	/// The types that the menu "Account type" offers for this account, or nil for a portfolio, which the user can
+	/// neither choose nor leave. The menu always holds the current type, so a cash account that a bank access
+	/// connected later keeps "Cash".
+	public var kindChoices: [AccountKind]? {
+		guard kind != .portfolio else { return nil }
+		let offered = AccountKind.choices(hasBankAccess: source == .bank)
+		return AccountKind.allCases.filter { offered.contains($0) || $0 == kind }
+	}
 
 	/// "Add Transaction..." works in every account except a portfolio, whose value comes from its positions.
 	/// In an account with bank access, a manual row covers what the bank does not deliver.

@@ -710,7 +710,7 @@ struct AccountSetupSheet: View {
 		Section("Offline account / Cash") {
 			TextField("Name", text: $setup.offlineName, prompt: Text("Required"))
 			Picker("Account type", selection: $setup.offlineKind) {
-				ForEach(AccountKind.allCases.filter { $0 != .portfolio }, id: \.self) { Text($0.title).tag($0) }
+				ForEach(AccountKind.choices(hasBankAccess: false), id: \.self) { Text($0.title).tag($0) }
 			}
 			TextField("Currency", text: $setup.offlineCurrency)
 			Picker("Account group", selection: $setup.groupID) {

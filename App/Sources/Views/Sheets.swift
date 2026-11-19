@@ -244,7 +244,7 @@ struct AccountSettingsSheet: View {
 				if let binding = Binding($account) {
 					Section {
 						TextField("Name", text: binding.name, prompt: Text("Required"))
-						if let choices = original.kind.choices {
+						if let choices = original.kindChoices {
 							Picker("Account type", selection: binding.kind) {
 								ForEach(choices, id: \.self) { Text($0.title).tag($0) }
 							}
