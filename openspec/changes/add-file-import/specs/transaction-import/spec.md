@@ -113,7 +113,7 @@ The app SHALL detect the date format of the date columns from all their values, 
 
 ### Requirement: CSV date order question
 
-The app SHALL ask the user for the date order when every date of a CSV file fits day first and month first with different days. The preview shows one date of the file read in both orders as an example and imports nothing until the user chooses an order. Until then, the preview rows show each booking date as the file writes it. The answer holds until the user assigns another date column. A file with one date that fits only one order decides the order without the question.
+The app SHALL ask the user for the date order when every booking date of a CSV file fits day first and month first with different days, unless all dates fit one order. The preview shows one date read in both orders and the booking dates as the file writes them, and imports nothing until the user chooses. The answer holds until the user assigns another date column. When the value dates contradict each other, the booking dates decide.
 
 #### Scenario: Ambiguous dates
 
@@ -134,6 +134,14 @@ The app SHALL ask the user for the date order when every date of a CSV file fits
 - **GIVEN** a CSV file with the booking dates "11/03/2026", "11/04/2026", and "11/13/2026"
 - **WHEN** the preview opens
 - **THEN** the preview reads month first without the question, and the app imports 3 November, 4 November, and 13 November 2026
+
+#### Scenario: Value dates that contradict each other
+
+- **GIVEN** a CSV file with the columns "Date,Value date,Name,Amount" and the rows "11/03/2026,11/13/2026,Kiosk,-4.20" and "11/04/2026,13/11/2026,Bakery,-2.00"
+- **WHEN** the preview opens
+- **THEN** it asks for the date order, with "11/03/2026" as 11 March 2026 day first and as 3 November 2026 month first
+- **AND** a profile for this header row without a chosen order does not import the file without the preview
+- **AND** after the user chooses month first, the app imports 3 November 2026 with the value date 13 November 2026 and 4 November 2026 without a value date, and warns that the value date in line 3 cannot be read
 
 #### Scenario: Another date column asks again
 
@@ -553,7 +561,7 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 
 ### Requirement: CSV profile and the date order question
 
-The app SHALL let a profile answer the question for the date order only when the profile stores an order that the user chose in that question. A file whose dates fit both orders opens the preview with the question when the matching profile stores no such answer, which includes every profile saved before the app stored answers. A profile does not apply to a file with a date that its order cannot read, and the preview reads that file in the order that its dates fit.
+The app SHALL let a profile answer the question for the date order only with an order that the user chose in that question, stored with the titles of the date columns that it answered. The answer counts only while the date columns of the file have those titles. Without such an answer, which every older profile lacks, a file whose dates fit both orders opens the preview with the question. A profile does not apply to a file with a date that its order cannot read.
 
 #### Scenario: A profile with a chosen order answers
 
@@ -567,6 +575,13 @@ The app SHALL let a profile answer the question for the date order only when the
 - **WHEN** the user imports a file with the same header row and the rows "11/03/2026,Kiosk,-4.20" and "13/11/2026,Bakery,-2.00"
 - **THEN** the app opens the preview instead of importing with "Card CSV"
 - **AND** the preview reads 11 March and 13 November 2026 day first and never reads 13 as a month
+
+#### Scenario: An answer belongs to its date column
+
+- **GIVEN** the user chose day first in the question for the booking date column "Date" of a file with the header row "Date,Name,Amount" and saved the profile "Card CSV"
+- **WHEN** the user imports a file with the header row "Name,Amount,Booking date" and the row "Kiosk,-1.00,11/03/2026"
+- **THEN** the app opens the preview with "Card CSV" as the starting point and the booking date in the column "Booking date"
+- **AND** the preview asks for the date order, and "Import" stays disabled until the user chooses
 
 #### Scenario: A profile without a chosen order asks
 
