@@ -1548,7 +1548,9 @@ final class AppModel {
 		do {
 			try sync.broker.removeSavedPIN(of: access)
 		} catch {
-			alert = AlertMessage(title: String(localized: "Could not remove the saved PIN."), message: String(describing: error))
+			let title = accesses[access].flatMap(secretName(of:)) == nil ? String(localized: "Could not remove the saved PIN.")
+				: String(localized: "Could not remove the saved login data.")
+			alert = AlertMessage(title: title, message: String(describing: error))
 		}
 	}
 

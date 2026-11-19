@@ -34,7 +34,14 @@ The app SHALL hide the characters of a PIN or password while the user types it, 
 
 ### Requirement: Check a PIN against the rules of the bank
 
-The app SHALL check a PIN against the rules that the bank publishes for it before it sends the PIN, and it SHALL name the broken rule. The rules cover digits only, the minimum length, and the maximum length.
+The app SHALL check a PIN against the rules that the bank publishes for it before it sends the PIN, and it SHALL name the broken rule. The rules cover digits only, the minimum length, and the maximum length. A saved PIN that breaks a rule is deleted.
+
+#### Scenario: Saved PIN breaks a new rule
+
+- **GIVEN** the app has the PIN "123456" of "Musterbank" saved, and "Musterbank" now accepts at most 5 digits
+- **WHEN** the automatic refresh runs
+- **THEN** the app sends nothing to the bank and deletes the saved PIN
+- **AND** the next manual refresh asks for the PIN
 
 #### Scenario: Letters in a numeric PIN
 
@@ -106,7 +113,7 @@ The app SHALL keep a PIN that is not saved in memory after a successful login an
 
 ### Requirement: Remove a saved PIN
 
-The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved.
+The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved. For an extension access the button uses the word of the extension for its secret, for example "Remove saved Password".
 
 #### Scenario: Remove
 
@@ -218,7 +225,7 @@ The app SHALL not show a PIN sheet for an automatic refresh. It skips an access 
 
 ### Requirement: One set of rules for all access kinds
 
-The app SHALL apply the same rules to the secrets of extensions and of the subscription as to FinTS PINs. A secret is saved only on request, a saved secret lives in the encrypted database, and an unsaved secret is forgotten when the app locks or quits.
+The app SHALL apply the same rules to the secrets of extensions and of the subscription as to FinTS PINs. A secret is saved only on request and only after the service accepted it, a saved secret lives in the encrypted database, "Remove saved PIN" deletes it, a rejection deletes it, and an unsaved secret is forgotten when the app locks or quits. The login data of an extension is saved as a whole, with every field of its login dialog.
 
 #### Scenario: Extension password not saved
 
@@ -228,6 +235,42 @@ The app SHALL apply the same rules to the secrets of extensions and of the subsc
 
 #### Scenario: Extension password saved
 
-- **GIVEN** the user saved the password of an extension access
-- **WHEN** the user clicks "Remove saved PIN" in the settings of an account of that access
-- **THEN** the saved password is deleted
+- **GIVEN** the login dialog of the extension service "Demo TAN" asks for "Username" and "Password"
+- **WHEN** the user enters "erika" and "geheim", turns on "Save Password", and the service accepts the login
+- **THEN** the app stores "erika" and "geheim" for that access
+- **AND** the automatic refresh after a restart of the app logs in with them and shows no dialog
+
+#### Scenario: Extension password option left off
+
+- **WHEN** the user enters "erika" and "geheim" in the login dialog of "Demo TAN" and leaves "Save Password" off
+- **THEN** the app does not store the login data in the database
+
+#### Scenario: Extension password rejected with the save option on
+
+- **WHEN** the user enters "erika" and "falsch", turns on "Save Password", and the service rejects the login
+- **THEN** the app stores no login data for that access
+
+#### Scenario: Saved extension password no longer valid
+
+- **GIVEN** the app has "erika" and "geheim" saved for the access of "Demo TAN"
+- **WHEN** the automatic refresh logs in and the service rejects the login
+- **THEN** the app deletes the saved login data and sends it no second time
+- **AND** the next manual refresh asks for the username and the password
+
+#### Scenario: Remove a saved extension password
+
+- **GIVEN** the user saved the login data of the access of "Demo Giro", whose login dialog calls its secret "Password"
+- **WHEN** the user clicks "Remove saved Password" in the settings of "Demo Giro" and clicks "OK"
+- **THEN** the saved login data is deleted
+- **AND** the next manual refresh of "Demo Giro" asks for the username and the password
+
+### Requirement: Saved login data answers only the same fields
+
+The app SHALL send saved login data of an extension only when the login dialog of the extension has the same fields in the same order, each hidden or shown as before. Otherwise it deletes the saved login data and asks the user.
+
+#### Scenario: Extension login fields changed
+
+- **GIVEN** the app has "erika" and "geheim" saved for the fields "Username" and "Password" of the access of "Demo TAN"
+- **WHEN** an update of the extension asks for "Password" first and "Username" second, and the automatic refresh runs
+- **THEN** the app sends no login data and deletes the saved login data
+- **AND** the next manual refresh asks for the password and the username

@@ -5,12 +5,14 @@ import SwiftUI
 /// Asks for the login data of an extension service, with the fields of its manifest or "Username"
 /// and "Password". A secret field hides what the user types and is not offered to the password manager.
 /// In a refresh the dialog names the access, as the PIN sheet does: the title has the service, a line has
-/// the accounts, and the first field starts with the user ID of the access.
+/// the accounts, and the first field starts with the user ID of the access. "Save Password" is off each time the
+/// dialog appears, as "Save PIN" in the PIN sheet, and the broker saves the login data only after the service accepted it.
 struct ExtensionLoginDialog: View {
 	let broker: SessionBroker
 	let prompt: Prompt
 	let request: LoginRequest
 	@State private var values: [String]
+	@State private var save = false
 
 	init(broker: SessionBroker, prompt: Prompt, request: LoginRequest) {
 		self.broker = broker
@@ -42,6 +44,8 @@ struct ExtensionLoginDialog: View {
 						TextField(field.label, text: $values[index], prompt: Text("Required")).textContentType(nil)
 					}
 				}
+				Toggle("Save \(request.secretName)", isOn: $save)
+					.toggleStyle(.checkbox)
 			} footer: {
 				Text("Moneten sends the login data only to the hosts of the extension.").foregroundStyle(.secondary)
 			}
@@ -53,6 +57,6 @@ struct ExtensionLoginDialog: View {
 
 	private func confirm() {
 		guard !values.contains(where: \.isEmpty) else { return }
-		broker.answer(.login(values.map(Secret.init)), to: prompt.id)
+		broker.answer(.login(values.map(Secret.init), save: save), to: prompt.id)
 	}
 }

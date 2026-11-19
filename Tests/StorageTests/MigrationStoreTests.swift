@@ -5,6 +5,7 @@ import GRDB
 import Synchronization
 import StorageTestSupport
 import Testing
+import TestSupport
 @testable import Storage
 
 @Suite("Migration storage")
@@ -176,7 +177,8 @@ struct MigrationStoreTests {
 		}
 		cancelTask.withLock { $0 = { task.cancel() } }
 		assigned.signal()
-		await withCheckedContinuation { done in DispatchQueue.global().async { writing.wait(); done.resume() } }
+		// On a thread of its own: on the global queue the wait kept one of the few threads of a runner of CI (issue #541).
+		await onOwnThread { writing.wait() }
 		// The read waits for the writer, as the check of the file does in the app.
 		let read = Task.detached { store.isChangedOnDisk() }
 		await #expect(throws: CancellationError.self) { _ = try await task.value }

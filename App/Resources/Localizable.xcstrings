@@ -2007,6 +2007,66 @@
         }
       }
     },
+    "Could not remove the rejected login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die abgelehnten Zugangsdaten konnten nicht entfernt werden."
+          }
+        }
+      }
+    },
+    "Could not remove the saved login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Zugangsdaten konnten nicht entfernt werden."
+          }
+        }
+      }
+    },
+    "Could not save the login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zugangsdaten konnten nicht gespeichert werden."
+          }
+        }
+      }
+    },
+    "Remove saved %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nicht mehr speichern"
+          }
+        }
+      }
+    },
+    "Remove the saved login data of “%@”?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Zugangsdaten von „%@“ entfernen?"
+          }
+        }
+      }
+    },
+    "The login data is removed for every account of this access. The next refresh asks for it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zugangsdaten werden für jedes Konto dieses Zugangs entfernt. Die nächste Aktualisierung fragt danach."
+          }
+        }
+      }
+    },
     "amount" : {
       "localizations" : {
         "de" : {
