@@ -368,6 +368,26 @@ final class DebugHarness {
 			}
 		// The row in edit mode, the field that has the focus, and the selected group with its place, names by hash.
 		case "naming": logNaming()
+		#if DEBUG || PERF_HARNESS
+		// "<place> account|category" chooses "Add Account Group" or "Add Category Group" in a menu as the user does:
+		// "context <row>" in the context menu of a sidebar row, and "menubar" in the Account menu. The log names the place,
+		// whether the item was found, and whether it was enabled. The add menu below the sidebar opens only on a click,
+		// which an app in the background does not pass on, and its items call the same functions.
+		case "groupmenu": groupMenu(argument)
+		// "<name>" draws the sidebar list of the main window as it is, with a row in edit mode, into "<name>-sidebarlist.png".
+		// "sidebarsnapshot" draws a second sidebar, whose own row in edit mode would end the edit mode of the window.
+		case "sidebarlistsnapshot": sidebarListSnapshot(argument)
+		// "accounts on|off" or "categories on|off" shows or hides the rows of a sidebar section, as its header does.
+		case "section":
+			let parts = argument.split(separator: " ")
+			let shown = parts.last != "off"
+			if parts.first == "categories" { model.showsCategoriesSection = shown } else { model.showsAccountsSection = shown }
+			log("section", ("", .choice(String(parts.first ?? ""), of: ["accounts", "categories"])), ("shown", .flag(shown)))
+		// Moves the focus of the main window to the sidebar list, as a click on another sidebar row does.
+		case "namefocus":
+			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
+			log("namefocus", ("moved", .flag(window.makeFirstResponder(list))))
+		#endif
 		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it.
 		case "namekey":
 			let keys: [StaticString] = ["return", "escape"]
@@ -818,6 +838,12 @@ final class DebugHarness {
 		// "<group>|on" or "<group>|off" expands or collapses a group, as its disclosure triangle does.
 		case "expand":
 			let parts = argument.components(separatedBy: "|")
+			#if DEBUG || PERF_HARNESS
+			// A category group, through the function of its disclosure triangle.
+			if model.ledger.groups.first(where: { $0.name == parts[0] }) == nil, let c = model.ledger.categories.first(where: { $0.isGroup && $0.name == parts[0] }) {
+				return model.setExpanded(category: c.id, parts.last != "off")
+			}
+			#endif
 			guard var g = model.ledger.groups.first(where: { $0.name == parts[0] }) else { return log("expand no group") }
 			g.isExpanded = parts.last != "off"
 			model.save(group: g)
@@ -1996,8 +2022,13 @@ final class DebugHarness {
 		guard let model else { return }
 		let window = NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
 		let editor = window?.firstResponder as? NSTextView
-		var values: [(StaticString, LogValue)] = [("row", .state(model.namingRow)), ("editor", .flag(editor != nil)),
-			("text", editor.map { .hash($0.string) } ?? .presence(false))]
+		// Whether the field with the focus lies inside the part of the sidebar on screen.
+		let list = sidebarList()
+		let inSidebar = editor.flatMap { e in list.map { (e.delegate as? NSView)?.isDescendant(of: $0) == true } } ?? false
+		let visible = editor.flatMap { e in list.map { $0.visibleRect.intersects(e.convert(e.bounds, to: $0)) } } ?? false
+		var values: [(StaticString, LogValue)] = [("row", .state(model.namingRow)), ("editor", .flag(editor != nil)), ("insidebar", .flag(inSidebar)),
+			("text", editor.map { .hash($0.string) } ?? .presence(false)), ("visible", .flag(visible)),
+			("sections", .list([.flag(model.showsAccountsSection), .flag(model.showsCategoriesSection)]))]
 		switch model.selection {
 		case let .group(id):
 			let group = model.ledger.group(id)
@@ -2014,6 +2045,50 @@ final class DebugHarness {
 		}
 		log(LogLine("naming", values: values))
 	}
+
+	#if DEBUG || PERF_HARNESS
+	private func groupMenu(_ argument: String) {
+		let parts = argument.split(separator: " ").map(String.init)
+		let category = parts.last == "category"
+		// SwiftUI gives a menu item no identifier, so the item is found by the text that the user reads, in the language of this run.
+		let titles = category ? [String(localized: "Add Category Group"), String(localized: "Add category group")]
+			: [String(localized: "Add Account Group"), String(localized: "Add account group")]
+		let menu: NSMenu? = switch parts.first {
+		case "context": parts.count == 3 ? Int(parts[1]).flatMap { contextMenu(row: $0, sidebar: true) } : nil
+		case "menubar": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { titles.contains($0.title) } }
+		default: nil
+		}
+		// The Account menu has a delegate that enables its items, as "menu" reads them.
+		if let menu { menu.delegate?.menuNeedsUpdate?(menu) }
+		menu?.update()
+		let place = LogValue.choice(parts.first ?? "", of: ["context", "menubar"])
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else {
+			return log("groupmenu", ("", place), ("found", .flag(false)))
+		}
+		let item = menu.items[index]
+		log("groupmenu", ("", place), ("found", .flag(true)), ("enabled", .flag(item.isEnabled)), ("category", .flag(category)))
+		if item.isEnabled { menu.performActionForItem(at: index) }
+	}
+
+	/// The sidebar material takes its look from what lies behind the window, and a cache of the list draws the rows as
+	/// they were drawn last, so the picture shows the rows of the appearance at the start of the run.
+	private func sidebarListSnapshot(_ name: String) {
+		guard let list = sidebarList(), let rep = list.bitmapImageRepForCachingDisplay(in: list.visibleRect) else { return log("sidebarlistsnapshot no list") }
+		list.cacheDisplay(in: list.visibleRect, to: rep)
+		let size = list.visibleRect.size
+		let image = NSImage(size: size, flipped: false) { rect in
+			NSColor.windowBackgroundColor.setFill()
+			rect.fill()
+			rep.draw(in: rect)
+			return true
+		}
+		list.effectiveAppearance.performAsCurrentDrawingAppearance {
+			guard let tiff = image.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { return }
+			try? png.write(to: folder.appendingPathComponent("\(name)-sidebarlist.png"))
+		}
+		log("snapshot sidebarlist", ("width", .count(Int(size.width))), ("height", .count(Int(size.height))))
+	}
+	#endif
 
 	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
 	private func logSidebarRows() {

@@ -1323,6 +1323,14 @@ final class AppModel {
 		}
 	}
 
+	/// The disclosure triangle of a group row. The row can call it with the group of an earlier drawing, so the group
+	/// comes from the ledger: a copy from the drawing before a rename in the sidebar would store the old name again.
+	func setExpanded(group id: UUID, _ expanded: Bool) {
+		guard var g = ledger.group(id), g.isExpanded != expanded else { return }
+		g.isExpanded = expanded
+		save(group: g)
+	}
+
 	/// "Move to Group" and a drop on a group row put the account at the end of the group.
 	func move(account id: UUID, toGroup groupID: UUID?) {
 		guard ledger.account(id).map({ $0.groupID != groupID }) == true else { return }
@@ -1591,6 +1599,13 @@ final class AppModel {
 			if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
 			selection = .category(c.id)
 		}
+	}
+
+	/// The disclosure triangle of a category group, with the category from the ledger, as in `setExpanded(group:_:)`.
+	func setExpanded(category id: UUID, _ expanded: Bool) {
+		guard var c = ledger.category(id), c.isExpanded != expanded else { return }
+		c.isExpanded = expanded
+		save(category: c)
 	}
 
 	/// "Add Category Group" stores a new group beside the selection and puts its row in edit mode for the name.
