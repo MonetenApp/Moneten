@@ -20,7 +20,7 @@ public struct BankDirectory: Sendable {
 		/// The entry under the name of its brand, such as "VR-Bank Altenburger Land / Skatbank".
 		var branded: Entry {
 			guard let name = CooperativeBanks.brandNames[code] ?? DeutscheBankGroup.brandNames[code] ?? FlatexDegiro.brandNames[code]
-				?? Fintechs.names[code] ?? PayCenter.brandNames[code] else { return self }
+				?? Fintechs.names[code] ?? Consorsbank.brandNames[code] ?? PayCenter.brandNames[code] else { return self }
 			return Entry(code: code, city: city, bank: FinTSBank(name: name, bic: bank.bic, url: bank.url))
 		}
 
@@ -59,7 +59,7 @@ public struct BankDirectory: Sendable {
 		// Sorted once by name, so that the list without a search needs no sort.
 		self.entries = entries.map { entry in
 			let hint = entry.loginHint
-			let common = hint?.bankName ?? CooperativeBanks.knownNames[entry.code] ?? ""
+			let common = hint?.bankName ?? CooperativeBanks.knownNames[entry.code] ?? Consorsbank.knownNames[entry.code] ?? ""
 			let start = Self.words(String(entry.bank.name.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).first ?? "")) + Self.words(common)
 			return Indexed(entry: entry, start: start, words: Self.words(entry.bank.name) + Self.words(entry.city) + Self.words(common), hinted: hint != nil,
 				sortKey: Self.sortKey(entry))

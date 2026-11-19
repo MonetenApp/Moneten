@@ -156,6 +156,18 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// In an account with bank access, a manual row covers what the bank does not deliver.
 	public var takesManualTransactions: Bool { kind != .portfolio }
 
+	/// "Import Transactions..." works in the same accounts. A file holds transactions, and a portfolio has positions.
+	public var takesImportedTransactions: Bool { kind != .portfolio }
+
+	/// The bank entry with which "Connect..." of a migrated account starts the assistant: the IBAN, else the
+	/// Bankleitzahl, else nothing, so that the user types the bank. A migrated account can hold the BIC of the
+	/// source as its bank code, which the bank step does not take.
+	public var setupEntry: String {
+		if let iban { return iban.electronic }
+		guard let bankCode, bankCode.count == 8, bankCode.allSatisfy({ $0.isASCII && $0.isNumber }) else { return "" }
+		return bankCode
+	}
+
 	/// The balance that a portfolio or an open account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
 	/// the balance of the source, and a closed one, whose clearing entry brings the computed balance to zero.
@@ -219,12 +231,7 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 
 	/// The initial balance at which the booked rows up to the end of the day of the bank balance add up to
 	/// the bank balance. `rows` are all live rows of the account. The pending rows then count on top. Nil without a bank
-	/// balance, and when the initial balance would be above `Money.maxMinorUnits`, because a stored value is never clamped.
-	public func initialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int64? {
-		exactInitialBalanceMeetingBankBalance(of: rows, calendar: calendar).flatMap(Int64.init(limitedAmount:))
-	}
-
-	/// The initial balance that meets the bank balance before it holds at the bounds of `Int64`, so that a calibration adds up exactly.
+	/// balance. The value is exact, so that the caller refuses one above `Money.maxMinorUnits` instead of clamping it.
 	func exactInitialBalanceMeetingBankBalance(of rows: some Sequence<Transaction>, calendar: Calendar = .current) -> Int128? {
 		bankBalanceMinor.map { Int128($0) - bookedSum(of: rows, through: Day(bankBalanceDate ?? Date(), calendar: calendar)) }
 	}

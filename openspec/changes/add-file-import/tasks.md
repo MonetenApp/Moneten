@@ -36,6 +36,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [x] 1.30 Pending file transactions already stored. ReconcileTests verifies seven-day duplicate skipping, closest-day and stable tie choice, one-to-one counts, and user fields. FileImportTests verifies the daily FUTR entry after a bank takeover and after the bank row was stored first.
 - [x] 1.31 Amounts beyond the range of the app. Verified by FileImportTests "A CSV amount whose minor units do not fit is rejected with its line, instead of turning into another amount", "An MT940 file with a transaction that cannot be read is rejected with its line", and "A CAMT file with an entry that cannot be read is rejected with its line", which fail before `Money(fitting:currency:)` (#275).
+- [x] 1.32 A portfolio never takes a file (issues #513 and #521). FileAccountTests "A file that names a portfolio asks for the selected account or a new offline account, and a selected portfolio never keeps a file" and "Of two accounts with the number of a file, the one in the currency of the file takes it, and a portfolio never does" fail before `FileAccount.destination` leaves portfolios out. FileAccountImportTests "An open account outranks a closed match, below the file currency" now expects the closed giro account in place of an open portfolio. `importFiles` refuses a portfolio, and the storing of each file checks its account once more. "Import File..." after a failed migration lists no portfolio.
 
 ## 2. Changes to the first build
 

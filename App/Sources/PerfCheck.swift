@@ -624,6 +624,10 @@ struct PerfScenario {
 		let shown = c.model.alerts.panel != nil
 		let alertTook = clock.now - ended
 		let canceled = c.model.alert?.message.hasPrefix("Import canceled. 0 files were imported before.") == true
+		// A user reads the result before closing it. Closing it at once glued its slide out to the slides of the import
+		// sheet and of the alert, in which AppKit blocks the main thread, and the scenario measured them as one stall of
+		// about a second (issue #519). The slide out still counts, as a stall of its own.
+		await c.settle()
 		c.harness.run("alert", "")
 		c.harness.log("perf cancel", ("cancel_ms", .count(Int((took / .milliseconds(1)).rounded()))), ("canceled", .flag(canceled)),
 			("alert_ms", .count(Int((alertTook / .milliseconds(1)).rounded()))), ("shown", .flag(shown)))
@@ -642,6 +646,9 @@ struct PerfScenario {
 	/// The import of "cancel-large-import", which its setup starts and its run cancels.
 	private static var pendingImport: Task<Void, Never>?
 	/// A canceled write rolls back and the sheet closes. Before the cancel was checked in the write, it waited for all rows.
+	/// Before issue #519 the end waited behind the slides of the import sheet and of the alert, about 700 ms on a Mac. It
+	/// takes 40 to 450 ms now. The limit stays at 2 seconds, because the scenarios have no factor for a slow runner, and a
+	/// runner that GitHub hosts took 2,039 ms before the change.
 	private static let cancelLimit = Duration.seconds(2)
 	/// The result shows once the sheet has slid out. A sheet without `onDismiss` holds it back for 3 seconds, so this waits longer.
 	private static let alertLimit = Duration.seconds(4)

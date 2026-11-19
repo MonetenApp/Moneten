@@ -163,4 +163,66 @@ struct AccountTreeTests {
 		#expect(markers.failedAccounts.map(\.name) == ["Girokonto"])
 		#expect(l.markers(ofGroup: family.id) == GroupMarkers(newTransactions: 2, failedAccounts: []))
 	}
+
+	/// The scenarios of "Remove an account group" in openspec/changes/add-account-management/specs/account-management/spec.md.
+	@Test("A removed nested group leaves its accounts and subgroups in its place in the group above it, with their transactions")
+	func removeNestedGroup() {
+		let privat = AccountGroup(name: "Private", position: 0)
+		let giro = Account(groupID: privat.id, position: 0, name: "Giro", kind: .giro, source: .offline)
+		let cards = AccountGroup(name: "Cards", parentID: privat.id, position: 1)
+		let savings = Account(groupID: privat.id, position: 2, name: "Savings", kind: .savings, source: .offline)
+		let visa = Account(groupID: cards.id, position: 0, name: "Visa", kind: .creditCard, source: .offline)
+		let oldCards = AccountGroup(name: "Old cards", parentID: cards.id, position: 1)
+		let master = Account(groupID: oldCards.id, position: 0, name: "Mastercard", kind: .creditCard, source: .offline)
+		let bookings = (1...3).map { Transaction(accountID: visa.id, bookingDate: Day(year: 2026, month: 11, day: $0), amountMinor: -1_250, name: "Bäckerei Muster") }
+		var l = Ledger(groups: [privat, cards, oldCards], accounts: [giro, savings, visa, master], transactions: bookings)
+
+		let change = l.removal(ofGroup: cards.id)
+		l.remove(group: cards.id, moving: change)
+
+		#expect(rows(l, in: privat.id) == ["0 Giro", "1 Visa", "2 Old cards", "3 Savings"])
+		#expect(rows(l, in: oldCards.id) == ["0 Mastercard"])
+		#expect(rows(l, in: nil) == ["0 Private"])
+		#expect(l.group(cards.id) == nil)
+		#expect(l.transactions.filter { $0.accountID == visa.id }.count == 3)
+		// Only the rows whose parent or position changed are written.
+		#expect(Set(change.accounts.map(\.name)) == ["Visa", "Savings"])
+		#expect(change.groups.map(\.name) == ["Old cards"])
+	}
+
+	@Test("A removed top level group leaves its accounts at the top level in its place")
+	func removeTopLevelGroup() {
+		let bargeld = Account(position: 0, name: "Bargeld", kind: .cash, source: .offline)
+		let privat = AccountGroup(name: "Private", position: 1)
+		let depot = Account(position: 2, name: "Depot", kind: .portfolio, source: .offline)
+		let giro = Account(groupID: privat.id, position: 0, name: "Giro", kind: .giro, source: .offline)
+		let savings = Account(groupID: privat.id, position: 1, name: "Savings", kind: .savings, source: .offline)
+		var l = Ledger(groups: [privat], accounts: [bargeld, depot, giro, savings])
+
+		l.remove(group: privat.id, moving: l.removal(ofGroup: privat.id))
+
+		#expect(rows(l, in: nil) == ["0 Bargeld", "1 Giro", "2 Savings", "3 Depot"])
+		#expect(l.groups.isEmpty)
+	}
+
+	@Test("Removing a group takes only the parent and the position from the change, so a refresh that stored an account meanwhile keeps its balance")
+	func removeGroupKeepsRefresh() {
+		let privat = AccountGroup(name: "Private", position: 0)
+		let giro = Account(groupID: privat.id, position: 0, name: "Giro", kind: .giro, source: .bank)
+		var l = Ledger(groups: [privat], accounts: [giro])
+		let change = l.removal(ofGroup: privat.id)
+		var refreshed = giro
+		refreshed.bankBalanceMinor = 123_45
+		l.upsert(refreshed)
+
+		l.remove(group: privat.id, moving: change)
+
+		#expect(l.account(giro.id)?.bankBalanceMinor == 123_45)
+		#expect(l.account(giro.id)?.groupID == nil)
+	}
+
+	@Test("An unknown group gives no change")
+	func removeUnknownGroup() {
+		#expect(Ledger().removal(ofGroup: UUID()).isEmpty)
+	}
 }

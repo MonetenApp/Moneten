@@ -76,7 +76,14 @@ struct HeaderView: View {
 					HStack(spacing: 8) {
 						if let iban = account.iban { Text(iban.formatted) }
 						switch account.source {
-						case .migrated: Text("Taken over from MoneyMoney. Not connected to a bank yet.")
+						case .migrated:
+							Text("Taken over from MoneyMoney. Not connected to a bank yet.")
+							// The assistant finds the account at its bank and offers to connect it. It leaves a closed account
+							// as it is, so a closed account has no offer.
+							if !account.isClosed {
+								Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
+									.controlSize(.small)
+							}
 						case .offline: Text("Offline account")
 						case .bank: AccountRefreshLine(account: account)
 						}
@@ -403,8 +410,8 @@ struct CustomAmountView: View {
 		VStack(spacing: 0) {
 			SheetForm {
 				Section {
-					TextField("min. amount", text: $min, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(min)
-					TextField("max. amount", text: $max, prompt: Text("0,00")).multilineTextAlignment(.trailing).monospacedDigit()
+					TextField("min. amount", text: $min, prompt: Text(verbatim: Format.emptyAmount())).multilineTextAlignment(.trailing).monospacedDigit().marksUnreadableAmount(min)
+					TextField("max. amount", text: $max, prompt: Text(verbatim: Format.emptyAmount())).multilineTextAlignment(.trailing).monospacedDigit()
 						.foregroundStyle(Format.isReadableAmount(max) && range != nil ? Color.primary : Palette.red)
 				}
 			}
@@ -456,10 +463,8 @@ struct TransactionTable: View {
 		} else {
 			// As in MoneyMoney, measured in its window: no column headers and no stripes, rows of 55 points
 			// across the full width with a line below each, the category as a ribbon below the date,
-			// the amount larger and without the currency of the view, and the checkmark at the end.
-			// A pending transaction is hatched.
-			// Amounts omit the currency only when the whole view has one. A mixed group keeps it on every row.
-			let currency = rows.first.flatMap { first in rows.allSatisfy { $0.currency == first.currency } ? first.currency : nil }
+			// the amount larger, and the checkmark at the end. A pending transaction is hatched. Every amount shows
+			// its currency, also the currency of the view (issue #464).
 			let balances = dayEndBalances
 			let checkmarks = model.showsCheckmarks
 			// The rows go in as a collection and carry no modifier. A ForEach of rows, and even more a
@@ -475,7 +480,7 @@ struct TransactionTable: View {
 					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
 					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
 					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency, balances: balances, checkmarks: checkmarks)
+						columns(balances: balances, checkmarks: checkmarks)
 					} rows: {
 						ForEach(sections, id: \.account.id) { section in
 							Section(section.account.name) {
@@ -485,7 +490,7 @@ struct TransactionTable: View {
 					}
 				} else {
 					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(currency: currency, balances: balances, checkmarks: checkmarks)
+						columns(balances: balances, checkmarks: checkmarks)
 					}
 				}
 			}
@@ -522,7 +527,7 @@ struct TransactionTable: View {
 	}
 
 	@TableColumnBuilder<Transaction, Never>
-	private func columns(currency: String?, balances: [UUID: Money], checkmarks: Bool) -> some TableColumnContent<Transaction, Never> {
+	private func columns(balances: [UUID: Money], checkmarks: Bool) -> some TableColumnContent<Transaction, Never> {
 			TableColumn("Date") { (t: Transaction) in
 				DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
 			}
@@ -553,7 +558,7 @@ struct TransactionTable: View {
 									.lineLimit(1)
 									.modifier(OriginalAmountHelp(original: original, text: text))
 							}
-							AmountText(money: t.amount, showsCurrency: t.currency != currency)
+							AmountText(money: t.amount)
 								.font(.system(size: 18))
 								.modifier(PendingValue(pending: t.isPending))
 								.layoutPriority(1)

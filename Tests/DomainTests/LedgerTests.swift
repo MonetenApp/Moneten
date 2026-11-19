@@ -932,10 +932,10 @@ struct LedgerTests {
 			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: day), amountMinor: minor, currency: currency, name: "Row", isPending: pending)
 		}
 		let rows = [row(2, 100_000), row(5, -30_000), row(9, -3_000, pending: true), row(12, -5_000), row(6, -1_000, currency: "USD")]
-		#expect(giro.initialBalanceMeetingBankBalance(of: rows) == 180_000)
+		#expect(giro.exactInitialBalanceMeetingBankBalance(of: rows) == 180_000)
 		var offline = giro
 		offline.bankBalanceMinor = nil
-		#expect(offline.initialBalanceMeetingBankBalance(of: rows) == nil)
+		#expect(offline.exactInitialBalanceMeetingBankBalance(of: rows) == nil)
 	}
 
 	@Test("A bank balance that the booked rows miss proposes a calibration, and a pending row or an account without a bank access proposes none")

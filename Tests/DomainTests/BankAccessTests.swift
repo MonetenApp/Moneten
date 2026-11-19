@@ -165,6 +165,103 @@ struct BankAccessTests {
 		#expect(ledger.accountsToAdd([first, second], listed: [first, second], connecting: [second.id: migrated.id]).map(\.id) == [first.id, migrated.id])
 	}
 
+	@Test("A migrated account starts the assistant with its IBAN, else its Bankleitzahl")
+	func setupEntry() {
+		#expect(Self.migrated("Giro").setupEntry == "DE02120300000000202051")
+		let numbered = Account(position: 0, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		#expect(numbered.setupEntry == "12030000")
+		#expect(Account(position: 0, name: "Bar", kind: .cash, source: .migrated).setupEntry == "")
+		#expect(Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, accountNumber: "9", bankCode: "DEUTDEFFXXX").setupEntry == "")
+	}
+
+	@Test("Connect chooses the account in the one row with a choice that it matches, and in none when it matches several")
+	func connectFromAccount() {
+		let giro = Self.migrated("Giro")
+		let household = Self.migrated("Haushalt")
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		let shared = SetupListing([listed], in: Ledger(accounts: [giro, household]))
+		#expect(shared.connecting(household) == [listed.id: household.id])
+		#expect(Ledger(accounts: [giro, household]).accountsToAdd([listed], listed: [listed], connecting: shared.connecting(household)).map(\.id) == [household.id])
+		// An account that the setup connects on its own, and an account that no row matches, need no choice.
+		#expect(SetupListing([listed], in: Ledger(accounts: [giro])).connecting(giro) == [:])
+		#expect(shared.connecting(Self.migrated("Andere", currency: "USD")) == [:])
+
+		let savings = Account(position: 0, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		let first = Self.candidate("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = Self.candidate("Sparkonto 02", number: "9", remoteID: "9/02")
+		#expect(SetupListing([first, second], in: Ledger(accounts: [savings])).connecting(savings) == [:])
+	}
+
+	@Test("Connect chooses nothing when the account matches a listed account that the app has connected already, besides the one row with a choice")
+	func connectBesidePresent() {
+		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",
+			accessID: Self.accessID, remoteID: "9/01")
+		let savings = Account(position: 1, name: "Sparen", kind: .savings, source: .migrated, accountNumber: "9", bankCode: "12030000")
+		let ledger = Ledger(accounts: [linked, savings])
+		let first = Self.candidate("Sparkonto 01", number: "9", remoteID: "9/01")
+		let second = Self.candidate("Sparkonto 02", number: "9", remoteID: "9/02")
+		// Only 9/02 is a choice, but "Sparen" may belong to 9/01 as well.
+		#expect(SetupListing([first, second], in: ledger).candidates.map(\.match) == [.present(linked), .choice([savings])])
+		#expect(SetupListing([first, second], in: ledger).connecting(savings) == [:])
+		#expect(SetupListing([first, second], in: ledger, onlyNew: true).connecting(savings) == [:])
+	}
+
+	@Test("A portfolio and an account of another type never match, also with the same IBAN or the same number")
+	func portfolioApart() {
+		let depot = Account(position: 0, name: "Depot", kind: .portfolio, source: .migrated, accountNumber: "202051", bankCode: "12030000")
+		let giro = Self.migrated("Giro")
+		let ledger = Ledger(accounts: [depot, giro])
+		let listedGiro = Self.candidate("Girokonto", number: "202051")
+		#expect(ledger.setupMatch(for: listedGiro, listed: [listedGiro]) == .new)
+		#expect(SetupListing([listedGiro], in: ledger).connecting(depot) == [:])
+		// Not even a choice that the picker could not offer connects them.
+		#expect(ledger.accountsToAdd([listedGiro], listed: [listedGiro], connecting: [listedGiro.id: depot.id]).map(\.id) == [listedGiro.id])
+
+		var listedDepot = Self.candidate("Depot", iban: "DE02120300000000202051", number: "202051")
+		listedDepot.kind = .portfolio
+		#expect(ledger.setupMatch(for: listedDepot, listed: [listedDepot]) == .connects(depot))
+		#expect(Ledger(accounts: [giro]).setupMatch(for: listedDepot, listed: [listedDepot]) == .new)
+		var ibanDepot = Self.migrated("Depot mit IBAN")
+		ibanDepot.kind = .portfolio
+		let listedIBAN = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(Ledger(accounts: [ibanDepot]).setupMatch(for: listedIBAN, listed: [listedIBAN]) == .new)
+	}
+
+	/// The account after a refresh that reports the value of a securities account, as `Reconcile` makes it.
+	static func refreshedAsPortfolio(_ account: Account) throws -> Account {
+		let result = RefreshResult(balance: Money(minorUnits: 2_451_837, currency: "EUR"), transactions: nil, isPortfolio: true)
+		let merged = reconcile(.refresh(result), into: account, stored: [], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [account])), now: noon)
+		return try #require(merged.account)
+	}
+
+	@Test("A FinTS account that a refresh made a portfolio stays present for Look for New Accounts while the bank lists it as a giro account")
+	func refreshedPortfolioFinTS() throws {
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: Self.accessID, remoteID: "DE02120300000000202051")
+		let refreshed = try Self.refreshedAsPortfolio(giro)
+		#expect(refreshed.kind == .portfolio)
+		let ledger = Ledger(accounts: [refreshed])
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(listed.kind == .giro)
+		#expect(ledger.setupMatch(for: listed, listed: [listed]) == .present(refreshed))
+		#expect(SetupListing([listed], in: ledger, onlyNew: true).candidates.isEmpty)
+		#expect(ledger.accountsToAdd([listed], listed: [listed]).isEmpty)
+	}
+
+	@Test("An extension account that a refresh made a portfolio stays present for its access and for a new setup of the same login")
+	func refreshedPortfolioExtension() throws {
+		let shares = Account(position: 0, name: "Aktien", kind: .giro, source: .bank, accountNumber: "4711", accessID: Self.accessID, remoteID: "acc-4711")
+		let refreshed = try Self.refreshedAsPortfolio(shares)
+		#expect(refreshed.kind == .portfolio)
+		let ledger = Ledger(accounts: [refreshed])
+		for access in [Self.accessID, Self.otherAccessID] {
+			var listed = Account(position: 0, name: "Aktien", kind: .giro, source: .bank, accountNumber: "4711", remoteID: "acc-4711")
+			listed.accessID = access
+			#expect(ledger.setupMatch(for: listed, listed: [listed]) == .present(refreshed))
+			#expect(ledger.accountsToAdd([listed], listed: [listed]).isEmpty)
+		}
+	}
+
 	@Test("Look for New Accounts shows only the new subaccount, and matches it against every subaccount that the bank listed")
 	func newSubaccountBesideMigrated() {
 		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",
