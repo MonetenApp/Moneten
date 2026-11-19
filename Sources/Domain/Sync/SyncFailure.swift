@@ -2,7 +2,7 @@ import Foundation
 
 /// A message of the bank: its code and its text. The app shows the text in the words of the bank.
 /// Logs and diagnostics mask it, because it can contain names and amounts.
-public struct BankMessage: Sendable, Equatable {
+public struct BankMessage: Sendable, Hashable {
 	/// The return code, for example "9942" in FinTS. Nil when the source has none.
 	public let code: String?
 	public let text: String
@@ -18,7 +18,7 @@ public struct BankMessage: Sendable, Equatable {
 }
 
 /// Why a refresh of an access or of one account failed. Each case names what the user can do.
-public enum SyncFailure: Error, Sendable, Equatable {
+public enum SyncFailure: Error, Sendable, Hashable {
 	/// An automatic refresh needed a PIN or a second factor.
 	case needsUser(UserRequest.Kind)
 	/// The bank rejected the PIN. The app does not send it again in this refresh.
@@ -51,7 +51,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	case noTANMethod(BankMessage?)
 	/// Like `noTANMethod`, at a bank whose method to set up the app knows, such as DKB. `nextStep` names that method
 	/// and "Edit Login Data...", in place of the general next step.
-	case noTANMethodOfBank(BankMessage?, nextStep: String)
+	case noTANMethodOfBank(BankMessage?, nextStep: NextStep)
 	/// The account was not fetched, because an earlier request of the same session failed.
 	case notFetched
 	/// Any other answer of the bank.
@@ -64,6 +64,19 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The app could not store what the bank delivered for the account. Nothing of the account changed,
 	/// and the next refresh delivers the same rows again.
 	case notSaved(String)
+
+	/// The next step of `noTANMethodOfBank`. A value, not a sentence, so a stored error shows it in the language of
+	/// the app at the time it shows it.
+	public enum NextStep: String, Sendable, Hashable, Codable {
+		/// The approval in the DKB app, which DKB asks for at every login and every download.
+		case dkbApp
+
+		var text: String {
+			switch self {
+			case .dkbApp: String(localized: "Set up the DKB app as the approval method on the website of DKB first, then choose “Edit Login Data...”.")
+			}
+		}
+	}
 
 	/// The bank rejected the PIN or blocked the access or the app, or an extension service rejected the login data,
 	/// so the PIN or the login data must never be sent again.
@@ -167,7 +180,7 @@ public enum SyncFailure: Error, Sendable, Equatable {
 		case let .noTANMethod(m):
 			Self.noTANMethods(m) + "\n" + String(localized: "Set up a TAN method on the website of the bank, then choose “Edit Login Data...”.")
 		case let .noTANMethodOfBank(m, nextStep):
-			Self.noTANMethods(m) + "\n" + nextStep
+			Self.noTANMethods(m) + "\n" + nextStep.text
 		case .notFetched:
 			String(localized: "Canceled because of the previous error.")
 		case let .bank(m):
@@ -186,5 +199,96 @@ public enum SyncFailure: Error, Sendable, Equatable {
 	/// The first line of a failure without a TAN method, with the answer of the bank that showed it.
 	private static func noTANMethods(_ m: BankMessage?) -> String {
 		m.map { String(localized: "There are no available TAN methods: \($0.text)") } ?? String(localized: "There are no available TAN methods.")
+	}
+}
+
+/// The stored form of a failure in the error of a refresh: the name of its case and its values, never a text of the
+/// app, so the app words it in the language that it has when it shows it. The answer of the bank stays as the bank
+/// sent it. Renaming a case changes the stored form.
+extension SyncFailure: Codable {
+	private enum CodingKeys: String, CodingKey {
+		case reason, code, text, accountName, request, detail, nextStep
+	}
+
+	private enum Reason: String, Codable {
+		case needsUser, pinRejected, loginRejected, accessBlocked, appBlocked, loginReplaced, websiteLoginNeeded, tanRejected
+		case approvalDeclined, challengeExpired, invalidChallenge, notRegistered, noTANMethod, noTANMethodOfBank, notFetched, bank
+		case offline, network, unsupported, notSaved
+	}
+
+	private var reason: Reason {
+		switch self {
+		case .needsUser: .needsUser
+		case .pinRejected: .pinRejected
+		case .loginRejected: .loginRejected
+		case .accessBlocked: .accessBlocked
+		case .appBlocked: .appBlocked
+		case .loginReplaced: .loginReplaced
+		case .websiteLoginNeeded: .websiteLoginNeeded
+		case .tanRejected: .tanRejected
+		case .approvalDeclined: .approvalDeclined
+		case .challengeExpired: .challengeExpired
+		case .invalidChallenge: .invalidChallenge
+		case .notRegistered: .notRegistered
+		case .noTANMethod: .noTANMethod
+		case .noTANMethodOfBank: .noTANMethodOfBank
+		case .notFetched: .notFetched
+		case .bank: .bank
+		case .offline: .offline
+		case .network: .network
+		case .unsupported: .unsupported
+		case .notSaved: .notSaved
+		}
+	}
+
+	public func encode(to encoder: Encoder) throws {
+		var c = encoder.container(keyedBy: CodingKeys.self)
+		try c.encode(reason, forKey: .reason)
+		if let m = bankMessage {
+			try c.encodeIfPresent(m.code, forKey: .code)
+			try c.encode(m.text, forKey: .text)
+			try c.encodeIfPresent(m.accountName, forKey: .accountName)
+		}
+		switch self {
+		case let .needsUser(kind): try c.encode(kind, forKey: .request)
+		case let .network(text), let .unsupported(text), let .notSaved(text): try c.encode(text, forKey: .detail)
+		case let .noTANMethodOfBank(_, nextStep): try c.encode(nextStep, forKey: .nextStep)
+		default: break
+		}
+	}
+
+	public init(from decoder: Decoder) throws {
+		let c = try decoder.container(keyedBy: CodingKeys.self)
+		let message = try c.decodeIfPresent(String.self, forKey: .text).map {
+			BankMessage(code: try c.decodeIfPresent(String.self, forKey: .code), text: $0, accountName: try c.decodeIfPresent(String.self, forKey: .accountName))
+		}
+		// The answer of the bank, which most cases must have.
+		func answer() throws -> BankMessage {
+			guard let message else { throw DecodingError.keyNotFound(CodingKeys.text, .init(codingPath: c.codingPath, debugDescription: "The failure has no answer of the bank.")) }
+			return message
+		}
+		func detail() throws -> String { try c.decode(String.self, forKey: .detail) }
+		self = switch try c.decode(Reason.self, forKey: .reason) {
+		case .needsUser: .needsUser(try c.decode(UserRequest.Kind.self, forKey: .request))
+		case .pinRejected: .pinRejected(try answer())
+		case .loginRejected: .loginRejected
+		case .accessBlocked: .accessBlocked(try answer())
+		case .appBlocked: .appBlocked(try answer())
+		case .loginReplaced: .loginReplaced(try answer())
+		case .websiteLoginNeeded: .websiteLoginNeeded(try answer())
+		case .tanRejected: .tanRejected(try answer())
+		case .approvalDeclined: .approvalDeclined(message)
+		case .challengeExpired: .challengeExpired
+		case .invalidChallenge: .invalidChallenge
+		case .notRegistered: .notRegistered
+		case .noTANMethod: .noTANMethod(message)
+		case .noTANMethodOfBank: .noTANMethodOfBank(message, nextStep: try c.decode(NextStep.self, forKey: .nextStep))
+		case .notFetched: .notFetched
+		case .bank: .bank(try answer())
+		case .offline: .offline
+		case .network: .network(try detail())
+		case .unsupported: .unsupported(try detail())
+		case .notSaved: .notSaved(try detail())
+		}
 	}
 }

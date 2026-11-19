@@ -150,6 +150,48 @@ The app SHALL convert a quote or a purchase price in a foreign currency to the a
 - **WHEN** the user opens the portfolio
 - **THEN** the value reads 1.100,00 USD
 
+### Requirement: Purchase price of OLB and Bankhaus Neelmeyer
+
+The app SHALL read the purchase price of a position from a FinTS host that ends in ".olb.de" or is `hbci.neelmeyer.de` as the purchase value of the whole position, divided by the quantity. For a nominal amount, it first converts that value into the currency of the nominal amount with the rate of the position, and gives a percentage. Without such a rate, it keeps the currency of the bank.
+
+#### Scenario: Percentage or no quantity
+
+- **GIVEN** an account on the host `hbci.olb.de` with a bond whose purchase price the bank sends as 97 %, and a position with the quantity 0 and the purchase price 50,00 €
+- **WHEN** the app reads the positions
+- **THEN** the bond keeps the purchase price 97 %, and the position with the quantity 0 has no purchase price
+
+#### Scenario: Units at OLB
+
+- **GIVEN** an account on the host `hbci.olb.de` with 10 units of "Musterwerke AG" and the purchase price 1.000,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 100,00 € per unit
+
+#### Scenario: Bond at Bankhaus Neelmeyer
+
+- **GIVEN** an account on the host `hbci.neelmeyer.de` with a bond of the nominal amount 10.000,00 € and the purchase price 9.800,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 98 %
+
+#### Scenario: Bond in another currency with an exchange rate
+
+- **GIVEN** an account in euros on the host `hbci.olb.de` with a bond of the nominal amount 10.000,00 USD, the purchase price 8.000,00 €, the market value 9.000,00 €, and the exchange rate 1,25 USD per euro
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 100 %
+- **AND** the profit is 1.000,00 €
+
+#### Scenario: Bond in another currency without an exchange rate
+
+- **GIVEN** an account in euros on the host `hbci.olb.de` with a bond of the nominal amount 10.000,00 USD, the purchase price 8.000,00 €, the market value 9.000,00 €, and no exchange rate
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 0,80 € per unit of the nominal amount
+- **AND** the profit is 1.000,00 €
+
+#### Scenario: Other bank
+
+- **GIVEN** an account on the host `fints.musterbank.example` with 10 units of "Musterwerke AG" and the purchase price 1.000,00 €
+- **WHEN** the app reads the positions
+- **THEN** the purchase price is 1.000,00 € per unit
+
 ### Requirement: Profit or loss
 
 The app SHALL compute the profit or loss of a position as its value minus its purchase value, and the percentage as the profit or loss divided by the purchase value. A gain carries the label "Profit" and a deficit the label "Loss". A position without a purchase price shows no profit or loss.

@@ -56,7 +56,8 @@ struct BankDirectoryTests {
 	@Test("A name that starts with the search ranks first, then a word that starts a word, then a word inside a word")
 	func ranking() {
 		#expect(codes("sparkasse") == ["68050101", "72150000", "70150000"])
-		#expect(codes("ing") == ["50010517", "72140052", "72150000"])
+		// "Banking Circle / TF Bank / Vivid" (20220800), a fintech bank that joins every directory, has no FinTS address.
+		#expect(codes("ing") == ["50010517", "72140052", "72150000", "20220800"])
 	}
 
 	@Test("Finds a bank by the short name that its customers know")
@@ -68,7 +69,8 @@ struct BankDirectoryTests {
 	@Test("Banks with a FinTS address come first")
 	func fintsFirst() {
 		#expect(codes("aareal") == ["10010424"])
-		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "10010424"])
+		// The fintech banks that join every directory have no FinTS address either (`Fintechs`).
+		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "20220800", "10010424", "12070088", "37021500", "37021548", "50034200"])
 	}
 
 	@Test("Finds banks by the start of the Bankleitzahl, and a bank by its full Bankleitzahl")
@@ -94,7 +96,8 @@ struct BankDirectoryTests {
 		let directory = BankDirectory([Self.bank("38050000", "Sparkasse Bonn -alt-", "Bonn", url: savings),
 			Self.bank("37050198", "Sparkasse KölnBonn", "Köln", url: savings), Self.bank("50890000", "VR Bank Muster -alt", "Musterstadt")])
 		#expect(directory.search("sparkasse bonn").map(\.code) == ["37050198", "38050000"])
-		#expect(directory.search("bank").map(\.code) == ["50890000"])
+		// The fintech banks without a FinTS address that join every directory rank by their names, as "VR Bank Muster -alt" does.
+		#expect(directory.search("bank").map(\.code) == ["20220800", "12070088", "37021500", "37021548", "50890000", "50034200"])
 		#expect(directory.search("muster").map(\.code) == ["50890000"])
 	}
 
@@ -180,6 +183,6 @@ struct LoginHintTests {
 			#expect(hint.source.scheme == "https", "\(hint.label)")
 			#expect(!hint.help.isEmpty)
 		}
-		#expect(Set(hints.map(\.label)).count == 5)
+		#expect(Set(hints.map(\.label)).count == 6)
 	}
 }

@@ -58,11 +58,16 @@ struct ExtensionsWindow: View {
 			}
 			.frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
 		}
-		.sheet(item: Binding(get: { library.question }, set: { model.extensions.question = $0 })) { question in
+		// A failure waits for `onDismiss`, which comes after the sheet has slid out (`SheetAlerts`).
+		.sheet(item: Binding(get: { library.question }, set: { model.extensions.question = $0 }), onDismiss: { library.alerts.isSheetOnScreen = false }) { question in
 			UpdateConfirmation(question: question)
+				.onAppear { library.alerts.isSheetOnScreen = true }
 		}
-		.alert(library.failure ?? "", isPresented: Binding(get: { library.failure != nil }, set: { if !$0 { model.extensions.failure = nil } })) {
-			Button("OK") {}
+		.onAppear { library.alerts.isViewOnScreen = true }
+		.onDisappear {
+			library.alerts.isViewOnScreen = false
+			// A sheet that goes with the view, for example at the lock, can end without `onDismiss`.
+			library.alerts.isSheetOnScreen = false
 		}
 	}
 

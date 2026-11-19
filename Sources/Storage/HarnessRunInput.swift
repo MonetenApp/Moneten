@@ -1,16 +1,19 @@
-/// The rules for the input of the debug harness commands that click, type made-up rows, or read a day. The harness runs
-/// in a Debug or Perf build without a sandbox, so a click in a save panel would write outside the throwaway folders, and a
-/// command must refuse a value that it would otherwise bend into another one. The rules live here so that a test checks them.
-///
-/// The helpers of this type ship in a Release build too, unused. No compilation condition of the package can leave
-/// them out: `App/project.yml` builds the package of a Perf build as Release, so a condition that a Release build of
-/// the package lacks would take the helpers from the Perf build, whose harness needs them. They read nothing and
-/// change nothing by themselves, and they hold no name of a file.
-public enum HarnessInput {
-	/// Whether the harness may click a control with this title. In a save or open panel only the title `cancel` passes, so a
-	/// panel never writes or reads a file. Elsewhere only a title of `allowed` passes, compared in full, never by prefix.
-	public static func mayClick(_ title: String, allowed: Set<String>, inFilePanel: Bool, cancel: String) -> Bool {
-		inFilePanel ? title == cancel : allowed.contains(title)
+/// The rules for the input of the debug harness commands of the release checks that click, type made-up rows, or read a
+/// day. The harness runs in a Debug or Perf build without a sandbox, so a click in a save panel would write outside the
+/// throwaway folders, and a command must refuse a value that it would otherwise bend into another one. The rules live
+/// here so that a test checks them, and the note on Release builds of `HarnessRun` applies to them too: they hold no
+/// name of a file.
+extension HarnessRun {
+	/// Whether a command of the release checks may click the control `title` on `surface`. A save or open panel takes
+	/// only what `mayPress` lets the harness press there, its "Cancel" in the language of the run, so a panel never
+	/// writes or reads a file. A bank dialog and the surfaces before the unlock take no click of these commands. Any
+	/// other surface takes only a title of `allowed`, compared in full, never by prefix.
+	public static func mayClick(_ title: String, allowed: Set<String>, on surface: Surface, localized: (String) -> String) -> Bool {
+		switch surface {
+		case .filePanel: mayPress(title, isSwitch: false, on: .filePanel, localized: localized)
+		case .other: allowed.contains(title)
+		case .startWindow, .startAlert, .passwordSheet, .bankDialog: false
+		}
 	}
 
 	/// The keys of one made-up row of "addrow" and the check of each value.

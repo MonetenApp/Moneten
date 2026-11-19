@@ -299,6 +299,14 @@ The app SHALL write the complete export in a format that the project documents f
 - **WHEN** a transaction has the amount -1.234,56 €
 - **THEN** the file holds the text "-1234.56" and the currency "EUR"
 
+#### Scenario: A changed required key raises the version
+
+- **GIVEN** a version of the app that reads up to format version 2, where the error of a refresh holds the key `message`
+- **AND** a newer version of the app that stores the error of a refresh as `failure` without `message`
+- **WHEN** the newer version exports an account whose last refresh failed
+- **THEN** the file has format version 3
+- **AND** the older version refuses the file as needing a newer version of the app, not as damaged
+
 ### Requirement: Import a complete export
 
 The app SHALL offer "Import All Data..." in the File menu, which reads a complete export into an empty database. After the import, the accounts, groups, categories, rules, transactions, comments, checkmarks, splits, and identifiers equal those of the exported database.

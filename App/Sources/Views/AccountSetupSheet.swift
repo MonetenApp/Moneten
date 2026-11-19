@@ -132,7 +132,7 @@ final class AccountSetup {
 		case .login: !isLoggingIn && !loginName.trimmingCharacters(in: .whitespaces).isEmpty && !pin.isEmpty
 		// Without a new account "Done" closes "Look for New Accounts...".
 		case .accounts: !selected.isEmpty || (!isListing && candidates.isEmpty)
-		case .offline: !offlineName.trimmingCharacters(in: .whitespaces).isEmpty
+		case .offline: Account.acceptedName(offlineName) != nil
 		}
 	}
 
@@ -179,7 +179,8 @@ final class AccountSetup {
 				finish()
 			}
 		case .offline:
-			let name = offlineName.trimmingCharacters(in: .whitespaces), kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
+			guard let name = Account.acceptedName(offlineName) else { return }
+			let kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
 			Task { await model.addOfflineAccount(name: name, kind: kind, currency: currency, groupID: group) }
 			model.closeAccountSetup()
 		}

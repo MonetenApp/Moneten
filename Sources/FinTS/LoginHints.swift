@@ -44,7 +44,7 @@ public struct LoginHint: Sendable, Equatable {
 		source: URL(string: "https://www.ospa.de/content/dam/myif/ostseespk-rostock/work/dokumente/pdf/allgemein/anleitung-zur-konfiguration-der-finanz-software.pdf")!, sourceTitle: String(localized: "Example: Ostseesparkasse Rostock"),
 		note: String(localized: "Log in with the login name and the PIN of the online banking of your Sparkasse. Before the first login, set up a TAN method such as pushTAN or chipTAN in the online banking."))
 
-	static let byCode = Dictionary(uniqueKeysWithValues: [consorsbank, dkb, comdirect, ing].flatMap { hint in hint.bankCodes.map { ($0, hint) } })
+	static let byCode = Dictionary(uniqueKeysWithValues: [consorsbank, dkb, comdirect, ing, Oberbank.hint].flatMap { hint in hint.bankCodes.map { ($0, hint) } })
 }
 
 extension BankDirectory.Entry {
@@ -60,6 +60,7 @@ extension BankDirectory.Entry {
 		if let hint = LoginHint.byCode[code] { return hint }
 		if let hint = cooperativeHint { return hint }
 		if let hint = deutscheBankGroupHint { return hint }
+		if let hint = olbGroupHint { return hint }
 		let name = TextFolding.fold(bank.name)
 		return isOnSavingsBankServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}

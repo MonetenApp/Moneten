@@ -15,6 +15,8 @@ struct DateField: View {
 	var expectsFuture = false
 	/// Tells the calendar buttons of several fields apart for the debug harness.
 	var identifier = "date"
+	/// Why a readable date does not fit, such as an end before the start. The field shows it in red with this tooltip.
+	var conflict: LocalizedStringKey?
 
 	@State private var text = ""
 	/// The text that the field wrote for the bound day. It keeps that day even where `Day(typed:)` cannot read the
@@ -36,8 +38,19 @@ struct DateField: View {
 		return Day.calendar(like: gregorian)
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// The day that "datefield today <yyyymmdd>" of the debug harness sets, so that a check of the completion runs
+	/// in January or December as the spec writes it. Nil uses the real day.
+	static var debugToday: Day?
+	#endif
+
 	private func completed(_ text: String) -> Day? {
-		Day(typed: text, today: .today(), order: DateOrder(locale: .current), expectsFuture: expectsFuture)
+		#if DEBUG || PERF_HARNESS
+		let today = Self.debugToday ?? .today()
+		#else
+		let today = Day.today()
+		#endif
+		return Day(typed: text, today: today, order: DateOrder(locale: .current), expectsFuture: expectsFuture)
 	}
 
 	/// The day of a text. A text that returns to the one the field wrote, such as after Undo, brings its day back.
@@ -53,11 +66,11 @@ struct DateField: View {
 					.focused($hasFocus)
 					.multilineTextAlignment(.trailing)
 					.monospacedDigit()
-					.foregroundStyle(isMarked ? Palette.red : Color.primary)
-					.help(isMarked ? Text("Not a valid date") : Text(verbatim: ""))
+					.foregroundStyle(isMarked || conflict != nil ? Palette.red : Color.primary)
+					.help(isMarked ? Text("Not a valid date") : conflict.map { Text($0) } ?? Text(verbatim: ""))
 					.padding(.horizontal, 4)
 					.overlay {
-						if isMarked { RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.red, lineWidth: 2) }
+						if isMarked || conflict != nil { RoundedRectangle(cornerRadius: 5).strokeBorder(Palette.red, lineWidth: 2) }
 					}
 					.frame(width: 104)
 					.onSubmit(leave)

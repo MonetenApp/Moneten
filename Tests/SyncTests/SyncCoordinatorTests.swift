@@ -705,7 +705,7 @@ struct SyncCoordinatorTests {
 		await until { ends.accounts[bank.id] != nil }
 		let at = try #require(finished(bank)?.finishedAt)
 		#expect(delivered == [Self.giro.accountID: balance])
-		#expect(ends.accounts[bank.id] == [Self.giro.accountID: .failed(RefreshError(message: "Verarbeitung nicht möglich", code: "9010", date: at))])
+		#expect(ends.accounts[bank.id] == [Self.giro.accountID: .failed(RefreshError(failure: rejected, date: at))])
 	}
 
 	@Test("An account that could not be stored fails with notSaved, the others finish, and the PIN stays")
@@ -765,8 +765,8 @@ struct SyncCoordinatorTests {
 		#expect(ends.states[bank.id] == AccessState(Data([7])))
 		#expect(ends.accounts[bank.id] == [
 			Self.giro.accountID: .refreshed(at),
-			Self.savings.accountID: .failed(RefreshError(message: "Konto gesperrt", code: "9010", date: at)),
-			Self.card.accountID: .failed(RefreshError(message: "Canceled because of the previous error.", date: at)),
+			Self.savings.accountID: .failed(RefreshError(failure: .bank(blocked), date: at)),
+			Self.card.accountID: .failed(RefreshError(failure: .notFetched, date: at)),
 		])
 		#expect(coordinator.refreshingAccounts.isEmpty)
 	}
