@@ -5108,6 +5108,17 @@
       },
       "extractionState" : "manual"
     },
+    "Help page of OLB" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der OLB"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Help page of the Volksbanken Raiffeisenbanken" : {
       "localizations" : {
         "de" : {
@@ -7364,6 +7375,50 @@
           }
         }
       }
+    },
+    "OLB expects the Banking-Zugangsnummer and the PIN of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB erwartet die Banking-Zugangsnummer und die PIN ihres Onlinebankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this order with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diesen Auftrag mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this request with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diese Anfrage mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Melden Sie sich mit appTAN an, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them." : {
       "localizations" : {

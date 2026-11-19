@@ -60,6 +60,7 @@ extension BankDirectory.Entry {
 		if let hint = LoginHint.byCode[code] { return hint }
 		if let hint = cooperativeHint { return hint }
 		if let hint = deutscheBankGroupHint { return hint }
+		if let hint = olbGroupHint { return hint }
 		let name = TextFolding.fold(bank.name)
 		return isOnSavingsBankServer && name.contains("sparkasse") && !name.contains("bausparkasse") ? .savingsBank : nil
 	}
