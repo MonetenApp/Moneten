@@ -1933,9 +1933,11 @@ final class DebugHarness {
 	}
 
 	/// Whether the lines of the active filters below the last row are in view: nil without the lines, false while
-	/// the list does not show its end. The lines must start at the bottom of the last row and lie inside the list.
+	/// the list does not show its end, where the footer hides them. The lines must start at the bottom of the last
+	/// row and lie inside the list.
 	func filterHintsShown() -> Bool? {
-		guard let parts = filterHintsParts(), let lines = parts.lines, let area = parts.area, !lines.isHidden, lines.frame.height > 0 else { return nil }
+		guard let parts = filterHintsParts(), let lines = parts.lines, let area = parts.area, lines.frame.height > 0 else { return nil }
+		guard !lines.isHidden else { return false }
 		let shown = lines.convert(lines.bounds, to: nil)
 		let inside = area.convert(area.bounds, to: nil)
 		return shown.minY >= inside.minY - 0.5 && shown.maxY <= inside.maxY + 0.5 && abs(filterHintsGap(parts.table, lines)) < 0.5
