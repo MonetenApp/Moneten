@@ -46,6 +46,12 @@ The table has `onCopyCommand`, on the table and not on its rows. When the user s
 
 The selectable texts of a row are AppKit text fields. A double click starts their field editor, which is a text view, selects the word, and becomes the first responder. A right click on the selected text then opens the context menu of the text view, not the menu of the table. macOS adds the Services that accept text to that menu. Without selected text, the right click opens the menu of the table. The app adds no code for this, and the debug harness command `textmenu` checks it.
 
+### Headings stand in the first row of each account
+
+"Group transactions by account" draws the heading of an account in the cells of the first transaction of the account, above its content, and the table is the flat table of transactions. `GroupedTransactions` in `Domain` orders the rows and names the first row of each account. Each cell draws its part: the name in the first column, the line below it across the row, and the space of 20 points above a heading below the rows of another account. The heading covers the selection of its row, and the line goes when the row is selected, so the list looks as a table of sections did.
+
+A table of sections needs a `ForEach` of rows, and SwiftUI visited each of the 50,000 rows of a group several times when it opened, 1.4 to 2.1 seconds in the perf scenario `group-by-account` (issue #519). A heading as a row of its own was as fast, but an arrow key that reached it left the selection of AppKit and of SwiftUI apart. The heading belongs to its row instead, so the arrow keys move from the last row of one account to the first row of the next. A click, a double click, or a right click on a heading acts on the first transaction of the account. The owner decided on this behavior. The table keeps the grouped rows from one update to the next, because SwiftUI compares the rows by their memory and a new array of the same rows made it visit every row again.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.
