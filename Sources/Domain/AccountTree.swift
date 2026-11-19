@@ -70,6 +70,47 @@ extension Ledger {
 		return change
 	}
 
+	/// The groups and accounts that change when the group `id` is removed: its accounts and subgroups take its place, in
+	/// their order, among the rows of the group above it, or of the top level ("Remove an account group"). The rows after
+	/// it move down to make room. An unknown group gives no change.
+	public func removal(ofGroup id: UUID) -> AccountTreeChange {
+		guard let removed = group(id) else { return AccountTreeChange() }
+		let parent = removed.parentID
+		let rows = accountTree(in: parent).flatMap { $0.id == id ? accountTree(in: id) : [$0] }
+		var change = AccountTreeChange()
+		for (position, item) in rows.enumerated() {
+			switch item {
+			case var .group(g):
+				g.parentID = parent
+				g.position = position
+				if g != group(g.id) { change.groups.append(g) }
+			case var .account(a):
+				a.groupID = parent
+				a.position = position
+				if a != account(a.id) { change.accounts.append(a) }
+			}
+		}
+		return change
+	}
+
+	/// Removes the group `id` and takes the parent and the position of each row of `change`, which `removal(ofGroup:)`
+	/// gave. The other fields stay as the ledger has them now, so an account that a refresh stored meanwhile keeps its balance.
+	public mutating func remove(group id: UUID, moving change: AccountTreeChange) {
+		for moved in change.groups {
+			guard var g = group(moved.id) else { continue }
+			g.parentID = moved.parentID
+			g.position = moved.position
+			upsert(g)
+		}
+		for moved in change.accounts {
+			guard var a = account(moved.id) else { continue }
+			a.groupID = moved.groupID
+			a.position = moved.position
+			upsert(a)
+		}
+		replace(groups: groups.filter { $0.id != id })
+	}
+
 	/// The parent and the gap that a drop on `target` moves a row to.
 	public func destination(of target: TreeDropTarget) -> (parent: UUID?, index: Int) {
 		switch target {

@@ -65,6 +65,17 @@ struct MoneyMoneyMigrationTests {
 		try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 	}
 
+	/// The scenario "Empty name in a migration" of "Account name" in openspec/changes/add-account-management/specs/account-management/spec.md.
+	@Test("An account whose name is empty or only white space is named after its type", arguments: ["", " "])
+	func emptyAccountName(name: String) throws {
+		var raw = accounts
+		raw[1]["name"] = name
+		raw[2]["name"] = "  Tagesgeld "
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(raw), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		#expect(p.accounts.map(\.name) == ["Giro account", "  Tagesgeld ", "Depot"])
+		#expect(p.sources.first { $0.sourceID == "A1" }?.name == "Giro account")
+	}
+
 	@Test("A transaction without a currency takes the currency of its account, and codes in lower case read in upper case", arguments: [false, true])
 	func currencyOfAccount(bankFirst: Bool) throws {
 		let usd: [[String: Any]] = [

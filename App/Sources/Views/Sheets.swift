@@ -140,8 +140,11 @@ struct NewCategorySheet: View {
 	private var kind: SheetKind { .newCategory(isGroup: isGroup, assigning: assigning) }
 
 	var body: some View {
-		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: !name.isEmpty, onConfirm: {
-			Task { await model.addCategory(name: name, isGroup: isGroup, parentID: parentID, assigning: assigning) }
+		let check = model.ledger.checkCategoryName(name, in: parentID)
+		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: check.acceptedName != nil, onConfirm: {
+			// A taken name keeps the sheet open, and the footer says why.
+			guard let accepted = check.acceptedName else { return false }
+			Task { await model.addCategory(name: accepted, isGroup: isGroup, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {
@@ -150,6 +153,8 @@ struct NewCategorySheet: View {
 					Text("None").tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter(\.isGroup)) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
+			} footer: {
+				if check == .taken { CategoryNameTaken(parentID: parentID) }
 			}
 		}
 		.keepsInput(Input(name: name, parentID: parentID), of: kind)
@@ -160,6 +165,23 @@ struct NewCategorySheet: View {
 				parentID = held.parentID
 			}
 		}
+	}
+}
+
+/// The note under the name field of a category whose name another category or category group in the same group has.
+struct CategoryNameTaken: View {
+	@Environment(AppModel.self) private var model
+	let parentID: UUID?
+
+	var body: some View {
+		Group {
+			if let group = parentID.flatMap(model.ledger.category) {
+				Text("This name is taken in the group \(group.name).")
+			} else {
+				Text("This name is taken at the top level.")
+			}
+		}
+		.foregroundStyle(Palette.red)
 	}
 }
 
@@ -387,15 +409,23 @@ struct GroupSettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	let groupID: UUID
 	@State private var group: AccountGroup?
+	/// The group as the settings opened, so that a name the user did not change stays as it is stored.
+	@State private var opened: AccountGroup?
 
 	var body: some View {
-		SheetFrame(title: "Account Group Settings", onConfirm: {
-			if let group { model.save(group: group) }
+		// An empty name keeps OK disabled, and the field asks for a name ("Create and rename account groups"). This holds
+		// also for a name that a migration or an import stored empty, so OK never saves it again.
+		let canConfirm = group.map { Account.acceptedName($0.name) != nil } ?? true
+		SheetFrame(title: "Account Group Settings", canConfirm: canConfirm, onConfirm: {
+			// A move or a collapse while the settings were open keeps its parent, position, and state.
+			guard let group, let opened, var current = model.ledger.group(groupID) else { return true }
+			current.takeSettings(from: group, opened: opened)
+			model.save(group: current)
 			return true
 		}) {
 			if let binding = Binding($group) {
 				Section {
-					TextField("Name", text: binding.name)
+					TextField("Name", text: binding.name, prompt: Text("Required"))
 					Toggle("Display balance in sidebar", isOn: binding.showSum)
 					Toggle("Group transactions by account", isOn: binding.groupsByAccount)
 				}
@@ -404,6 +434,9 @@ struct GroupSettingsSheet: View {
 		.keepsInput(group, of: .groupSettings(groupID))
 		.onAppear {
 			group = model.ledger.group(groupID)
+			// The stored group, also after the unlock: nothing writes it while the app is locked, so it is the group as
+			// the settings opened before the lock.
+			opened = group
 			// The input is optional: nil from `heldInput` means that nothing returns, and the group stays as loaded.
 			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)), let held { group = held }
 		}

@@ -29,7 +29,7 @@ struct CategorySettingsSheet: View {
 	}
 
 	var body: some View {
-		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
+		SheetFrame(title: "Settings for \(category?.name ?? "")", canConfirm: ruleError == nil && currencyIsValid && nameCheck?.acceptedName != nil && !isApplying, canCancel: !isApplying, width: 520, onConfirm: save, leading: {
 			if category?.isDefault == false {
 				Button("Remove Category...", role: .destructive) { if model.confirmRemove(.category(categoryID)) { dismiss() } }
 					.disabled(isApplying)
@@ -38,9 +38,10 @@ struct CategorySettingsSheet: View {
 			if let binding = Binding($category) {
 				let c = binding.wrappedValue
 				Section {
-					TextField("Name", text: binding.name)
+					TextField("Name", text: binding.name, prompt: Text("Required"))
 					TextField("Currency", text: binding.currency)
 				} footer: {
+					if nameCheck == .taken { CategoryNameTaken(parentID: c.parentID) }
 					if !currencyIsValid {
 						Text("Enter a currency code such as EUR.").foregroundStyle(Palette.red)
 					}
@@ -142,6 +143,14 @@ struct CategorySettingsSheet: View {
 
 	private var isApplying: Bool { model.isApplyingRule }
 
+	/// The check of a changed name in the group of the category. A name that the user did not change is accepted as it is
+	/// stored, also when an earlier version or a migration left two categories with that name in one group.
+	private var nameCheck: CategoryNameCheck? {
+		guard let c = category else { return nil }
+		guard let stored = model.ledger.category(categoryID), c.name != stored.name else { return .accepted(c.name) }
+		return model.ledger.checkCategoryName(c.name, in: stored.parentID, renaming: categoryID)
+	}
+
 	private func validate(_ text: String) {
 		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { ruleError = nil; return }
 		do {
@@ -194,6 +203,8 @@ struct CategorySettingsSheet: View {
 	/// Saves and closes, or keeps the sheet open to ask whether a changed rule applies to existing transactions.
 	private func save() -> Bool {
 		guard var c = category else { return true }
+		guard let name = nameCheck?.acceptedName else { return false }
+		c.name = name
 		c.currency = currencyCode
 		// A category keeps the inherited palette color until the user picks one.
 		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
