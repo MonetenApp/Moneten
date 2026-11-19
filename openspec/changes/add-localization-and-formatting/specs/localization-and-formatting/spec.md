@@ -64,7 +64,7 @@ The app SHALL offer a "Language" menu on the "General" tab of the settings with 
 
 ### Requirement: An unchanged starter set follows the language
 
-The app SHALL give an unchanged starter set of the other language the names of the interface language when it opens the database. A group of the starter set counts as unchanged only when it has exactly its starter subcategories, each unchanged, and nothing else. A changed group, a category of the user, and a starter group whose new name a top-level category of the user already has keep their names. The default category takes the new name while it has the name of the other set.
+The app SHALL give a starter category the name of the interface language when the database opens and the category still has the name that the starter set gave it in another language. The app records the place and the language of each starter category when it creates the database, and a category without that record keeps its name. A group counts only with exactly its starter subcategories, one each, each with its starter name. A name that another category of the same group has stays unused.
 
 #### Scenario: Switch to German
 
@@ -84,11 +84,29 @@ The app SHALL give an unchanged starter set of the other language the names of t
 
 #### Scenario: Group of the user with the name of a starter group
 
-- **GIVEN** a database created in English with the unchanged starter set and the group "Wohnen" of the user with the subcategory "Garten"
+- **GIVEN** a database created in English with the unchanged starter set and the group "wohnen" of the user with the subcategory "Garten"
 - **WHEN** the app opens the database with a German interface
-- **THEN** the group "Wohnen" of the user keeps "Garten"
+- **THEN** the group "wohnen" of the user keeps "Garten"
 - **AND** "Living" keeps its name, so the sidebar shows no second "Wohnen"
 - **AND** the unchanged group "Mobility" is now "Mobilität"
+
+#### Scenario: A name that the user gave stays
+
+- **GIVEN** a database created in English in which the user renamed "Transfers" to "Umbuchungen" and "Uncategorized" to "Unkategorisiert"
+- **WHEN** the app opens the database with an English interface
+- **THEN** the sidebar shows "Umbuchungen" and "Unkategorisiert"
+
+#### Scenario: A group that the user built stays
+
+- **GIVEN** a database created in German with the group "Living" that the user made with "Rent", "Groceries", "Electricity", and "Internet & Phone"
+- **WHEN** the app opens the database with a German interface
+- **THEN** the sidebar shows "Living" with its four subcategories
+
+#### Scenario: Database without the record
+
+- **GIVEN** a database with the English starter set, created before the app recorded the starter set
+- **WHEN** the app opens the database with a German interface
+- **THEN** the starter set keeps its English names
 
 ### Requirement: Text from a bank stays as received
 

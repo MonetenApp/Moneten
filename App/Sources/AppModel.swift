@@ -704,9 +704,15 @@ final class AppModel {
 		// An unchanged starter set of the other language takes the names of the interface language. A failed
 		// write keeps the old names, which the next open tries again, and does not keep the database closed.
 		let renamed = StarterCategories.renamed(in: loaded, to: starterLanguage)
-		if !renamed.isEmpty, (try? store.save(categories: renamed)) != nil {
-			let byID = Dictionary(uniqueKeysWithValues: renamed.map { ($0.id, $0) })
-			loaded.replace(categories: loaded.categories.map { byID[$0.id] ?? $0 })
+		if !renamed.isEmpty {
+			do {
+				try store.save(categories: renamed)
+				let byID = Dictionary(uniqueKeysWithValues: renamed.map { ($0.id, $0) })
+				loaded.replace(categories: loaded.categories.map { byID[$0.id] ?? $0 })
+			} catch {
+				// The line names no category, because a name may be one that the user gave.
+				Trail.log("starter rename failed categories=\(renamed.count) error=\(type(of: error))")
+			}
 		}
 		ledgerChange = "load"
 		ledger = loaded
