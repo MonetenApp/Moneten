@@ -9,7 +9,7 @@ For many users, securities hold most of their wealth. A banking app that shows o
 - An account of the type "Portfolio" shows a list of positions in place of a transaction list.
 - The app fetches positions through FinTS and takes the positions that extensions return, including crypto and other assets.
 - Each position shows its name, value, quantity, purchase price, last quote, and profit or loss as an amount and as a percentage.
-- The user can enter or correct the purchase price when the bank sends none.
+- The user can enter or correct the purchase price when the bank sends none. This part, the details of a position, and comments moved to the change `defer-v0.1-follow-ups` on 19 November 2026.
 - The value of a portfolio counts in the sums of the sidebar and in the balance chart of its account group. For that the app records the value once a day.
 
 ## Capabilities

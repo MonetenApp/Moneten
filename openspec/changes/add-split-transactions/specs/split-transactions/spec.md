@@ -484,15 +484,9 @@ The app SHALL refuse to delete a single part of a split. It tells the user to un
 - **WHEN** the user chooses "Delete Transaction..."
 - **THEN** the app does not delete the part and names "Undo Split Transaction..." as the way to go
 
-### Requirement: Split a batch payment into its positions
+### Requirement: Split from Batch Payment needs the positions
 
-The app SHALL replace the row of a batch payment by one part for each position with "Split from Batch Payment", when the app knows the positions of that batch. Each part takes the recipient or debtor, the amount, and the purpose of its position. The command is disabled when the positions are not known.
-
-#### Scenario: Batch transfer sent with the app
-
-- **GIVEN** a booked transaction of -1.500,00 € for a batch transfer with 3 positions of -500,00 € that the app sent
-- **WHEN** the user chooses "Split from Batch Payment"
-- **THEN** the list shows 3 parts of -500,00 €, each with the recipient and the purpose of its position
+The app SHALL disable "Split from Batch Payment" in the split window of a transaction whose batch positions the app does not know.
 
 #### Scenario: Unknown batch
 
