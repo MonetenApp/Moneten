@@ -344,3 +344,107 @@ struct HarnessReachTests {
 		#expect(HarnessRun.extensionRecipient(hasFixture: false, loadedFromFile: false, catalogName: true) == .realService)
 	}
 }
+
+/// The extension checks of issue #517 that #498 left open, and the rules of `surface(of:)` and `recipient(of:)`, which
+/// the app reads from AppKit and the model and the harness decides here.
+@Suite("Debug harness extension checks")
+struct HarnessExtensionTests {
+	static let demo = UUID()
+	static let fints = Access(source: .fints(bankCode: "99090000", url: URL(string: "https://fints.musterbank.example/fints")!), bankName: "Musterbank",
+		loginName: "erika77")
+
+	static func ext(_ id: String) -> Access {
+		Access(source: .extension(id: id), bankName: id, loginName: "erika77")
+	}
+
+	func recipient(_ access: Access, fixtures: Set<String> = [], own: HarnessRun.OwnExtensions = .init(), catalog: Set<String> = ["Catalog Bank"]) -> HarnessRun.Recipient {
+		HarnessRun.recipient(of: access, syncDemo: Self.demo, fixtures: fixtures, own: own, isCatalogName: catalog.contains)
+	}
+
+	@Test("extanswer denies a new host always, and allows it only for a recipient that the harness may reach")
+	func hostAnswer() {
+		for recipient in [HarnessRun.Recipient.fints, .local, .realService] {
+			#expect(HarnessRun.mayAnswerHost(allow: false, to: recipient, fakeBank: false), "\(recipient)")
+		}
+		#expect(HarnessRun.mayAnswerHost(allow: true, to: .local, fakeBank: false))
+		#expect(!HarnessRun.mayAnswerHost(allow: true, to: .realService, fakeBank: true))
+		#expect(!HarnessRun.mayAnswerHost(allow: true, to: .fints, fakeBank: false))
+		#expect(HarnessRun.mayAnswerHost(allow: true, to: .fints, fakeBank: true))
+	}
+
+	@Test("extjs runs a script only in the web login of a dialog on screen whose recipient the harness may reach")
+	func script() {
+		#expect(!HarnessRun.mayRunScript(inLoginOf: nil, fakeBank: true))
+		#expect(HarnessRun.mayRunScript(inLoginOf: .local, fakeBank: false))
+		#expect(!HarnessRun.mayRunScript(inLoginOf: .realService, fakeBank: true))
+		#expect(!HarnessRun.mayRunScript(inLoginOf: .fints, fakeBank: false))
+	}
+
+	@Test("extfile records nothing: a file extension is the run's own only after its install was confirmed and its files are in place")
+	func ownFileExtension() {
+		var own = HarnessRun.OwnExtensions()
+		#expect(!own.contains("Check"))
+		own.confirmedFile("Check", installed: false)
+		#expect(!own.contains("Check"))
+		#expect(recipient(Self.ext("Check"), own: own) == .realService)
+		own.confirmedFile("Check", installed: true)
+		#expect(own.contains("Check"))
+		#expect(recipient(Self.ext("Check"), own: own) == .local)
+		own.loaded("Other")
+		#expect(own.contains("Other"))
+		#expect(!own.contains("Third"))
+	}
+
+	@Test("The scripted bank of syncdemo is local, FinTS is FinTS, and finAPI is a real service")
+	func accessRecipients() {
+		let demo = Access(id: Self.demo, source: Self.fints.source, bankName: "Demo", loginName: "erika77")
+		#expect(recipient(demo) == .local)
+		#expect(recipient(Self.fints) == .fints)
+		#expect(recipient(Access(source: .finAPI(connection: "1"), bankName: "Musterbank", loginName: "erika77")) == .realService)
+	}
+
+	@Test("An extension access is local with a fixture, or as the run's own file under a name outside the catalog")
+	func extensionAccessRecipients() {
+		var own = HarnessRun.OwnExtensions()
+		own.loaded("Check")
+		own.loaded("Catalog Bank")
+		#expect(recipient(Self.ext("Check"), own: own) == .local)
+		#expect(recipient(Self.ext("Catalog Bank"), fixtures: ["Catalog Bank"]) == .local)
+		#expect(recipient(Self.ext("Catalog Bank"), own: own) == .realService)
+		#expect(recipient(Self.ext("Unknown")) == .realService)
+	}
+
+	func screen(filePanel: Bool = false, bankDialog: HarnessRun.Recipient? = nil, setup: HarnessRun.Screen.Setup? = nil, unlocked: Bool = true,
+		isSheet: Bool = false, passwordSheet: Bool = false) -> HarnessRun.Surface {
+		HarnessRun.surface(of: HarnessRun.Screen(isFilePanel: filePanel, bankDialog: bankDialog, setup: setup, unlocked: unlocked, isSheet: isSheet,
+			passwordSheet: passwordSheet))
+	}
+
+	@Test("A save or open panel is a file panel before anything else, also over a bank dialog")
+	func filePanelSurface() {
+		#expect(screen(filePanel: true, bankDialog: .local, setup: .init(atLogin: true, service: .fints), unlocked: false) == .filePanel)
+		#expect(HarnessRun.isFilePanel(className: "NSRemoteSavePanel"))
+		#expect(HarnessRun.isFilePanel(className: "NSOpenPanelRemoteWindow"))
+		#expect(!HarnessRun.isFilePanel(className: "SwiftUI.AppKitWindow"))
+		#expect(!HarnessRun.isFilePanel(className: "NSPanel"))
+	}
+
+	@Test("The dialog of the broker on screen is a bank dialog before the assistant and the lock")
+	func bankDialogSurface() {
+		#expect(screen(bankDialog: .realService, setup: .init(atLogin: false, service: .offline), unlocked: false) == .bankDialog(.realService))
+		#expect(screen(bankDialog: .local) == .bankDialog(.local))
+	}
+
+	@Test("The assistant follows setupSurface, the lock has the start window and its alert, and the password sheet comes last")
+	func otherSurfaces() {
+		#expect(screen(setup: .init(atLogin: true, service: .offline)) == .bankDialog(.fints))
+		#expect(screen(setup: .init(atLogin: false, service: .offline), passwordSheet: true) == .other)
+		#expect(screen(setup: .init(atLogin: false, service: .extensionService(.local))) == .bankDialog(.local))
+		#expect(screen(unlocked: false) == .startWindow)
+		#expect(screen(unlocked: false, isSheet: true) == .startAlert)
+		#expect(screen(unlocked: false, passwordSheet: true) == .startWindow)
+		#expect(screen(passwordSheet: true) == .passwordSheet)
+		#expect(screen(isSheet: true) == .other)
+		#expect(screen() == .other)
+	}
+}

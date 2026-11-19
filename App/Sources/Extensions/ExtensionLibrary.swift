@@ -434,6 +434,14 @@ final class ExtensionLibrary {
 		records[id] != nil
 	}
 
+	/// The package of the file install `name` as its files read now, or nil for a catalog extension, a name that is not
+	/// installed, and files that cannot be read. The debug harness compares it with the package of the warning for files,
+	/// to see that a confirmed install put those files in place.
+	func allowedFilePackage(_ name: String) -> ExtensionPackage? {
+		guard case .file? = records[name], let url = FileInstall.url(of: name, in: folder) else { return nil }
+		return try? FileInstall.load(url).package
+	}
+
 	/// Whether `name` belongs to the catalog: installed from it or listed in its index. The debug harness trusts a file
 	/// extension only under another name, because a refresh runs the installed package of a catalog name in place of the file.
 	func isCatalogName(_ name: String) -> Bool {
