@@ -2625,7 +2625,7 @@ final class DebugHarness {
 			let assignment = value.split(separator: "=").map(String.init)
 			guard assignment.count == 2, let column = Int(assignment[0]) else { return log("csv error=column needs <n>=<field>") }
 			preview.layout.assign(column, to: CSVField(rawValue: assignment[1]))
-		case "date": preview.layout.dateOrder = DateOrder(rawValue: value) ?? preview.layout.dateOrder
+		case "date": Import.DateOrder(rawValue: value).map(preview.chooseDateOrder)
 		case "encoding": preview.layout.encoding = CSVEncoding(rawValue: value) ?? preview.layout.encoding
 		case "decimal": preview.layout.decimalMark = value == "comma" ? .comma : value == "point" ? .point : nil
 		case "skip": model?.fileImport?.skip()
@@ -2636,7 +2636,9 @@ final class DebugHarness {
 		// A row of the file holds a name, a purpose, and an amount, so the log holds only the count and the days of the first rows.
 		case "rows":
 			let rows = preview.preview?.transactions.prefix(10) ?? []
-			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })))
+			// "raw" counts the rows that show their date as the file writes it, while the preview asks for the date order.
+			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })),
+				("raw", .count(preview.asksDateOrder ? preview.preview?.rawDates.count ?? 0 : 0)))
 		default:
 			// The field of each column from 0, or "-" for a column without one.
 			let fields = Dictionary(preview.layout.columns.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
@@ -2650,7 +2652,7 @@ final class DebugHarness {
 			case .encoding: ("encoding", nil)
 			case nil: (preview.problem == nil ? "-" : "encoding", nil)
 			}
-			log("csv state", ("columns", .list(columns)), ("date", .state(preview.layout.dateOrder)), ("uncertain", .flag(preview.isDateOrderUncertain)),
+			log("csv state", ("columns", .list(columns)), ("date", .state(preview.layout.dateOrder)), ("uncertain", .flag(preview.ambiguousDate != nil)), ("asks", .flag(preview.asksDateOrder)),
 				("encoding", .state(preview.layout.encoding)), ("missing", .list(preview.layout.missing.map { .state($0) })),
 				("count", preview.preview.map { .count($0.transactions.count) } ?? .word("-")), ("canImport", .flag(preview.chosen != nil)), ("problem", .word(problem)),
 				("line", line.map { .count($0) } ?? .word("-")), ("profile", .word(preview.profile == nil ? "none" : "applied")),

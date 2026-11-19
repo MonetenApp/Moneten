@@ -19,11 +19,15 @@ final class CSVPreviewModel {
 			guard layout != old, !isAdopting else { return }
 			let dates: [CSVField] = [.bookingDate, .valueDate]
 			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) { detectsDateOrder = true }
+			question.change(from: oldValue, to: layout)
 			refresh()
 		}
 	}
 	/// The preview of `layout`, or nil while the app reads the file again.
 	private(set) var preview: CSVPreview?
+	/// The question for the date order, with the answer of the user or of a profile that answered it for
+	/// these date columns. The detected order never answers it.
+	private var question: DateOrderQuestion
 	/// Why the file cannot be read with the encoding of `layout`.
 	private(set) var problem: String?
 	/// The saved profiles, and the name under which "Import" saves the settings. An empty name saves none.
@@ -46,8 +50,12 @@ final class CSVPreviewModel {
 
 	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
 	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
-	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?, store: Store) {
+	/// `answeredOrder` is the order that the user chose in the question when the profile of the start saved one
+	/// for these date columns.
+	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?,
+		answeredOrder: Import.DateOrder?, store: Store) {
 		self.name = name
+		question = DateOrderQuestion(answer: answeredOrder)
 		self.file = file
 		self.layout = layout
 		self.currency = currency
@@ -77,7 +85,8 @@ final class CSVPreviewModel {
 		profileName = name == matched ? name ?? "" : ""
 		guard let saved = profiles.first(where: { $0.name == name }) else { return }
 		var next = saved.previewLayout(for: file)
-		switch CSVProfile.match(for: file, in: [saved], detected: layout) {
+		let match = CSVProfile.match(for: file, in: [saved], detected: layout)
+		switch match {
 		case .same: break
 		case let .changed(_, moved): next = moved
 		case .none: next.columns = layout.columns
@@ -86,8 +95,22 @@ final class CSVPreviewModel {
 		layout = next
 		isAdopting = false
 		detectsDateOrder = false
+		question.answer = match.answeredDateOrder(in: file)
 		refresh()
 	}
+
+	func chooseDateOrder(_ order: Import.DateOrder) {
+		question.answer = order
+		layout.dateOrder = order
+	}
+
+	/// The date of the last preview that fits both orders, which the question shows.
+	var ambiguousDate: AmbiguousDate? { question.ambiguousDate }
+
+	var answeredDateOrder: Bool { question.isAnswered(layout) }
+
+	/// Whether the preview waits for the user to choose the date order.
+	var asksDateOrder: Bool { question.asks(layout) }
 
 	func deleteProfile() {
 		guard let profile else { return }
@@ -101,7 +124,8 @@ final class CSVPreviewModel {
 
 	func saveProfile() -> Bool {
 		guard let savedProfile else { return true }
-		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter)
+		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter,
+			dateOrderAnswer: question.profileAnswer(layout, header: file.header))
 		do {
 			try store.saveCSVProfile(saved, replacing: profile == matched ? matched : nil)
 			profiles.save(saved, matched: matched, applied: profile)
@@ -114,7 +138,8 @@ final class CSVPreviewModel {
 
 	/// The transactions to import, once every row of the file reads in `layout`.
 	var chosen: TransactionFileImporter.Parsed? {
-		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty else { return nil }
+		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty,
+			question.allowsImport(preview) else { return nil }
 		return preview.parsed
 	}
 
@@ -125,6 +150,7 @@ final class CSVPreviewModel {
 		if let failure = preview?.problem { return failure.description }
 		if !layout.missing.isEmpty { return String(localized: "No column is assigned to \(missingFields).") }
 		if preview?.transactions.isEmpty == true { return TransactionFileImporter.Failure.empty.description }
+		if asksDateOrder { return String(localized: "No date order was chosen.") }
 		return String(localized: "The file was skipped.")
 	}
 
@@ -132,9 +158,6 @@ final class CSVPreviewModel {
 	var missingFields: String {
 		layout.missing.map { String(localized: "“\($0.title)”") }.formatted(.list(type: .and))
 	}
-
-	/// Whether the dates fit day first and month first, so that the user must check the date format.
-	var isDateOrderUncertain: Bool { (preview?.dateOrders.count ?? 0) > 1 }
 
 	func stop() {
 		reading?.cancel()
@@ -164,6 +187,7 @@ final class CSVPreviewModel {
 					self.layout = read
 					self.isAdopting = false
 					self.detectsDateOrder = false
+					self.question.read(preview)
 					self.preview = preview
 				} catch let failure as TransactionFileImporter.Failure {
 					guard !Task.isCancelled, let self else { return }
@@ -215,12 +239,23 @@ struct CSVPreviewView: View {
 				Picker("Encoding", selection: $model.layout.encoding) {
 					ForEach(CSVEncoding.allCases, id: \.self) { Text($0.title) }
 				}
-				Picker("Date format", selection: $model.layout.dateOrder) {
-					ForEach(DateOrder.allCases, id: \.self) { Text($0.title) }
-				}
-				if model.isDateOrderUncertain {
-					Label("Every date fits both orders. Check that the dates below are right.", systemImage: "exclamationmark.triangle")
-						.foregroundStyle(.orange)
+				if let date = model.ambiguousDate {
+					// Every date fits both orders, so no order is selected until the user chooses one, and each
+					// choice shows what it makes of one date of the file.
+					Picker("Date format", selection: Binding { model.answeredDateOrder ? model.layout.dateOrder : nil } set: { $0.map(model.chooseDateOrder) }) {
+						ForEach(DateOrder.allCases, id: \.self) { order in
+							Text("\(order.title): \(date.text) is \(Format.longDay(date.day(order)))").tag(Optional(order))
+						}
+					}
+					.pickerStyle(.radioGroup)
+					if !model.answeredDateOrder {
+						Label("The file does not show whether the day or the month comes first. Choose the order that the file uses.", systemImage: "questionmark.circle")
+							.foregroundStyle(.orange)
+					}
+				} else {
+					Picker("Date format", selection: $model.layout.dateOrder) {
+						ForEach(DateOrder.allCases, id: \.self) { Text($0.title) }
+					}
 				}
 				Picker("Decimal separator", selection: $model.layout.decimalMark) {
 					Text("Detect").tag(DecimalMark?.none)
@@ -271,6 +306,7 @@ struct CSVPreviewView: View {
 	private var status: String {
 		if model.layout.missing.count > 1 { return String(localized: "Assign columns to \(model.missingFields).") }
 		if !model.layout.missing.isEmpty { return String(localized: "Assign a column to \(model.missingFields).") }
+		if model.asksDateOrder { return String(localized: "Choose the date order.") }
 		guard let preview = model.preview else { return model.problem == nil ? String(localized: "Reading the file...") : "" }
 		let count = preview.transactions.count
 		return count == 0 ? "" : count == 1 ? String(localized: "One transaction") : String(localized: "\(count) transactions")
@@ -288,9 +324,11 @@ struct CSVPreviewView: View {
 					Text("Amount").gridColumnAlignment(.trailing)
 				}
 				.foregroundStyle(.secondary)
-				ForEach(preview.transactions.prefix(10)) { t in
+				// Until the user chooses the date order, each row shows its date as the file writes it, never a guessed day.
+				let raw = model.asksDateOrder ? preview.rawDates : []
+				ForEach(Array(preview.transactions.prefix(10).enumerated()), id: \.element.id) { i, t in
 					GridRow {
-						Text(Format.day(t.bookingDate)).monospacedDigit()
+						Text(raw.indices.contains(i) ? raw[i] : Format.day(t.bookingDate)).monospacedDigit()
 						Text(t.name).lineLimit(1)
 						Text(t.purpose).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
 						AmountText(money: Money(minorUnits: t.amountMinor, currency: t.currency))

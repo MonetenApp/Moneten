@@ -576,6 +576,16 @@
         }
       }
     },
+    "%@: %@ is %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@ ist der %3$@"
+          }
+        }
+      }
+    },
     "%@: %@ of %@" : {
       "localizations" : {
         "de" : {
@@ -3110,6 +3120,16 @@
         }
       }
     },
+    "Choose the date order." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie die Reihenfolge des Datums."
+          }
+        }
+      }
+    },
     "Choose this color" : {
       "localizations" : {
         "de" : {
@@ -4656,16 +4676,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Euro"
-          }
-        }
-      }
-    },
-    "Every date fits both orders. Check that the dates below are right." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jedes Datum passt zu beiden Reihenfolgen. Prüfen Sie, ob die Daten unten stimmen."
           }
         }
       }
@@ -7250,6 +7260,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Datenbankpasswort schützt Ihre Daten. Setzen Sie jetzt eines."
+          }
+        }
+      }
+    },
+    "No date order was chosen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wurde keine Reihenfolge des Datums gewählt."
           }
         }
       }
@@ -11379,6 +11399,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The file does not show whether the day or the month comes first. Choose the order that the file uses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei zeigt nicht, ob der Tag oder der Monat zuerst steht. Wählen Sie die Reihenfolge, die die Datei verwendet."
+          }
+        }
+      }
     },
     "The file has format version %lld, and this version of Moneten reads up to version %lld. Install a newer version of Moneten to import it." : {
       "localizations" : {
