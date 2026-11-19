@@ -64,7 +64,7 @@ The app SHALL offer a "Language" menu on the "General" tab of the settings with 
 
 ### Requirement: An unchanged starter set follows the language
 
-The app SHALL give a starter category the name of the interface language when the database opens and the category still has the name that the starter set gave it in another language. The app records the place and the language of each starter category when it creates the database, and a category without that record keeps its name. A group counts only with exactly its starter subcategories, one each, each with its starter name. A name that another category of the same group has stays unused.
+The app SHALL give a starter category the name of the interface language when the database opens and the category still has the name that the starter set gave it in another language. The app records the place of each starter category when it creates the database. A rename or a move by the user ends the record, and a category without it keeps its name. A group counts only with exactly its starter subcategories, one each. A name that another category of the same group has stays unused.
 
 #### Scenario: Switch to German
 
@@ -95,6 +95,19 @@ The app SHALL give a starter category the name of the interface language when th
 - **GIVEN** a database created in English in which the user renamed "Transfers" to "Umbuchungen" and "Uncategorized" to "Unkategorisiert"
 - **WHEN** the app opens the database with an English interface
 - **THEN** the sidebar shows "Umbuchungen" and "Unkategorisiert"
+
+#### Scenario: A name that the user gave back stays
+
+- **GIVEN** a database created in English in which the user renamed "Transfers" to "My transfers" and then back to "Transfers"
+- **WHEN** the app opens the database with a German interface
+- **THEN** the sidebar shows "Transfers" and no "Umbuchungen"
+
+#### Scenario: A moved category stays
+
+- **GIVEN** a database created in English in which the user moved "Rent" from "Living" into "Mobility" and then to the top level
+- **WHEN** the app opens the database with a German interface
+- **THEN** the sidebar shows "Rent" at the top level and no "Miete"
+- **AND** "Living" keeps its name, because it lost a subcategory
 
 #### Scenario: A group that the user built stays
 

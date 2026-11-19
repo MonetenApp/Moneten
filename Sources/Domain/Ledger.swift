@@ -325,6 +325,8 @@ public struct Ledger: Sendable {
 		for list in lists {
 			for (position, var c) in list.enumerated() {
 				c.position = position
+				// A move to another group is a choice of the user, so the category no longer follows the language.
+				if c.id == id, oldParent != parent { c.starterKey = nil }
 				if c != category(c.id) { changed.append(c) }
 			}
 		}

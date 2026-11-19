@@ -1853,6 +1853,8 @@ final class AppModel {
 
 	func save(category: Domain.Category) {
 		guard let store else { return }
+		// A rename or a move by the user ends the record of the starter set.
+		let category = ledger.userSaved(category)
 		do {
 			try store.save(category)
 			ledger.upsert(category)

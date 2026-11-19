@@ -21,14 +21,12 @@ extension SchemaTests {
 		let store = try Store(queue: queue)
 		let stored = try #require(try store.loadLedger().category(earlier))
 		#expect(stored.starterKey == nil)
-		#expect(stored.starterLanguage == nil)
 		let starters = StarterCategories.make(language: .german)
 		try store.save(categories: starters)
 		let loaded = try store.loadLedger()
 		for c in starters {
 			#expect(loaded.category(c.id)?.starterKey == c.starterKey)
-			#expect(loaded.category(c.id)?.starterLanguage == .german)
 		}
-		#expect(try queue.read { try String.fetchOne($0, sql: "SELECT starterLanguage FROM category WHERE starterKey = 'living'") } == "de")
+		#expect(try queue.read { try String.fetchOne($0, sql: "SELECT name FROM category WHERE starterKey = 'living'") } == "Wohnen")
 	}
 }

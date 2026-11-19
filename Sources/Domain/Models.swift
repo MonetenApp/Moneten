@@ -326,16 +326,14 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 	public var rule: String
 	public var isExpanded: Bool
 	public var sourceID: String?
-	/// The place of the category in the starter set, such as "living.rent", for a category that the starter set made.
-	/// Nil for every other category, and for a starter category of a database created before the record existed.
+	/// The place of the category in the starter set, such as "living.rent", for a category that the starter set made and
+	/// that the user has neither renamed nor moved to another group. Nil for every other category, and for a starter
+	/// category of a database created before the record existed.
 	public var starterKey: String?
-	/// The language of the starter name that the category got, when the starter set made it or a later change of the
-	/// interface language renamed it. A category whose name still is that starter name follows the language.
-	public var starterLanguage: StarterCategories.Language?
 
 	public init(id: UUID = UUID(), parentID: UUID? = nil, position: Int, name: String, isGroup: Bool = false, isDefault: Bool = false, color: String? = nil, symbol: String? = nil, currency: String = "EUR",
 		showInDiagrams: Bool = true, sidebarAmount: SidebarAmount = .totalSum, restrictedToID: UUID? = nil, rule: String = "", isExpanded: Bool = true, sourceID: String? = nil,
-		starterKey: String? = nil, starterLanguage: StarterCategories.Language? = nil) {
+		starterKey: String? = nil) {
 		self.id = id
 		self.parentID = parentID
 		self.position = position
@@ -352,7 +350,6 @@ public struct Category: Identifiable, Hashable, Sendable, Codable {
 		self.isExpanded = isExpanded
 		self.sourceID = sourceID
 		self.starterKey = starterKey
-		self.starterLanguage = starterLanguage
 	}
 }
 

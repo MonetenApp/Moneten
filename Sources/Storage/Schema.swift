@@ -448,14 +448,11 @@ enum Schema {
 					arguments: [columns.iban, columns.accountNumber, row["id"]])
 			}
 		}
-		// The record of the starter set: the key of a starter category and the language of its starter name (issue
-		// #207). Only a new starter set fills them, so every category stored before has none and keeps its name when the
-		// interface language changes. It is v33 and not v32, because the change of #536 adds v32. It comes after v31.
+		// The record of the starter set: the key of a starter category (issue #207). Only a new starter set fills it, so
+		// every category stored before has none and keeps its name when the interface language changes. It is v33 and
+		// not v32, because the change of #536 adds v32. It comes after v31.
 		m.registerMigration("v33") { db in
-			try db.alter(table: "category") { t in
-				t.add(column: "starterKey", .text)
-				t.add(column: "starterLanguage", .text)
-			}
+			try db.alter(table: "category") { t in t.add(column: "starterKey", .text) }
 		}
 		return m
 	}

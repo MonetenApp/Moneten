@@ -1,8 +1,7 @@
 /// The categories that a new database starts with, named in the language of the interface.
 public enum StarterCategories {
-	/// The raw value is stored with each starter category, so it never changes.
-	public enum Language: String, Codable, Sendable, CaseIterable {
-		case english = "en", german = "de"
+	public enum Language: Sendable, CaseIterable {
+		case english, german
 
 		/// German for a localization such as "de", "de-CH", or "de_DE", English for any other.
 		public init(localization: String?) {
@@ -10,8 +9,8 @@ public enum StarterCategories {
 		}
 	}
 
-	/// The starter set in `language`. Each category records its key and the language of its name, so that a later
-	/// change of the interface language finds the names that the starter set gave and no others.
+	/// The starter set in `language`. Each category records its key, so that a later change of the interface language
+	/// finds the categories that the starter set made and no others.
 	public static func make(language: Language) -> [Category] {
 		func name(_ english: String, _ german: String) -> String { language == .german ? german : english }
 		let salary = name("Salary", "Gehalt")
@@ -28,16 +27,16 @@ public enum StarterCategories {
 		]
 		var result: [Category] = []
 		for (position, group) in groups.enumerated() {
-			let g = Category(position: position, name: group.name, isGroup: true, starterKey: group.key, starterLanguage: language)
+			let g = Category(position: position, name: group.name, isGroup: true, starterKey: group.key)
 			result.append(g)
 			for (i, child) in group.children.enumerated() {
 				// The rule reads German bank texts, so it is the same in every language.
 				result.append(Category(parentID: g.id, position: i, name: child.name, rule: child.name == salary ? #""Gehalt" OR "Lohn""# : "",
-					starterKey: "\(group.key).\(child.key)", starterLanguage: language))
+					starterKey: "\(group.key).\(child.key)"))
 			}
 		}
-		result.append(Category(position: groups.count, name: name("Transfers", "Umbuchungen"), showInDiagrams: false, starterKey: "transfers", starterLanguage: language))
-		result.append(Category(position: 1_000, name: name("Uncategorized", "Unkategorisiert"), isDefault: true, starterKey: "default", starterLanguage: language))
+		result.append(Category(position: groups.count, name: name("Transfers", "Umbuchungen"), showInDiagrams: false, starterKey: "transfers"))
+		result.append(Category(position: 1_000, name: name("Uncategorized", "Unkategorisiert"), isDefault: true, starterKey: "default"))
 		return result
 	}
 
@@ -58,8 +57,9 @@ public enum StarterCategories {
 	/// when it opens the database. The ids stay, so the transactions keep their categories.
 	///
 	/// Only the record of the starter set counts, never a name alone: a category follows the language while it has
-	/// `starterKey` and still the starter name in its `starterLanguage`, so a name that the user gave stays, also one
-	/// of the other language, and so does a category that the user built. A database created before the record
+	/// `starterKey`, which a rename or a move by the user ends (`Ledger.userSaved(_:)`, `Ledger.move(category:into:at:)`),
+	/// and the starter name of its key in another language. So a name that the user gave stays, also one renamed back
+	/// or one of the other language, and so does a category that the user built. A database created before the record
 	/// renames nothing. A group follows only with exactly its starter subcategories, one each, each following too,
 	/// so a group with one more or one less subcategory stays as the user left it. A new name must pass
 	/// `Ledger.checkCategoryName(_:in:renaming:)`, so the sidebar never shows a name twice in one group.
@@ -69,12 +69,12 @@ public enum StarterCategories {
 		})
 		let template = make(language: language)
 		/// The category with the name of `language`, or nil when it does not follow the language or the name is taken.
+		/// "Restaurants" has the same name in both sets, so it follows with its name unchanged.
 		func follows(_ c: Category) -> Category? {
-			guard let key = c.starterKey, let from = c.starterLanguage, from != language, names[from]?[key] == c.name,
+			guard let key = c.starterKey, Language.allCases.contains(where: { $0 != language && names[$0]?[key] == c.name }),
 				let name = names[language]?[key], ledger.checkCategoryName(name, in: c.parentID, renaming: c.id) == .accepted(name) else { return nil }
 			var renamed = c
 			renamed.name = name
-			renamed.starterLanguage = language
 			return renamed
 		}
 		var result: [Category] = []
@@ -82,15 +82,15 @@ public enum StarterCategories {
 			guard let renamedRoot = follows(root), let starter = template.first(where: { $0.starterKey == renamedRoot.starterKey }) else { continue }
 			let childKeys = template.filter { $0.parentID == starter.id }.compactMap(\.starterKey)
 			let below = ledger.categoryIDs(inTree: root.id).subtracting([root.id]).compactMap(ledger.category)
-			let children = below.compactMap { $0.parentID == root.id && $0.starterLanguage == root.starterLanguage ? follows($0) : nil }
-			// One each: as many subcategories as starter ones, every one following, and no key twice.
-			guard below.count == childKeys.count, children.count == below.count,
-				Set(children.compactMap(\.starterKey)) == Set(childKeys) else { continue }
+			let children = below.compactMap { $0.parentID == root.id ? follows($0) : nil }
+			// One each: as many subcategories as starter ones, and every starter key among those that follow.
+			guard below.count == childKeys.count, Set(children.compactMap(\.starterKey)) == Set(childKeys) else { continue }
 			result.append(renamedRoot)
 			result += children
 		}
 		if let d = ledger.defaultCategory, let renamed = follows(d) { result.append(renamed) }
-		return result
+		// A name that is the same in both sets needs no write.
+		return result.filter { $0.name != ledger.category($0.id)?.name }
 	}
 
 	/// Whether `c` is the starter category `starter` as the starter set made it. The place in the sidebar and
@@ -103,7 +103,6 @@ public enum StarterCategories {
 		s.isExpanded = c.isExpanded
 		// The record of the starter set is not a setting, and a database created before it has none.
 		s.starterKey = c.starterKey
-		s.starterLanguage = c.starterLanguage
 		return s == c
 	}
 
@@ -116,5 +115,17 @@ public enum StarterCategories {
 				return starterChildren.contains { same(c, $0) }
 			}
 		}
+	}
+}
+
+extension Ledger {
+	/// The category as the user saves it over the stored one: a new name or another group ends the record of the
+	/// starter set, so the name that the user chose stays when the interface language changes, also when it is the
+	/// starter name again. Any other setting, such as a color, keeps the record, because only the name holds the language.
+	public func userSaved(_ c: Category) -> Category {
+		guard let stored = category(c.id), stored.name != c.name || stored.parentID != c.parentID else { return c }
+		var saved = c
+		saved.starterKey = nil
+		return saved
 	}
 }
