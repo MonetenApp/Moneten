@@ -449,6 +449,13 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **WHEN** the migration runs again
 - **THEN** the account shows 1.249,76 €
 
+#### Scenario: Transaction that only a refresh stored
+
+- **GIVEN** a first run migrated the account "GiroA" with a balance of 100,00 € and one transaction of -5,00 €
+- **AND** a refresh then stored a transaction of 1,00 € from "Laden A" with its own identifier, which the source does not have
+- **WHEN** the migration runs again with the source still at 100,00 €
+- **THEN** "GiroA" shows 101,00 €, because the transaction counts on top of the balance of the source
+
 #### Scenario: Category changed in the app
 
 - **GIVEN** the user moved a migrated transaction from "Food" to "Pets" in the app
