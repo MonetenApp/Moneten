@@ -12,7 +12,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 1.6 Back up the database while the app runs. Verified by "Backup Database..." in the Tools menu.
 - [x] 1.7 Explain what the backup command covers. Verified by the save panel explains it.
 - [x] 1.8 A backup opens with the password of its time. Verified by VaultTests "A backup opens with the same password".
-- [ ] 1.9 Warn about a backup without a password. Built: a warning before the save panel offers "Set Database Password...", "Back Up Anyway", and "Cancel". Verify it in the app.
+- [x] 1.9 Warn about a backup without a password. Verified by the debug harness command "backup": without a database password, "Backup Database..." first warns "No database password is set." with "Set Database Password...", "Back Up Anyway", and "Cancel". "Cancel" saves nothing, "Set Database Password..." opens its sheet, and "Back Up Anyway" saves the copy (2026-11-18).
 - [x] 1.10 Restore a database file. Verified by OpeningTests "A restored backup with an older password replaces the newer password in the Keychain after the unlock", SentinelPINTests, which open a backup in a clean data folder with the password alone, and the debug harness: with "Unlock automatically at application start" on and another password in the Keychain, the lock screen explains it, and after the unlock the next launch opens without a prompt (#266).
 - [x] 1.11 Move to another Mac. Verified by OpeningTests "A data folder copied to another Mac opens with the same password, and the two copies stay independent" (#266).
 - [x] 1.12 No synchronization between copies. Verified by OpeningTests "A data folder copied to another Mac opens with the same password, and the two copies stay independent". The app has no code that sends data to another Mac (#266).
@@ -22,7 +22,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 2026-11-18 (owner decision): 18 of 24 scenarios passed, and "Notice in the save panel" failed (#481). Not checkable in the harness: "Open the folder" (a Finder window), "Restore with Time Machine", "Backup during refresh" (no bank refresh in the Perf build), and the two scenarios of the old app name (they apply only to the real folder in Application Support). Open: #481 and the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 

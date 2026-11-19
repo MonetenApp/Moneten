@@ -105,6 +105,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	}
 
 	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+	@MainActor func applicationWillTerminate(_ notification: Notification) {
+		model?.applicationWillTerminate()
+	}
 }
 
 struct AppCommands: Commands {
@@ -188,13 +192,13 @@ struct AppCommands: Commands {
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedManualAccount == nil)
-			// A bank dialog shows only while no other sheet is open, so ⌘K would close it and drop a half-typed PIN.
+			// A bank dialog shows only while no other sheet is open, so ⌘K or ⌘⇧K would close it and drop a half-typed PIN.
 			Button("Assign Category...") { model.openCategoryPicker() }
 				.keyboardShortcut("k")
 				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
-			Button("Add Comment...") { model.sheet = .comment(model.selectedTransactions) }
+			Button("Add Comment...") { model.openCommentSheet() }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
-				.disabled(!unlocked || model.selectedTransactions.isEmpty)
+				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
 				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)
@@ -236,6 +240,8 @@ struct AppCommands: Commands {
 extension AppCommands {
 	/// The page of "Help and FAQ...". The project has no help pages of its own yet, so it is the README.
 	static let helpPage = URL(string: "https://github.com/MonetenApp/Moneten#readme")!
+	/// The help page about backups, a section of the README, which the save panel of "Backup Database..." links to.
+	static let backupHelpPage = URL(string: "https://github.com/MonetenApp/Moneten#back-up-your-data")!
 }
 
 extension Notification.Name {

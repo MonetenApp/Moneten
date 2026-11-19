@@ -183,7 +183,8 @@ public struct SecondFactorRequest: Sendable, Equatable {
 	/// first refresh asks for the full history").
 	public let olderTransactions: Bool
 	/// A sentence of the source about the methods, which the dialog shows under the purpose, for example that a method of
-	/// the website of the bank is not offered for finance software. Nil for most requests.
+	/// the website of the bank is not offered for finance software, as the Security App of Oberbank or OLB-Sign of OLB.
+	/// Nil for most requests.
 	public let note: String?
 
 	public init(purpose: Purpose, system: System, loginOnly: Bool = false, challenge: Challenge, validity: Duration = .seconds(300),

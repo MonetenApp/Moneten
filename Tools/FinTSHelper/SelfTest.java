@@ -1580,7 +1580,7 @@ final class SelfTest {
 		answers.add("482915");
 		callback.callback(passport, FinTSHelper.Callback.NEED_PT_TAN, "pushTAN 2.0\nHinweis\n\nBitte TAN eingeben", 0, new StringBuffer());
 		expect("a TAN request offers the methods to change to", asked.get(0),
-			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"methods\":" + methods + "}");
+			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte TAN eingeben\",\"current\":\"922\",\"method\":\"pushTAN 2.0\",\"methods\":" + methods + "}");
 
 		// hbci4java asks for no method when the bank allows a single one, as Oberbank with only xTAN by SMS (#236), so the
 		// TAN request names that method, from which the app knows that the bank offers no app.
@@ -1595,7 +1595,7 @@ final class SelfTest {
 		callback.callback(onlySMS, FinTSHelper.Callback.NEED_PT_TAN, "mobileTAN\n\nBitte geben Sie die xTAN aus der SMS ein.", 0, new StringBuffer());
 		expect("a TAN request of the single method that the bank allows names it", asked.get(0),
 			"{\"type\":\"ask\",\"kind\":\"tan\",\"purpose\":\"login\",\"prompt\":\"Bitte geben Sie die xTAN aus der SMS ein.\",\"current\":\"901\","
-				+ "\"methods\":[{\"type\":\"method\",\"id\":\"901\",\"name\":\"mobileTAN\",\"medium\":true,\"delivery\":\"sms\"}]}");
+				+ "\"method\":\"mobileTAN\",\"methods\":[{\"type\":\"method\",\"id\":\"901\",\"name\":\"mobileTAN\",\"medium\":true,\"delivery\":\"sms\"}]}");
 
 		history(passport, callback, asked, answers);
 

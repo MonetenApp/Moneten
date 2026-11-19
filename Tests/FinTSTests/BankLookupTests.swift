@@ -64,7 +64,7 @@ struct BankLookupTests {
 
 		lookup.entry = "37040044"
 		await lookup.lookUp(showingErrors: true)
-		#expect(lookup.state == .failed("Ohnebank does not provide a FinTS/HBCI server. An extension can add support for the bank."))
+		#expect(lookup.state == .failed("Ohnebank does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account."))
 		#expect(lookup.bank == nil)
 
 		lookup.entry = "99999999"
@@ -102,7 +102,7 @@ struct BankLookupTests {
 		let lookup = BankLookup { BankDirectory([BankDirectory.Entry(code: "21099999", city: "Altstadt", bank: FinTSBank(name: "Sparkasse Altstadt -alt-", bic: nil, url: nil))]) }
 		lookup.entry = "DE07 2109 9999 0000 2020 51"
 		await lookup.lookUp(showingErrors: true)
-		#expect(lookup.state == .failed("Sparkasse Altstadt -alt- does not provide a FinTS/HBCI server. An extension can add support for the bank."))
+		#expect(lookup.state == .failed("Sparkasse Altstadt -alt- does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account."))
 		#expect(lookup.bank == nil)
 	}
 
@@ -129,7 +129,7 @@ struct BankLookupTests {
 		#expect(lookup.state == .failed("No bank matches “keine bank”."))
 
 		lookup.choose(Self.ohnebank)
-		#expect(lookup.state == .failed("Ohnebank does not provide a FinTS/HBCI server. An extension can add support for the bank."))
+		#expect(lookup.state == .failed("Ohnebank does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account."))
 	}
 
 	@Test("The helper sends the bank directory once, also for lookups at the same time, and again after a failure")
