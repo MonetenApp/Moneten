@@ -170,6 +170,11 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// "Import Transactions..." works in the same accounts. A file holds transactions, and a portfolio has positions.
 	public var takesImportedTransactions: Bool { kind != .portfolio }
 
+	/// An open account that came from the source app and has no bank access yet: "Connect..." in its header, the
+	/// offer of a refresh command, and the mark in the sidebar are for it. An offline account is offline on purpose,
+	/// and the assistant leaves a closed account as it is.
+	public var needsConnecting: Bool { source == .migrated && accessID == nil && !isClosed }
+
 	/// The bank entry with which "Connect..." of a migrated account starts the assistant: the IBAN, else the
 	/// Bankleitzahl, else nothing, so that the user types the bank. A migrated account can hold the BIC of the
 	/// source as its bank code, which the bank step does not take.

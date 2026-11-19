@@ -205,6 +205,14 @@ public enum RefreshScope: Hashable, Sendable {
 	case group(UUID)
 }
 
+/// "Connect..." that a refresh command offers in place of a refresh, `Ledger.connectOffer(_:selected:)`.
+public struct ConnectOffer: Hashable, Sendable {
+	/// The account for which "Connect..." opens the add account assistant.
+	public var account: Account
+	/// The open migrated accounts without an access that the command covers, this one included.
+	public var count: Int
+}
+
 /// "Refresh" in the account settings.
 public enum RefreshInterval: String, Codable, CaseIterable, Sendable {
 	case everyTwoHours, fourTimesADay, onceADay, onceAWeek
@@ -241,19 +249,14 @@ extension Ledger {
 	/// and closed accounts are left out, and so is an account with the interval "never", unless the command
 	/// names that account.
 	public func refreshAccounts(_ scope: RefreshScope, calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
-		let chosen: Set<UUID>? = switch scope {
-		case .all: nil
-		case let .account(id): [id]
-		case let .group(id): accountIDs(inGroupTree: id)
-		}
+		let chosen = accountIDs(in: scope)
 		var oldestPending: [UUID: Day] = [:]
 		for t in transactions where t.isPending {
 			oldestPending[t.accountID] = min(oldestPending[t.accountID] ?? t.bookingDate, t.bookingDate)
 		}
 		var plan: [UUID: [AccountRequest]] = [:]
-		for a in accounts where !a.isClosed && chosen?.contains(a.id) != false {
+		for a in accounts where chosen?.contains(a.id) != false && Self.refreshes(a, scope) {
 			guard let accessID = a.accessID, let remoteID = a.remoteID else { continue }
-			if a.refreshInterval == .never, scope != .account(a.id) { continue }
 			// 14 days of overlap with the last success, and back to the oldest pending row, because a refresh
 			// removes a pending row that the bank dropped only within the days it asked for. The connector asks
 			// for no more than 90 days.
@@ -266,6 +269,38 @@ extension Ledger {
 				balance: a.bankBalanceMinor.map { Money(minorUnits: $0, currency: a.currency) }, refreshedAt: a.refreshedAt, comment: a.comment))
 		}
 		return plan
+	}
+
+	/// "Connect..." for a refresh command that finds no account to refresh but open migrated accounts without an
+	/// access, which is every account right after a migration. Without it the command does nothing and the user
+	/// does not learn why (issue #531). The offer names the selected account when the command covers it, else the
+	/// first one in the order of the sidebar. A command that refreshes an account offers nothing.
+	public func connectOffer(_ scope: RefreshScope, selected: UUID?) -> ConnectOffer? {
+		let chosen = accountIDs(in: scope)
+		let covered = accounts.filter { chosen?.contains($0.id) != false }
+		guard !covered.contains(where: { Self.refreshes($0, scope) }) else { return nil }
+		let waiting = covered.filter(\.needsConnecting)
+		guard !waiting.isEmpty else { return nil }
+		let account = waiting.first { $0.id == selected } ?? {
+			let ids = Set(waiting.map(\.id))
+			return accountsInSidebarOrder.first { ids.contains($0.id) }
+		}()
+		return account.map { ConnectOffer(account: $0, count: waiting.count) }
+	}
+
+	/// The accounts that a command names, or nil for every account.
+	private func accountIDs(in scope: RefreshScope) -> Set<UUID>? {
+		switch scope {
+		case .all: nil
+		case let .account(id): [id]
+		case let .group(id): accountIDs(inGroupTree: id)
+		}
+	}
+
+	/// Whether a command of `scope` that names the account fetches it: an open account of an access, and one with
+	/// the interval "never" only when the command names that account.
+	private static func refreshes(_ account: Account, _ scope: RefreshScope) -> Bool {
+		!account.isClosed && account.accessID != nil && account.remoteID != nil && (account.refreshInterval != .never || scope == .account(account.id))
 	}
 
 	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`

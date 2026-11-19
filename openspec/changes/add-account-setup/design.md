@@ -153,11 +153,11 @@ The login without the state is what sets an access up again after an aborted aut
 ## Deviations from the spec
 
 - The bank directory of hbci4java holds no field names, formats, or notes. The login step asks for "User ID" and "PIN", except for the five banks of `LoginHint`, and has no customer ID and no format checks. The five banks ask to leave the customer ID empty.
-- The country menu is not built. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory. In v0.1 the menu would change nothing: the bank directory has only German banks, and the extensions declare no country for their services.
+- The country menu is not built, and its requirement moved to `defer-v0.1-follow-ups` on 19 November 2026. A valid IBAN of another country gets the message that the app finds banks only by a German IBAN or Bankleitzahl so far, and the search covers only the German bank directory. In v0.1 the menu would change nothing: the bank directory has only German banks, and the extensions declare no country for their services.
 - The bank directory marks no outdated Bankleitzahl, so the app cannot say that one is outdated. For the entry of a merged bank it shows a note and goes on, as "A Bankleitzahl of a merged bank" describes.
-- "Access with" is not shown, because FinTS is the only method until E6.
+- "Access with" is not shown, because FinTS is the only method of a bank. Its requirement moved to `defer-v0.1-follow-ups` on 19 November 2026.
 - The progress text is "Setting up Accounts..." without the current step, because the helper reports no progress while it lists accounts.
-- The switch of the access method is not built. It needs a second access method for one bank, which comes with "Access with".
+- The switch of the access method is not built. It needs a second access method for one bank, which comes with "Access with". Its requirement moved to `defer-v0.1-follow-ups` on 19 November 2026.
 - The bank directory holds no notes, so the login step shows no note of the bank before the first login. The help of the first step says how a credit card is added.
 
 ## Risks / Trade-offs

@@ -11,6 +11,7 @@ A German bank customer must keep account statements for years, and the tax offic
 - The app stores each statement as a PDF file in the "Statements" folder, sorted by bank and account.
 - Statements have a read state. New statements are unread and counted in the sidebar.
 - The user can open, show in Finder, delete, import, and reassign statements.
+- One notification for the statements of a refresh run. This requirement and its task moved here from `add-notifications-and-menu-bar` (task 1.10) on 19 November 2026 (owner decision).
 
 ## Capabilities
 
@@ -20,7 +21,7 @@ A German bank customer must keep account statements for years, and the tax offic
 
 ### Modified Capabilities
 
-None.
+- `notifications-and-menu-bar`: adds "Notification about new statements". The change `add-notifications-and-menu-bar` introduces the capability.
 
 ## Impact
 

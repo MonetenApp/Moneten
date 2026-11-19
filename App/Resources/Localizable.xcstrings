@@ -2069,6 +2069,26 @@
         }
       }
     },
+    "An account without a bank access cannot be refreshed. Connect sets up the access for “%@”, and the assistant offers the other accounts of the same bank." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Konto ohne Bankzugang kann nicht aktualisiert werden. „Verbinden“ richtet den Zugang für „%@“ ein, und der Assistent bietet die anderen Konten derselben Bank an."
+          }
+        }
+      }
+    },
+    "An account without a bank access cannot be refreshed. Connect sets up the access to its bank." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Konto ohne Bankzugang kann nicht aktualisiert werden. „Verbinden“ richtet den Zugang zu seiner Bank ein."
+          }
+        }
+      }
+    },
     "An amount filter is active; some entries might be hidden." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -7495,6 +7515,16 @@
         }
       }
     },
+    "Not connected to a bank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht mit einer Bank verbunden"
+          }
+        }
+      }
+    },
     "Not imported" : {
       "localizations" : {
         "de" : {
@@ -9797,12 +9827,22 @@
         }
       }
     },
-    "Taken over from MoneyMoney. Not connected to a bank yet." : {
+    "Taken over from MoneyMoney." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aus MoneyMoney übernommen. Noch nicht mit einer Bank verbunden."
+            "value" : "Aus MoneyMoney übernommen."
+          }
+        }
+      }
+    },
+    "Taken over from MoneyMoney. Not connected to a bank." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus MoneyMoney übernommen. Nicht mit einer Bank verbunden."
           }
         }
       }
@@ -10202,6 +10242,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Konten und Gruppen darin bleiben mit ihren Umsätzen erhalten und rücken auf die oberste Ebene."
+          }
+        }
+      }
+    },
+    "The accounts are not connected to a bank yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Konten sind noch nicht mit einer Bank verbunden."
           }
         }
       }
@@ -12821,6 +12871,16 @@
         }
       }
     },
+    "This account has no bank access yet, so it cannot be refreshed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Konto hat noch keinen Bankzugang und kann daher nicht aktualisiert werden."
+          }
+        }
+      }
+    },
     "This Bankleitzahl belongs to a bank that merged. If the login fails, ask your bank which Bankleitzahl it uses for online banking now." : {
       "localizations" : {
         "de" : {
@@ -13907,6 +13967,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "„%@“ in Moneten ist vielleicht dieses Konto. Wählen Sie es, um es zu verbinden. Es behält seine Umsätze."
+          }
+        }
+      }
+    },
+    "“%@” is not connected to a bank yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„%@“ ist noch nicht mit einer Bank verbunden."
           }
         }
       }

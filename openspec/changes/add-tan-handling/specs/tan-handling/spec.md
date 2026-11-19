@@ -34,16 +34,6 @@ The app SHALL show in the dialog the bank, the account or login, the purpose of 
 - **WHEN** the website of a card issuer asks for a code at login
 - **THEN** the dialog says that the website needs the confirmation to allow the login
 
-### Requirement: Mark a TAN that covers only the login
-
-The app SHALL say in the dialog that the TAN is used for the login only when the bank asks for a TAN at login while the user is sending an order.
-
-#### Scenario: Login TAN before a payment
-
-- **GIVEN** the user started an order and the bank first asks for a TAN for the login
-- **WHEN** the dialog opens
-- **THEN** it says that this TAN is used only for the login and not for the order
-
 ### Requirement: Choose the TAN method
 
 The app SHALL list under "Choose TAN method" every TAN method that the bank reports for the user, with the name that the bank gives it, and use the method that the user selects.

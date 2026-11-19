@@ -25,9 +25,19 @@ final class SheetAlerts {
 	@ObservationIgnored var isViewOnScreen = false {
 		didSet {
 			guard isViewOnScreen != oldValue else { return }
-			if isViewOnScreen { present() } else if let panel { end(panel, .abort) }
+			guard isViewOnScreen else {
+				// The lock drops an action that waits, so nothing opens on the lock screen or after the unlock.
+				acting?.cancel()
+				acting = nil
+				if let panel { end(panel, .abort) }
+				return
+			}
+			present()
 		}
 	}
+	/// The action of the button that closed the last alert, such as "Connect...", until it has run. It holds the place
+	/// of the next alert, so that the sheet that the action opens never comes over another alert.
+	@ObservationIgnored private var acting: Task<Void, Never>?
 	/// The alert sheet, from its start to its completion handler.
 	@ObservationIgnored private(set) var panel: NSAlert?
 	/// The message that the alert sheet shows.
@@ -65,7 +75,7 @@ final class SheetAlerts {
 	}
 
 	private func present() {
-		guard message != nil, isViewOnScreen, panel == nil, wait == nil else { return }
+		guard message != nil, isViewOnScreen, panel == nil, wait == nil, acting == nil else { return }
 		wait = Task { [weak self] in
 			// A message that comes with the end of a sheet, such as the result of an import, starts this task before the
 			// sheet slides out, and AppKit blocks the main thread for the slide. Without a turn of the main queue, the
@@ -88,6 +98,20 @@ final class SheetAlerts {
 		}
 	}
 
+	/// Runs the action of an alert once the alert has slid out, so that a sheet that it opens does not meet the
+	/// alert on its way out of the window, which AppKit does not survive (see the type). The next alert waits for
+	/// the action, and then for the sheet that the action opened.
+	private func run(_ action: AlertAction, after alert: NSWindow) {
+		acting = Task { @MainActor [weak self, weak alert] in
+			while alert?.isVisible == true, !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
+			guard let self, !Task.isCancelled else { return }
+			acting = nil
+			// A lock that came before this alert ended leaves the view gone, and the action stays undone.
+			if isViewOnScreen { action.run() }
+			present()
+		}
+	}
+
 	/// The window when nothing else is on it: no sheet, also none that still slides out, and no alert.
 	private func freeWindow(waitedForDismissal: Bool) -> NSWindow? {
 		guard !hasSheet(), !isSheetOnScreen || waitedForDismissal, closing?.isVisible != true,
@@ -100,6 +124,10 @@ final class SheetAlerts {
 		let panel = NSAlert()
 		panel.messageText = message.title
 		panel.informativeText = message.message
+		if let action = message.action {
+			panel.addButton(withTitle: action.title)
+			panel.addButton(withTitle: String(localized: "Cancel"))
+		}
 		self.panel = panel
 		shown = message.id
 		panel.beginSheetModal(for: window) { [weak self] response in
@@ -107,11 +135,12 @@ final class SheetAlerts {
 			self.panel = nil
 			shown = nil
 			closing = panel.window
-			// Only OK removes the message here. `closeFirst` removed it already, and a hidden one stays first.
-			if response == .alertFirstButtonReturn, line.first?.id == message.id {
+			// Only a button removes the message here. `closeFirst` removed it already, and a hidden one stays first.
+			if response == .alertFirstButtonReturn || response == .alertSecondButtonReturn, line.first?.id == message.id {
 				line.removeFirst()
 				if line.isEmpty { Trail.log("alert closed") }
 			}
+			if response == .alertFirstButtonReturn, let action = message.action { return run(action, after: panel.window) }
 			present()
 		}
 	}
