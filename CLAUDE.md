@@ -17,6 +17,7 @@ scripts/test.sh                                    # all library tests
 scripts/test.sh --filter LedgerTests               # one suite
 scripts/test.sh --filter 'LedgerTests/accountTree' # one test
 scripts/test.sh -c release -Xswiftc -enable-testing --filter PerformanceTests   # budgets hold only in release
+LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 scripts/test.sh --filter 'CatalogStore|MigrationStore|Extension'   # local diagnosis: one thread of Swift concurrency, so a test that blocks a shared thread hangs; not on CI, where it hangs before any output
 scripts/check.sh                                   # docs, chrome rule, specs, Periphery, tests: run before a PR
 
 scripts/generate-project.sh                        # writes App/Moneten.xcodeproj
