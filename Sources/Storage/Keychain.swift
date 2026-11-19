@@ -120,16 +120,6 @@ struct Keychain: Sendable {
 	}
 }
 
-/// The home folder of the user in the user database of macOS, which neither `HOME` nor `CFFIXED_USER_HOME` changes.
-private func userDatabaseHome() -> String? {
-	var record = passwd()
-	var result: UnsafeMutablePointer<passwd>?
-	var buffer = [CChar](repeating: 0, count: 16_384)
-	guard getpwuid_r(getuid(), &record, &buffer, buffer.count, &result) == 0, result != nil, let directory = record.pw_dir else { return nil }
-	let home = String(cString: directory)
-	return home.hasPrefix("/") ? home : nil
-}
-
 /// Opens a keychain file by its path and throws unless the file exists. `SecKeychainOpen` is deprecated together with
 /// the file-based Keychain, but no other call returns the login keychain: `SecKeychainCopyDomainDefault` returns the
 /// default keychain, which is what another program can change, and the data protection Keychain needs a build signed
