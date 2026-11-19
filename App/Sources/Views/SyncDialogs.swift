@@ -165,7 +165,7 @@ struct TwoFactorSheet: View {
 	@State private var medium = ""
 	@State private var confirmCancel = false
 	@State private var imageEnlarged = false
-	@State private var flickerSize = FlickerCodeSize()
+	@State private var flickerSize = FlickerCodeSize(defaults: AppSettings.defaults)
 
 	/// The dialog grows with an enlarged image or flicker code.
 	private var width: CGFloat {

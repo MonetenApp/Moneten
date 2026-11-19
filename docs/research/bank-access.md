@@ -72,7 +72,7 @@ Each run takes a few minutes and contacts only the bank under test. It uses a de
 1. Put the product registration number into the login Keychain, if it is not there: `security add-generic-password -s 'Moneten FinTS product ID' -a moneten -w` (it asks for the number).
 2. Build: `scripts/build-app.sh debug`. The build bundles the FinTS helper and the product ID.
 3. Quit every running Moneten, also one that runs from another folder, and check that none is left: `pgrep -x Moneten` must print nothing. A plain `open` brings a running instance to the front, and that instance keeps its own data folder, which can be the real one.
-4. Start a separate instance with a throwaway folder and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`:
+4. Start a separate instance with a throwaway folder and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`. The run keeps its settings in `$RUN/data/Settings.plist`, so it does not change the settings of the installed Moneten:
 
    ```sh
    RUN=$(mktemp -d); mkdir "$RUN/debug"

@@ -98,9 +98,9 @@ final class ExtensionLibrary {
 		get { alerts.message?.title }
 		set { if let newValue { alerts.post(AlertMessage(title: newValue, message: "")) } else { alerts.closeFirst() } }
 	}
-	var automatic: Bool = UserDefaults.standard.object(forKey: Preference.updateExtensionsAutomatically) as? Bool ?? true {
+	var automatic: Bool = AppSettings.defaults.object(forKey: Preference.updateExtensionsAutomatically) as? Bool ?? true {
 		didSet {
-			UserDefaults.standard.set(automatic, forKey: Preference.updateExtensionsAutomatically)
+			AppSettings.defaults.set(automatic, forKey: Preference.updateExtensionsAutomatically)
 			Task { await applyUpdates() }
 		}
 	}
@@ -432,6 +432,14 @@ final class ExtensionLibrary {
 
 	func isInstalled(_ id: String) -> Bool {
 		records[id] != nil
+	}
+
+	/// The package of the file install `name` as its files read now, or nil for a catalog extension, a name that is not
+	/// installed, and files that cannot be read. The debug harness compares it with the package of the warning for files,
+	/// to see that a confirmed install put those files in place.
+	func allowedFilePackage(_ name: String) -> ExtensionPackage? {
+		guard case .file? = records[name], let url = FileInstall.url(of: name, in: folder) else { return nil }
+		return try? FileInstall.load(url).package
 	}
 
 	/// Whether `name` belongs to the catalog: installed from it or listed in its index. The debug harness trusts a file

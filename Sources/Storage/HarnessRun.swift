@@ -122,6 +122,115 @@ public enum HarnessRun {
 		hasFixture || loadedFromFile && !catalogName ? .local : .realService
 	}
 
+	/// The extensions that the run loaded itself from a file. "extrun", "extaccess", and "extrefresh" load a file at a
+	/// path and record its name at once. "extfile" only shows the warning for files, which the user may still cancel,
+	/// and an install may fail, so its name counts only after "extconfirm" installed that file (issue #517).
+	public struct OwnExtensions: Sendable, Equatable {
+		private var names: Set<String> = []
+
+		public init() {}
+
+		/// The run loaded the extension `name` from a file at a path.
+		public mutating func loaded(_ name: String) {
+			names.insert(name)
+		}
+
+		/// "extconfirm" confirmed the warning for files of `name`. `installed` is whether the files that the warning
+		/// showed are in place and allowed now.
+		public mutating func confirmedFile(_ name: String, installed: Bool) {
+			if installed { names.insert(name) }
+		}
+
+		public func contains(_ name: String) -> Bool {
+			names.contains(name)
+		}
+	}
+
+	/// Who receives what the harness sends to `access`. `syncDemo` is the ID of the access of the scripted bank of
+	/// "syncdemo", `fixtures` holds the extensions with a fixture of the run, and `isCatalogName` says whether a name is
+	/// installed from the catalog or listed in its index.
+	public static func recipient(of access: Access, syncDemo: UUID, fixtures: Set<String>, own: OwnExtensions,
+		isCatalogName: (String) -> Bool) -> Recipient {
+		if access.id == syncDemo { return .local }
+		switch access.source {
+		case .fints: return .fints
+		case let .extension(id):
+			return extensionRecipient(hasFixture: fixtures.contains(id), loadedFromFile: own.contains(id), catalogName: isCatalogName(id))
+		case .finAPI: return .realService
+		}
+	}
+
+	/// Whether "extanswer" may answer the question about a new host. A denial sends nothing and always passes. An
+	/// allowance lets the extension reach the host, so it passes only when `mayReach` lets the harness reach `recipient`.
+	public static func mayAnswerHost(allow: Bool, to recipient: Recipient, fakeBank: Bool) -> Bool {
+		!allow || mayReach(recipient, fakeBank: fakeBank)
+	}
+
+	/// Whether "extjs" may run JavaScript in the web login page of an extension. `recipient` belongs to the dialog of
+	/// the broker on screen that shows the page, nil when no such dialog shows. A script can send a token to the
+	/// extension, as the page does at the end of a login, so it passes only when `mayReach` lets the harness reach the
+	/// recipient. `servedLocally` says that the run made the page itself: a page of the fixture of the run at the address
+	/// that the web view shows now, or the captcha stub. An extension with a fixture counts as local, but a login page
+	/// that the fixture lacks loads from the real service, and a script there could log in at it.
+	public static func mayRunScript(inLoginOf recipient: Recipient?, servedLocally: Bool, fakeBank: Bool) -> Bool {
+		guard servedLocally, let recipient else { return false }
+		return mayReach(recipient, fakeBank: fakeBank)
+	}
+
+	/// What `surface(of:)` needs to know of a window and of the app. The app reads it from AppKit and the model.
+	public struct Screen: Sendable, Equatable {
+		/// The "Add Account" assistant: whether it shows the login step, and the service it has chosen.
+		public struct Setup: Sendable, Equatable {
+			public var atLogin: Bool
+			public var service: SetupService
+
+			public init(atLogin: Bool, service: SetupService) {
+				self.atLogin = atLogin
+				self.service = service
+			}
+		}
+
+		/// The window is a save or open panel of macOS.
+		public var isFilePanel: Bool
+		/// The recipient of the dialog of the broker on screen: a question, or the progress after the choice of a TAN
+		/// method or medium, whose Escape cancels the refresh. Nil without one.
+		public var bankDialog: Recipient?
+		/// The assistant, nil while it is closed.
+		public var setup: Setup?
+		/// Whether the database is open.
+		public var unlocked: Bool
+		/// Whether the window is a sheet.
+		public var isSheet: Bool
+		/// Whether the sheet of the main window sets or changes the database password.
+		public var passwordSheet: Bool
+
+		public init(isFilePanel: Bool, bankDialog: Recipient?, setup: Setup?, unlocked: Bool, isSheet: Bool, passwordSheet: Bool) {
+			self.isFilePanel = isFilePanel
+			self.bankDialog = bankDialog
+			self.setup = setup
+			self.unlocked = unlocked
+			self.isSheet = isSheet
+			self.passwordSheet = passwordSheet
+		}
+	}
+
+	/// What a key or a press of "key" and "controls" in a window reaches. A file panel goes first, then the dialog of the
+	/// broker, then the assistant. A sheet over the main window while the database is not open is an alert, such as
+	/// "Forgot your password?".
+	public static func surface(of screen: Screen) -> Surface {
+		if screen.isFilePanel { return .filePanel }
+		if let recipient = screen.bankDialog { return .bankDialog(recipient) }
+		if let setup = screen.setup { return setupSurface(atLogin: setup.atLogin, service: setup.service) }
+		if !screen.unlocked { return screen.isSheet ? .startAlert : .startWindow }
+		return screen.passwordSheet ? .passwordSheet : .other
+	}
+
+	/// Whether a window with the class name `className` is a save or open panel. A panel of the sandboxed service of
+	/// macOS is no `NSSavePanel` in the app, so the app checks its class name too.
+	public static func isFilePanel(className: String) -> Bool {
+		className.contains("SavePanel") || className.contains("OpenPanel")
+	}
+
 	/// Where a key or a press of the harness lands. The app has no sandbox, so a save panel can write anywhere, and a
 	/// bank dialog can reach a real bank. The harness acts only where a scenario needs it and nothing leaves the Mac.
 	public enum Surface: Sendable, Hashable {
