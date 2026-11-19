@@ -392,10 +392,24 @@ final class AppModel {
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
 			// A sheet that the unlock gave back takes its input until it closes.
 			if let oldValue { heldSheet.close(oldValue) }
+			// A window on top of the sheet goes with it.
+			if overSheet != .none {
+				overSheetDismissal?.cancel()
+				overSheet = .none
+			}
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
 		}
+	}
+	/// The window on top of the open sheet, such as the calibration window over the account settings. The dialog of
+	/// the bank shows on it while it is open, and waits while it slides out (`BankDialogPlace`).
+	var overSheet = BankDialogPlace.OverSheet.none
+	/// Ends the wait for a window on top of the sheet that never reports its dismissal.
+	@ObservationIgnored var overSheetDismissal: Task<Void, Never>?
+	/// Where the dialog of the bank shows now, nil while it waits.
+	var bankDialogPlace: BankDialogPlace? {
+		BankDialogPlace(sheet: sheet != nil, crashReport: crashes.pending != nil, overSheet: overSheet)
 	}
 	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.

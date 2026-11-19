@@ -516,6 +516,15 @@ final class DebugHarness {
 		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		#if DEBUG || PERF_HARNESS
+		// Where the dialog of the bank shows (`BankDialogPlace`, "-" while it waits), the state of the window on top of the sheet, whether the broker
+		// has a dialog, and how many sheets the main window holds, one on top of the other. It reads only, and reaches nothing.
+		case "dialogplace":
+			let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
+			let depth = main.map { Array(sequence(first: $0) { $0.attachedSheet }).count - 1 } ?? 0
+			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet)),
+				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)))
+		#endif
+		#if DEBUG || PERF_HARNESS
 		// "<n>" puts the focus in editable field n, counted from 0, of the sheet on top, or without a sheet of the main window,
 		// such as the field of the lock screen or of the first launch. Then it logs the count of editable fields, the field
 		// that has the focus, and whether a field editor has it. Without an argument it only logs, so that a check can wait

@@ -270,7 +270,7 @@ struct AccountSettingsSheet: View {
 									.monospacedDigit()
 								// A portfolio shows the values of its bank, so an initial balance would change none of them.
 								if original.kind != .portfolio {
-									Button("Calibrate...") { calibrating = true }
+									Button("Calibrate...") { calibrating = model.openOverSheet() }
 										.accessibilityIdentifier("calibrate")
 										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
@@ -302,9 +302,19 @@ struct AccountSettingsSheet: View {
 			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
 			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
 			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
-			.sheet(isPresented: $calibrating, onDismiss: { calibrationBalance = "" }) {
+			// A TAN dialog that comes while the window is open shows on top of it, and one that comes while it slides
+			// out waits for its `onDismiss` (`BankDialogPlace`).
+			.sheet(isPresented: $calibrating, onDismiss: {
+				calibrationBalance = ""
+				model.overSheetDismissed()
+			}) {
 				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
+					.sheet(item: Binding(get: { model.bankDialogPlace == .overSheet ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
+						SyncDialog(broker: model.sync.broker, sheet: sheet)
+							.interactiveDismissDisabled()
+					}
 			}
+			.onChange(of: calibrating) { _, open in if !open { model.closeOverSheet() } }
 			.onAppear {
 				account = original
 				opened = original
@@ -321,7 +331,7 @@ struct AccountSettingsSheet: View {
 					originalColor = held.originalColor
 					calibrationBalance = held.calibrationBalance
 					// The calibration window opens again one turn later, on top of the settings that are on screen then.
-					if held.calibrating { DispatchQueue.main.async { calibrating = true } }
+					if held.calibrating { DispatchQueue.main.async { calibrating = model.openOverSheet() } }
 				}
 			}
 		}
