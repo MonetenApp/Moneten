@@ -162,6 +162,17 @@ import Testing
 			== .outdated("Version 1.0 of Example Bank is no longer in the catalog. Open Extensions and install the update."))
 	}
 
+	/// The catalog can go back to an older version. There is nothing to install then, so the text offers no update (issue #186).
+	@Test func olderVersionInTheIndexOffersNoUpdate() throws {
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [TestCatalog.Package()]))
+		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.1", files: [])
+		#expect(Standing(of: installed, in: index)
+			== .stopped("The catalog lists version 1.0 of Example Bank, which is older than the installed version 1.1. There is no update to install."))
+		var newer = TestCatalog.Package()
+		newer.version = "1.1"
+		#expect(UpdateState().plan(of: installed, manifest: try manifest(newer), in: index) == nil)
+	}
+
 	@Test func activePackageRuns() throws {
 		#expect(try standing(status: "active") == .runs(note: nil))
 	}

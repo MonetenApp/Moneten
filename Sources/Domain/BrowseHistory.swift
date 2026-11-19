@@ -29,9 +29,12 @@ public struct BrowseHistory<Entry: Equatable & Sendable>: Equatable, Sendable {
 
 	/// Removes an entry that no longer exists, such as a removed saved search, from both lists. Neighbors that
 	/// become equal merge, and a step to `current` goes too, so each step of "Back" and "Forward" opens another view.
+	/// Without an open view, the last steps of both lists are neighbors: "Back" opens the view that "Forward" would
+	/// open after it, so that forward step goes (issue #319).
 	public mutating func forget(_ entry: Entry, current: Entry?) {
 		back = Self.steps(back, without: entry, current: current)
 		forward = Self.steps(forward, without: entry, current: current)
+		if current == nil, let last = back.last, last == forward.last { forward.removeLast() }
 	}
 
 	private static func steps(_ steps: [Entry], without entry: Entry, current: Entry?) -> [Entry] {
