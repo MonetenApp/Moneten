@@ -63,20 +63,32 @@ struct PerfScenario {
 			run: { c in
 				await c.select("Bulk")
 				if c.model.visibleTransactions.count != PerfScenario.transactions { c.fail("the filter hid rows of Bulk", ("visible", .count(c.model.visibleTransactions.count))) }
-				if c.harness.filterHintsShown() != false { c.fail("the lines of the filters are in view before the end of the list") }
+				if c.harness.filterHintsShown() != false { c.fail("the lines of the filters are in view before the end of the list", c.harness.filterHintsValues()) }
 			}),
 		PerfScenario(name: "filter-hint-scroll-to-end", budget: halfSecond,
 			run: { c in
 				await c.harness.scrollTablesToEnd()
 				await c.settle()
-				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list") }
+				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list", c.harness.filterHintsValues()) }
 				// SwiftUI writes the insets of the table again when the selection changes, which took the room of the lines.
 				c.model.selectedTransactions = Set(c.model.visibleTransactions.suffix(1).map(\.id))
 				await c.settle()
 				await c.harness.scrollTablesToEnd()
 				await c.settle()
-				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list after a selection") }
+				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list after a selection", c.harness.filterHintsValues()) }
 				c.model.selectedTransactions = []
+				// The smallest main window, which a runner with a small screen comes close to. The window gets its frame back.
+				if let window = c.harness.mainWindow {
+					let frame = window.frame
+					window.setContentSize(NSSize(width: 900, height: 560))
+					await c.settle()
+					await c.harness.scrollTablesToEnd()
+					await c.settle()
+					if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list in a small window", c.harness.filterHintsValues()) }
+					window.setFrame(frame, display: true)
+				} else {
+					c.fail("no main window")
+				}
 			}),
 		// The two scenarios before it leave the status filter on.
 		PerfScenario(name: "large-category", budget: halfSecond,
@@ -753,6 +765,8 @@ struct PerfContext {
 	let problems = PerfProblems()
 
 	func fail(_ problem: StaticString, _ values: (StaticString, LogValue)...) { problems.list.append((problem, values)) }
+
+	func fail(_ problem: StaticString, _ values: [(StaticString, LogValue)]) { problems.list.append((problem, values)) }
 
 	func checkStaleSplitWrites(_ original: Transaction) async {
 		var row = original

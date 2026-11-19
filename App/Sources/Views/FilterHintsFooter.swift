@@ -153,14 +153,22 @@ final class FilterHintsAnchor: NSView {
 		let frame = NSRect(x: table.frame.minX, y: table.frame.minY + lastRow, width: width, height: height)
 		if host.frame != frame { host.frame = frame }
 		// The table fills the clip view when it has few rows, so the lines need room only below a long list.
-		setRoom(max(0, lastRow + height - table.frame.height), in: scroll)
+		let needed = max(0, lastRow + height - table.frame.height)
+		// The border of the table lies inside the scroll view, so the end of the list stops about a point short of
+		// the inset, more or less with the scale of the screen. The room grows by what the clip view cannot reach
+		// with the insets it has now, so the last pixel of the lines shows too and the room stays once it fits.
+		let ours = scroll.contentInsets.bottom == writtenBottom ? room : 0
+		var end = clip.bounds
+		end.origin.y = frame.maxY
+		let shortfall = frame.maxY - clip.constrainBoundsRect(end).maxY
+		setRoom(hints.isEmpty ? 0 : max(needed, ours + shortfall), in: scroll)
 	}
 
 	private func setRoom(_ newRoom: CGFloat, in scroll: NSScrollView) {
 		var insets = scroll.contentInsets
 		let base = insets.bottom == writtenBottom ? insets.bottom - room : insets.bottom
 		room = newRoom
-		guard insets.bottom != base + newRoom else {
+		guard abs(insets.bottom - (base + newRoom)) >= 0.01 else {
 			writtenBottom = insets.bottom
 			return
 		}

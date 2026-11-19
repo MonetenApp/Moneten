@@ -768,12 +768,7 @@ final class DebugHarness {
 			if argument == "end" {
 				Task {
 					await scrollTablesToEnd()
-					// "gap" is the distance from the last row to the lines, "bottom" the inset that holds them.
-					let table = transactionTables().first
-					let lines = table?.enclosingScrollView?.contentView.subviews.first { $0 is FilterHintsHost }
-					let gap = table.flatMap { t in lines.map { filterHintsGap(t, $0) } } ?? 0
-					log("filterhints", ("shown", .flag(filterHintsShown() == true)), ("rows", .count(table?.numberOfRows ?? 0)),
-						("gap", .count(Int(gap.rounded()))), ("bottom", .count(Int(table?.enclosingScrollView?.contentInsets.bottom ?? 0))))
+					log(LogLine("filterhints", values: [("shown", .flag(filterHintsShown() == true))] + filterHintsValues()))
 				}
 			} else {
 				scrollTables { min(Int(argument) ?? 0, $0 - 1) }
@@ -864,7 +859,7 @@ final class DebugHarness {
 		// "<width> <height>" sets the size of the content of the main window, for a check of a layout at another width.
 		case "windowsize":
 			let size = argument.split(separator: " ").compactMap { Double($0) }
-			guard size.count == 2, let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else {
+			guard size.count == 2, let window = mainWindow else {
 				return log("windowsize rejected")
 			}
 			window.setContentSize(NSSize(width: size[0], height: size[1]))
@@ -1575,12 +1570,29 @@ final class DebugHarness {
 		}
 	}
 
+	/// The visible main window.
+	var mainWindow: NSWindow? { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true } }
+
 	/// Whether the lines of the active filters below the last row are in view: nil without the lines, false while
 	/// the list does not show its end.
 	func filterHintsShown() -> Bool? {
 		guard let table = transactionTables().first, let clip = table.enclosingScrollView?.contentView,
 			let lines = clip.subviews.first(where: { $0 is FilterHintsHost }), !lines.isHidden, lines.frame.height > 0 else { return nil }
-		return clip.bounds.maxY >= lines.frame.maxY - 1 && abs(filterHintsGap(table, lines)) < 1
+		return clip.bounds.maxY >= lines.frame.maxY - 0.5 && abs(filterHintsGap(table, lines)) < 0.5
+	}
+
+	/// The numbers behind `filterHintsShown`: "gap" from the last row to the lines, "bottom" the inset that holds them,
+	/// "visible" the height of the visible list, "below" how far the lines end below it, and the size of the window.
+	func filterHintsValues() -> [(StaticString, LogValue)] {
+		guard let table = transactionTables().first, let scroll = table.enclosingScrollView else { return [("table", .presence(false))] }
+		let clip = scroll.contentView
+		let lines = clip.subviews.first { $0 is FilterHintsHost }
+		let window = scroll.window?.contentLayoutRect.size ?? .zero
+		return [("rows", .count(table.numberOfRows)), ("gap", .count(Int((lines.map { filterHintsGap(table, $0) } ?? 0).rounded()))),
+			("bottom", .count(Int(scroll.contentInsets.bottom))), ("lines", .count(Int(lines?.frame.height ?? -1))),
+			("visible", .count(Int(clip.bounds.height - scroll.contentInsets.top - scroll.contentInsets.bottom))),
+			("belowTenths", .count(Int((((lines?.frame.maxY ?? 0) - clip.bounds.maxY) * 10).rounded()))),
+			("window", .count(Int(window.width))), ("windowHeight", .count(Int(window.height)))]
 	}
 
 	/// The distance from the bottom of the last row to the top of the lines, zero when the lines follow the last row.
