@@ -381,8 +381,9 @@ public enum HarnessRun {
 	}
 
 	/// The buttons of the alerts of the app that "modal" may click. "Set Database Password..." is missing, because it
-	/// leads to a change of the database key.
-	public static let modalTitles: Set<String> = ["OK", "Cancel", "Remove", "Delete", "Mark as Checked", "Back Up Anyway"]
+	/// leads to a change of the database key. "Save Report..." of the warning before the migration report opens a save
+	/// panel, which takes only its "Cancel".
+	public static let modalTitles: Set<String> = ["OK", "Cancel", "Remove", "Delete", "Mark as Checked", "Back Up Anyway", "Save Report..."]
 
 	/// The answers of the question before a category or a group is removed, for "confirmremove".
 	public static let removeQuestionTitles: Set<String> = ["Remove", "Cancel"]

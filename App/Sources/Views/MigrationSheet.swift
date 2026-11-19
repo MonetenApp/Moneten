@@ -2,6 +2,7 @@ import Domain
 import Import
 import Storage
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct MigrationSheet: View {
 	@Environment(AppModel.self) private var model
@@ -40,9 +41,6 @@ struct MigrationSheet: View {
 	#endif
 
 	@State private var step = Step.intro
-	@State private var confirmSave = false
-	@State private var savingReport = false
-	@State private var reportText = ""
 	@State private var fileAccountID: UUID?
 	@State private var storing: MigrationCancel?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
@@ -52,7 +50,7 @@ struct MigrationSheet: View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
 			onCancel: { model.migrationTask?.cancel() }, closesOnCancel: cancelCloses, onConfirm: confirm) {
 			if case .done = step {
-				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
+				Button("Save Report...") { model.ask(.saveReport) }.keyboardShortcut("s")
 			}
 			if case .failed(_, offersFileImport: true) = step {
 				Button("Import File...") {
@@ -137,23 +135,40 @@ struct MigrationSheet: View {
 		#if DEBUG || PERF_HARNESS
 		.onChange(of: stepCase, initial: true) { Self.shownStep = .state(step) }
 		#endif
-		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
+		// Both alerts give way to a dialog of the bank that comes while they show, and show again after it (`AlertGate`).
+		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: model.presents(.saveReport)) {
 			Button("Save Report...") {
-				if case let .done(_, report) = step { reportText = report.text() }
-				savingReport = true
+				if case let .done(_, report) = step { Task { await save(report.text()) } }
 			}
 			Button("Cancel", role: .cancel) {}
 		} message: {
 			Text("Anyone who can open the file can read them.")
 		}
-		.alert("Could not save the report.", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+		.alert("Could not save the report.", isPresented: model.presents(.reportNotSaved)) {
 			Button("OK") {}
 		} message: {
 			Text(saveError ?? "")
 		}
-		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
-			defaultFilename: String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")) { result in
-			if case let .failure(error) = result { saveError = error.localizedDescription }
+	}
+
+	/// Saves the report through a save panel of its own window, not a sheet: a dialog of the bank that comes while the
+	/// panel is open then shows on this sheet at once, and the panel keeps what the user typed. AppKit would hold a
+	/// sheet back until a save panel on the same window closes. The panel opens after the warning has slid out, and
+	/// while no dialog of the bank shows.
+	private func save(_ text: String) async {
+		while !model.alertGate.isFree || model.sync.broker.sheet != nil {
+			try? await Task.sleep(for: .milliseconds(50))
+		}
+		guard model.sheet == .migration else { return }
+		let panel = NSSavePanel()
+		panel.allowedContentTypes = [.plainText]
+		panel.nameFieldStringValue = String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")
+		guard panel.runModal() == .OK, let url = panel.url else { return }
+		do {
+			try text.write(to: url, atomically: true, encoding: .utf8)
+		} catch {
+			saveError = error.localizedDescription
+			model.ask(.reportNotSaved)
 		}
 	}
 

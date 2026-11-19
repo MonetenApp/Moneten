@@ -16,7 +16,6 @@ struct CategorySettingsSheet: View {
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 	@State private var ruleError: String?
-	@State private var askApply = false
 	@State private var showHelp = false
 	/// The last count of matches and the rule that it counted.
 	@State private var matches: (key: MatchKey, count: MatchCount)?
@@ -127,7 +126,8 @@ struct CategorySettingsSheet: View {
 				validate(held.category?.rule ?? "")
 			}
 		}
-		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: $askApply) {
+		// The question gives way to a dialog of the bank that comes while it shows, and shows again after it (`AlertGate`).
+		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: model.presents(.applyRule)) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
 			Button("Apply to all transactions.") { apply(.all) }
 			Button("Not now", role: .cancel) { dismiss() }
@@ -212,7 +212,7 @@ struct CategorySettingsSheet: View {
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule
 		model.save(category: c)
 		if ruleChanged, !c.rule.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-			askApply = true
+			model.ask(.applyRule)
 			return false
 		}
 		return true

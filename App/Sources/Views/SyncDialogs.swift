@@ -22,9 +22,11 @@ extension SessionBroker {
 
 extension View {
 	/// Shows the dialog of the broker as a sheet of this view while `place` is where it shows (`BankDialogPlace`). The
-	/// broker opens and closes it, so the dialog never closes itself.
+	/// broker opens and closes it, so the dialog never closes itself. An alert that waits for it shows after its slide
+	/// out (`AlertGate`).
 	func bankDialog(at place: BankDialogPlace, of model: AppModel) -> some View {
-		sheet(item: Binding(get: { model.bankDialogPlace == place ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
+		sheet(item: Binding(get: { model.bankDialogPlace == place ? model.sync.broker.sheet : nil }, set: { _ in }),
+			onDismiss: { model.bankDialogSlidOut() }) { sheet in
 			SyncDialog(broker: model.sync.broker, sheet: sheet)
 				.interactiveDismissDisabled()
 		}

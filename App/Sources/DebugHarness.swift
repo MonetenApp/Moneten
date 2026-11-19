@@ -518,12 +518,27 @@ final class DebugHarness {
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		#if DEBUG || PERF_HARNESS
 		// Where the dialog of the bank shows (`BankDialogPlace`, "-" while it waits), the state of the window on top of the sheet, whether the broker
-		// has a dialog, and how many sheets the main window holds, one on top of the other. It reads only, and reaches nothing.
+		// has a dialog, and how many sheets the main window holds, one on top of the other. Then the alert or question in the main window and the
+		// dialog of the bank as `AlertGate` holds them, the alert that the sheet asked for, and whether it shows. It reads only, and reaches nothing.
 		case "dialogplace":
 			let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
 			let depth = main.map { Array(sequence(first: $0) { $0.attachedSheet }).count - 1 } ?? 0
 			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet.phase)),
-				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)))
+				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)), ("alert", .state(model.alertGate.alert)),
+				("gate", .state(model.alertGate.bankDialog)), ("asked", .state(model.askedSheetAlert)),
+				("shown", .flag(model.shownSheetAlert.map { model.alertGate.shows($0.token) } ?? false)))
+		// "<alert>" asks for an alert or question of the open sheet, as its button does: "removeSavedPIN" in the account settings, "applyRule"
+		// in the category settings, and "saveReport" or "reportNotSaved" in the MoneyMoney migration. So a check can ask while a dialog of
+		// the bank covers the button. Only the alert of the sheet on screen, so that no alert waits without a view. It clicks nothing.
+		case "sheetalert":
+			let alert = SheetAlert(rawValue: argument)
+			let fits = switch (alert, model.sheet) {
+			case (.removeSavedPIN, .accountSettings?), (.applyRule, .categorySettings?), (.saveReport, .migration?), (.reportNotSaved, .migration?): true
+			default: false
+			}
+			guard let alert, fits else { return log("sheetalert refused") }
+			model.ask(alert)
+			log("sheetalert", ("", .state(alert)))
 		// "<n>" puts the focus in editable field n, counted from 0, of the sheet on top, or without a sheet of the main window,
 		// such as the field of the lock screen or of the first launch. Then it logs the count of editable fields, the field
 		// that has the focus, and whether a field editor has it. Without an argument it only logs, so that a check can wait

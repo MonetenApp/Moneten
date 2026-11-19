@@ -540,9 +540,9 @@ The app SHALL show only one dialog for two-factor authentication at a time. A fu
 - **WHEN** the dialog for "Musterbank" is open
 - **THEN** the dialog for "Beispielbank" appears after the first dialog closed
 
-### Requirement: The dialog opens over the account settings and the calibration window
+### Requirement: The dialog opens over an open window
 
-The app SHALL open the dialog on top of the account settings, or on top of the calibration window when it is open over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed. The calibration window does not open while the dialog shows on the account settings, nor while it still slides out.
+The app SHALL show the dialog on top of the open windows of the main window, such as the account settings and the calibration window over them, and keep what the user typed in them. An alert or a question there closes for the dialog and shows again after it, and one that comes while the dialog shows waits for it. The dialog waits only while a window slides out. The calibration window does not open while the dialog shows or another calibration window slides out.
 
 #### Scenario: TAN while the calibration window is open
 
@@ -562,6 +562,46 @@ The app SHALL open the dialog on top of the account settings, or on top of the c
 - **GIVEN** the dialog for "Musterbank" shows on top of the account settings of "Girokonto"
 - **WHEN** "Calibrate..." of the settings is chosen
 - **THEN** the calibration window stays closed, and the dialog stays on top of the account settings
+
+#### Scenario: TAN while the question about the saved PIN shows
+
+- **GIVEN** the account settings of "Girokonto" are open with the typed name "Girokonto Alltag", and the question "Remove the saved PIN of “Beispielbank”?" shows on them
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the question closes, and the dialog opens on top of the account settings
+- **AND** after the user entered the TAN, the question shows again, and the settings show "Girokonto Alltag"
+
+#### Scenario: TAN while the question about a changed rule shows
+
+- **GIVEN** the category settings of "Lebensmittel" saved the rule "REWE", and the question "Should this categorization rule be applied to the existing transactions now?" shows
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the question closes, and the dialog opens on top of the category settings
+- **AND** after the user entered the TAN, the question shows again, and "Apply to all transactions." applies the rule "REWE"
+
+#### Scenario: TAN while the warning about the migration report shows
+
+- **GIVEN** the migration sheet shows the report of a migration with 3 accounts, and the warning "The report contains account names, balances, and account numbers and IBANs from rules." shows on it
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the warning closes, and the dialog opens on top of the sheet
+- **AND** after the user entered the TAN, the warning shows again
+
+#### Scenario: TAN while the save panel of the migration report is open
+
+- **GIVEN** the save panel of the migration report is open with the typed name "Bericht.txt"
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the dialog opens on top of the migration sheet at once, and the save panel stays open with "Bericht.txt"
+
+#### Scenario: An alert that comes while the dialog shows
+
+- **GIVEN** the dialog for "Musterbank" shows on top of the migration sheet, and the save panel of the report is still open
+- **WHEN** the user chooses "Save" in the panel, and the report cannot be saved to the folder that the user chose
+- **THEN** the alert "Could not save the report." shows after the user entered the TAN and the dialog has closed
+
+#### Scenario: TAN while an alert shows on the window
+
+- **GIVEN** no sheet is open, and the alert "Could not refresh Beispielbank." shows on the main window
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the alert closes, and the dialog opens on the main window
+- **AND** after the user entered the TAN, the alert "Could not refresh Beispielbank." shows again
 
 ### Requirement: Cancel the dialog
 

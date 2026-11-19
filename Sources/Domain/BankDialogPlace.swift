@@ -10,10 +10,13 @@ public enum BankDialogPlace: Sendable, Equatable {
 		case none, open, closing
 	}
 
-	/// The place for the main window with or without a sheet, a crash report on the window, and the window on top of
-	/// the sheet. Nil while the dialog waits: behind a crash report, which shows only without a sheet, and while the
-	/// window on top of the sheet slides out, a moment after which it shows on the sheet.
-	public init?(sheet: Bool, crashReport: Bool, overSheet: OverSheet) {
+	/// The place for the main window with or without a sheet, a crash report on the window, the window on top of the
+	/// sheet, and an alert or a question on the window or on its sheet (`AlertGate`). Nil while the dialog waits: behind
+	/// a crash report, which shows only without a sheet, while the window on top of the sheet slides out, a moment after
+	/// which it shows on the sheet, and while an alert or a question shows or slides out. An alert or a question on
+	/// screen gives way to the dialog at once, so the dialog waits only for its slide out.
+	public init?(sheet: Bool, crashReport: Bool, overSheet: OverSheet, alert: OverSheet = .none) {
+		guard alert == .none else { return nil }
 		guard sheet else {
 			if crashReport { return nil }
 			self = .window
@@ -83,5 +86,114 @@ public struct OverSheetState: Sendable {
 		guard token == current else { return }
 		current = nil
 		phase = .none
+	}
+}
+
+/// An alert or a question in the main window, on the window or on its sheet, and the dialog of the bank, which never
+/// show at the same time. A window shows one sheet at a time, and AppKit keeps a second one waiting unseen until the
+/// first closes. The time limit of a TAN starts when the broker opens the dialog, so the dialog never waits behind an
+/// alert: the alert on screen gives way, closes, stays asked, and shows again after the dialog has slid out. An alert
+/// asked while the dialog shows or slides out waits the same way. Each opening of an alert gets a token, so that a late
+/// report of an alert that is gone never ends the alert on screen (issue #543).
+public struct AlertGate: Sendable {
+	/// One opening of an alert.
+	public struct Token: Sendable, Equatable {
+		fileprivate let number: Int
+		/// Whether the alert shows on the sheet, which takes it along when it closes.
+		fileprivate let onSheet: Bool
+
+		public static func == (a: Token, b: Token) -> Bool { a.number == b.number }
+	}
+
+	/// The alert, from its opening until it has slid out.
+	public private(set) var alert = BankDialogPlace.OverSheet.none
+	/// The dialog of the bank, from the moment the broker shows it until it has slid out.
+	public private(set) var bankDialog = BankDialogPlace.OverSheet.none
+	/// The opening of the alert on screen or sliding out.
+	private var current: Token?
+	/// The closing of the dialog of the bank that slides out.
+	private var dialogClosing: Token?
+	private var openings = 0
+
+	public init() {}
+
+	/// Whether an alert may open now: no other alert is on screen or slides out, and no dialog of the bank shows or
+	/// slides out.
+	public var isFree: Bool { alert == .none && bankDialog == .none }
+
+	/// Opens an alert on the main window or, with `onSheet`, on its sheet. Nil, and nothing opens, while the alert must
+	/// wait (`isFree`).
+	public mutating func openAlert(onSheet: Bool) -> Token? {
+		guard isFree else { return nil }
+		openings += 1
+		let token = Token(number: openings, onSheet: onSheet)
+		current = token
+		alert = .open
+		return token
+	}
+
+	/// Whether the alert of `token` is on screen.
+	public func shows(_ token: Token) -> Bool { token == current && alert == .open }
+
+	/// The alert of `token` starts to slide out, after the user answered it or with the view that showed it. False when
+	/// it no longer shows, for example because it gave way to the dialog of the bank: that close is no answer, and the
+	/// alert stays asked.
+	@discardableResult
+	public mutating func closing(_ token: Token) -> Bool {
+		guard shows(token) else { return false }
+		alert = .closing
+		return true
+	}
+
+	/// The alert of `token` has slid out, or its time to do so is over. An alert that is no longer the one on screen
+	/// changes nothing.
+	public mutating func dismissed(_ token: Token) {
+		guard token == current else { return }
+		current = nil
+		alert = .none
+	}
+
+	/// The broker shows a dialog. Returns the token of the alert on screen, which gives way to the dialog: it starts to
+	/// slide out now, and the app closes it. Nil when no alert shows.
+	public mutating func bankDialogShows() -> Token? {
+		bankDialog = .open
+		dialogClosing = nil
+		guard let current, alert == .open else { return nil }
+		alert = .closing
+		return current
+	}
+
+	/// The broker closed its dialog, which starts to slide out. Returns the token of this closing for the time limit
+	/// of the slide out, nil when no dialog showed.
+	public mutating func bankDialogCloses() -> Token? {
+		guard bankDialog == .open else { return nil }
+		openings += 1
+		let token = Token(number: openings, onSheet: false)
+		dialogClosing = token
+		bankDialog = .closing
+		return token
+	}
+
+	/// The dialog of the bank has slid out. While the broker shows the next dialog, the report of the one before
+	/// changes nothing.
+	public mutating func bankDialogDismissed() {
+		guard bankDialog == .closing else { return }
+		dialogClosing = nil
+		bankDialog = .none
+	}
+
+	/// The time to slide out is over for the dialog of the closing `token`, for a dialog that never reports it, such as
+	/// one that never showed. The time limit of an earlier closing changes nothing.
+	public mutating func bankDialogTimedOut(_ token: Token) {
+		guard token == dialogClosing else { return }
+		bankDialogDismissed()
+	}
+
+	/// The sheet changed or closed, for example at the lock. An alert on it goes with it, and an alert on the window
+	/// stays.
+	public mutating func sheetChanged() {
+		guard current?.onSheet == true else { return }
+		current = nil
+		alert = .none
 	}
 }
