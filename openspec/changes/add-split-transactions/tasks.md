@@ -71,7 +71,7 @@ One group for each pull request, in this order. A task is checked only when a te
 
 ## 9. Integration
 
-- [ ] 9.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [x] 9.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18.11.2026 (owner decision): 62 of 65 scenarios passed. "Batch transfer sent with the app" belongs to task 9.2. Not checkable in the harness: "The comment changes while the split waits", which needs a change between the confirm and the store, covered by SplitLedgerTests "A split refuses a row whose amount, category, or comment changed since the user saw it"; and "A part in another currency is unbalanced", which the split window cannot enter, covered by SplitTests "A zero original can have opposite parts, and another currency is unbalanced". The review reasons of "A split survives a complete export and import" are covered by AllDataTests "A split round trip keeps literal amounts, categories, comments, VAT, and review reasons". Open: the owner's walk-through in a Release build.
 - [ ] 9.2 Split a batch payment into its positions. Open until the change `add-payment-outbox` stores the positions of a sent batch. That change adds the name and the purpose of a part, enables "Split from Batch Payment", and checks the scenario "Batch transfer sent with the app".
 
 ## Workflow follow-up

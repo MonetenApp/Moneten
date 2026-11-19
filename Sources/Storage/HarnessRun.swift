@@ -231,6 +231,7 @@ public enum HarnessRun {
 		"Account|Remove Account...": .local,
 		"Account|Remove Account Group...": .local,
 		"Account|Remove Category...": .local,
+		"Account|Remove Category Group...": .local,
 		"Account|Account Settings...": .local,
 		"Account|Account Group Settings...": .local,
 		"Account|Category Settings...": .local,
@@ -257,23 +258,58 @@ public enum HarnessRun {
 		return action == .local || recipients.allSatisfy { mayReach($0, fakeBank: fakeBank) }
 	}
 
+	/// Whether a command of the harness may click the control with the English title `title` on `surface`. It is the one
+	/// rule of every click: "button", "confirmremove", "rowmenu", "modal", and "menuitem". A save or open panel takes only
+	/// its "Cancel" of `pressable`, whatever `allowed` holds, because any other button would read or write a file in a
+	/// folder of the developer. A bank dialog and the surfaces before the unlock take no click of these commands. Any other
+	/// surface takes only a title of `allowed`, the list of the command, compared in full and never by prefix.
+	public static func mayClick(_ title: String, allowed: Set<String>, on surface: Surface) -> Bool {
+		switch surface {
+		case .filePanel: pressable[.filePanel, default: []].contains(title)
+		case .other: allowed.contains(title)
+		case .startWindow, .startAlert, .passwordSheet, .bankDialog: false
+		}
+	}
+
+	/// The buttons of the alerts of the app that "modal" may click. "Set Database Password..." is missing, because it
+	/// leads to a change of the database key.
+	public static let modalTitles: Set<String> = ["OK", "Cancel", "Remove", "Delete", "Mark as Checked", "Back Up Anyway"]
+
+	/// The answers of the question before a category or a group is removed, for "confirmremove".
+	public static let removeQuestionTitles: Set<String> = ["Remove", "Cancel"]
+
+	/// The answers of the question whether to apply a changed rule, for "button".
+	public static let ruleQuestionTitles: Set<String> = ["Apply only to not yet categorized transactions.", "Apply to all transactions.", "Not now"]
+
+	/// The items of the menu bar that "menuitem" may choose, as "<menu>|<item>".
+	public static var menuTitles: Set<String> { Set(menuActions.keys) }
+
 	/// The items of the context menu of a transaction that "rowmenu" may choose, by their English titles. Each acts on
 	/// the database of the run. "Export Transaction..." is missing, because it opens a save panel.
 	static let rowMenuItems: Set<String> = [
-		"Go to", "Assign Category", "Remove Transaction from Category", "Create Offsetting Entry", "Add Comment...", "Edit Comment...",
-		"Mark as Checked", "Mark as Unchecked", "Edit Transaction...", "Split Transaction", "Delete Transaction...", "Delete Transactions...",
+		"Go to", "Assign Category", "Remove Transaction from Category", "Remove Transactions from Category", "Create Offsetting Entry",
+		"Add Comment...", "Edit Comment...", "Mark as Checked", "Mark as Unchecked", "Edit Transaction...", "Split Transaction",
+		"Delete Transaction...", "Delete Transactions...",
 	]
 
-	/// Whether "rowmenu" may choose the item `title`. "Search for “<name>”" names the counterparty of the row.
-	public static func mayChooseRowMenuItem(_ title: String) -> Bool {
-		rowMenuItems.contains(title) || title.hasPrefix("Search for “") && title.hasSuffix("”") && title.count > "Search for “”".count
+	/// The items of the context menu of a row that "rowmenu" may choose, with "Search for “<name>”" for each name of
+	/// `names`, the counterparties of the selected rows. An empty name gives no item.
+	public static func rowMenuTitles(searching names: [String]) -> Set<String> {
+		rowMenuItems.union(names.filter { !$0.isEmpty }.map { "Search for “\($0)”" })
 	}
 
-	/// Whether "modal" may click the button `title` of the window of a modal session. A save or open panel takes only
-	/// the buttons of `pressable`, "Cancel", because any other button would read or write a file in a folder of the
-	/// developer, such as a copy of the database in Documents. An alert of the app takes any of its buttons.
-	public static func mayClickModal(_ title: String, inFilePanel: Bool) -> Bool {
-		!inFilePanel || pressable[.filePanel, default: []].contains(title)
+	/// The local commands of each submenu of the context menu of a row, by their English titles.
+	static let rowSubmenuItems: [String: Set<String>] = [
+		"Assign Category": ["Add category"],
+		"Split Transaction": ["Split Amount...", "Undo Split Transaction..."],
+		"Go to": [],
+		"Create Offsetting Entry": [],
+	]
+
+	/// The items of the submenu of `parent` that "rowmenu" may choose: its local commands and `data`, the names of the
+	/// run that the submenu lists, such as categories, accounts, or VAT entries. Empty for an item without a submenu of the list.
+	public static func rowSubmenuTitles(of parent: String, data: Set<String>) -> Set<String> {
+		rowSubmenuItems[parent].map { $0.union(data) } ?? []
 	}
 
 	/// The name of a file that "dumprows" or "alerttext" writes into the debug folder: `<name>.<ext>` for a name of 1 to

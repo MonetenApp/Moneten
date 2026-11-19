@@ -7454,6 +7454,16 @@
         }
       }
     },
+    "No visible categories; no pie chart." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine sichtbaren Kategorien, kein Tortendiagramm."
+          }
+        }
+      }
+    },
     "No withdrawals" : {
       "localizations" : {
         "de" : {
@@ -8600,6 +8610,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Umsatz aus Kategorie entfernen"
+          }
+        }
+      }
+    },
+    "Remove Transactions from Category" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umsätze aus Kategorie entfernen"
           }
         }
       }
@@ -12607,6 +12627,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Umsätze bleiben erhalten und werden unkategorisiert."
+          }
+        }
+      }
+    },
+    "The transactions will be retained and become uncategorized. All subcategories will be removed as well." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Umsätze bleiben erhalten und werden unkategorisiert. Alle Unterkategorien werden ebenfalls entfernt."
           }
         }
       }
