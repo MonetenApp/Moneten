@@ -128,6 +128,26 @@ The app SHALL tell the user when the bank reports no TAN method that the app can
 - **WHEN** the bank offers a method for its website only and not for its FinTS server
 - **THEN** the app says that the bank supports this method only on the website
 
+#### Scenario: OLB-Sign only on the website of OLB
+
+- **GIVEN** an access whose FinTS address is on a host that ends in ".olb.de", such as `hbci.olb.de`
+- **AND** the TAN methods that the bank allows, also a single one, the methods to choose from, or the method of the challenge, contain only "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method or to enter a TAN for a transfer of 25,00 € from DE02120300000000202051
+- **THEN** the dialog says that OLB offers OLB-Sign only on its website, and that the user approves the order with appTAN, which works with finance software
+- **AND** for the login it says to log in with appTAN, and for a request that fetches data it says to approve the request with appTAN
+
+#### Scenario: OLB-Sign offered
+
+- **GIVEN** an access on the host `hbci.olb.de` whose dialog names the TAN methods "OLB-Sign" and "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method
+- **THEN** the dialog shows no note about OLB-Sign
+
+#### Scenario: Other bank without OLB-Sign
+
+- **GIVEN** an access on the host `hbci.neelmeyer.de` or `fints.musterbank.example` whose dialog names only "appTAN"
+- **WHEN** the dialog asks the user to choose a TAN method
+- **THEN** the dialog shows no note about OLB-Sign
+
 ### Requirement: Method of the website that the FinTS server does not offer
 
 The app SHALL show a method of the bank's website that its FinTS server does not offer as a method that cannot be chosen, with the reason. When the FinTS server offers the user a single method, so that the app asks for no choice, the dialog of the TAN gives the reason.

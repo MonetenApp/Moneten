@@ -38,7 +38,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 3. Integration
 
-- [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 3.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 and 19 November 2026 (owner decision): 44 of 53 scenarios passed, including the eight refusals of the complete import, whose texts `importall` now shows in the alert. Failed: "Calendar is preserved with ASCII digits", because the region Thailand gives "03/11/2569 BE" (#466). Not checkable in the harness: "Egyptian Arabic formats" (the app gets `en_EG`, never `ar_EG`, from macOS), "Unreadable stored holding" and "Broken quantity" (no harness path stores a broken holding; AllDataTests `unreadableHolding` and `exportErrorDescription`), "Export survives a restart" and "Slow storage" (they need syscall tracing or a slower disk; `scripts/check-export-sync.sh`), "Later capability" (no transfer templates yet), and "Saved PIN" and "Accounts without login data" (the Perf build has no FinTS product ID). Open: the fix of #466 and the owner's walk-through in a Release build.
 
 ## Gate round 1
 
@@ -58,7 +58,7 @@ Each regression failed before its fix. The focused AllDataTests suite passes wit
 - [x] Refuse decimal values that would be rounded, with their position. AllDataTests.decimalPrecision checks holding quantities, prices, purchase prices, and exchange rates. It verifies that the database stays empty and that a signed 38-digit quantity imports without rounding. AllDataTests.exactDecimalRoundTrip preserves five exactly represented values, including small fractions and 39-digit coefficients. The test imported a truncated value before the fix.
 - [x] Sync both exports before reporting success. `scripts/check-export-sync.sh` observes full file sync before rename and directory sync after rename through the shared writer for new and replaced files. Before the fix it observed only renames.
 
-- [ ] Verify the error alert in dark appearance. Two harness capture attempts produced unreadable images, so the dark check is inconclusive. The PR includes only the readable light snapshots.
+- [x] Verify the error alert in dark appearance. Two harness capture attempts produced unreadable images, so the dark check is inconclusive. The PR includes only the readable light snapshots. Verified in the Perf build on 18 November 2026: the harness `snapshot` draws a dark alert as a white image, which explains the unreadable captures. A screen capture of the alert window shows the title and the text in white on dark gray and a readable OK button. The captured alert was "Could not export to file." for an export into a read-only folder, the same alert that explains an unreadable database.
 
 ## CSV gate round 1
 

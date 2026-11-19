@@ -62,6 +62,29 @@ public enum HarnessRun {
 		return inside ? target : nil
 	}
 
+	/// Whether a command of the harness may read the file at `path`, such as the made-up file of "fetchfile" or the
+	/// complete export of "importall". Only an existing file inside one of `folders`, the debug folder and the throwaway
+	/// data folder of the run, qualifies, so that a mistyped path never feeds a real file into the run. Both sides are
+	/// compared as canonical paths: a symlink or a `..` that leads out of the folders does not qualify, nor does a broken
+	/// symlink, a folder, or a relative path.
+	public static func allowsRead(_ path: String, in folders: [String]) -> Bool {
+		readTarget(path, in: folders) != nil
+	}
+
+	/// The canonical path of the file that a read of `path` reaches, when `allowsRead` lets it, or nil. A command resolves
+	/// the path once and then reads this path, so that a symlink that a path component becomes after the check does not
+	/// lead it elsewhere. As with `writeTarget`, the check guards against mistakes, such as a wrong path in a check, and
+	/// not against a hostile process that already writes as the user.
+	public static func readTarget(_ path: String, in folders: [String]) -> String? {
+		guard path.hasPrefix("/"), let target = canonical(path) else { return nil }
+		var status = stat()
+		guard stat(target, &status) == 0, status.st_mode & S_IFMT == S_IFREG else { return nil }
+		let inside = folders.compactMap(canonical).contains { folder in
+			target.hasPrefix(folder == "/" ? "/" : folder + "/")
+		}
+		return inside ? target : nil
+	}
+
 	/// Who receives what a bank dialog or a command of the harness sends: a login, a PIN, a TAN, the choice of a TAN
 	/// method or medium, or the request of a refresh.
 	public enum Recipient: Sendable, Hashable {
@@ -251,6 +274,14 @@ public enum HarnessRun {
 	/// developer, such as a copy of the database in Documents. An alert of the app takes any of its buttons.
 	public static func mayClickModal(_ title: String, inFilePanel: Bool) -> Bool {
 		!inFilePanel || pressable[.filePanel, default: []].contains(title)
+	}
+
+	/// The name of a file that "dumprows" or "alerttext" writes into the debug folder: `<name>.<ext>` for a name of 1 to
+	/// 64 ASCII letters, digits, "-", and "_", or nil. So no name leads out of the folder. The command then writes to the
+	/// `writeTarget` of that file, which also refuses a symlink that leads out.
+	public static func ownFileName(_ name: String, ext: String) -> String? {
+		guard (1...64).contains(name.count), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+		return name + "." + ext
 	}
 
 	/// The day of "row": eight digits yyyymmdd of a day the calendar has, or a number of days from `today`, such as -3.
