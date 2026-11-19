@@ -1968,6 +1968,7 @@ final class DebugHarness {
 		}
 	}
 
+	#if DEBUG || PERF_HARNESS
 	/// The visible main window.
 	var mainWindow: NSWindow? { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true } }
 
@@ -1986,6 +1987,7 @@ final class DebugHarness {
 		}
 		return insets
 	}
+	#endif
 
 	/// The transaction table, its scroll view, the lines of the active filters, and the part of the scroll view
 	/// inside its border that shows them.
@@ -2006,12 +2008,14 @@ final class DebugHarness {
 		return shown.minY >= inside.minY - 0.5 && shown.maxY <= inside.maxY + 0.5 && abs(filterHintsGap(parts.table, lines)) < 0.5
 	}
 
+	#if DEBUG || PERF_HARNESS
 	/// Whether the bottom inset of the list holds at most the lines and 2 points, so that a room that grows from one
 	/// layout to the next fails the check.
 	func filterHintsRoomBounded() -> Bool {
 		guard let parts = filterHintsParts() else { return false }
 		return parts.scroll.contentInsets.bottom <= (parts.lines?.frame.height ?? 0) + 2
 	}
+	#endif
 
 	/// The numbers behind `filterHintsShown`: "gap" from the last row to the lines, "bottom" the inset that holds them,
 	/// "clip" the height of the clip view, "area" the height inside the border, "belowTenths" how far the lines end
