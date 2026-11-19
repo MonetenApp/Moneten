@@ -361,6 +361,37 @@ final class DebugHarness {
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
+		// "<name>": shows the question of "Remove Account..." for the account as a sheet of the main window, which `key escape`
+		// cancels, and writes its picture as removequestion.png. The menu command runs it modally, where no command of the harness
+		// arrives. An answer only logs, so not even "Remove" removes the account.
+		case "removequestion":
+			guard let a = model.ledger.accounts.first(where: { $0.name == argument }), let question = model.removeQuestion(.account(a.id)),
+				let main = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else {
+				return log("removequestion", ("", .presence(false)))
+			}
+			question.beginSheetModal(for: main) { [weak self] response in
+				self?.log("removequestion answer", ("cancel", .flag(response == .alertSecondButtonReturn)))
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+				guard let self, let frame = question.window.contentView?.superview, let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds),
+					let picture = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
+				// The glass behind the alert draws plain white into a cache, also in the dark mode, so the picture leaves it out and
+				// draws the alert on the window background of the appearance.
+				let glass = frame.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") }
+				glass.forEach { $0.isHidden = true }
+				frame.cacheDisplay(in: frame.bounds, to: rep)
+				glass.forEach { $0.isHidden = false }
+				NSGraphicsContext.saveGraphicsState()
+				NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: picture)
+				question.window.effectiveAppearance.performAsCurrentDrawingAppearance {
+					NSColor.windowBackgroundColor.setFill()
+					NSRect(origin: .zero, size: picture.size).fill()
+				}
+				rep.draw(in: NSRect(origin: .zero, size: picture.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+				NSGraphicsContext.restoreGraphicsState()
+				try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("removequestion.png"))
+				log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")), ("glass", .count(glass.count)))
+			}
 		// "<name>": what "Remove" in the context menu of a category does.
 		case "removecategory":
 			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
