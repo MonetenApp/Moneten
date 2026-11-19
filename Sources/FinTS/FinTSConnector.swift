@@ -34,12 +34,12 @@ public struct FinTSAccount: Sendable, Equatable {
 	/// and differ in the subnumber.
 	public var remoteID: String { iban ?? (subnumber.map { "\(number)/\($0)" } ?? number) }
 
-	/// The account as the setup adds it to the app, in `group` and linked to `access`. Without a
-	/// product name, or with one of only white space, it is named after its type.
+	/// The account as the setup adds it to the app, in `group` and linked to `access`, under the bank name of the access.
+	/// Without a product name, or with one of only white space, it is named after its type.
 	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
 		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
 		var account = Account(groupID: group, position: 0, name: productName.flatMap(Account.acceptedName) ?? kind.title, kind: kind, source: .bank, currency: currency,
-			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: bank.name, owner: owner, accessID: access.id, remoteID: remoteID)
+			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: access.bankName, owner: owner, accessID: access.id, remoteID: remoteID)
 		account.takeIBAN(iban)
 		return account
 	}

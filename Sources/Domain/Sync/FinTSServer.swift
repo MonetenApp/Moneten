@@ -31,10 +31,10 @@ public enum FinTSServer {
 	/// on the servers of Atruvia and apoBank, and the first 16 digits of a login name of exactly 17 digits on the
 	/// servers of the savings banks, which a savings bank may give and whose servers accept only 16 (#240). Any
 	/// other login name stays as it is. The servers of Commerzbank follow `commerzbankLoginName` (#229), and the Deutsche
-	/// Bank group takes a login name without spaces (#231).
+	/// Bank group and Consorsbank take a login name without spaces (#231, #227).
 	public static func loginName(_ name: String, server: URL?) -> String {
 		if isCommerzbank(server) { return commerzbankLoginName(name) }
-		if isDeutscheBankGroup(server) { return name.filter { !$0.isWhitespace } }
+		if isDeutscheBankGroup(server) || isConsorsbank(server) { return name.filter { !$0.isWhitespace } }
 		if isSavingsBank(server) {
 			return name.count == 17 && name.allSatisfy({ $0.isASCII && $0.isNumber }) ? String(name.prefix(16)) : name
 		}
