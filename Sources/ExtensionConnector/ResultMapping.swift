@@ -48,7 +48,8 @@ struct ListedAccount: Equatable {
 		table = value
 		accountNumber = number
 		subAccount = fields.text("subAccount")
-		name = fields.text("name") ?? number
+		// The type reads the name as listed, or the number without a name, as before, because the remote ID depends on it.
+		let listedName = fields.text("name") ?? number
 		owner = fields.text("owner")
 		bankCode = fields.text("bankCode")
 		currency = fields.text("currency")?.uppercased() ?? "EUR"
@@ -61,8 +62,9 @@ struct ListedAccount: Equatable {
 		} else if let type = fields.text("type").flatMap(AccountType.init(rawValue:)) {
 			kind = type.kind
 		} else {
-			kind = Self.derivedKind(number: number, name: name)
+			kind = Self.derivedKind(number: number, name: listedName)
 		}
+		name = Account.name(from: fields.text("name"), kind: kind)
 	}
 
 	/// The table for `RefreshAccount`: the one of `ListAccounts` with the stored balance in the account currency or

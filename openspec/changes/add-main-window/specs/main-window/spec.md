@@ -208,6 +208,22 @@ The app SHALL let the user type the name of a new account group or category grou
 - **WHEN** the user chooses "Add Category Group", types "Mobility", and clicks the category "Groceries"
 - **THEN** the sidebar shows the category group "Mobility", and the row is no longer in edit mode
 
+### Requirement: Taken name in the row of a new category group
+
+The app SHALL keep the sidebar row of a new category group in edit mode when Return confirms a name that the requirement "Name of a category" refuses because another entry of the same group has it, and SHALL say under the field that the name is taken. Typing clears the note. When the focus leaves the row with such a name, the row keeps the name that it had when edit mode began.
+
+#### Scenario: Taken name and Return
+
+- **GIVEN** the category "Fuel" at the top level, and no category is selected
+- **WHEN** the user chooses "Add Category Group", types "fuel", and presses Return
+- **THEN** the row stays in edit mode with "fuel" and says "This name is taken at the top level."
+
+#### Scenario: Taken name and the focus leaves the row
+
+- **GIVEN** the category "Fuel" at the top level, and no category is selected
+- **WHEN** the user chooses "Add Category Group", types "Fuel", and clicks the category "Groceries"
+- **THEN** the sidebar shows the category group "New group", and the row is no longer in edit mode
+
 ### Requirement: Refresh button below the sidebar
 
 The app SHALL show a button "Refresh accounts" below the sidebar that starts a refresh of all accounts and shows that a refresh is running.

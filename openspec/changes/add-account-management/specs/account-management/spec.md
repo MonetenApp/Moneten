@@ -124,7 +124,7 @@ The app SHALL open the settings of the selected account with "Account Settings..
 
 ### Requirement: Account name
 
-The app SHALL name a new account with the product name that the bank reports, or with the account type when the bank reports none, and it SHALL let the user change the name. Two accounts can have the same name. An empty name is not accepted.
+The app SHALL name a new account with the product name that the bank reports, or with the account type when the bank reports none, and it SHALL let the user change the name. Two accounts can have the same name. An empty name is not accepted. A name of only white space counts as empty. An account that an extension, the migration, or an import of all data brings with an empty name or without a name is named after its account type.
 
 #### Scenario: Name from the bank
 
@@ -135,6 +135,21 @@ The app SHALL name a new account with the product name that the bank reports, or
 
 - **WHEN** the user clears the name field and clicks "OK"
 - **THEN** the app keeps the window open and asks for a name
+
+#### Scenario: Empty name from an extension
+
+- **WHEN** an extension lists an account with `name=""`, `accountNumber="202051"`, and `type=AccountTypeSavings`
+- **THEN** the account appears as "Savings account"
+
+#### Scenario: Empty name in a migration
+
+- **WHEN** the migration reads a giro account whose name is " "
+- **THEN** the account appears as "Giro account"
+
+#### Scenario: Empty name in an import of all data
+
+- **WHEN** the user imports a file of all data in which the giro account "Haushalt" has the name ""
+- **THEN** the account appears as "Giro account"
 
 ### Requirement: Account color
 
@@ -520,7 +535,7 @@ The app SHALL reopen an account when the user turns off "The account has been cl
 
 ### Requirement: Create and rename account groups
 
-The app SHALL create an account group with "Add Account Group". The new group appears selected at the end of the section "Accounts", outside every group, with the name "New group" in edit mode. When a group of that level has the name "New group" already, the new group gets the first free name of "New group 2", "New group 3", and so on. The user can rename a group in the sidebar and in its settings.
+The app SHALL create an account group with "Add Account Group". The new group appears selected at the end of the section "Accounts", outside every group, with the name "New group" in edit mode. A taken "New group" at that level gives "New group 2", "New group 3", and so on. The user can rename a group in the sidebar and in its settings. Two groups can have the same name. An empty name, or a name of only white space, is not accepted.
 
 #### Scenario: New group
 
@@ -543,6 +558,18 @@ The app SHALL create an account group with "Add Account Group". The new group ap
 
 - **WHEN** the user selects a group with no accounts
 - **THEN** the content view says that the account group is empty
+
+#### Scenario: Empty group name
+
+- **WHEN** the user clears the name in the settings of the group "Private" and clicks "OK"
+- **THEN** the app keeps the settings open and asks for a name
+- **AND** the group keeps the name "Private"
+
+#### Scenario: Group stored without a name
+
+- **GIVEN** a group that a migration stored with the name " "
+- **WHEN** the user opens its settings
+- **THEN** "OK" is disabled until the user types a name
 
 ### Requirement: Move accounts into and out of groups
 
@@ -625,7 +652,7 @@ The app SHALL ask before it removes an account. The question names the account, 
 
 ### Requirement: Remove an account group
 
-The app SHALL ask before it removes an account group and say that the accounts and transactions are kept. After the removal the accounts and subgroups of the group are in the group above it, or at the top level.
+The app SHALL ask before it removes an account group and say that the accounts and transactions are kept and where the accounts and subgroups go. After the removal the accounts and subgroups of the group are in the group above it, or at the top level. They take the place of the removed group in their order.
 
 #### Scenario: Group with two accounts
 
@@ -633,3 +660,12 @@ The app SHALL ask before it removes an account group and say that the accounts a
 - **WHEN** the user chooses "Remove Account Group..." and confirms
 - **THEN** "Private" is gone
 - **AND** "Giro" and "Savings" are at the top level of "Accounts" with all their transactions
+
+#### Scenario: Nested group
+
+- **GIVEN** the group "Private" with the account "Giro", the group "Cards", and the account "Savings" in this order, and "Cards" with the account "Visa" and the group "Old cards"
+- **WHEN** the user chooses "Remove Account Group..." for "Cards"
+- **THEN** the question says that the accounts, groups, and transactions in "Cards" are kept and move to "Private"
+- **WHEN** the user confirms
+- **THEN** "Private" lists "Giro", "Visa", "Old cards", and "Savings" in this order
+- **AND** "Visa" keeps all its transactions

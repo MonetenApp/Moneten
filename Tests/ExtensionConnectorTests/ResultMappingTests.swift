@@ -28,6 +28,24 @@ import Testing
 		#expect(account?.remoteID == "111222333444 EUR")
 	}
 
+	/// The scenario "Empty name from an extension" of "Account name" in openspec/changes/add-account-management/specs/account-management/spec.md.
+	/// The type still comes from the number and the name as listed, because the remote ID of a stored access depends on it.
+	@Test("An account without a name, or with one of only white space, is named after its type")
+	func emptyName() throws {
+		for name in [nil, "", "   "] as [String?] {
+			var fields: [String: LuaValue] = ["accountNumber": .string("202051"), "type": .string("AccountTypeSavings")]
+			fields["name"] = name.map(LuaValue.string)
+			#expect(try #require(ListedAccount(.object(fields))).name == "Savings account")
+		}
+		let derived = try #require(ListedAccount(.object(["accountNumber": .string("5232 xxxx xxxx 1234")])))
+		#expect(derived.kind == .creditCard)
+		#expect(derived.name == "Credit card")
+		#expect(derived.remoteID == "5232 xxxx xxxx 1234 EUR")
+		let named = try #require(ListedAccount(.object(["accountNumber": .string("202051"), "name": .string(" Tagesgeld Plus ")])))
+		#expect(named.name == " Tagesgeld Plus ")
+		#expect(named.kind == .savings)
+	}
+
 	@Test func ibanIsKeptOnlyWhenValid() {
 		func listed(_ iban: String) -> ListedAccount? {
 			ListedAccount(.object(["accountNumber": .string("4711"), "iban": .string(iban)]))

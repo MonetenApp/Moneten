@@ -938,7 +938,7 @@ The app SHALL import all files that the user selected in the dialog one after th
 
 ### Requirement: File belongs to another account
 
-The app SHALL compare the IBAN or account number inside a CAMT or MT940 file with the selected account. When it belongs to another account of the app, the app asks whether to import into that account. When no account has it, the app asks whether to import into the selected account or into a new offline account.
+The app SHALL compare the IBAN or account number inside a CAMT or MT940 file with the selected account. When it belongs to another account of the app, the app asks whether to import into that account. When no account has it, the app asks whether to import into the selected account or into a new offline account. A portfolio never takes a file, so a file that names only a portfolio counts as a file of an unknown account.
 
 #### Scenario: Wrong account selected
 
@@ -971,6 +971,12 @@ The app SHALL compare the IBAN or account number inside a CAMT or MT940 file wit
 - **WHEN** the file names that IBAN in the currency of both accounts
 - **THEN** the question offers "New open"
 - **AND** a match in the currency of the file still outranks an open match in another currency
+
+#### Scenario: The file names a portfolio
+
+- **GIVEN** the portfolio "Depot" has the IBAN DE02120300000000202051, and "Savings" is selected
+- **WHEN** the user imports a camt.053 file that names DE02120300000000202051
+- **THEN** the app offers "Import into the selected account" and "Create offline account", and never "Depot"
 
 #### Scenario: Statements of several accounts
 

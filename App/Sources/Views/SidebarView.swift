@@ -244,7 +244,7 @@ struct AccountRow: View {
 				model.navigate(to: .account(account.id))
 				Task { await model.importFile(into: account.id) }
 			}
-			.disabled(model.isTransferringTransactions)
+			.disabled(!account.takesImportedTransactions || model.isTransferringTransactions)
 			Button("Export Transactions...") { model.exportTransactions(of: .account(account.id)) }
 				.disabled(model.isTransferringTransactions)
 			Divider()
@@ -346,6 +346,10 @@ struct SidebarNameField: View {
 	@State private var text: String
 	@State private var ended = false
 	@State private var hadFocus = false
+	/// The parent of a category group whose typed name Return refused as taken, with nil for the top level.
+	@State private var taken: UUID?? = nil
+	/// Set between Return with a taken name and the focus coming back, so that the field does not end edit mode then.
+	@State private var keepsFocus = false
 	@FocusState private var focused: Bool
 
 	init(row: SidebarSelection, name: String) {
@@ -354,15 +358,36 @@ struct SidebarNameField: View {
 	}
 
 	var body: some View {
-		TextField("Name", text: $text)
-			.labelsHidden()
-			.focused($focused)
-			.onSubmit { end(storing: true) }
-			.onExitCommand { end(storing: false) }
-			.onChange(of: focused) { _, now in if now { hadFocus = true } else { end(storing: true) } }
-			.onDisappear { end(storing: true) }
-			// The row joins the list one update after the group, so the focus waits for it.
-			.onAppear { DispatchQueue.main.async { focused = true } }
+		VStack(alignment: .leading, spacing: 2) {
+			TextField("Name", text: $text)
+				.labelsHidden()
+				.focused($focused)
+				.onSubmit(submit)
+				.onExitCommand { end(storing: false) }
+				.onChange(of: focused) { _, now in
+					if now { hadFocus = true; keepsFocus = false } else if !keepsFocus { end(storing: true) }
+				}
+				.onChange(of: text) { taken = nil }
+				.onDisappear { end(storing: true) }
+				// The row joins the list one update after the group, so the focus waits for it.
+				.onAppear { DispatchQueue.main.async { focused = true } }
+			if let parentID = taken {
+				CategoryNameTaken(parentID: parentID).font(.caption)
+			}
+		}
+	}
+
+	/// Return stores the name, unless another entry of the group has it: then the row stays in edit mode and says so.
+	private func submit() {
+		let check = model.takenName(row, typed: text)
+		guard check.taken else { return end(storing: true) }
+		taken = .some(check.parentID)
+		// Return can end the editing of the field. The focus comes back, and a later move of the focus ends edit mode again.
+		keepsFocus = true
+		DispatchQueue.main.async {
+			focused = true
+			DispatchQueue.main.async { keepsFocus = false }
+		}
 	}
 
 	private func end(storing: Bool) {

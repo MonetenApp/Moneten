@@ -43,3 +43,8 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 ## 4. Move without dragging
 
 - [x] 4.1 Move categories from the context menu. CategoryMoveTests checks literal destination names, excludes the category and its descendants, omits an unchanged destination, and offers no groups for "Uncategorized". In the debug harness, "contextmenus" builds the real sidebar menu and invokes its submenu action by row and item indexes. "Fuel" moved into "Living", stayed there after a restart, and moved out with "No group". Light and dark snapshots show the move. The harness cannot open the menu for a snapshot or drive VoiceOver, so those interactions remain unobserved.
+
+## 5. Names in a group (issue #483)
+
+- [x] 5.1 Name of a category. Write the tests first in CategoryNameTests for the scenario "Same name twice" of "Add a category", the scenarios of "Name of a category", "Name taken by a category" of "Add a category group", and "Taken name" and "Empty name" of "Category settings".
+- [x] 5.2 Check a typed name with `Ledger.checkCategoryName(_:in:renaming:)`: it trims the white space, refuses an empty name, and refuses a name that a category or category group in the same group has in any case. "Add Category", "Add Category Group", and the category settings keep OK disabled for a refused name and say that the name is taken in the group or at the top level. The settings check only a changed name, so a stored pair of equal names from a migration does not block other settings.

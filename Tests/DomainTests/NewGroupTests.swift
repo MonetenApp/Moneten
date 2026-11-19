@@ -106,6 +106,14 @@ struct NewGroupTests {
 		#expect(ledger.childCategories(of: nil).map(\.name) + [ledger.newCategoryGroup(selected: nil).name] == ["Groceries", "New group", "New group 2"])
 	}
 
+	@Test("A sibling named \"new group\" in other case, or with spaces around it, takes the name of a new category group")
+	func categoryGroupNameOtherCase() {
+		let taken = Domain.Category(position: 0, name: " new GROUP ", isGroup: true)
+		let ledger = Ledger(categories: [taken, uncategorized])
+
+		#expect(ledger.newCategoryGroup(selected: nil).name == "New group 2")
+	}
+
 	@Test("A category named \"New group\" in another group leaves the name free")
 	func categoryGroupNameOtherLevel() {
 		let living = Domain.Category(position: 0, name: "Living", isGroup: true)

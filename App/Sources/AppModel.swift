@@ -52,10 +52,6 @@ enum SidebarSelection: Hashable {
 	}
 }
 
-enum ViewMode: String, CaseIterable {
-	case list, barChart, pieChart
-}
-
 enum BalanceMode: String {
 	case daily, monthlyAverage
 }
@@ -64,8 +60,8 @@ enum BalanceMode: String {
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
 	// The unlock settings (`Vault.PasswordEntry`) and the lock settings (`LockSettings`) live in the database: any
-	// program of the user can write the settings file, and every data folder shares it.
-	static let viewMode = "viewMode"
+	// program of the user can write the settings file, and every data folder shares it. The view modes keep their
+	// keys in `ViewModes.key(of:)`.
 	/// The selected sidebar row, which the next launch selects again.
 	static let selectedRow = "selectedSidebarRow"
 	static let balanceMode = "balanceMode"
@@ -316,8 +312,22 @@ final class AppModel {
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
 	}
-	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
-		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
+	#if DEBUG || PERF_HARNESS
+	/// Set by the debug harness: the next `save(account:)` fails, as a full disk would.
+	@ObservationIgnored var failsNextAccountSave = false
+	#endif
+	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
+	/// The view mode of the selected view. Account views and category views each keep their own.
+	var viewMode: ViewMode {
+		get { viewModes[viewKind] }
+		set { viewModes.set(newValue, for: viewKind) { UserDefaults.standard.set($1, forKey: $0) } }
+	}
+	/// A view without a selection draws no chart, so its mode is that of the account views.
+	private var viewKind: ViewModes.Kind {
+		switch selection {
+		case .category?, .search?: .categories
+		case .account?, .group?, nil: .accounts
+		}
 	}
 	var balanceMode: BalanceMode = BalanceMode(rawValue: UserDefaults.standard.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
@@ -1259,6 +1269,12 @@ final class AppModel {
 		guard let store else { return }
 		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
+			#if DEBUG || PERF_HARNESS
+			if failsNextAccountSave {
+				failsNextAccountSave = false
+				throw CocoaError(.fileWriteOutOfSpace)
+			}
+			#endif
 			var saved = account
 			var entry: Transaction?
 			var removed: UUID?
@@ -1292,9 +1308,10 @@ final class AppModel {
 
 	/// Opens the "Add Account" assistant, or with `purpose` "Look for New Accounts..." or "Edit Login
 	/// Data...". The new accounts go into `group`.
-	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add) {
+	/// `connecting` is the migrated account whose "Connect..." opened the assistant.
+	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add, connecting: Account? = nil) {
 		setup?.cancel()
-		setup = AccountSetup(model: self, groupID: group, purpose: purpose)
+		setup = AccountSetup(model: self, groupID: group, purpose: purpose, connecting: connecting)
 		sheet = .newAccount
 	}
 
@@ -1492,11 +1509,11 @@ final class AppModel {
 	func remove(group id: UUID) async {
 		guard let store else { return }
 		do {
-			try store.deleteGroup(id)
+			// The accounts and subgroups take the place of the group in the group above it ("Remove an account group").
+			let change = ledger.removal(ofGroup: id)
+			try store.deleteGroup(id, moving: change)
 			await replacingTable {
-				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
-				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
-				ledger.replace(groups: groups, accounts: accounts)
+				ledger.remove(group: id, moving: change)
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
@@ -1685,6 +1702,7 @@ final class AppModel {
 
 	// MARK: Categories
 
+	/// `name` is the accepted name of `Ledger.checkCategoryName(_:in:renaming:)`, which the sheet checks before it calls this.
 	func addCategory(name: String, parentID: UUID?, assigning ids: Set<UUID> = []) async {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
 		let c = Domain.Category(parentID: parentID, position: position, name: name)
@@ -1736,11 +1754,20 @@ final class AppModel {
 			g.name = name
 			save(group: g)
 		case let .category(id):
-			guard var c = ledger.category(id), let name = GroupName.edited(typed, keeping: c.name) else { return }
+			// A name that another entry of the group has keeps the old name, also when the focus leaves the row with it.
+			guard var c = ledger.category(id), let name = GroupName.edited(typed, keeping: c.name),
+				ledger.checkCategoryName(name, in: c.parentID, renaming: id) != .taken else { return }
 			c.name = name
 			save(category: c)
 		default: break
 		}
+	}
+
+	/// Whether Return keeps the row in edit mode: the typed name of a category group that another entry of its group has
+	/// ("Name of a category"). The parent of the group, for the note under the field, or nil for the top level.
+	func takenName(_ row: SidebarSelection, typed: String) -> (taken: Bool, parentID: UUID?) {
+		guard case let .category(id) = row, let c = ledger.category(id) else { return (false, nil) }
+		return (ledger.checkCategoryName(typed, in: c.parentID, renaming: id) == .taken, c.parentID)
 	}
 
 	func save(category: Domain.Category) {

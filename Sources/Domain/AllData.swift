@@ -403,7 +403,7 @@ private struct AccountEntry: Codable {
 		guard Set(others.map(\.currency) + [currency]).count == others.count + 1 else {
 			throw AllData.ReadError.damaged("the other balances of an account repeat a currency or hold the currency of the account")
 		}
-		var account = Account(id: id, groupID: groupID, position: position, name: name, kind: kind, source: source, currency: currency, bic: bic,
+		var account = Account(id: id, groupID: groupID, position: position, name: Account.name(from: name, kind: kind), kind: kind, source: source, currency: currency, bic: bic,
 			accountNumber: accountNumber, bankCode: bankCode, bankName: bankName, owner: owner,
 			bankBalanceMinor: try bankBalance.map { try AmountText.minorUnits($0, currency) }, bankBalanceDate: bankBalanceDate,
 			initialBalanceMinor: try AmountText.minorUnits(initialBalance, currency), initialBalanceIsSet: initialBalanceIsSet,

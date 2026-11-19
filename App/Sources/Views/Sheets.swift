@@ -128,8 +128,11 @@ struct NewCategorySheet: View {
 	@State private var parentID: UUID?
 
 	var body: some View {
-		SheetFrame(title: "Add Category", canConfirm: !name.isEmpty, onConfirm: {
-			Task { await model.addCategory(name: name, parentID: parentID, assigning: assigning) }
+		let check = model.ledger.checkCategoryName(name, in: parentID)
+		SheetFrame(title: "Add Category", canConfirm: check.acceptedName != nil, onConfirm: {
+			// A taken name keeps the sheet open, and the footer says why.
+			guard let accepted = check.acceptedName else { return false }
+			Task { await model.addCategory(name: accepted, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {
@@ -138,11 +141,30 @@ struct NewCategorySheet: View {
 					Text("None").tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter(\.isGroup)) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
+			} footer: {
+				if check == .taken { CategoryNameTaken(parentID: parentID) }
 			}
 		}
 		.onAppear {
 			if case let .category(id) = model.selection, let c = model.ledger.category(id) { parentID = c.isGroup ? c.id : c.parentID }
 		}
+	}
+}
+
+/// The note under the name field of a category whose name another category or category group in the same group has.
+struct CategoryNameTaken: View {
+	@Environment(AppModel.self) private var model
+	let parentID: UUID?
+
+	var body: some View {
+		Group {
+			if let group = parentID.flatMap(model.ledger.category) {
+				Text("This name is taken in the group \(group.name).")
+			} else {
+				Text("This name is taken at the top level.")
+			}
+		}
+		.foregroundStyle(Palette.red)
 	}
 }
 
@@ -155,6 +177,7 @@ struct AccountSettingsSheet: View {
 	@State private var opened: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
+	@State private var calibrating = false
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
 
@@ -210,13 +233,12 @@ struct AccountSettingsSheet: View {
 									.marksUnreadableAmount(initialBalance)
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
-								Button("Calibrate") {
-									if let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
-										initialBalance = Format.editableAmount(value, original.currency)
-									}
+								// A portfolio shows the values of its bank, so an initial balance would change none of them.
+								if original.kind != .portfolio {
+									Button("Calibrate...") { calibrating = true }
+										.accessibilityIdentifier("calibrate")
+										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
-								.disabled(original.reportedBalance == nil)
-								.help("Make the booked transactions meet the balance of the bank")
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)
@@ -241,6 +263,11 @@ struct AccountSettingsSheet: View {
 					}
 				}
 			}
+			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
+			// that its save posts waits in `SheetAlerts` until the settings have slid out too.
+			.sheet(isPresented: $calibrating) {
+				CalibrationSheet(accountID: accountID, onSaved: tookCalibration).environment(model)
+			}
 			.onAppear {
 				account = original
 				opened = original
@@ -250,6 +277,15 @@ struct AccountSettingsSheet: View {
 			}
 		}
 	}
+
+	/// The calibration window saved `saved`. The field shows its initial balance, and the settings take it as the
+	/// value they opened with, so that OK neither enters it again nor brings back a value typed before, also when
+	/// the calibration kept the value. Only a confirmed calibration calls this, never a refresh or Cancel.
+	private func tookCalibration(_ saved: Account) {
+		account?.initialBalanceMinor = saved.initialBalanceMinor
+		opened?.initialBalanceMinor = saved.initialBalanceMinor
+		initialBalance = Format.editableAmount(saved.initialBalanceMinor, saved.currency)
+	}
 }
 
 /// Asks for the correct balance at the end of today and moves the initial balance by the difference, so that
@@ -257,6 +293,8 @@ struct AccountSettingsSheet: View {
 struct CalibrationSheet: View {
 	@Environment(AppModel.self) private var model
 	let accountID: UUID
+	/// Called with the account after OK saved it, for the account settings under the window.
+	var onSaved: (Account) -> Void = { _ in }
 	@State private var balance = ""
 
 	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
@@ -275,6 +313,8 @@ struct CalibrationSheet: View {
 			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
 				guard let current = model.ledger.account(accountID), let a = calibrated(current) else { return true }
 				model.save(account: a)
+				// A failed write leaves the ledger as it was and posts an alert, and the settings keep what was typed.
+				if let saved = model.ledger.account(accountID), saved.initialBalanceMinor == a.initialBalanceMinor { onSaved(saved) }
 				return true
 			}) {
 				Section {
@@ -308,21 +348,32 @@ struct GroupSettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	let groupID: UUID
 	@State private var group: AccountGroup?
+	/// The group as the settings opened, so that a name the user did not change stays as it is stored.
+	@State private var opened: AccountGroup?
 
 	var body: some View {
-		SheetFrame(title: "Account Group Settings", onConfirm: {
-			if let group { model.save(group: group) }
+		// An empty name keeps OK disabled, and the field asks for a name ("Create and rename account groups"). This holds
+		// also for a name that a migration or an import stored empty, so OK never saves it again.
+		let canConfirm = group.map { Account.acceptedName($0.name) != nil } ?? true
+		SheetFrame(title: "Account Group Settings", canConfirm: canConfirm, onConfirm: {
+			// A move or a collapse while the settings were open keeps its parent, position, and state.
+			guard let group, let opened, var current = model.ledger.group(groupID) else { return true }
+			current.takeSettings(from: group, opened: opened)
+			model.save(group: current)
 			return true
 		}) {
 			if let binding = Binding($group) {
 				Section {
-					TextField("Name", text: binding.name)
+					TextField("Name", text: binding.name, prompt: Text("Required"))
 					Toggle("Display balance in sidebar", isOn: binding.showSum)
 					Toggle("Group transactions by account", isOn: binding.groupsByAccount)
 				}
 			}
 		}
-		.onAppear { group = model.ledger.group(groupID) }
+		.onAppear {
+			group = model.ledger.group(groupID)
+			opened = group
+		}
 	}
 }
 

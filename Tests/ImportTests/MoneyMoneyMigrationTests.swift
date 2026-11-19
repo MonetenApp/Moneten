@@ -65,6 +65,17 @@ struct MoneyMoneyMigrationTests {
 		try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts), categories: try plist(categories), transactions: try plist(transactions), into: ledger)
 	}
 
+	/// The scenario "Empty name in a migration" of "Account name" in openspec/changes/add-account-management/specs/account-management/spec.md.
+	@Test("An account whose name is empty or only white space is named after its type", arguments: ["", " "])
+	func emptyAccountName(name: String) throws {
+		var raw = accounts
+		raw[1]["name"] = name
+		raw[2]["name"] = "  Tagesgeld "
+		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(raw), categories: try plist(categories), transactions: try plist(transactions), into: Ledger())
+		#expect(p.accounts.map(\.name) == ["Giro account", "  Tagesgeld ", "Depot"])
+		#expect(p.sources.first { $0.sourceID == "A1" }?.name == "Giro account")
+	}
+
 	@Test("A transaction without a currency takes the currency of its account, and codes in lower case read in upper case", arguments: [false, true])
 	func currencyOfAccount(bankFirst: Bool) throws {
 		let usd: [[String: Any]] = [
@@ -307,6 +318,19 @@ struct MoneyMoneyMigrationTests {
 		#expect(t.endToEndReference == "E2E-1" && t.mandateReference == "M-1" && t.creditorID == "DE98ZZZ09999999999")
 		#expect(p.transactions.first { $0.name == "Kiosk" }?.isPending == true)
 		#expect(p.transactions.first { $0.name == "REWE Markt" }?.amountMinor == -4_590)
+	}
+
+	@Test("The plan names the days of the oldest and the newest transaction that the import adds, and what cannot be migrated")
+	func summaryDaysAndNotes() throws {
+		let first = try plan()
+		#expect(first.transactionDays == Day(year: 2026, month: 1, day: 1)...Day(year: 2026, month: 11, day: 4))
+		#expect(MoneyMoneyMigration.notMigratedNotes.allSatisfy(first.notes.contains))
+		let ledger = applying(first, to: Ledger())
+		let row: [String: Any] = ["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": -3.5, "currency": "EUR",
+			"name": "Bäckerei", "purpose": "", "booked": true, "checkmark": false]
+		let second = try secondPlan(into: ledger, balance: 1231.06, rows: [row])
+		#expect(second.transactionDays == Day(year: 2026, month: 11, day: 9)...Day(year: 2026, month: 11, day: 9))
+		#expect(try secondPlan(into: ledger, balance: 1234.56, rows: []).transactionDays == nil)
 	}
 
 	@Test("A second run adds only what is new")
