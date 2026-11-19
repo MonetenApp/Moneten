@@ -43,7 +43,8 @@ When the user changes the TAN method, the FinTS helper starts a new dialog with 
 - FinTS bank parameters state no rule for digits only, so a FinTS PIN is checked only for its length. The rule works for a source that states it.
 - "Remove saved PIN" also forgets the PIN in memory, so the next refresh asks at once, not only after a restart.
 - A refresh that fails after a successful login does not save the PIN. The next successful refresh with the option on saves it.
-- The secret is called "PIN" for every FinTS access, because hbci4java gives no other name. The words of extensions come with E6.
+- The secret is called "PIN" for every FinTS access, because hbci4java gives no other name. An extension names its secret with the label of its login field in the manifest, else "Password", and the login dialog of an extension shows that label.
+- The login data of an extension stays in memory only. Its login dialog has no option to save it yet, so task 1.15 stays open for the scenario "Extension password saved".
 
 ## Risks / Trade-offs
 

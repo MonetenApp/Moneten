@@ -630,15 +630,6 @@ The app SHALL store the balance and its date at every successful refresh of an a
 - **WHEN** a refresh of "Savings" delivers the balance 5.012,40 € and no new transaction
 - **THEN** "Savings" shows 5.012,40 € with the date of that balance
 
-### Requirement: Refresh after a payment
-
-The app SHALL refresh an account after the bank accepted a payment from that account, so that the payment appears in the list.
-
-#### Scenario: Transfer sent
-
-- **WHEN** the bank accepts a transfer of 120,00 € from "Giro"
-- **THEN** the app refreshes "Giro" without a command
-
 ### Requirement: Behavior without an Internet connection
 
 The app SHALL say that there is no Internet connection when the user starts a refresh while the Mac is offline. An automatic refresh that finds no connection contacts nothing, shows no error, and runs again when the connection is back.

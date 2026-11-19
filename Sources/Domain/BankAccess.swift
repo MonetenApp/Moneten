@@ -205,6 +205,14 @@ public enum RefreshScope: Hashable, Sendable {
 	case group(UUID)
 }
 
+/// "Connect..." that a refresh command offers in place of a refresh, `Ledger.connectOffer(_:selected:)`.
+public struct ConnectOffer: Hashable, Sendable {
+	/// The account for which "Connect..." opens the add account assistant.
+	public var account: Account
+	/// The open migrated accounts without an access that the command covers, this one included.
+	public var count: Int
+}
+
 /// "Refresh" in the account settings.
 public enum RefreshInterval: String, Codable, CaseIterable, Sendable {
 	case everyTwoHours, fourTimesADay, onceADay, onceAWeek
@@ -250,31 +258,44 @@ extension Ledger {
 		!fetched(by: scope).isEmpty
 	}
 
+	/// "Connect..." for a refresh command that finds no account to refresh but open migrated accounts without an
+	/// access, which is every account right after a migration. Without it the command does nothing and the user
+	/// does not learn why (issue #531). The offer names the selected account when the command covers it, else the
+	/// first one in the order of the sidebar. A command that refreshes an account offers nothing.
+	public func connectOffer(_ scope: RefreshScope, selected: UUID?) -> ConnectOffer? {
+		let chosen = accountIDs(in: scope)
+		let covered = accounts.filter { chosen?.contains($0.id) != false }
+		guard !covered.contains(where: { Self.refreshes($0, scope) }) else { return nil }
+		let waiting = covered.filter(\.needsConnecting)
+		guard !waiting.isEmpty else { return nil }
+		let account = waiting.first { $0.id == selected } ?? {
+			let ids = Set(waiting.map(\.id))
+			return accountsInSidebarOrder.first { ids.contains($0.id) }
+		}()
+		return account.map { ConnectOffer(account: $0, count: waiting.count) }
+	}
+
 	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
 	/// holds the time at which the user canceled the refresh of an account.
 	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
-		let due = fetched(by: .all).filter { $0.isDue(at: now, canceledAt: canceled[$0.id]) && $0.accessID.map(pausesAutomaticRefresh) == false }
+		let due = fetched(by: .all).filter { $0.account.isDue(at: now, canceledAt: canceled[$0.account.id]) && !pausesAutomaticRefresh(of: $0.accessID) }
 		return requests(for: due, calendar: calendar)
 	}
 
-	/// The accounts of `refreshAccounts`, in the order of the ledger, without their requests.
-	private func fetched(by scope: RefreshScope) -> [Account] {
-		let chosen: Set<UUID>? = switch scope {
-		case .all: nil
-		case let .account(id): [id]
-		case let .group(id): accountIDs(inGroupTree: id)
-		}
-		return accounts.filter { a in
-			!a.isClosed && chosen?.contains(a.id) != false && a.accessID != nil && a.remoteID != nil && (a.refreshInterval != .never || scope == .account(a.id))
+	/// The accounts that the automatic refresh or a command of `scope` fetches, in the order of the ledger, with their
+	/// access and their ID at the source, without their requests.
+	private func fetched(by scope: RefreshScope) -> [(account: Account, accessID: UUID, remoteID: String)] {
+		let chosen = accountIDs(in: scope)
+		return accounts.compactMap { a in
+			guard chosen?.contains(a.id) != false, Self.refreshes(a, scope), let accessID = a.accessID, let remoteID = a.remoteID else { return nil }
+			return (a, accessID, remoteID)
 		}
 	}
 
-	private func requests(for chosen: [Account], calendar: Calendar) -> [UUID: [AccountRequest]] {
-		guard !chosen.isEmpty else { return [:] }
-		let oldestPending = oldestRemovablePending(of: Set(chosen.filter { $0.refreshedAt != nil }.map(\.id)))
+	private func requests(for chosen: [(account: Account, accessID: UUID, remoteID: String)], calendar: Calendar) -> [UUID: [AccountRequest]] {
+		let oldestPending = oldestRemovablePending(of: Set(chosen.filter { $0.account.refreshedAt != nil }.map(\.account.id)))
 		var plan: [UUID: [AccountRequest]] = [:]
-		for a in chosen {
-			guard let accessID = a.accessID, let remoteID = a.remoteID else { continue }
+		for (a, accessID, remoteID) in chosen {
 			// 14 days of overlap with the last success, and back to the oldest pending row that a refresh can remove,
 			// because it removes a pending row that the bank dropped only within the days it asked for. A pending row
 			// counts for no more than 90 days before the last success, so an old row, such as one from the migration,
@@ -300,6 +321,21 @@ extension Ledger {
 			oldest[t.accountID] = min(oldest[t.accountID] ?? t.bookingDate, t.bookingDate)
 		}
 		return oldest
+	}
+
+	/// The accounts that a command names, or nil for every account.
+	private func accountIDs(in scope: RefreshScope) -> Set<UUID>? {
+		switch scope {
+		case .all: nil
+		case let .account(id): [id]
+		case let .group(id): accountIDs(inGroupTree: id)
+		}
+	}
+
+	/// Whether a command of `scope` that names the account fetches it: an open account of an access, and one with
+	/// the interval "never" only when the command names that account.
+	private static func refreshes(_ account: Account, _ scope: RefreshScope) -> Bool {
+		!account.isClosed && account.accessID != nil && account.remoteID != nil && (account.refreshInterval != .never || scope == .account(account.id))
 	}
 }
 

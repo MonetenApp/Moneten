@@ -53,7 +53,7 @@ let package = Package(
 		.testTarget(name: "SyncTests", dependencies: ["Sync", "SyncTesting", "Storage", "StorageTestSupport", "TestSupport"]),
 		// The tests read helper-lines.jsonl at its path, as the self-test of the helper writes it.
 		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost", "TestSupport"]),
-		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "StorageTestSupport", "TestSupport"]),
+		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "StorageTestSupport", "Sync", "SyncTesting", "TestSupport"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
 		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
 		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage", "StorageTestSupport", "TestSupport"]),

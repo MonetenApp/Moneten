@@ -9,10 +9,10 @@ A banking app is empty until the first account is in it. The setup must work for
 - "Add Account..." opens an assistant with three steps. The steps are the bank, the login data, and the accounts.
 - The first step accepts the name of a bank, an IBAN, or a Bankleitzahl, or a service from "Other". "Other" lists the services of installed extensions and "Offline account / Cash".
 - The app checks the IBAN and the Bankleitzahl before it contacts a bank.
-- When a bank offers several access methods, the user chooses one under "Access with". A method that is not possible shows its reason.
+- When a bank offers several access methods, the user chooses one under "Access with". A method that is not possible shows its reason. This part, the country menu, and the switch of the access method moved to the change `defer-v0.1-follow-ups` on 19 November 2026.
 - The third step lists the accounts that the bank reports. The user selects which ones to add.
 - "Look for New Accounts..." finds accounts that the bank added after the setup.
-- "Edit Login Data..." changes the login data or the access method of an existing access and keeps all transactions.
+- "Edit Login Data..." changes the login data of an existing access and keeps all transactions.
 
 ## Capabilities
 

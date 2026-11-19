@@ -696,6 +696,22 @@ final class DebugHarness {
 			// screen or still waits for a sheet to slide out. Then it closes the alert, as its OK button does.
 			log("alert", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)), ("shown", .flag(model.alerts.panel != nil)))
 			model.alert = nil
+		#if DEBUG || PERF_HARNESS
+		// "<n>": clicks the button with that position, from 1, in the alert on screen, such as "Connect..." of a refresh
+		// without a bank access. That button starts a bank setup, so the command runs only against the made-up bank.
+		// "<n> lock" locks the app right after the click, while the alert still slides out.
+		case "alertbutton":
+			guard HarnessRun.mayReach(.fints, fakeBank: usesFakeBank) else { return log("alertbutton refused") }
+			let parts = argument.split(separator: " ")
+			guard let panel = model.alerts.panel, let n = parts.first.flatMap({ Int($0) }), panel.buttons.indices.contains(n - 1) else {
+				return log("alertbutton", ("", .presence(false)))
+			}
+			panel.buttons[n - 1].performClick(nil)
+			if parts.dropFirst().first == "lock" { model.lock() }
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+				self?.log("alertbutton", ("phase", .state(model.phase)), ("sheet", .state(model.sheet)), ("setup", .flag(model.setup != nil)), ("entry", .flag(model.setup.map { setup in model.ledger.accounts.contains { $0.source == .migrated && $0.setupEntry == setup.entry } } ?? false)))
+			}
+		#endif
 		// Logs the same as "alert" and leaves the alert open.
 		case "alertstate": log("alertstate", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)), ("shown", .flag(model.alerts.panel != nil)))
 		case "extanswer":
