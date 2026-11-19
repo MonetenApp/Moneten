@@ -21,6 +21,22 @@ struct MigrationSheet: View {
 	/// instead of asking MoneyMoney.
 	static var fixtureFolder: URL?
 	static var simulatedFailure: MoneyMoneyExporter.Failure?
+	/// The case of the step that the sheet showed last, for "migrationstate" of the debug harness, which reads it only
+	/// while the model shows this sheet.
+	static var shownStep: LogValue?
+
+	/// The case of the step without its values, so that new progress alone is not a new step.
+	private var stepCase: String {
+		switch step {
+		case .intro: "intro"
+		case .working: "working"
+		case .summary: "summary"
+		case .nothingNew: "nothingNew"
+		case .fileAccount: "fileAccount"
+		case .done: "done"
+		case .failed: "failed"
+		}
+	}
 	#endif
 
 	@State private var step = Step.intro
@@ -118,6 +134,9 @@ struct MigrationSheet: View {
 		}
 		.environment(\.sheetHasScrollAreas, true)
 		.onDisappear { model.migrationTask?.cancel() }
+		#if DEBUG || PERF_HARNESS
+		.onChange(of: stepCase, initial: true) { Self.shownStep = .state(step) }
+		#endif
 		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
 			Button("Save Report...") {
 				if case let .done(_, report) = step { reportText = report.text() }
