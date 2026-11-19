@@ -52,10 +52,6 @@ enum SidebarSelection: Hashable {
 	}
 }
 
-enum ViewMode: String, CaseIterable {
-	case list, barChart, pieChart
-}
-
 enum BalanceMode: String {
 	case daily, monthlyAverage
 }
@@ -64,8 +60,8 @@ enum BalanceMode: String {
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
 	// The unlock settings (`Vault.PasswordEntry`) and the lock settings (`LockSettings`) live in the database: any
-	// program of the user can write the settings file, and every data folder shares it.
-	static let viewMode = "viewMode"
+	// program of the user can write the settings file, and every data folder shares it. The view modes keep their
+	// keys in `ViewModes.key(of:)`.
 	/// The selected sidebar row, which the next launch selects again.
 	static let selectedRow = "selectedSidebarRow"
 	static let balanceMode = "balanceMode"
@@ -308,8 +304,22 @@ final class AppModel {
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
 	}
-	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
-		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
+	#if DEBUG || PERF_HARNESS
+	/// Set by the debug harness: the next `save(account:)` fails, as a full disk would.
+	@ObservationIgnored var failsNextAccountSave = false
+	#endif
+	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
+	/// The view mode of the selected view. Account views and category views each keep their own.
+	var viewMode: ViewMode {
+		get { viewModes[viewKind] }
+		set { viewModes.set(newValue, for: viewKind) { UserDefaults.standard.set($1, forKey: $0) } }
+	}
+	/// A view without a selection draws no chart, so its mode is that of the account views.
+	private var viewKind: ViewModes.Kind {
+		switch selection {
+		case .category?, .search?: .categories
+		case .account?, .group?, nil: .accounts
+		}
 	}
 	var balanceMode: BalanceMode = BalanceMode(rawValue: UserDefaults.standard.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
@@ -1249,6 +1259,12 @@ final class AppModel {
 		guard let store else { return }
 		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
+			#if DEBUG || PERF_HARNESS
+			if failsNextAccountSave {
+				failsNextAccountSave = false
+				throw CocoaError(.fileWriteOutOfSpace)
+			}
+			#endif
 			var saved = account
 			var entry: Transaction?
 			var removed: UUID?

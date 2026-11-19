@@ -427,7 +427,7 @@ public struct Ledger: Sendable {
 	}
 
 	/// The calibration that an account of a bank access needs when its booked rows up to the day of the bank
-	/// balance miss that balance. It compares through `Account.initialBalanceMeetingBankBalance(of:calendar:)`,
+	/// balance miss that balance. It compares through `Account.exactInitialBalanceMeetingBankBalance(of:calendar:)`,
 	/// the rule that derives the initial balance, so neither a pending row nor a row booked after that day
 	/// raises one. Nil before the initial balance is set, because the next full refresh derives it. `refresh` is
 	/// the state of the refresh of its access.

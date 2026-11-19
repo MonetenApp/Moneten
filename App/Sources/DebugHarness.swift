@@ -1057,6 +1057,18 @@ final class DebugHarness {
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
 			default: model.sheet = nil
 			}
+		#if DEBUG || PERF_HARNESS
+		// "<minor units>": whether the initial balance of the selected account is that many minor units, and whether the
+		// user entered it. The log holds no amount.
+		case "initialbalance":
+			let account = model.selectedAccount
+			log("initialbalance", ("matches", .flag(account.map { String($0.initialBalanceMinor) == argument } ?? false)),
+				("entered", .flag(account.map { $0.initialBalanceIsSet && !$0.initialBalanceIsDerived } ?? false)))
+		// The next save of an account fails, as a full disk would, so a check can see when its alert shows.
+		case "failaccountsave":
+			model.failsNextAccountSave = true
+			log("failaccountsave")
+		#endif
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
 		case "rule":
 			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)

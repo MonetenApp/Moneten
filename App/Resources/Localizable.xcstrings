@@ -2654,16 +2654,6 @@
         }
       }
     },
-    "Calibrate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kalibrieren"
-          }
-        }
-      }
-    },
     "Calibrate %@" : {
       "localizations" : {
         "de" : {
@@ -4450,6 +4440,16 @@
         }
       }
     },
+    "Enter the correct balance at the end of today, and the initial balance changes by the difference" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den richtigen Saldo am Ende des heutigen Tages eingeben, und der Anfangssaldo ändert sich um die Differenz"
+          }
+        }
+      }
+    },
     "Enter the name of the bank, an IBAN, or a Bankleitzahl." : {
       "localizations" : {
         "de" : {
@@ -6065,16 +6065,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Hauptfenster"
-          }
-        }
-      }
-    },
-    "Make the booked transactions meet the balance of the bank" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gebuchten Umsätze an den Saldo der Bank anpassen"
           }
         }
       }
