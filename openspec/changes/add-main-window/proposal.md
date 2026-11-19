@@ -9,7 +9,7 @@ Users need one window that shows every account, every category, and everything t
 - One main window with a sidebar on the left and one content view on the right.
 - The sidebar has the rows "Dashboard", "Accounts", "Payments", "Documents", and "Categories" in a fixed order. A row appears when its feature is part of the installed version.
 - Two buttons below the sidebar add things and refresh all accounts.
-- The toolbar has the lock button, the view switch, the print menu, one action button that depends on the view, back and forward, and the search field.
+- The toolbar has the lock button, the view switch, the print menu, one action button that depends on the view, back and forward, and the search field. The requirement of the action button moved to the change `add-sepa-transfers` on 19 November 2026, because the button starts a payment.
 - A filter bar above the list shows the filters of the current view. The change `add-transaction-search-and-filters` specifies which filters stay when the view changes and what the pin does.
 - A status line below the list shows the count and the sum of what the list shows.
 - The Account menu and the context menu of a sidebar row follow the selection.

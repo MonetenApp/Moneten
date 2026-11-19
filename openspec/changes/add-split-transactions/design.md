@@ -26,7 +26,7 @@ What main has today, and what a split must not break:
 
 **Non-Goals:**
 
-- The positions of a batch payment. The change `add-payment-outbox` knows them. It adds the name and the purpose of a part and enables "Split from Batch Payment". Until then the command is disabled.
+- The positions of a batch payment. The change `add-payment-outbox` knows them. It adds the name and the purpose of a part, enables "Split from Batch Payment", and owns the requirement "Split a batch payment into its positions" since 19 November 2026. Until then the command is disabled.
 - A changed amount of a part after the split. The user undoes the split and splits again.
 - Split records of QIF files (`add-more-import-formats`) and the later export formats, budgets, reports, and printouts of split transactions. The complete data export and import are part of this change. Those later changes read the rows that this design defines.
 

@@ -14,6 +14,7 @@ Someone who pays ten invoices does not want ten TAN approvals. A small business 
 - A status report when the bank rejects single positions.
 - The payee check for batches, with the bank's limit and the opt-out notice.
 - Import and export of drafts as SEPA XML.
+- "Split from Batch Payment" for a batch that the app sent: each part takes the name, the amount, and the purpose of its position. This requirement and task 9.2 moved here from `add-split-transactions` on 19 November 2026 (owner decision).
 
 ## Capabilities
 
@@ -23,7 +24,7 @@ Someone who pays ten invoices does not want ten TAN approvals. A small business 
 
 ### Modified Capabilities
 
-None.
+- `split-transactions`: adds "Split a batch payment into its positions". The change `add-split-transactions` introduces the capability and keeps the command disabled while the positions are not known.
 
 ## Impact
 
@@ -33,7 +34,7 @@ None.
 - Depends on the change `add-sepa-transfers` for the payment window, the single-position checks, the confirmation, the results, and the record of sent orders.
 - Depends on the change `add-payment-templates` for batches from a template group.
 - Depends on the change `add-scheduled-payments` for scheduled batches in the view "Scheduled".
-- The change `add-split-transactions` turns a booked batch into its positions.
+- Depends on the change `add-split-transactions` for the split window, in which this change turns a booked batch into its positions.
 - The change `add-direct-debits` adds direct debit batches to the same outbox.
 - Decisions: [ADR 0008](../../../docs/decisions/0008-payments-only-through-licensed-channels.md).
 
