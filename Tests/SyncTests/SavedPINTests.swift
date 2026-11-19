@@ -502,12 +502,20 @@ struct SavedPINTests {
 /// Saved PINs in memory, in place of the encrypted database.
 final class MemoryPINStore: SavedPINStore {
 	private let saved = Mutex<[UUID: Secret]>([:])
+	private let savedLogin = Mutex<[UUID: [Secret]]>([:])
 
 	var pins: [UUID: Secret] { saved.withLock { $0 } }
+	var logins: [UUID: [Secret]] { savedLogin.withLock { $0 } }
 
 	func savedPINs() throws -> [UUID: Secret] { pins }
 	func savePIN(_ pin: Secret, for access: UUID) throws { saved.withLock { $0[access] = pin } }
-	func removeSavedPIN(of access: UUID) throws -> Bool { saved.withLock { $0.removeValue(forKey: access) } != nil }
+	func savedLogins() throws -> [UUID: [Secret]] { logins }
+	func saveLogin(_ values: [Secret], for access: UUID) throws { savedLogin.withLock { $0[access] = values } }
+	func removeSavedPIN(of access: UUID) throws -> Bool {
+		let pin = saved.withLock { $0.removeValue(forKey: access) } != nil
+		let login = savedLogin.withLock { $0.removeValue(forKey: access) } != nil
+		return pin || login
+	}
 }
 
 /// Saved PINs in memory whose deletion fails the next `failures` times, like a database that cannot be written.
@@ -527,6 +535,8 @@ final class FailingRemovalStore: SavedPINStore {
 
 	func savedPINs() throws -> [UUID: Secret] { try memory.savedPINs() }
 	func savePIN(_ pin: Secret, for access: UUID) throws { try memory.savePIN(pin, for: access) }
+	func savedLogins() throws -> [UUID: [Secret]] { try memory.savedLogins() }
+	func saveLogin(_ values: [Secret], for access: UUID) throws { try memory.saveLogin(values, for: access) }
 	func removeSavedPIN(of access: UUID) throws -> Bool {
 		let fails = remaining.withLock { left in
 			guard left > 0 else { return false }

@@ -252,7 +252,7 @@ private final class ScriptRun {
 	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason,
 		restore: (@Sendable (String) async -> AccessState?)? = nil) async throws -> ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
-		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
+		guard case let .login(values, _) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
 		else { throw CancellationError() }
 		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
 		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""

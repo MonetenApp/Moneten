@@ -85,9 +85,17 @@ extension AppModel {
 			return account
 		}
 		let accounts = try storeExtensionAccess(new, state: setup.state, accounts: listed)
-		guard let store, !accounts.isEmpty else {
+		guard let store, let stored = accounts.first?.accessID else {
+			// No access was stored, so the login data of the setup has no access to stay with.
+			sync.broker.forgetPIN(of: access.id)
 			alert = AlertMessage(title: String(localized: "\(access.bankName) added no account."), message: String(localized: "Moneten has every account of this login already."))
 			return
+		}
+		// The service accepted the login data: the access that the accounts joined keeps it, and saves it on request.
+		do {
+			try sync.broker.adoptLogin(of: access.id, into: stored)
+		} catch {
+			alert = AlertMessage(title: String(localized: "Could not save the PIN."), message: String(describing: error))
 		}
 		// The rows that the setup fetched are stored here, without a suspension after the checks of the job.
 		// A failed merge ends the setup with its error; the stored accounts and rows still reach the ledger.

@@ -84,6 +84,11 @@ public struct LoginRequest: Sendable, Equatable {
 		self.rejected = rejected
 	}
 
+	/// The word for the secret in the save option, "Save Password": the label of the first secret field, else "Password".
+	public var secretName: String {
+		fields.first(where: \.isSecret)?.label ?? String(localized: "Password")
+	}
+
 	/// The values that the dialog starts with. The first field gets the user ID of the access when it is not
 	/// secret, because that field gave the user ID at the setup, so the dialog of a refresh names the access.
 	/// Every other field starts empty.
@@ -576,8 +581,9 @@ public enum UserAnswer: Sendable, Equatable {
 	case tanMedium(String)
 	case tan(Secret)
 	case host(HostDecision)
-	/// The values of the login fields, in the order of `LoginRequest.fields`.
-	case login([Secret])
+	/// The values of the login fields, in the order of `LoginRequest.fields`. `save` is the option to save them for
+	/// the access, which is off unless the user turns it on, as for a PIN.
+	case login([Secret], save: Bool = false)
 }
 
 /// A PIN, password, or TAN. It prints as "•••", so the value cannot end up in a log by accident.

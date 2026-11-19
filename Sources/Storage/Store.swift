@@ -263,10 +263,26 @@ public final class Store: SavedPINStore {
 		try write { db in try SavedPINRecord(accessID: access, pin: pin.value).save(db) }
 	}
 
-	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts.
+	/// The login data of extension accesses that the user asked to save. The app reads it when it unlocks.
+	public func savedLogins() throws -> [UUID: [Secret]] {
+		try queue.read { db in
+			Dictionary(uniqueKeysWithValues: try SavedLoginRecord.fetchAll(db).map { ($0.accessID, $0.fields.map(Secret.init)) })
+		}
+	}
+
+	/// Saves the login data of an extension access, after the service accepted it. It replaces login data saved before.
+	public func saveLogin(_ values: [Secret], for access: UUID) throws {
+		try write { db in try SavedLoginRecord(accessID: access, fields: values.map(\.value)).save(db) }
+	}
+
+	/// "Remove saved PIN": deletes the saved PIN or the saved login data of an access, for all its accounts.
 	@discardableResult
 	public func removeSavedPIN(of access: UUID) throws -> Bool {
-		try write { db in try SavedPINRecord.deleteOne(db, key: access) }
+		try write { db in
+			let pin = try SavedPINRecord.deleteOne(db, key: access)
+			let login = try SavedLoginRecord.deleteOne(db, key: access)
+			return pin || login
+		}
 	}
 
 	/// What identifies every deleted transaction, so that a migration does not add them again.

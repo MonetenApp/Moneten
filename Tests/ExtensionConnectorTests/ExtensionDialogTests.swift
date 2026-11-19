@@ -9,7 +9,7 @@ import TestSupport
 
 /// An extension access in the dialog queue of the app, beside a FinTS access. The requests of a real host
 /// process reach the same broker and the same dialogs as those of a FinTS server, and its login data follows
-/// the rules of a PIN that the user did not save. The script needs no network.
+/// the rules of a PIN, saved or not. The script needs no network.
 @MainActor
 @Suite("Dialogs of an extension in the queue of the app")
 struct ExtensionDialogTests {
@@ -38,10 +38,22 @@ struct ExtensionDialogTests {
 		function EndSession() end
 		"""
 
-	func refreshCard(attended: Bool = true) {
+	/// A service of "Musterbank" that accepts only the password "Geheim-7319" and asks for nothing else.
+	static let passwordScript = """
+		WebBanking{version = 1}
+		function SupportsBank() return true end
+		function InitializeSession2(protocol, bankCode, step, credentials)
+			if credentials[2] ~= "Geheim-7319" then return LoginFailed end
+			print("login " .. credentials[1])
+		end
+		function RefreshAccount() return {balance = 0, transactions = {}} end
+		function EndSession() end
+		"""
+
+	func refreshCard(attended: Bool = true, script: String = Self.script) {
 		var state = ExtensionState(nil)
 		state.accounts = ["A EUR": .object(["accountNumber": .string("A"), "name": .string("Card")])]
-		coordinator.refresh(RefreshRequest(access: Self.card, state: state.accessState, accounts: [Self.cardAccount]), with: session.connector(demo(Self.script)),
+		coordinator.refresh(RefreshRequest(access: Self.card, state: state.accessState, accounts: [Self.cardAccount]), with: session.connector(demo(script)),
 			attended: attended)
 	}
 
@@ -157,13 +169,91 @@ struct ExtensionDialogTests {
 		await until { !coordinator.isRefreshing }
 		#expect(session.printed == ["code 483920"])
 	}
+
+	/// Every text that a log line could take from the refresh: the lines of the host, and the descriptions and dumps of the
+	/// answer, the states, and the requests on screen.
+	func logText(_ answers: [UserAnswer]) -> String {
+		var text = session.log.withLock { $0.map { String(describing: $0) } }.joined(separator: "\n")
+		for answer in answers {
+			text += String(describing: answer) + String(reflecting: answer)
+			dump(answer, to: &text)
+		}
+		text += String(describing: coordinator.states) + String(reflecting: coordinator.states)
+		dump(coordinator.states, to: &text)
+		return text
+	}
+
+	@Test("Saved login data logs in the automatic refresh after the unlock without a dialog, and no log line holds the password")
+	func savedLoginData() async throws {
+		let store = SavedPINs()
+		try broker.open(store)
+		let saving = UserAnswer.login([Secret("erika"), Secret("Geheim-7319")], save: true)
+		refreshCard(script: Self.passwordScript)
+		await until { broker.current?.request.kind == .login }
+		answer(saving)
+		await until { finished(Self.card) }
+		#expect(store.logins.withLock { $0 } == [Self.card.id: [Secret("erika"), Secret("Geheim-7319")]])
+		#expect(broker.savedPINs == [Self.card.id])
+
+		broker.forgetPINs()
+		try broker.open(store)
+		var opened = false
+		refreshCard(attended: false, script: Self.passwordScript)
+		while coordinator.isRefreshing {
+			opened = opened || broker.current != nil
+			try? await Task.sleep(for: .milliseconds(5))
+		}
+		#expect(!opened)
+		#expect(finished(Self.card))
+		#expect(session.printed == ["login erika", "login erika"])
+		#expect(!logText([saving]).contains("Geheim-7319"))
+
+		// "Remove saved PIN": the next manual refresh asks again.
+		try broker.removeSavedPIN(of: Self.card.id)
+		#expect(store.logins.withLock { $0 }.isEmpty)
+		refreshCard(script: Self.passwordScript)
+		await until { broker.current != nil }
+		#expect(broker.current?.request == .login(LoginRequest(service: "Musterbank")))
+		broker.cancel(try #require(broker.current).id)
+		await until { !coordinator.isRefreshing }
+		#expect(session.printed == ["login erika", "login erika"])
+	}
+
+	@Test("Saved login data that the service rejects in an automatic refresh is deleted and sent no second time, and the next manual refresh asks")
+	func savedLoginDataRejected() async throws {
+		let store = SavedPINs()
+		try store.saveLogin([Secret("erika"), Secret("Alt-1234")], for: Self.card.id)
+		try broker.open(store)
+		refreshCard(attended: false, script: Self.passwordScript)
+		await until { !coordinator.isRefreshing }
+		#expect(state(Self.card) == .failed(.loginRejected))
+		#expect(store.logins.withLock { $0 }.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+		#expect(!logText([]).contains("Alt-1234"))
+
+		refreshCard(attended: false, script: Self.passwordScript)
+		await until { !coordinator.isRefreshing }
+		#expect(session.printed.isEmpty)
+		refreshCard(script: Self.passwordScript)
+		await until { broker.current != nil }
+		#expect(broker.current?.request.kind == .login)
+		broker.cancel(try #require(broker.current).id)
+		await until { !coordinator.isRefreshing }
+	}
 }
 
-/// The saved PINs of a database, in memory.
+/// The saved PINs and login data of a database, in memory.
 final class SavedPINs: SavedPINStore {
 	let pins = Mutex<[UUID: Secret]>([:])
+	let logins = Mutex<[UUID: [Secret]]>([:])
 
 	func savedPINs() throws -> [UUID: Secret] { pins.withLock { $0 } }
 	func savePIN(_ pin: Secret, for access: UUID) throws { pins.withLock { $0[access] = pin } }
-	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool { pins.withLock { $0.removeValue(forKey: access) != nil } }
+	func savedLogins() throws -> [UUID: [Secret]] { logins.withLock { $0 } }
+	func saveLogin(_ values: [Secret], for access: UUID) throws { logins.withLock { $0[access] = values } }
+	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool {
+		let pin = pins.withLock { $0.removeValue(forKey: access) != nil }
+		let login = logins.withLock { $0.removeValue(forKey: access) != nil }
+		return pin || login
+	}
 }

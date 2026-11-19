@@ -26,6 +26,17 @@ Issue #86 builds this change for FinTS on the sync model of [add-account-refresh
 - A PIN in memory, saved or not, answers a PIN request only when it keeps the rules of that request. Otherwise a manual refresh shows the sheet, and an automatic refresh stops with `SyncFailure.needsUser(.pin)` without sending it.
 - "Remove saved PIN" in the account settings calls `removeSavedPIN(of:)`, which deletes the row and forgets the PIN in memory, for every account of the access.
 
+### The login data of an extension
+
+An extension asks for its login data in one dialog with the fields of its manifest, else "Username" and "Password" (issue #536). The dialog has the save option of the PIN sheet: "Save" and the name of the secret, which is the label of the first secret field, else "Password", so the default dialog shows "Save Password". The option is off each time the dialog appears, as in the PIN sheet. The answer `.login(values, save:)` carries the choice. The login data is saved as a whole, with every field, because a refresh needs all of them to log in.
+
+- `Storage` keeps saved login data in the table `savedLogin`: one row per access, with the primary key `accessID` and the values as a JSON list of text in the column `fields`. Migration `v32` adds the table, and its rows go with their access, as the rows of `savedPIN` do. The saved PINs of FinTS stay in `savedPIN` and do not move, so no saved PIN is lost and no shipped migration changes. An access has a row in at most one of the two tables, because a FinTS access never asks for login data and an extension never asks for a PIN.
+- `SavedPINStore` has `savedLogins()` and `saveLogin(_:for:)` beside the calls for PINs. `removeSavedPIN(of:)` deletes the saved secret of the access from both tables in one transaction, so "Remove saved PIN", a rejection, and the second deletion at the next unlock need no second path.
+- `SessionBroker` keeps the login data of each access in memory beside the PINs and applies the same rules to both. `savedPINs` holds every access with a saved secret, PIN or login data, so "Remove saved PIN" is enabled for an extension account with saved login data. The broker saves the login data when the refresh with it finishes; a rejected or failed login saves nothing. `open(_:)` reads the saved login data into memory, so an automatic refresh after a restart or an unlock logs in without a dialog. A failed refresh keeps saved login data and forgets unsaved login data. A rejection (`SyncFailure.loginRejected`, or a login request with `rejected`) forgets the login data and deletes the saved one, with the same second try and mark as a rejected PIN.
+- Login data in memory answers a login request only when it has one value for each field of the request, so a new version of an extension with other fields asks again.
+- The setup of an extension access runs as a refresh of the access that the setup makes. When the login joins an access that the app has already, `adoptLogin(of:into:)` gives that access the login data of the setup, and saves it at once when the user asked to save it or when that access has saved login data already, as `remember(_:for:save:)` does for a PIN. When the setup stores no account, the broker forgets the login data of the setup.
+- `Secret` prints "•••", and no log line of the broker, the connector, or the debug harness carries a value of the login data.
+
 ### The rules of the bank
 
 `PINRules` holds digits only, the minimum length, and the maximum length, and `check(_:secretName:)` names the first broken rule. `PINRequest.rules` brings them to the sheet, which checks the PIN at "OK" and sends nothing while a rule is broken. The login step of "Add Account" has no PIN sheet: `SetupSession` checks the PIN of the step against the rules of the request, and a broken rule ends the login with its text before the PIN is sent. The FinTS helper reads the minimum and maximum length from the bank parameters (`getPinLengthMin` and `getPinLengthMax` of hbci4java).
@@ -44,7 +55,7 @@ When the user changes the TAN method, the FinTS helper starts a new dialog with 
 - "Remove saved PIN" also forgets the PIN in memory, so the next refresh asks at once, not only after a restart.
 - A refresh that fails after a successful login does not save the PIN. The next successful refresh with the option on saves it.
 - The secret is called "PIN" for every FinTS access, because hbci4java gives no other name. An extension names its secret with the label of its login field in the manifest, else "Password", and the login dialog of an extension shows that label.
-- The login data of an extension stays in memory only. Its login dialog has no option to save it yet, so task 1.15 stays open for the scenario "Extension password saved".
+- The login data of an extension is saved as a whole, also its username, because the script needs every field to log in. "Remove saved PIN" removes it, so the button keeps one name for every access kind.
 
 ## Risks / Trade-offs
 
