@@ -372,7 +372,7 @@ struct SidebarNameField: View {
 				// The row joins the list one update after the group, so the focus waits for it.
 				.onAppear { DispatchQueue.main.async { focused = true } }
 			if let parentID = taken {
-				CategoryNameTaken(parentID: parentID).font(.caption)
+				SidebarNameTaken(parentID: parentID)
 			}
 		}
 	}
@@ -394,6 +394,26 @@ struct SidebarNameField: View {
 		guard !ended, hadFocus else { return }
 		ended = true
 		model.endNaming(row, typed: storing ? text : nil)
+	}
+}
+
+/// The note under the name field of a new category group whose name another entry of its group has. A sidebar row has
+/// room for one line under the field, so the note is shorter than that of the sheet ("CategoryNameTaken").
+private struct SidebarNameTaken: View {
+	@Environment(AppModel.self) private var model
+	let parentID: UUID?
+
+	var body: some View {
+		Group {
+			if let group = parentID.flatMap(model.ledger.category) {
+				Text("Name taken in \(group.name).")
+			} else {
+				Text("Name taken at the top level.")
+			}
+		}
+		.font(.caption)
+		.foregroundStyle(Palette.red)
+		.lineLimit(1)
 	}
 }
 

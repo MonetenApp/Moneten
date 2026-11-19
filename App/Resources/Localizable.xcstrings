@@ -6879,6 +6879,26 @@
         }
       }
     },
+    "Name taken at the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name auf oberster Ebene vergeben."
+          }
+        }
+      }
+    },
+    "Name taken in %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name in %@ vergeben."
+          }
+        }
+      }
+    },
     "Name, IBAN, or Bankleitzahl" : {
       "localizations" : {
         "de" : {

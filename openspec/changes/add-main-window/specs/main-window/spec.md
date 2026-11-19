@@ -216,7 +216,7 @@ The app SHALL keep the sidebar row of a new category group in edit mode when Ret
 
 - **GIVEN** the category "Fuel" at the top level, and no category is selected
 - **WHEN** the user chooses "Add Category Group", types "fuel", and presses Return
-- **THEN** the row stays in edit mode with "fuel" and says "This name is taken at the top level."
+- **THEN** the row stays in edit mode with "fuel" and says "Name taken at the top level."
 
 #### Scenario: Taken name and the focus leaves the row
 
