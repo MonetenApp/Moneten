@@ -13,13 +13,6 @@ extension FinTSServer {
 		host(server) == "fints.comdirect.de"
 	}
 
-	/// The host in lower case and without one trailing dot, as the helper reads it.
-	private static func host(_ server: URL?) -> String? {
-		guard var host = server?.host()?.lowercased() else { return nil }
-		if host.hasSuffix(".") { host.removeLast() }
-		return host
-	}
-
 	/// The server of Commerzbank expects the 10-digit participant number, and customers know it as 8 digits, so a login
 	/// name of exactly 8 ASCII digits gets "00" in front. Any other login name, such as an alias, stays as it is.
 	static func commerzbankLoginName(_ name: String) -> String {

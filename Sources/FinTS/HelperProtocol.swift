@@ -186,9 +186,10 @@ struct Ask: Decodable {
 			} else {
 				challenge = .enterTAN(prompt: prompt ?? "", image: image.map(ChallengeImage.init))
 			}
-			// The Deutsche Bank group takes a typed TAN in capitals (#231).
+			// The Deutsche Bank group takes a typed TAN in capitals (#231), and PayCenter a TAN of 6 characters (#238).
 			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
-				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
+				: PayCenter.tanField(method: current, server: server)
+				?? CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
 			return secondFactor(challenge, methods: changes, field: field, note: Oberbank.note(offered, bankCode: bankCode), server: server)
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))

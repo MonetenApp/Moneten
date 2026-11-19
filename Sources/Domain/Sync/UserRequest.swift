@@ -312,12 +312,26 @@ public struct TANField: Sendable, Equatable {
 	}
 
 	/// The text as the field shows it: digits only for a numeric field, capitals when asked, and no
-	/// more characters than allowed.
+	/// more characters than allowed. A field with a length drops spaces, tabs, and line breaks before it cuts, because a
+	/// pasted TAN often carries them, and a cut that kept a blank would send a TAN one character short.
 	public func accept(_ text: String) -> String {
 		var text = isNumeric ? text.filter(\.isASCII).filter(\.isNumber) : text
+		if length != nil { text.removeAll(where: \.isWhitespace) }
 		if isUppercase { text = text.uppercased() }
 		if let length { text = String(text.prefix(max(0, length.upperBound))) }
 		return text
+	}
+
+	/// What the dialog says while `text` is shorter than the field needs, such as "Enter 6 characters.", because "Continue"
+	/// stays disabled then. Nil for an empty text, which "Required" covers, for a long enough text, and for a field without a
+	/// length. A note needs a lower bound above 1, so its count is never singular.
+	public func lengthNote(_ text: String) -> String? {
+		guard let length, !text.isEmpty, text.count < length.lowerBound else { return nil }
+		if length.lowerBound == length.upperBound {
+			return isNumeric ? String(localized: "Enter \(length.lowerBound) digits.") : String(localized: "Enter \(length.lowerBound) characters.")
+		}
+		return isNumeric ? String(localized: "Enter \(length.lowerBound) to \(length.upperBound) digits.")
+			: String(localized: "Enter \(length.lowerBound) to \(length.upperBound) characters.")
 	}
 
 	/// The text is complete enough to send.
