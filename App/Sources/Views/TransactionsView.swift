@@ -435,6 +435,8 @@ struct TransactionTable: View {
 	/// The placeholder of `AppModel.replacingTable` stands in for the table.
 	let holds: Bool
 	let rows: [Transaction]
+	/// The rows of "Group transactions by account" of the last update, see `GroupedRows`.
+	@State private var grouped = GroupedRows()
 
 	var showsAccount: Bool {
 		if case .account = key.selection { return false }
@@ -472,28 +474,11 @@ struct TransactionTable: View {
 			// modifier on a row such as .draggable or .itemProvider, makes SwiftUI build a view graph for
 			// every one of 50,000 rows on each change of the view, which took most of a second. The cells
 			// are built for the visible rows only, so they carry the drag, and its payload is made when
-			// a drag starts.
-			let sections = accountSections
-			Group {
-				if let sections {
-					// "Group transactions by account": a heading with the account name above its rows. The
-					// sections need a ForEach of rows, which SwiftUI builds for every row, so only a group
-					// with this option pays for it: about 2.3 seconds to open a group of 50,000 rows on an
-					// M-series Mac (perf scenario "group-by-account"), against half a second without it.
-					Table(of: Transaction.self, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(balances: balances, checkmarks: checkmarks)
-					} rows: {
-						ForEach(sections, id: \.account.id) { section in
-							Section(section.account.name) {
-								ForEach(section.rows) { TableRow($0) }
-							}
-						}
-					}
-				} else {
-					Table(rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
-						columns(balances: balances, checkmarks: checkmarks)
-					}
-				}
+			// a drag starts. For the same reason the headings of "Group transactions by account" are no
+			// sections but stand in the cells of the first row of each account (issue #519).
+			let grouping = self.grouping
+			Table(grouping?.transactions ?? rows, selection: guardedSelection, columnCustomization: $model.transactionColumns) {
+				columns(balances: balances, checkmarks: checkmarks, headings: grouping?.headings ?? [:])
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
@@ -530,58 +515,65 @@ struct TransactionTable: View {
 	}
 
 	@TableColumnBuilder<Transaction, Never>
-	private func columns(balances: [UUID: Money], checkmarks: Bool) -> some TableColumnContent<Transaction, Never> {
+	private func columns(balances: [UUID: Money], checkmarks: Bool, headings: [UUID: GroupedTransactions.Heading])
+		-> some TableColumnContent<Transaction, Never> {
 			TableColumn("Date") { (t: Transaction) in
-				DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
+				AccountHeading(heading: headings[t.id], column: .first, isSelected: headedSelection(t, headings)) {
+					DateCell(transaction: t, model: model).rowChrome(t).draggable(draggedIDs(for: t))
+				}
 			}
 			// The table starts the first cell 6 points from the edge of the row. With the gap of 17
 			// points, the name then starts 118 points from the edge, as in MoneyMoney.
-			.width(95)
+			.width(DateCell.columnWidth)
 			.customizationID("date")
 			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
 				let account = showsAccount && !groupedByAccount && model.selectedTransactions.contains(t.id) ? model.ledger.account(t.accountID)?.name : nil
-				TransactionCell(transaction: t, model: model, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+				AccountHeading(heading: headings[t.id], column: .middle, isSelected: headedSelection(t, headings)) {
+					TransactionCell(transaction: t, model: model, account: account).padding(.trailing, 12).rowChrome(t).draggable(draggedIDs(for: t))
+				}
 			}
 			.width(min: 240, ideal: 520)
 			.customizationID("name")
 			// The checkmark sits 11 points right of the amount, as in MoneyMoney.
 			TableColumn("Amount") { (t: Transaction) in
-				HStack(spacing: 5) {
-					VStack(alignment: .trailing, spacing: 1) {
-						HStack(alignment: .firstTextBaseline, spacing: 6) {
-							// A card payment abroad shows the amount that the bank converted, in its own currency, next to the amount.
-							// It gives way to the amount when the column is narrow, and its help tag has it whole.
-							if let original = t.originalAmount {
-								let text = Format.foreignAmount(original)
-								Text(text)
+				AccountHeading(heading: headings[t.id], column: .last, isSelected: headedSelection(t, headings)) {
+					HStack(spacing: 5) {
+						VStack(alignment: .trailing, spacing: 1) {
+							HStack(alignment: .firstTextBaseline, spacing: 6) {
+								// A card payment abroad shows the amount that the bank converted, in its own currency, next to the amount.
+								// It gives way to the amount when the column is narrow, and its help tag has it whole.
+								if let original = t.originalAmount {
+									let text = Format.foreignAmount(original)
+									Text(text)
+										.font(.system(size: 11))
+										.monospacedDigit()
+										.foregroundStyle(Palette.detail)
+										.lineLimit(1)
+										.modifier(OriginalAmountHelp(original: original, text: text))
+								}
+								AmountText(money: t.amount)
+									.font(.system(size: 18))
+									.modifier(PendingValue(pending: t.isPending))
+									.layoutPriority(1)
+							}
+							if let balance = balances[t.id] {
+								Text(Format.money(balance))
 									.font(.system(size: 11))
 									.monospacedDigit()
 									.foregroundStyle(Palette.detail)
-									.lineLimit(1)
-									.modifier(OriginalAmountHelp(original: original, text: text))
+									.help("Balance at the end of \(Format.day(t.bookingDate))")
 							}
-							AmountText(money: t.amount)
-								.font(.system(size: 18))
-								.modifier(PendingValue(pending: t.isPending))
-								.layoutPriority(1)
 						}
-						if let balance = balances[t.id] {
-							Text(Format.money(balance))
-								.font(.system(size: 11))
-								.monospacedDigit()
-								.foregroundStyle(Palette.detail)
-								.help("Balance at the end of \(Format.day(t.bookingDate))")
+						if checkmarks {
+							CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
 						}
 					}
-					if checkmarks {
-						CheckBox(isOn: t.isChecked) { model.toggleChecked(t.id) }
-					}
+					.padding(.trailing, 2)
+					// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
+					.rowChrome(t, alignment: .trailing, announcesPending: false)
+					.draggable(draggedIDs(for: t))
 				}
-				.padding(.trailing, 2)
-				// "Pending" goes on the amount only: on the cell it would replace the state of the checkbox.
-				.rowChrome(t, alignment: .trailing, announcesPending: false)
-				.draggable(draggedIDs(for: t))
 			}
 			.width(min: 120, ideal: 150)
 			.alignment(.trailing)
@@ -595,6 +587,11 @@ struct TransactionTable: View {
 		return model.ledger.dayEndBalances(of: account, rows: rows)
 	}
 
+	/// A selected first row of an account. Only those rows read the selection, so a change of it does not draw every cell again.
+	private func headedSelection(_ t: Transaction, _ headings: [UUID: GroupedTransactions.Heading]) -> Bool {
+		headings[t.id] != nil && model.selectedTransactions.contains(t.id)
+	}
+
 	/// The selection, as long as the model shows this table: see `AppModel.shows(_:)`.
 	private var guardedSelection: Binding<Set<UUID>> {
 		Binding(get: { [model] in model.selectedTransactions }, set: { [model, key] in model.select(transactions: $0, in: key) })
@@ -606,11 +603,14 @@ struct TransactionTable: View {
 		return model.ledger.group(id)?.groupsByAccount == true
 	}
 
-	/// The rows of each account in the order of the sidebar, or nil when the view is not grouped.
-	private var accountSections: [(account: Account, rows: [Transaction])]? {
-		guard groupedByAccount, case let .group(id) = key.selection else { return nil }
-		let byAccount = Dictionary(grouping: rows, by: \.accountID)
-		return orderedAccounts(in: id).compactMap { a in byAccount[a.id].map { (a, $0) } }
+	/// The rows of each account in the order of the sidebar with their headings, or nil when the view is not grouped.
+	private var grouping: GroupedTransactions? {
+		guard groupedByAccount, case let .group(id) = key.selection else {
+			// The option can go while the view stays, and the copy of up to 50,000 rows goes with it.
+			grouped.forget()
+			return nil
+		}
+		return grouped.rows(rows, groupedBy: orderedAccounts(in: id))
 	}
 
 	private func orderedAccounts(in group: UUID) -> [Account] {
@@ -626,13 +626,110 @@ struct TransactionTable: View {
 	private func copiedRows() -> [NSItemProvider] {
 		let selection = model.visibleSelection
 		guard !selection.isEmpty else { return [] }
-		let ordered = (accountSections?.flatMap(\.rows) ?? rows).filter { selection.contains($0.id) }
+		let ordered = (grouping?.transactions ?? rows).filter { selection.contains($0.id) }
 		return [NSItemProvider(object: TransactionCopy.text(ordered, locale: .current) as NSString)]
 	}
 
 	private func draggedIDs(for t: Transaction) -> DraggedTransactions {
 		let selection = model.visibleSelection
 		return model.startDrag(of: selection.contains(t.id) ? selection : [t.id])
+	}
+}
+
+/// Keeps the rows of "Group transactions by account" from one update of the table to the next. SwiftUI compares the
+/// rows of a table by their memory. The grouped rows are a new array in each update, and SwiftUI then visited each of
+/// 50,000 rows to compare them, which took a third of a second (issue #519). The rows without headings are the array
+/// of the parent, so they compare as equal.
+@MainActor
+final class GroupedRows {
+	private var source: [Transaction] = []
+	private var accounts: [Account] = []
+	private var grouped = GroupedTransactions([], groupedBy: [])
+
+	func rows(_ source: [Transaction], groupedBy accounts: [Account]) -> GroupedTransactions {
+		let same = source.withUnsafeBufferPointer { new in
+			self.source.withUnsafeBufferPointer { old in new.baseAddress == old.baseAddress && new.count == old.count }
+		}
+		if !same || accounts != self.accounts {
+			self.source = source
+			self.accounts = accounts
+			grouped = GroupedTransactions(source, groupedBy: accounts)
+		}
+		return grouped
+	}
+
+	func forget() {
+		guard !source.isEmpty || !accounts.isEmpty else { return }
+		source = []
+		accounts = []
+		grouped = GroupedTransactions([], groupedBy: [])
+	}
+}
+
+/// A cell of the first row of an account under "Group transactions by account", with the heading of the account above
+/// its content. Each cell draws its part of the heading, so the heading spans the row as the heading of a section did:
+/// the name in the first column, and the line below it across all columns. A heading below the rows of another account
+/// has 20 points of space above it. The heading covers the selection of the row, which shows only behind the transaction,
+/// and the line goes with the selection, as AppKit leaves out the line above a selected row.
+struct AccountHeading<Content: View>: View {
+	enum Column { case first, middle, last }
+
+	let heading: GroupedTransactions.Heading?
+	let column: Column
+	/// The row is selected, and the line above it goes.
+	let isSelected: Bool
+	@ViewBuilder let content: Content
+
+	var body: some View {
+		if let heading {
+			VStack(alignment: .leading, spacing: 0) {
+				VStack(alignment: .leading, spacing: 0) {
+					Color.clear.frame(height: heading.isFirst ? 0 : 20)
+					Color.clear
+						.frame(maxWidth: .infinity)
+						.frame(height: 20)
+						.overlay(alignment: .leading) {
+							if column == .middle {
+								// The name starts at the edge of the date column, as the heading of a section did, and runs to
+								// the end of the name column. It stands in this column and not in the first one, whose part of
+								// the heading this column's background would cover after the width of the date (#526).
+								Text(heading.account.name)
+									.font(.system(size: 11, weight: .semibold))
+									.foregroundStyle(.secondary)
+									.lineLimit(1)
+									.truncationMode(.tail)
+									.frame(maxWidth: .infinity, alignment: .leading)
+									.padding(.leading, -(DateCell.columnWidth + 2 * RowChrome.halfGap))
+									.help(heading.account.name)
+									.accessibilityAddTraits(.isHeader)
+							}
+						}
+					// The line that AppKit draws below a row, 6 points in from both edges of the table.
+					Color.clear
+						.frame(height: 4)
+						.overlay(alignment: .bottom) {
+							if !isSelected {
+								Color(nsColor: .separatorColor)
+									.frame(height: 1)
+									.padding(.leading, column == .first ? 0 : -RowChrome.halfGap)
+									.padding(.trailing, column == .last ? 0 : -RowChrome.halfGap)
+							}
+						}
+						.accessibilityHidden(true)
+				}
+				// Across the gaps between the cells and up to the top of the row.
+				.background {
+					Color(nsColor: .controlBackgroundColor)
+						.padding(.horizontal, -RowChrome.halfGap)
+						.padding(.top, -RowChrome.inset)
+				}
+				.environment(\.backgroundProminence, .standard)
+				Color.clear.frame(height: 4)
+				content
+			}
+		} else {
+			content
+		}
 	}
 }
 
@@ -767,6 +864,9 @@ struct DateCell: View {
 				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model).padding(.leading, -DateCell.cellInset) }
 		}
 	}
+
+	/// The width of the date column. The heading of a grouped account starts this far and the gap before the name column.
+	static let columnWidth: CGFloat = 95
 
 	/// The distance from the edge of the row to the first cell. The ribbon starts at the edge.
 	static let cellInset: CGFloat = 6
@@ -1034,7 +1134,7 @@ private struct RowReveal: View {
 		let row = model.revealedRow.flatMap { $0.key == key ? $0 : nil }
 		// The position is looked up by the ID on each turn of the wait, so `model.rows(for:)` runs up to about 25 times
 		// for one request. A refresh can move the row while the table waits, and the user can select another row; then
-		// there is nothing to reveal. "Go to" opens an account or a category, whose table has no section headings, so
+		// there is nothing to reveal. "Go to" opens an account or a category, whose table is never grouped by account, so
 		// the position in the rows is the row of the table.
 		TableScroller(request: row?.request) { [model, key] in
 			guard let r = row, model.selectedTransactions == [r.id] else { return nil }

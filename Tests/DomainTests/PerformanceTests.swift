@@ -507,6 +507,27 @@ struct PerformanceTests {
 		#endif
 	}
 
+	@Test("50,000 rows of 10 accounts group by account within budget")
+	func groupedTransactions() {
+		let accounts = (0..<10).map { (n: Int) -> Account in Account(position: n, name: "Account \(n)", kind: .giro, source: .offline) }
+		// Explicit types, so that the compiler of CI type-checks the closure in time (#452).
+		let rows = (0..<50_000).map { (i: Int) -> Transaction in
+			let month: Int = 1 + i % 12
+			let day: Int = 1 + i % 28
+			let amount: Int64 = -Int64(i)
+			return Transaction(accountID: accounts[i % 10].id, bookingDate: Day(year: 2026, month: month, day: day), amountMinor: amount, name: "Shop \(i)")
+		}
+		var grouped = GroupedTransactions([], groupedBy: [])
+		let build = fastest { grouped = GroupedTransactions(rows, groupedBy: accounts) }
+		print("group 50,000 rows by account \(build)")
+		#expect(grouped.transactions.count == 50_000)
+		#expect(grouped.headings.count == 10)
+		// About 7 ms in a release build. A debug build takes more than twice as long and varies with the load of the Mac.
+		#if !DEBUG
+		#expect(build < budget(.milliseconds(30)))
+		#endif
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!

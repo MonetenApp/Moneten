@@ -26,8 +26,8 @@ struct PerfScenario {
 	/// "The app SHALL show the first rows of a view within half a second", add-main-window.
 	static let halfSecond = Duration.milliseconds(500)
 	/// Fails the check. The table bug of build 36 blocked the main thread for minutes. On the macOS
-	/// runners of CI, today's slowest scenario, group-by-account, takes 4 to 5.5 seconds, so the limit
-	/// leaves room above it and still catches a hang. Issue #51 brings the scenarios under the budget.
+	/// runners of CI, group-by-account took 4 to 5.5 seconds before issue #519, so the limit leaves room
+	/// above the slow scenarios and still catches a hang. Issue #51 brings the scenarios under the budget.
 	static let hangLimit = Duration.seconds(10)
 
 	static let all: [PerfScenario] = [
@@ -432,7 +432,9 @@ struct PerfScenario {
 				await c.settle()
 				c.model.showsDailyBalance = false
 			}),
-		// Last, because it leaves "Bulk" grouped by account: its table has a section per account.
+		// After the other scenarios of "Bulk", because it leaves "Bulk" grouped by account, with a heading above the first row of
+		// each account. A table of sections, and grouped rows that were a new array in each update, made SwiftUI visit all
+		// 50,000 rows (issue #519).
 		PerfScenario(name: "group-by-account", budget: halfSecond,
 			setUp: { c in
 				if var g = c.model.ledger.groups.first(where: { $0.name == "Bulk" }) {
@@ -442,6 +444,16 @@ struct PerfScenario {
 				await c.select("Account 2")
 			},
 			run: { await $0.select("Bulk") }),
+		// The first two rows of the grouped "Bulk" selected, as a click with Shift does, the first with the heading of its account. The table
+		// keeps its grouped rows, and SwiftUI does not visit all rows again.
+		PerfScenario(name: "select-in-grouped-group", budget: halfSecond,
+			run: { c in
+				guard let table = c.harness.transactionTables().first else { return c.fail("no table") }
+				table.selectRowIndexes(IndexSet(0...1), byExtendingSelection: false)
+				await c.settle()
+				if c.model.selectedTransactions.count != 2 { c.fail("the selection misses a row", ("selected", .count(c.model.selectedTransactions.count))) }
+				table.deselectAll(nil)
+			}),
 		// The seal check of the whole app, which the launch runs before it opens the database. It reads
 		// more than 100 MB with the Java runtime, so it must run away from the main thread.
 		PerfScenario(name: "seal-check-at-launch", budget: halfSecond,
@@ -914,7 +926,7 @@ extension DebugHarness {
 			let settled = await context.settle()
 			let stall = context.watchdog.longest
 			let shown = transactionTables().first?.numberOfRows ?? 0
-			let expected = model.visibleTransactions.count + sectionCount(model)
+			let expected = model.visibleTransactions.count
 			let current = shown == expected
 			if !current { log("perf", ("", .word(scenario.name)), ("", .word("the table shows the wrong number of rows")), ("shown", .count(shown)), ("expected", .count(expected))) }
 			let problems = context.problems.list
@@ -931,12 +943,6 @@ extension DebugHarness {
 	}
 
 	private static func milliseconds(_ d: Duration) -> Int { Int((d / .milliseconds(1)).rounded()) }
-
-	/// The heading rows of a group grouped by account: one for each account with visible rows.
-	private func sectionCount(_ model: AppModel) -> Int {
-		guard case let .group(id) = model.tableKey.selection, model.ledger.group(id)?.groupsByAccount == true else { return 0 }
-		return Set(model.visibleTransactions.map(\.accountID)).count
-	}
 }
 
 /// Measures how long the main thread stays blocked. A background thread sends a ping to the main

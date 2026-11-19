@@ -84,6 +84,14 @@ The app SHALL show the account of a selected transaction in a view that lists tr
 - **WHEN** the user selects "Private"
 - **THEN** the list shows the heading "Giro" with its transactions, then the heading "Savings" with its transactions
 
+#### Scenario: A click on a heading
+
+- **GIVEN** the option "Group transactions by account" is on for "Private"
+- **AND** the first transaction below the heading "Savings" is "Max Mustermann" with 500,00 €
+- **WHEN** the user double-clicks the heading "Savings"
+- **THEN** the sheet of the transaction "Max Mustermann" with 500,00 € opens
+- **AND** a click on the heading selects that transaction, and a right click opens the context menu of that transaction
+
 ### Requirement: Pending transactions look different
 
 The app SHALL draw a transaction that the bank has not yet booked with a hatched background, and it SHALL show the sum of the pending amounts of the view with the label "Pending". A pending transaction marked for review does not count in that sum.
