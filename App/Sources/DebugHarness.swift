@@ -367,6 +367,12 @@ final class DebugHarness {
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
 				accountNumber: "9", bankCode: "12030000"))
+		#if DEBUG || PERF_HARNESS
+		// "<name>": a migrated portfolio without an access, with the test IBAN and the account number of "Girokonto" of the made-up bank.
+		case "migratedportfolio":
+			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .portfolio, source: .migrated,
+				iban: IBAN("DE02120300000000202051"), accountNumber: "202051", bankCode: "12030000"))
+		#endif
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
