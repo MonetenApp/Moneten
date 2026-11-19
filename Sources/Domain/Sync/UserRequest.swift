@@ -68,15 +68,20 @@ public struct LoginRequest: Sendable, Equatable {
 		public let label: String
 		/// The field hides what the user types.
 		public let isSecret: Bool
+		/// What saved login data keeps of the field: the label of the manifest, which the app never translates, or a fixed
+		/// English word for a field without a manifest, so that a change of the language never changes it.
+		public let key: String
 
-		public init(label: String, isSecret: Bool) {
+		public init(label: String, isSecret: Bool, key: String? = nil) {
 			self.label = label
 			self.isSecret = isSecret
+			self.key = key ?? label
 		}
 	}
 
 	/// The fields without a manifest.
-	public static let defaultFields = [Field(label: String(localized: "Username"), isSecret: false), Field(label: String(localized: "Password"), isSecret: true)]
+	public static let defaultFields = [Field(label: String(localized: "Username"), isSecret: false, key: "Username"),
+		Field(label: String(localized: "Password"), isSecret: true, key: "Password")]
 
 	public init(service: String, fields: [Field] = defaultFields, rejected: Bool = false) {
 		self.service = service
@@ -584,6 +589,39 @@ public enum UserAnswer: Sendable, Equatable {
 	/// The values of the login fields, in the order of `LoginRequest.fields`. `save` is the option to save them for
 	/// the access, which is off unless the user turns it on, as for a PIN.
 	case login([Secret], save: Bool = false)
+}
+
+/// The login data of an extension access with the fields that it answered, as the broker keeps it in memory and saves it.
+public struct SavedLogin: Sendable, Equatable {
+	/// The key of a field and whether it is secret, which a later login dialog must repeat in the same order.
+	public struct Field: Sendable, Equatable, Codable {
+		public let key: String
+		public let isSecret: Bool
+
+		public init(key: String, isSecret: Bool) {
+			self.key = key
+			self.isSecret = isSecret
+		}
+	}
+
+	public let fields: [Field]
+	public let values: [Secret]
+
+	public init(fields: [Field], values: [Secret]) {
+		self.fields = fields
+		self.values = values
+	}
+
+	/// The values that the user gave in the login dialog of `request`.
+	public init(answering request: LoginRequest, with values: [Secret]) {
+		self.init(fields: request.fields.map { Field(key: $0.key, isSecret: $0.isSecret) }, values: values)
+	}
+
+	/// The values answer `request` only when it asks for the same fields in the same order, each as secret as before. A
+	/// count alone would let an update that swaps two fields send the password as the user ID.
+	public func fits(_ request: LoginRequest) -> Bool {
+		fields == request.fields.map { Field(key: $0.key, isSecret: $0.isSecret) } && values.count == fields.count
+	}
 }
 
 /// A PIN, password, or TAN. It prints as "•••", so the value cannot end up in a log by accident.

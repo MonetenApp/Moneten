@@ -55,13 +55,15 @@ struct SavedPINRecord: Codable, FetchableRecord, PersistableRecord, TableRecord 
 }
 
 /// A row of the table "savedLogin": the login data of an extension access that the user asked to save, with
-/// every field in the order of the login dialog. Like a saved PIN, it lives only in this table of the encrypted
-/// database and goes with its access.
+/// every value in the order of the login dialog and the fields that they answered. Like a saved PIN, it lives only in
+/// this table of the encrypted database and goes with its access.
 struct SavedLoginRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 	static let databaseTableName = "savedLogin"
 	var accessID: UUID
+	/// The key and the secrecy of each field, as JSON.
+	var fields: [SavedLogin.Field]
 	/// The values as a JSON list of text.
-	var fields: [String]
+	var values: [String]
 }
 
 enum Schema {
@@ -464,6 +466,7 @@ enum Schema {
 			try db.create(table: "savedLogin") { t in
 				t.column("accessID", .blob).primaryKey().references("access", onDelete: .cascade)
 				t.column("fields", .text).notNull()
+				t.column("values", .text).notNull()
 			}
 		}
 		return m

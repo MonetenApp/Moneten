@@ -46,6 +46,7 @@ struct ExtensionDialogTests {
 			if credentials[2] ~= "Geheim-7319" then return LoginFailed end
 			print("login " .. credentials[1])
 		end
+		function ListAccounts() return {{accountNumber = "A", name = "Card", currency = "EUR"}} end
 		function RefreshAccount() return {balance = 0, transactions = {}} end
 		function EndSession() end
 		"""
@@ -192,7 +193,7 @@ struct ExtensionDialogTests {
 		await until { broker.current?.request.kind == .login }
 		answer(saving)
 		await until { finished(Self.card) }
-		#expect(store.logins.withLock { $0 } == [Self.card.id: [Secret("erika"), Secret("Geheim-7319")]])
+		#expect(store.logins.withLock { $0 }[Self.card.id]?.values == [Secret("erika"), Secret("Geheim-7319")])
 		#expect(broker.savedPINs == [Self.card.id])
 
 		broker.forgetPINs()
@@ -222,7 +223,7 @@ struct ExtensionDialogTests {
 	@Test("Saved login data that the service rejects in an automatic refresh is deleted and sent no second time, and the next manual refresh asks")
 	func savedLoginDataRejected() async throws {
 		let store = SavedPINs()
-		try store.saveLogin([Secret("erika"), Secret("Alt-1234")], for: Self.card.id)
+		try store.saveLogin(SavedLogin(answering: LoginRequest(service: "Musterbank"), with: [Secret("erika"), Secret("Alt-1234")]), for: Self.card.id)
 		try broker.open(store)
 		refreshCard(attended: false, script: Self.passwordScript)
 		await until { !coordinator.isRefreshing }
@@ -240,17 +241,51 @@ struct ExtensionDialogTests {
 		broker.cancel(try #require(broker.current).id)
 		await until { !coordinator.isRefreshing }
 	}
+
+	/// The setup of a new login that joins the access `known`, as the app runs it: the job calls `add`, which stores the
+	/// accounts, hands the login data to `known`, and then stores the rows of the accounts, which may fail.
+	func setUpJoining(_ known: Access, storeRows: @escaping @MainActor () throws -> Void) {
+		let setup = Access(source: .extension(id: "Demo"), bankName: "Musterbank", loginName: "")
+		let job = ExtensionSetupJob(connector: { [session] in session.connector(demo(Self.passwordScript)) }, states: KeptSetupStates()) { [broker] _ in
+			broker.adoptLogin(of: setup.id, into: known.id)
+			try storeRows()
+		}
+		coordinator.refresh(RefreshRequest(access: setup, accounts: []), with: job, attended: true)
+	}
+
+	struct RowsNotStored: Error {}
+
+	@Test("The setup of a login that the app has saves the login data for that access only after the rows of its accounts are stored, and a failure there saves nothing")
+	func setupSavesOnlyAfterTheRows() async throws {
+		let store = SavedPINs()
+		try broker.open(store)
+		let saving = UserAnswer.login([Secret("erika"), Secret("Geheim-7319")], save: true)
+
+		setUpJoining(Self.card) { throw RowsNotStored() }
+		await until { broker.current?.request.kind == .login }
+		answer(saving)
+		await until { !coordinator.isRefreshing }
+		#expect(store.logins.withLock { $0 }.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+
+		setUpJoining(Self.card) {}
+		await until { broker.current?.request.kind == .login }
+		answer(saving)
+		await until { !coordinator.isRefreshing }
+		#expect(store.logins.withLock { $0 } == [Self.card.id: SavedLogin(answering: LoginRequest(service: "Musterbank"), with: [Secret("erika"), Secret("Geheim-7319")])])
+		#expect(broker.savedPINs == [Self.card.id])
+	}
 }
 
 /// The saved PINs and login data of a database, in memory.
 final class SavedPINs: SavedPINStore {
 	let pins = Mutex<[UUID: Secret]>([:])
-	let logins = Mutex<[UUID: [Secret]]>([:])
+	let logins = Mutex<[UUID: SavedLogin]>([:])
 
 	func savedPINs() throws -> [UUID: Secret] { pins.withLock { $0 } }
 	func savePIN(_ pin: Secret, for access: UUID) throws { pins.withLock { $0[access] = pin } }
-	func savedLogins() throws -> [UUID: [Secret]] { logins.withLock { $0 } }
-	func saveLogin(_ values: [Secret], for access: UUID) throws { logins.withLock { $0[access] = values } }
+	func savedLogins() throws -> [UUID: SavedLogin] { logins.withLock { $0 } }
+	func saveLogin(_ login: SavedLogin, for access: UUID) throws { logins.withLock { $0[access] = login } }
 	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool {
 		let pin = pins.withLock { $0.removeValue(forKey: access) != nil }
 		let login = logins.withLock { $0.removeValue(forKey: access) != nil }

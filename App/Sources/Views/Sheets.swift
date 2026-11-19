@@ -284,16 +284,29 @@ struct AccountSettingsSheet: View {
 							Picker("Refresh", selection: binding.refreshInterval) {
 								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
 							}
-							LabeledContent("PIN") {
-								Button("Remove saved PIN") { confirmRemovePIN = true }
-									.disabled(!model.sync.broker.savedPINs.contains(access.id))
+							// An extension names its secret as its login dialog does, such as "Remove saved Password".
+							if let secret = model.secretName(of: access) {
+								LabeledContent(secret) {
+									Button("Remove saved \(secret)") { confirmRemovePIN = true }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
+							} else {
+								LabeledContent("PIN") {
+									Button("Remove saved PIN") { confirmRemovePIN = true }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
 							}
 						}
-						.alert("Remove the saved PIN of “\(access.bankName)”?", isPresented: $confirmRemovePIN) {
+						.alert(model.secretName(of: access) == nil ? Text("Remove the saved PIN of “\(access.bankName)”?")
+							: Text("Remove the saved login data of “\(access.bankName)”?"), isPresented: $confirmRemovePIN) {
 							Button("OK") { model.removeSavedPIN(of: access.id) }
 							Button("Cancel", role: .cancel) {}
 						} message: {
-							Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+							if model.secretName(of: access) == nil {
+								Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+							} else {
+								Text("The login data is removed for every account of this access. The next refresh asks for it.")
+							}
 						}
 					}
 				}

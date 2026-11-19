@@ -70,7 +70,12 @@ public struct ExtensionConnector: BankConnector {
 
 	/// The labels of the login fields: those of the manifest for the service, else "Username" and "Password".
 	func loginFields(for service: String) -> [LoginRequest.Field] {
-		guard let fields = package.manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
+		Self.loginFields(in: package.manifest, service: service)
+	}
+
+	/// The login fields of `service` in `manifest`, also for the account settings, which name the secret as the login dialog does.
+	public static func loginFields(in manifest: Manifest?, service: String) -> [LoginRequest.Field] {
+		guard let fields = manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
 		return fields.map { LoginRequest.Field(label: $0.label, isSecret: $0.secret ?? false) }
 	}
 

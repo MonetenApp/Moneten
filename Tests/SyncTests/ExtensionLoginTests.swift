@@ -52,6 +52,8 @@ struct ExtensionLoginTests {
 
 	static let saving = UserAnswer.login([Secret("erika"), Secret("geheim")], save: true)
 	static let values = [Secret("erika"), Secret("geheim")]
+	/// The login data of the default dialog, as the broker saves it.
+	static let saved = SavedLogin(answering: LoginRequest(service: "Demo TAN"), with: values)
 
 	@Test("Login data with the option on is saved only after the refresh with it finished, with every field")
 	func savedAfterSuccess() async throws {
@@ -62,7 +64,7 @@ struct ExtensionLoginTests {
 		#expect(store.logins.isEmpty)
 		#expect(broker.savedPINs.isEmpty)
 		await until { !coordinator.isRefreshing }
-		#expect(store.logins == [Self.service.id: Self.values])
+		#expect(store.logins == [Self.service.id: Self.saved])
 		#expect(store.pins.isEmpty)
 		#expect(broker.savedPINs == [Self.service.id])
 	}
@@ -84,7 +86,7 @@ struct ExtensionLoginTests {
 
 	@Test("Saved login data answers the refreshes after a restart without a dialog, also the automatic one")
 	func afterRestart() async throws {
-		try store.saveLogin(Self.values, for: Self.service.id)
+		try store.saveLogin(Self.saved, for: Self.service.id)
 		let restarted = SyncCoordinator()
 		try restarted.broker.open(store)
 		#expect(restarted.broker.savedPINs == [Self.service.id])
@@ -101,11 +103,11 @@ struct ExtensionLoginTests {
 
 	@Test("A failed refresh keeps saved login data, so the next automatic refresh logs in with it")
 	func failureKeepsSaved() async {
-		try? store.saveLogin(Self.values, for: Self.service.id)
+		try? store.saveLogin(Self.saved, for: Self.service.id)
 		try? broker.open(store)
 		_ = refresh([.ask(Self.login), .fail(.offline)], attended: false)
 		await until { !coordinator.isRefreshing }
-		#expect(store.logins == [Self.service.id: Self.values])
+		#expect(store.logins == [Self.service.id: Self.saved])
 		let automatic = refresh([.ask(Self.login), .fetched(Self.giro.accountID)], attended: false)
 		await until { !coordinator.isRefreshing }
 		#expect(automatic.answers.all == [Self.data])
@@ -113,7 +115,7 @@ struct ExtensionLoginTests {
 
 	@Test("Saved login data that the service rejects is deleted and never sent again, and the next manual refresh asks")
 	func savedRejected() async throws {
-		try store.saveLogin(Self.values, for: Self.service.id)
+		try store.saveLogin(Self.saved, for: Self.service.id)
 		try broker.open(store)
 		let automatic = refresh([.ask(Self.login), .fail(.loginRejected)], attended: false)
 		await until { !coordinator.isRefreshing }
@@ -133,7 +135,7 @@ struct ExtensionLoginTests {
 
 	@Test("A login request that says the service rejected the last login data deletes saved login data, and an automatic refresh sends nothing")
 	func rejectedRequestDeletesSaved() async throws {
-		try store.saveLogin(Self.values, for: Self.service.id)
+		try store.saveLogin(Self.saved, for: Self.service.id)
 		try broker.open(store)
 		let rejected = UserRequest.login(LoginRequest(service: "Demo TAN", rejected: true))
 		await #expect(throws: SyncFailure.loginRejected) {
@@ -145,7 +147,7 @@ struct ExtensionLoginTests {
 
 	@Test("Remove saved PIN deletes saved login data, and the next manual refresh asks for it")
 	func removeSaved() async throws {
-		try store.saveLogin(Self.values, for: Self.service.id)
+		try store.saveLogin(Self.saved, for: Self.service.id)
 		try broker.open(store)
 		try broker.removeSavedPIN(of: Self.service.id)
 		#expect(store.logins.isEmpty)
@@ -160,46 +162,103 @@ struct ExtensionLoginTests {
 		await until { !coordinator.isRefreshing }
 	}
 
-	@Test("Login data with another number of fields than the request, as after an update of the extension, is not sent, and a manual refresh asks")
-	func otherFieldsAsk() async throws {
-		try store.saveLogin(Self.values, for: Self.service.id)
+	/// The default dialog as an update of the extension may change it: the fields swapped, or the first field made secret.
+	static let swapped = UserRequest.login(LoginRequest(service: "Demo TAN", fields: LoginRequest.defaultFields.reversed()))
+	static let secretFirst = UserRequest.login(LoginRequest(service: "Demo TAN", fields: [LoginRequest.Field(label: "Username", isSecret: true, key: "Username"),
+		LoginRequest.defaultFields[1]]))
+	static let three = UserRequest.login(LoginRequest(service: "Demo TAN", fields: LoginRequest.defaultFields + [LoginRequest.Field(label: "Customer number", isSecret: false)]))
+
+	@Test("Saved login data for other fields, swapped, made secret, or one more, is never sent: it is deleted, and a manual refresh asks", arguments: [0, 1, 2])
+	func otherFieldsAsk(_ change: Int) async throws {
+		let request = [Self.swapped, Self.secretFirst, Self.three][change]
+		try store.saveLogin(Self.saved, for: Self.service.id)
 		try broker.open(store)
-		let three = UserRequest.login(LoginRequest(service: "Demo TAN", fields: LoginRequest.defaultFields + [LoginRequest.Field(label: "Customer number", isSecret: false)]))
 		await #expect(throws: SyncFailure.needsUser(.login)) {
-			_ = try await broker.ask(three, for: Self.service, accountNames: [], attended: false)
+			_ = try await broker.ask(request, for: Self.service, accountNames: [], attended: false)
 		}
-		_ = refresh([.ask(three)])
-		await until { broker.current?.request == three }
+		#expect(store.logins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+		// Not even the fields of the old dialog get the data back: it left the memory too.
+		await #expect(throws: SyncFailure.needsUser(.login)) {
+			_ = try await broker.ask(Self.login, for: Self.service, accountNames: [], attended: false)
+		}
+		_ = refresh([.ask(request)])
+		await until { broker.current?.request == request }
 		broker.cancel(try #require(broker.current).id)
 		await until { !coordinator.isRefreshing }
 	}
 
-	@Test("A setup that joins an access the app has gives it the login data, saved at once on request or when that access had saved login data")
+	@Test("Login data in memory for the same fields answers again, also a dialog whose labels are in another language")
+	func sameFieldsAnswer() async throws {
+		try store.saveLogin(Self.saved, for: Self.service.id)
+		try broker.open(store)
+		let german = UserRequest.login(LoginRequest(service: "Demo TAN", fields: [LoginRequest.Field(label: "Benutzername", isSecret: false, key: "Username"),
+			LoginRequest.Field(label: "Passwort", isSecret: true, key: "Password")]))
+		#expect(try await broker.ask(german, for: Self.service, accountNames: [], attended: false) == Self.data)
+		#expect(store.logins == [Self.service.id: Self.saved])
+	}
+
+	@Test("After saved login data that does not fit, new login data with saving off is forgotten when its refresh fails, and no automatic refresh sends it")
+	func newAnswerAfterMismatchFollowsTheUnsavedRule() async throws {
+		try store.saveLogin(Self.saved, for: Self.service.id)
+		try broker.open(store)
+		_ = refresh([.ask(Self.swapped), .fail(.offline)])
+		await until { broker.current != nil }
+		broker.answer(.login([Secret("neu-geheim"), Secret("erika")]), to: try #require(broker.current).id)
+		await until { !coordinator.isRefreshing }
+		#expect(store.logins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+		let automatic = refresh([.ask(Self.swapped)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all.isEmpty)
+		#expect(coordinator.states[Self.service.id] == .failed(.needsUser(.login)))
+	}
+
+	@Test("A setup that joins an access the app has gives it the login data only when the setup finished, saved on request or when that access had saved login data")
 	func setupJoinsAnAccess() async throws {
 		let known = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
-		// With the option on.
+		// With the option on: nothing is written at the join, only when the setup finished.
 		_ = refresh([.ask(Self.login), .wait(.milliseconds(300)), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
 		broker.answer(Self.saving, to: try #require(broker.current).id)
 		try? await Task.sleep(for: .milliseconds(50))
-		try broker.adoptLogin(of: Self.service.id, into: known.id)
+		broker.adoptLogin(of: Self.service.id, into: known.id)
+		#expect(store.logins.isEmpty)
 		await until { !coordinator.isRefreshing }
-		#expect(store.logins == [known.id: Self.values])
+		#expect(store.logins == [known.id: Self.saved])
 		#expect(broker.savedPINs == [known.id])
 
 		// With the option off, new login data replaces the saved one of the access.
+		let new = SavedLogin(answering: LoginRequest(service: "Demo TAN"), with: [Secret("erika"), Secret("neu")])
 		_ = refresh([.ask(Self.login), .wait(.milliseconds(300)), .fetched(Self.giro.accountID)])
 		await until { broker.current != nil }
-		broker.answer(.login([Secret("erika"), Secret("neu")]), to: try #require(broker.current).id)
+		broker.answer(.login(new.values), to: try #require(broker.current).id)
 		try? await Task.sleep(for: .milliseconds(50))
-		try broker.adoptLogin(of: Self.service.id, into: known.id)
+		broker.adoptLogin(of: Self.service.id, into: known.id)
 		await until { !coordinator.isRefreshing }
-		#expect(store.logins == [known.id: [Secret("erika"), Secret("neu")]])
+		#expect(store.logins == [known.id: new])
 		await #expect(throws: SyncFailure.needsUser(.login)) {
 			_ = try await broker.ask(Self.login, for: Self.service, accountNames: [], attended: false)
 		}
 		let answer = try await broker.ask(Self.login, for: known, accountNames: [], attended: false)
-		#expect(answer == .login([Secret("erika"), Secret("neu")]))
+		#expect(answer == .login(new.values))
+	}
+
+	@Test("A setup that fails or is canceled after it joined an access saves nothing and leaves that access as it was", arguments: [true, false])
+	func setupFailsAfterTheJoin(_ canceled: Bool) async throws {
+		let known = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
+		_ = refresh([.ask(Self.login), .wait(.milliseconds(300)), .fail(.notSaved("disk full"))])
+		await until { broker.current != nil }
+		broker.answer(Self.saving, to: try #require(broker.current).id)
+		try? await Task.sleep(for: .milliseconds(50))
+		broker.adoptLogin(of: Self.service.id, into: known.id)
+		if canceled { coordinator.cancelRefresh(of: Self.service.id) }
+		await until { !coordinator.isRefreshing }
+		#expect(store.logins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+		await #expect(throws: SyncFailure.needsUser(.login)) {
+			_ = try await broker.ask(Self.login, for: known, accountNames: [], attended: false)
+		}
 	}
 
 	@Test("A setup that stores no account forgets its login data and saves nothing")

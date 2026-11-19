@@ -71,9 +71,11 @@ struct SavedPINTests {
 	static let service = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
 	static let demoGiro = Account(position: 0, name: "Demo Giro", kind: .giro, source: .bank, iban: "DE02120300000000202051", accessID: service.id,
 		remoteID: "DE02120300000000202051")
-	static let login = [Secret("erika"), Secret("Geheim-7319"), Secret("4711")]
+	static let fields = [SavedLogin.Field(key: "Username", isSecret: false), SavedLogin.Field(key: "Password", isSecret: true),
+		SavedLogin.Field(key: "Customer number", isSecret: false)]
+	static let login = SavedLogin(fields: fields, values: [Secret("erika"), Secret("Geheim-7319"), Secret("4711")])
 
-	@Test("Saved login data of an extension keeps every field in order, comes back after the database opens again, and Remove saved PIN deletes it")
+	@Test("Saved login data of an extension keeps every value and the key and secrecy of every field in order, comes back after the database opens again, and Remove saved PIN deletes it")
 	func loginRoundTrip() throws {
 		let vault = Vault(testing: folder)
 		let store = try vault.create(password: Self.password, starterCategories: [])
@@ -87,8 +89,9 @@ struct SavedPINTests {
 		let reopened = try vault.open(password: Self.password)
 		#expect(try reopened.savedLogins() == [Self.service.id: Self.login])
 		#expect(try reopened.savedPINs() == [Self.access.id: Secret("48151")])
-		try reopened.saveLogin([Secret("erika"), Secret("Neu-2468"), Secret("4711")], for: Self.service.id)
-		#expect(try reopened.savedLogins() == [Self.service.id: [Secret("erika"), Secret("Neu-2468"), Secret("4711")]])
+		let swapped = SavedLogin(fields: [Self.fields[1], Self.fields[0]], values: [Secret("Neu-2468"), Secret("erika")])
+		try reopened.saveLogin(swapped, for: Self.service.id)
+		#expect(try reopened.savedLogins() == [Self.service.id: swapped])
 		#expect(try reopened.removeSavedPIN(of: Self.service.id))
 		#expect(try reopened.savedLogins().isEmpty)
 		#expect(try reopened.savedPINs() == [Self.access.id: Secret("48151")])

@@ -264,15 +264,16 @@ public final class Store: SavedPINStore {
 	}
 
 	/// The login data of extension accesses that the user asked to save. The app reads it when it unlocks.
-	public func savedLogins() throws -> [UUID: [Secret]] {
+	public func savedLogins() throws -> [UUID: SavedLogin] {
 		try queue.read { db in
-			Dictionary(uniqueKeysWithValues: try SavedLoginRecord.fetchAll(db).map { ($0.accessID, $0.fields.map(Secret.init)) })
+			Dictionary(uniqueKeysWithValues: try SavedLoginRecord.fetchAll(db).map { ($0.accessID, SavedLogin(fields: $0.fields, values: $0.values.map(Secret.init))) })
 		}
 	}
 
-	/// Saves the login data of an extension access, after the service accepted it. It replaces login data saved before.
-	public func saveLogin(_ values: [Secret], for access: UUID) throws {
-		try write { db in try SavedLoginRecord(accessID: access, fields: values.map(\.value)).save(db) }
+	/// Saves the login data of an extension access with its fields, after the service accepted it. It replaces login data
+	/// saved before.
+	public func saveLogin(_ login: SavedLogin, for access: UUID) throws {
+		try write { db in try SavedLoginRecord(accessID: access, fields: login.fields, values: login.values.map(\.value)).save(db) }
 	}
 
 	/// "Remove saved PIN": deletes the saved PIN or the saved login data of an access, for all its accounts.

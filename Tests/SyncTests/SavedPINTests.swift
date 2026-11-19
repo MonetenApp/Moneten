@@ -373,7 +373,7 @@ struct SavedPINTests {
 		#expect(failing.pins.isEmpty)
 	}
 
-	@Test("A saved PIN that breaks the rules of the bank is not sent: the automatic refresh stops, and the manual one asks")
+	@Test("A saved PIN that breaks the rules of the bank is not sent and is deleted: the automatic refresh stops, and the manual one asks")
 	func savedBreaksRules() async throws {
 		try store.savePIN(Secret("123456"), for: Self.bank.id)
 		try broker.open(store)
@@ -382,12 +382,48 @@ struct SavedPINTests {
 		await until { !coordinator.isRefreshing }
 		#expect(automatic.answers.all.isEmpty)
 		#expect(coordinator.states[Self.bank.id] == .failed(.needsUser(.pin)))
+		#expect(store.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
 
 		let manual = refresh([.ask(strict)])
 		await until { broker.current?.request == strict }
 		broker.cancel(try #require(broker.current).id)
 		await until { !coordinator.isRefreshing }
 		#expect(manual.answers.all.isEmpty)
+	}
+
+	@Test("After a saved PIN that breaks the rules of the bank, a new PIN with saving off is forgotten when its refresh fails, and no automatic refresh sends it")
+	func newPINAfterBrokenRuleFollowsTheUnsavedRule() async throws {
+		try store.savePIN(Secret("123456"), for: Self.bank.id)
+		try broker.open(store)
+		let strict = UserRequest.pin(PINRequest(rules: PINRules(maxLength: 5)))
+		_ = refresh([.ask(strict), .fail(.offline)])
+		await until { broker.current?.request == strict }
+		answer(.pin(Secret("12345")))
+		await until { !coordinator.isRefreshing }
+		#expect(store.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
+		let automatic = refresh([.ask(strict)], attended: false)
+		await until { !coordinator.isRefreshing }
+		#expect(automatic.answers.all.isEmpty)
+		#expect(coordinator.states[Self.bank.id] == .failed(.needsUser(.pin)))
+	}
+
+	@Test("A saved PIN that breaks the rules of the bank and cannot be deleted is never loaded again, and the next unlock deletes it")
+	func brokenRuleUndeletable() async throws {
+		let failing = FailingRemovalStore(failures: 1)
+		try failing.savePIN(Secret("123456"), for: Self.bank.id)
+		try broker.open(failing)
+		let strict = UserRequest.pin(PINRequest(rules: PINRules(maxLength: 5)))
+		await #expect(throws: SyncFailure.needsUser(.pin)) {
+			_ = try await broker.ask(strict, for: Self.bank, accountNames: [], attended: false)
+		}
+		#expect(failing.pins == [Self.bank.id: Secret("123456")])
+		#expect(broker.savedPINs.isEmpty)
+		broker.forgetPINs()
+		try broker.open(failing)
+		#expect(failing.pins.isEmpty)
+		#expect(broker.savedPINs.isEmpty)
 	}
 
 	@Test("A rejection beside a balance that could not be stored still deletes the saved PIN")
@@ -502,15 +538,15 @@ struct SavedPINTests {
 /// Saved PINs in memory, in place of the encrypted database.
 final class MemoryPINStore: SavedPINStore {
 	private let saved = Mutex<[UUID: Secret]>([:])
-	private let savedLogin = Mutex<[UUID: [Secret]]>([:])
+	private let savedLogin = Mutex<[UUID: SavedLogin]>([:])
 
 	var pins: [UUID: Secret] { saved.withLock { $0 } }
-	var logins: [UUID: [Secret]] { savedLogin.withLock { $0 } }
+	var logins: [UUID: SavedLogin] { savedLogin.withLock { $0 } }
 
 	func savedPINs() throws -> [UUID: Secret] { pins }
 	func savePIN(_ pin: Secret, for access: UUID) throws { saved.withLock { $0[access] = pin } }
-	func savedLogins() throws -> [UUID: [Secret]] { logins }
-	func saveLogin(_ values: [Secret], for access: UUID) throws { savedLogin.withLock { $0[access] = values } }
+	func savedLogins() throws -> [UUID: SavedLogin] { logins }
+	func saveLogin(_ login: SavedLogin, for access: UUID) throws { savedLogin.withLock { $0[access] = login } }
 	func removeSavedPIN(of access: UUID) throws -> Bool {
 		let pin = saved.withLock { $0.removeValue(forKey: access) } != nil
 		let login = savedLogin.withLock { $0.removeValue(forKey: access) } != nil
@@ -535,8 +571,8 @@ final class FailingRemovalStore: SavedPINStore {
 
 	func savedPINs() throws -> [UUID: Secret] { try memory.savedPINs() }
 	func savePIN(_ pin: Secret, for access: UUID) throws { try memory.savePIN(pin, for: access) }
-	func savedLogins() throws -> [UUID: [Secret]] { try memory.savedLogins() }
-	func saveLogin(_ values: [Secret], for access: UUID) throws { try memory.saveLogin(values, for: access) }
+	func savedLogins() throws -> [UUID: SavedLogin] { try memory.savedLogins() }
+	func saveLogin(_ login: SavedLogin, for access: UUID) throws { try memory.saveLogin(login, for: access) }
 	func removeSavedPIN(of access: UUID) throws -> Bool {
 		let fails = remaining.withLock { left in
 			guard left > 0 else { return false }

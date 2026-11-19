@@ -106,7 +106,7 @@ The app SHALL keep a PIN that is not saved in memory after a successful login an
 
 ### Requirement: Remove a saved PIN
 
-The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved.
+The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved. For an extension access the button uses the word of the extension for its secret, for example "Remove saved Password".
 
 #### Scenario: Remove
 
@@ -252,7 +252,18 @@ The app SHALL apply the same rules to the secrets of extensions and of the subsc
 
 #### Scenario: Remove a saved extension password
 
-- **GIVEN** the user saved the login data of the access of "Demo Giro"
-- **WHEN** the user clicks "Remove saved PIN" in the settings of "Demo Giro" and clicks "OK"
+- **GIVEN** the user saved the login data of the access of "Demo Giro", whose login dialog calls its secret "Password"
+- **WHEN** the user clicks "Remove saved Password" in the settings of "Demo Giro" and clicks "OK"
 - **THEN** the saved login data is deleted
 - **AND** the next manual refresh of "Demo Giro" asks for the username and the password
+
+### Requirement: Saved login data answers only the same fields
+
+The app SHALL send saved login data of an extension only when the login dialog of the extension has the same fields in the same order, each hidden or shown as before. Otherwise it deletes the saved login data and asks the user.
+
+#### Scenario: Extension login fields changed
+
+- **GIVEN** the app has "erika" and "geheim" saved for the fields "Username" and "Password" of the access of "Demo TAN"
+- **WHEN** an update of the extension asks for "Password" first and "Username" second, and the automatic refresh runs
+- **THEN** the app sends no login data and deletes the saved login data
+- **AND** the next manual refresh asks for the password and the username

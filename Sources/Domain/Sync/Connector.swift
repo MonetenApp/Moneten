@@ -42,9 +42,9 @@ public struct AccessState: Hashable, Sendable {
 public protocol SavedPINStore: Sendable {
 	func savedPINs() throws -> [UUID: Secret]
 	func savePIN(_ pin: Secret, for access: UUID) throws
-	/// The saved login data of extension accesses, with the values in the order of their login fields.
-	func savedLogins() throws -> [UUID: [Secret]]
-	func saveLogin(_ values: [Secret], for access: UUID) throws
+	/// The saved login data of extension accesses, with the fields that it answered.
+	func savedLogins() throws -> [UUID: SavedLogin]
+	func saveLogin(_ login: SavedLogin, for access: UUID) throws
 	/// Deletes the saved PIN or the saved login data of the access, so that "Remove saved PIN" and a rejection take
 	/// one path for every access kind. Returns whether a saved secret was there and is deleted now.
 	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool
