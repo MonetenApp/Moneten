@@ -17,6 +17,9 @@ struct DateField: View {
 	var identifier = "date"
 	/// Why a readable date does not fit, such as an end before the start. The field shows it in red with this tooltip.
 	var conflict: LocalizedStringKey?
+	/// The text of the field, also while it is not a date, for a sheet that keeps its input across a lock. A text
+	/// that the sheet sets here replaces the text of the field.
+	var typed: Binding<String>? = nil
 
 	@State private var text = ""
 	/// The text that the field wrote for the bound day. It keeps that day even where `Day(typed:)` cannot read the
@@ -87,16 +90,27 @@ struct DateField: View {
 				}
 			}
 		}
-		.onAppear { show(day) }
+		.onAppear {
+			show(day)
+			take(typed?.wrappedValue)
+		}
 		.onChange(of: text) {
 			day = reading(text)
 			if day != nil { isMarked = false }
+			if let typed, typed.wrappedValue != text { typed.wrappedValue = text }
 		}
+		.onChange(of: typed?.wrappedValue) { _, kept in take(kept) }
 		.onChange(of: day) {
 			// A date from outside the text replaces the text.
 			if day != reading(text) { show(day) }
 		}
 		.onChange(of: hasFocus) { if !hasFocus { leave() } }
+	}
+
+	/// A text that the sheet kept across a lock, which may not be a date yet.
+	private func take(_ kept: String?) {
+		guard let kept, !kept.isEmpty, kept != text else { return }
+		text = kept
 	}
 
 	private func show(_ day: Day?) {
