@@ -143,7 +143,10 @@ extension AppModel {
 		case let .category(id):
 			guard let c = ledger.category(id), !c.isDefault else { return nil }
 			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")
-			question.informativeText = String(localized: "The transactions will be retained and become uncategorized.")
+			// A group takes every category below it along, which the question must say.
+			question.informativeText = c.isGroup
+				? String(localized: "The transactions will be retained and become uncategorized. All subcategories will be removed as well.")
+				: String(localized: "The transactions will be retained and become uncategorized.")
 		case .search:
 			return nil
 		}

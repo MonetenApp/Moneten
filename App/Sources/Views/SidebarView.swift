@@ -427,8 +427,8 @@ private struct CategoryContextMenu: View {
 		Divider()
 		Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
 			.disabled(model.isTransferringTransactions)
+		Divider()
 		if !category.isDefault {
-			Divider()
 			Menu("Move to Group") {
 				Button("No group") { model.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count) }
 					.disabled(model.ledger.move(category: category.id, into: nil, at: model.ledger.childCategories(of: nil).count).isEmpty)
@@ -436,7 +436,15 @@ private struct CategoryContextMenu: View {
 					Button(g.name) { model.move(category: category.id, into: g.id, at: model.ledger.childCategories(of: g.id).count) }
 				}
 			}
-			Button("Remove...") { model.confirmRemove(.category(category.id)) }
+		}
+		// "Uncategorized" cannot be removed, and the menu shows that with the item disabled. A group names itself, because
+		// its subcategories go with it.
+		if category.isDefault {
+			Button("Remove...") {}.disabled(true)
+		} else if category.isGroup {
+			Button("Remove Category Group...") { model.confirmRemove(.category(category.id)) }
+		} else {
+			Button("Remove Category...") { model.confirmRemove(.category(category.id)) }
 		}
 		Divider()
 		Button("Settings...") { model.sheet = .categorySettings(category.id) }

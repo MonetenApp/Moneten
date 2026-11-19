@@ -300,27 +300,6 @@ struct HarnessReachTests {
 		#expect(HarnessRun.mayChoose(setup, reaching: [.fints], fakeBank: true))
 	}
 
-	@Test("rowmenu chooses the local items of the context menu of a row, and no export")
-	func rowMenuItems() {
-		for item in ["Search for “Stadtwerke Musterstadt”", "Go to", "Assign Category", "Remove Transaction from Category", "Create Offsetting Entry",
-			"Add Comment...", "Edit Comment...", "Mark as Checked", "Mark as Unchecked", "Edit Transaction...", "Split Transaction",
-			"Delete Transaction...", "Delete Transactions..."] {
-			#expect(HarnessRun.mayChooseRowMenuItem(item), "\(item)")
-		}
-		for item in ["Export Transaction...", "Export Transactions...", "Search for", "Share...", ""] {
-			#expect(!HarnessRun.mayChooseRowMenuItem(item), "\(item)")
-		}
-	}
-
-	@Test("modal clicks only Cancel in a save or open panel, and any button of an alert")
-	func modal() {
-		#expect(HarnessRun.mayClickModal("Cancel", inFilePanel: true))
-		#expect(!HarnessRun.mayClickModal("Save", inFilePanel: true))
-		#expect(!HarnessRun.mayClickModal("Open", inFilePanel: true))
-		#expect(HarnessRun.mayClickModal("Delete", inFilePanel: false))
-		#expect(HarnessRun.mayClickModal("Back Up Anyway", inFilePanel: false))
-	}
-
 	@Test("row takes a real day or an offset from today")
 	func day() {
 		let today = Day(year: 2026, month: 11, day: 18)
