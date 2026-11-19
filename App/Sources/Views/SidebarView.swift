@@ -253,13 +253,14 @@ struct AccountRow: View {
 				ForEach(model.ledger.groups) { g in Button(g.name) { model.move(account: account.id, toGroup: g.id) } }
 			}
 			Button("Remove...") { model.confirmRemove(.account(account.id)) }
-			// An offline account has nothing to refresh.
+			// An offline account has nothing to refresh, so the item is disabled there. A migrated account without an
+			// access gets the alert with "Connect...".
+			Button("Refresh Account") { model.refresh(.account(account.id)) }
+				.modifierKeyAlternate(.option) {
+					Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
+				}
+				.disabled(!model.canRefresh(.account(account.id)))
 			if account.accessID != nil {
-				Button("Refresh Account") { model.refresh(.account(account.id)) }
-					.modifierKeyAlternate(.option) {
-						Button("Refresh Account (enforced)") { model.refresh(.account(account.id), enforced: true) }
-					}
-					.disabled(!model.canRefresh(.account(account.id)))
 				// An extension asks for its login data in its own dialog, and its setup adds only new accounts.
 				let isFinTS = model.fintsAccess(of: account.id) != nil
 				Button("Edit Login Data...") { model.editLoginData(account: account.id) }

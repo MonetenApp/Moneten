@@ -140,12 +140,11 @@ struct HeaderView: View {
 }
 
 /// The notice of an open migrated account without a bank access. After a migration every account is in this
-/// state, so "Connect..." is the first thing a switching user needs: a bordered button of the normal size in the
-/// accent color, which stands out on the band in light and dark, unlike the small gray one before (issue #531).
+/// state, so "Connect..." is the first thing a switching user needs: a button of the normal size in the blue of the
+/// system, which stands out on the slate band in light and dark, unlike the small gray one before (issue #531).
 /// The assistant finds the account at its bank and offers to connect it.
 struct ConnectNotice: View {
 	@Environment(AppModel.self) private var model
-	@Environment(\.controlActiveState) private var activeState
 	let account: Account
 
 	var body: some View {
@@ -154,14 +153,34 @@ struct ConnectNotice: View {
 				.font(.callout.weight(.medium))
 				.foregroundStyle(Palette.onBand)
 			Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
-				.buttonStyle(.borderedProminent)
-				.controlSize(.regular)
-				.tint(.accentColor)
-				// The band sets its own text color, which the button would take. White suits the accent fill. In a window
-				// that is not active, macOS fills the button gray, where white would fade and the color of the band reads.
-				.foregroundStyle(activeState == .inactive ? Palette.onBand : Color.white)
+				.buttonStyle(BlueButtonStyle())
 		}
 		.padding(.top, 4)
+	}
+}
+
+/// A button filled with the blue of the system and a white label, at the size of a normal button. A prominent
+/// button of macOS turns gray in a window that is not active, where its white label faded on the band, so this
+/// style draws its own fill and stays blue.
+private struct BlueButtonStyle: ButtonStyle {
+	@Environment(\.isEnabled) private var isEnabled
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.font(.body.weight(.medium))
+			.foregroundStyle(.white)
+			.padding(.horizontal, 12)
+			.frame(minHeight: 24)
+			.background { shape.fill(Color(nsColor: .systemBlue)) }
+			// Pressed, the fill darkens as a push button does.
+			.overlay { shape.fill(.black.opacity(configuration.isPressed ? 0.18 : 0)) }
+			.contentShape(shape)
+			.opacity(isEnabled ? 1 : 0.5)
+	}
+
+	/// The shape of a push button: a capsule from macOS 26 on, a rounded rectangle before.
+	private var shape: AnyShape {
+		if #available(macOS 26, *) { AnyShape(Capsule()) } else { AnyShape(RoundedRectangle(cornerRadius: 6)) }
 	}
 }
 

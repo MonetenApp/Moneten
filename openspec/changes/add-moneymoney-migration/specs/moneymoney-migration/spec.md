@@ -90,7 +90,7 @@ The app SHALL create the account groups and accounts of the source with their na
 - **GIVEN** the open migrated account "Giro" without a bank access
 - **WHEN** the user selects "Giro"
 - **THEN** the header shows the notice "This account has no bank access yet, so it cannot be refreshed."
-- **AND** the notice has "Connect..." as a bordered button in the accent color, at the normal size of a button
+- **AND** the notice has "Connect..." as a button filled with the blue of the system and a white label, at the normal size of a button, also in a window that is not active
 
 ### Requirement: Categories
 
@@ -568,7 +568,7 @@ The app SHALL offer "Connect..." in a notice in the header of an open migrated a
 
 ### Requirement: Refresh commands and accounts without a bank access
 
-The app SHALL say that an account has no bank access yet and offer "Connect..." for it when a refresh command finds no account to refresh but an open migrated account without a bank access. Every refresh command does this, also ⌘R and the refresh button under the sidebar. "Connect..." opens the add account assistant for the selected account when the command covers it, else for the first such account in the order of the sidebar.
+The app SHALL say that an account has no bank access yet and offer "Connect..." for it when a refresh command finds no account to refresh but an open migrated account without a bank access. Every refresh command of the main window does this, also ⌘R, the refresh button under the sidebar, and the context menu of the account. "Connect..." opens the add account assistant for the selected account when the command covers it, else for the first such account in the order of the sidebar.
 
 #### Scenario: Only migrated accounts
 
@@ -590,6 +590,25 @@ The app SHALL say that an account has no bank access yet and offer "Connect..." 
 - **GIVEN** the account "Girokonto" of a bank access and the open migrated account "Sparen" without a bank access
 - **WHEN** the user presses ⌘R
 - **THEN** the app refreshes "Girokonto" and says nothing about "Sparen"
+
+#### Scenario: Context menu of a migrated account
+
+- **GIVEN** the open migrated account "Sparen" without a bank access
+- **WHEN** the user opens the context menu of "Sparen" in the sidebar
+- **THEN** "Refresh Account" is enabled, and choosing it says "“Sparen” is not connected to a bank yet." with "Connect..."
+- **AND** the menu has no "Edit Login Data..." and no "Look for New Accounts..."
+
+#### Scenario: Menu bar popover
+
+- **GIVEN** the open migrated account "Giro" without a bank access, and no other account
+- **WHEN** the user opens the popover of the menu bar icon
+- **THEN** "Refresh All Accounts" in the popover is disabled, because the popover shows no alert and the main window can be closed
+
+#### Scenario: Lock right after Connect
+
+- **GIVEN** the alert for "Giro" is open
+- **WHEN** the user clicks "Connect..." and the app locks before the alert has slid out
+- **THEN** the add account assistant does not open, also not after the unlock
 
 #### Scenario: Nothing to connect
 

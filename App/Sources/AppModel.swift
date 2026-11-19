@@ -749,8 +749,8 @@ final class AppModel {
 		fileImport?.cancel()
 		migrationTask?.cancel()
 		exportTask?.cancel()
-		// The alerts on screen close before the lock screen draws, and they show again after the unlock. They
-		// have only an OK button, so no decision waits in them.
+		// The alerts on screen close before the lock screen draws, and they show again after the unlock. The
+		// action of a button that the user clicked just before, such as "Connect...", is dropped.
 		alerts.isViewOnScreen = false
 		extensions.alerts.isViewOnScreen = false
 		autoRefresh.isUnlocked = false
@@ -1597,7 +1597,9 @@ final class AppModel {
 			message: offer.count == 1 ? String(localized: "An account without a bank access cannot be refreshed. Connect sets up the access to its bank.")
 				: String(localized: "An account without a bank access cannot be refreshed. Connect sets up the access for “\(account.name)”, and the assistant offers the other accounts of the same bank."),
 			action: AlertAction(title: String(localized: "Connect...")) { [weak self] in
-				guard let self, let current = ledger.account(account.id), ledger.connectOffer(.account(current.id), selected: current.id) != nil else { return }
+				// Only an unlocked app with no sheet, and none that comes back after the unlock, opens the assistant.
+				guard let self, phase == .unlocked, sheet == nil, returningSheet == nil, let current = ledger.account(account.id),
+					ledger.connectOffer(.account(current.id), selected: current.id) != nil else { return }
 				addAccount(group: current.groupID, connecting: current)
 			})
 	}
@@ -1691,9 +1693,11 @@ final class AppModel {
 		navigate(to: .account(first.id))
 	}
 
-	/// A command that would only offer "Connect..." is enabled too, so that it says why it cannot refresh.
-	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !isStoringMigration && (!ledger.refreshAccounts(scope).isEmpty || ledger.connectOffer(scope, selected: nil) != nil)
+	/// A command that would only offer "Connect..." is enabled too, so that it says why it cannot refresh. With
+	/// `offeringConnect` false it counts only accounts to refresh, for a place that shows no alert.
+	func canRefresh(_ scope: RefreshScope, offeringConnect: Bool = true) -> Bool {
+		phase == .unlocked && !isStoringMigration
+			&& (!ledger.refreshAccounts(scope).isEmpty || offeringConnect && ledger.connectOffer(scope, selected: nil) != nil)
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
