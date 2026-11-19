@@ -41,7 +41,8 @@ final class HelperProcess: @unchecked Sendable {
 
 	/// `onLine` runs with each line when it arrives, before `lines` delivers it, also after `lines` ended
 	/// because the reading task was canceled. `onEnd` runs once when stdout ends
-	/// or the process ends, whichever comes first. `grace` is the time that the helper gets to end after
+	/// or the process ends, whichever comes first. When stdout ends while the process still runs, the
+	/// helper gets the cancel. `grace` is the time that the helper gets to end after
 	/// a cancel, and `killAfter` the time from SIGTERM to SIGKILL.
 	init(executable: URL, arguments: [String], grace: TimeInterval, killAfter: TimeInterval = 2, onLine: @escaping @Sendable (String) -> Void = { _ in },
 		onEnd: @escaping @Sendable () -> Void = {}) throws {
@@ -99,8 +100,13 @@ final class HelperProcess: @unchecked Sendable {
 				if count < 0, errno == EINTR { continue }
 				// 0 is the end of stdout, and -1 with EAGAIN means that the pipe holds nothing more now.
 				guard count > 0 else {
-					if count == 0 || errno != EAGAIN { return finish(&state, last: state.partial.takeRest()) }
-					break
+					guard count == 0 || errno != EAGAIN else { break }
+					finish(&state, last: state.partial.takeRest())
+					// A helper that closed stdout but still runs gets the cancel and the grace from the thread that
+					// saw the end. The run would send them only once it gets a thread of Swift concurrency again,
+					// and on a busy Mac that can take longer than any grace.
+					if !final, process.isRunning { cancel() }
+					return
 				}
 				state.partial.append(buffer[0..<count])
 				let (lines, tooLong) = state.partial.takeLines(upTo: Self.lineLimit)
@@ -166,8 +172,6 @@ final class HelperProcess: @unchecked Sendable {
 	var firstFailure: (any Error)? { failure.withLock { $0 } }
 
 	var wasSignaled: Bool { signaled.withLock { $0 } }
-
-	var isRunning: Bool { process.isRunning }
 
 	/// Waits for the end of the process, and until `onLine` has every line that it wrote. Throws when it
 	/// ended in another way than with status 0.

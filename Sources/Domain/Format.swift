@@ -16,7 +16,7 @@ public enum Format {
 	/// United States. Every amount shows its currency, also a row of a list in the currency of its view. The minus sign
 	/// is U+2212, as in MoneyMoney.
 	public static func money(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
-		m.decimal.formatted(.currency(code: m.currency).locale(locale)).replacingOccurrences(of: "-", with: "\u{2212}")
+		minus(m.decimal.formatted(.currency(code: m.currency).locale(locale)))
 	}
 
 	/// One amount for each currency, never added up, such as the sum of a group with euro and dollar accounts.
@@ -33,5 +33,22 @@ public enum Format {
 	/// `AmountParser` reads it back unchanged in either region.
 	public static func editableAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
 		AmountParser.editableText(m, decimalMark: DecimalMark(region: locale))
+	}
+
+	/// An amount without its currency, such as "−42,50": the marks of the region and the decimal places of the
+	/// currency. `foreignAmount` adds the code to it.
+	public static func amount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		minus(m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces))))
+	}
+
+	/// An amount in a currency other than the one of its row, such as the original amount of a card payment abroad:
+	/// "−12.345,00 USD". The code names the currency without doubt, where a symbol such as "$" stands for several.
+	public static func foreignAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		amount(m, locale: locale) + " " + m.currency
+	}
+
+	/// A formatted amount with the minus sign of the amounts on screen in place of the hyphen of the formatter.
+	public static func minus(_ text: String) -> String {
+		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 }

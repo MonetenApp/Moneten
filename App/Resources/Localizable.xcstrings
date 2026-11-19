@@ -1118,22 +1118,22 @@
       },
       "extractionState" : "manual"
     },
-    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens only on this Mac, with the key in the Keychain. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich nur auf diesem Mac öffnen, mit dem Schlüssel im Schlüsselbund. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
     },
-    "A copy of the Moneten database will be saved. It opens with the current database password. This function does not replace a regular backup of your Mac." : {
+    "A copy of the Moneten database will be saved. It opens with the current database password. The copy holds the database only: statements and extensions are not part of it. This function does not replace a regular backup of your Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
+            "value" : "Eine Kopie der Moneten-Datenbank wird gesichert. Sie lässt sich mit dem aktuellen Datenbankpasswort öffnen. Die Kopie enthält nur die Datenbank: Kontoauszüge und Erweiterungen gehören nicht dazu. Diese Funktion ersetzt keine regelmäßige Sicherung Ihres Macs."
           }
         }
       }
@@ -1386,6 +1386,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ein Wort ohne Feld durchsucht keine Kontonummern und IBANs. local_account: und remote_account: tun das."
+          }
+        }
+      }
+    },
+    "About Backups" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Über die Datensicherung"
           }
         }
       }
@@ -1784,22 +1794,22 @@
         }
       }
     },
-    "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
     },
-    "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
@@ -5088,6 +5098,17 @@
       },
       "extractionState" : "manual"
     },
+    "Help page of OLB" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfeseite der OLB"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Help page of the Volksbanken Raiffeisenbanken" : {
       "localizations" : {
         "de" : {
@@ -7344,6 +7365,50 @@
           }
         }
       }
+    },
+    "OLB expects the Banking-Zugangsnummer and the PIN of its online banking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB erwartet die Banking-Zugangsnummer und die PIN ihres Onlinebankings."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this order with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diesen Auftrag mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Approve this request with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Geben Sie diese Anfrage mit appTAN frei, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "OLB offers OLB-Sign only on its website. Log in with appTAN, which works with finance software." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die OLB bietet OLB-Sign nur auf ihrer Website an. Melden Sie sich mit appTAN an, das mit Finanzsoftware funktioniert."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Older transactions may be missing. Choose “Refresh Account (enforced)” with the Option key to fetch them." : {
       "localizations" : {
@@ -9779,6 +9844,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The account group is empty." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kontengruppe ist leer."
+          }
+        }
+      }
     },
     "The account has been closed" : {
       "localizations" : {

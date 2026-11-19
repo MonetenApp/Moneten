@@ -568,13 +568,35 @@ The app SHALL not add a transaction again that the user deleted, when a later re
 
 ### Requirement: Mark new transactions
 
-The app SHALL mark each transaction that a refresh added as new and show the number of new transactions on the sidebar row of the account. A transaction counts as seen, and leaves that number, when the user opens the view of its account or chooses "Mark All Transactions as Checked".
+The app SHALL mark each transaction that a refresh added as new and show the number of new transactions on the sidebar row of the account. A transaction counts as seen, and leaves that number, when the user opens the view of its account or chooses "Mark All Transactions as Checked". A transaction that a refresh adds while the view of its account is open stays in that number until the user leaves the view, closes the main window, locks the app, or quits it, and then counts as seen.
 
 #### Scenario: Three new transactions
 
 - **WHEN** a refresh adds three transactions to "Giro" while another view is selected
 - **THEN** the row of "Giro" shows the count 3
 - **AND** the count disappears after the user selects "Giro"
+
+#### Scenario: Refresh while the account is open
+
+- **GIVEN** the user looks at "Giro"
+- **WHEN** a refresh adds one transaction to "Giro"
+- **THEN** the row of "Giro" shows the count 1 while "Giro" stays open
+- **AND** the count disappears when the user selects "Savings"
+- **AND** the transaction is not new when the user returns to "Giro"
+
+#### Scenario: Close the main window during the visit
+
+- **GIVEN** the user looks at "Giro", and a refresh added one transaction to "Giro"
+- **WHEN** the user closes the main window
+- **THEN** the transaction counts as seen
+- **AND** the row of "Giro" shows no count when the user opens the main window again
+
+#### Scenario: Lock during the visit
+
+- **GIVEN** the user looks at "Giro", and an automatic refresh added one transaction to "Giro"
+- **WHEN** the app locks after 5 minutes without activity
+- **THEN** the row of "Giro" shows no count after the unlock
+- **AND** the transaction is not new
 
 ### Requirement: Update the balance at every refresh
 
