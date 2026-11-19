@@ -518,13 +518,17 @@ struct PerformanceTests {
 			return Transaction(accountID: accounts[i % 10].id, bookingDate: Day(year: 2026, month: month, day: day), amountMinor: amount, name: "Shop \(i)")
 		}
 		var grouped = GroupedTransactions([], groupedBy: [])
-		let build = fastest { grouped = GroupedTransactions(rows, groupedBy: accounts) }
-		print("group 50,000 rows by account \(build)")
+		let build = fastest(runs: 15) { grouped = GroupedTransactions(rows, groupedBy: accounts) }
+		print("group 50,000 rows by account \(build), budget \(budget(.milliseconds(50)))")
 		#expect(grouped.transactions.count == 50_000)
 		#expect(grouped.headings.count == 10)
-		// About 7 ms in a release build. A debug build takes more than twice as long and varies with the load of the Mac.
+		// The fastest of 15 runs, as for the other budgets that copy 50,000 rows. In release it takes 8 to 12 ms on an M-series
+		// Mac at a load of 25 to 72, about as long as "leave after an import". A runner that GitHub hosts took 32 to 52 ms for
+		// the fastest of 3 runs, 3 to 4 times its time for "leave after an import" (9 to 21 ms) in the same runs. So the limit is
+		// 50 ms, 75 ms on a runner, which is still far below a pass over all rows for each row.
+		// A debug build varies with the load of the Mac, so the budget holds for a release build only.
 		#if !DEBUG
-		#expect(build < budget(.milliseconds(30)))
+		#expect(build < budget(.milliseconds(50)))
 		#endif
 	}
 
