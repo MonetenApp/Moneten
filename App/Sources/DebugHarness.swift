@@ -578,8 +578,8 @@ final class DebugHarness {
 		case "namefocus":
 			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
 			log("namefocus", ("moved", .flag(window.makeFirstResponder(list))))
-		#endif
-		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it.
+		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it. Only Debug
+		// and Perf builds have the rules of HarnessRun for the surface, so a Release build has no "namekey".
 		case "namekey":
 			let keys: [StaticString] = ["return", "escape"]
 			guard keys.contains(where: { "\($0)" == argument }), let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
@@ -589,6 +589,7 @@ final class DebugHarness {
 			guard HarnessRun.mayKey(argument, on: surface(of: window), fakeBank: usesFakeBank) else { return log("namekey refused") }
 			window.sendEvent(event)
 			log("namekey", ("", .choice(argument, of: keys)))
+		#endif
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
 		// Logs "refresh refused" when an access of the refresh is not the made-up bank or a local service (HarnessRun.mayReach).
 		case "refresh", "refreshenforced":
