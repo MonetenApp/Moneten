@@ -29,8 +29,8 @@ enum AppLanguage: String, CaseIterable {
 
 	/// The language that the "Language" setting stored, or nil while the app follows macOS.
 	static var stored: AppLanguage? {
-		guard let id = Bundle.main.bundleIdentifier,
-		      let languages = UserDefaults.standard.persistentDomain(forName: id)?["AppleLanguages"] as? [String] else { return nil }
+		guard let domain = AppSettings.domain,
+		      let languages = AppSettings.defaults.persistentDomain(forName: domain)?["AppleLanguages"] as? [String] else { return nil }
 		return languages.first.flatMap(AppLanguage.init(code:))
 	}
 
@@ -46,17 +46,28 @@ enum AppLanguage: String, CaseIterable {
 	/// Returns false when macOS does not keep the value for the next start. The check reads the defaults of the app
 	/// only, because `applyAtLaunch` can put another language in the arguments of this run.
 	static func store(_ language: AppLanguage?) -> Bool {
-		guard let id = Bundle.main.bundleIdentifier else { return false }
-		return UserDefaults.standard.storeSetting(language.map { [$0.rawValue] }, forKey: "AppleLanguages", inDomain: id)
+		guard let domain = AppSettings.domain else { return false }
+		return AppSettings.defaults.storeSetting(language.map { [$0.rawValue] }, forKey: "AppleLanguages", inDomain: domain)
 	}
 
 	/// Without a stored language, a Mac whose first language is neither German nor English gets English for
 	/// this run. Without this, macOS would take German when it is the second language of a French Mac.
-	/// Runs before the app reads its first text.
+	/// macOS reads `AppleLanguages` only from the standard defaults of the app, so a run with settings of its own
+	/// (`AppSettings.suite`) always puts its language in the arguments: the stored one, else the one of `system`. It
+	/// never takes the language that the standard defaults hold for the real app. A language in the launch arguments
+	/// stays. Runs before the app reads its first text.
 	static func applyAtLaunch() {
-		guard stored == nil, let first = Locale.preferredLanguages.first, AppLanguage(code: first) == nil else { return }
+		// The arguments are a domain of this process only. They live in the standard defaults and are never stored.
 		var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
-		arguments["AppleLanguages"] = [english.rawValue]
+		let language: AppLanguage
+		if AppSettings.suite != nil {
+			guard arguments["AppleLanguages"] == nil else { return }
+			language = stored ?? system
+		} else {
+			guard stored == nil, let first = Locale.preferredLanguages.first, AppLanguage(code: first) == nil else { return }
+			language = .english
+		}
+		arguments["AppleLanguages"] = [language.rawValue]
 		UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
 	}
 }

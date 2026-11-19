@@ -98,9 +98,9 @@ final class ExtensionLibrary {
 		get { alerts.message?.title }
 		set { if let newValue { alerts.post(AlertMessage(title: newValue, message: "")) } else { alerts.closeFirst() } }
 	}
-	var automatic: Bool = UserDefaults.standard.object(forKey: Preference.updateExtensionsAutomatically) as? Bool ?? true {
+	var automatic: Bool = AppSettings.defaults.object(forKey: Preference.updateExtensionsAutomatically) as? Bool ?? true {
 		didSet {
-			UserDefaults.standard.set(automatic, forKey: Preference.updateExtensionsAutomatically)
+			AppSettings.defaults.set(automatic, forKey: Preference.updateExtensionsAutomatically)
 			Task { await applyUpdates() }
 		}
 	}

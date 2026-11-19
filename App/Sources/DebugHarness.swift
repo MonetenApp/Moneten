@@ -656,8 +656,8 @@ final class DebugHarness {
 				RefreshSettings.playsSoundKey]
 			let parts = argument.split(separator: " ").map(String.init)
 			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
-			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
-			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+			AppSettings.defaults.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(AppSettings.defaults.bool(forKey: keys[key]))))
 		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
 		case "noticeclick":
 			Task {
@@ -1554,7 +1554,7 @@ final class DebugHarness {
 		case "menuitem": menuItem(argument)
 		#endif
 		case "state":
-			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
+			let savedFilter = AppSettings.defaults.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
 				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
 			// The case of the amount filter, without the ends of a custom range.
@@ -1976,14 +1976,16 @@ final class DebugHarness {
 			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey,
 				// SUEnableAutomaticChecksKey of Sparkle, whose header SUConstants.h is not public.
 				"SUEnableAutomaticChecks", AppUpdater.betaKey]
-			let id = Bundle.main.bundleIdentifier ?? ""
+			// The settings of the run, except the key of Sparkle, which Sparkle keeps in the standard defaults (AppSettings).
+			let domain = AppSettings.domain ?? "", sparkle = Bundle.main.bundleIdentifier ?? ""
 			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
 			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
 			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
 			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
 				("tab", .word(model.settingsTab == .general ? "general" : "security")),
 				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
-					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
+					let stored = key == "SUEnableAutomaticChecks" ? UserDefaults.standard.persistentDomain(forName: sparkle) : AppSettings.defaults.persistentDomain(forName: domain)
+					return (stored?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
 				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))
 		}
 	}

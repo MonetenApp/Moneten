@@ -27,8 +27,8 @@
 # throwaway keychain file in MONETEN_KEYCHAIN_PATH, so it never opens the login keychain, and as a copy under
 # its own bundle ID, so it leaves an installed Moneten alone. The check fails unless the entries of the app
 # land in that keychain file.
-# Each run has a bundle ID of its own, whose settings the end of the run deletes, so runs from several
-# worktrees at once never share the saved filter bar or another setting.
+# Each run has a bundle ID of its own, whose domain the end of the run deletes, and keeps its settings in its data
+# folder (issue #220), so runs from several worktrees at once never share the saved filter bar or another setting.
 set -e
 cd "$(dirname "$0")/.."
 BUILT=dist/Moneten.app
@@ -69,13 +69,14 @@ KEYCHAIN="$WORK/check-debug-log.keychain-db"
 security create-keychain -p check-debug-log "$KEYCHAIN"
 security unlock-keychain -p check-debug-log "$KEYCHAIN"
 security set-keychain-settings "$KEYCHAIN"
-# Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
-# Notifications settings. The end of the run deletes the domain again.
-defaults write "$BUNDLE_ID" showBannerNotificationOnNewTransactions -bool NO
 LOG="$WORK/debug/debug.log"
 APP="$WORK/Moneten.app"
 DATA="$WORK/Erika Mustermann"
 mkdir -p "$DATA/Database/Moneten.sqlite"
+# Without a banner, the app never asks for the permission to notify, so a run leaves no entry in the
+# Notifications settings. A run with a data folder of its own reads its settings from "Settings.plist" in the
+# folder (issue #220), which goes with the folder.
+defaults write "$DATA/Settings" showBannerNotificationOnNewTransactions -bool NO
 ditto "$BUILT" "$APP"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$APP/Contents/Info.plist"
 codesign --force --sign - --entitlements App/Moneten.entitlements "$APP" 2>/dev/null
@@ -628,7 +629,19 @@ once "^crash inject frames=500 pending=true timeMatches=true" crashinject "long|
 once "^crash decision pending=false copied=true" crashdecision copy
 # The password of "Unlock automatically" goes into the keychain file of the run, as the crash report key did at launch.
 once "^security setting=unlockAutomatically result=changed .*keychainAutomatic=true" security "unlockAutomatically on check-debug-log"
+# Issue #220: the settings of the run go into "Settings.plist" in its data folder, and the standard defaults of the
+# bundle ID get none of them, so a test run never changes the settings of a real copy of the app.
+once "^setting key=3 value=true$" setting "playSoundOnNewTransactions on"
 send quit
+for key in showBannerNotificationOnNewTransactions playSoundOnNewTransactions; do
+	defaults read "$DATA/Settings" "$key" >/dev/null 2>&1 || { echo "The settings of the run hold no $key." >&2; exit 1; }
+done
+for key in selectedSidebarRow showBannerNotificationOnNewTransactions playSoundOnNewTransactions extensionDeviceUuid vatRates; do
+	if defaults read "$BUNDLE_ID" "$key" >/dev/null 2>&1; then
+		echo "The run wrote $key into the standard defaults of its bundle ID." >&2
+		exit 1
+	fi
+done
 for service in "Moneten crash report key" "Moneten database password for automatic unlock"; do
 	security find-generic-password -s "$service" "$KEYCHAIN" >/dev/null \
 		|| { echo "The keychain file of the run holds no entry \"$service\"." >&2; exit 1; }
