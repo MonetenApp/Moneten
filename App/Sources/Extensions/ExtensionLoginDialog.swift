@@ -4,6 +4,8 @@ import SwiftUI
 
 /// Asks for the login data of an extension service, with the fields of its manifest or "Username"
 /// and "Password". A secret field hides what the user types and is not offered to the password manager.
+/// In a refresh the dialog names the access, as the PIN sheet does: the title has the service, a line has
+/// the accounts, and the first field starts with the user ID of the access.
 struct ExtensionLoginDialog: View {
 	let broker: SessionBroker
 	let prompt: Prompt
@@ -14,7 +16,7 @@ struct ExtensionLoginDialog: View {
 		self.broker = broker
 		self.prompt = prompt
 		self.request = request
-		_values = State(initialValue: Array(repeating: "", count: request.fields.count))
+		_values = State(initialValue: request.startValues(userID: prompt.access.loginName))
 	}
 
 	var body: some View {
@@ -24,6 +26,11 @@ struct ExtensionLoginDialog: View {
 					Label("The service did not accept the last login data. Check it and enter it again.", systemImage: "exclamationmark.triangle")
 						.foregroundStyle(.orange)
 						.fixedSize(horizontal: false, vertical: true)
+				}
+			}
+			if !prompt.accountNames.isEmpty {
+				Section {
+					LabeledContent(prompt.accountNames.count == 1 ? "Account" : "Accounts", value: prompt.accountNames.joined(separator: ", "))
 				}
 			}
 			Section {
