@@ -1010,6 +1010,12 @@ final class DebugHarness {
 					("underToolbar", .flag(scrollTop > window.contentLayoutRect.maxY + 0.5)),
 					("firstRowAtTop", .flag(abs(firstRowTop - visibleTop) < 0.5)))
 			}
+		// "<count>" lays out the transaction table again that many times and logs its bottom inset after each pass.
+		case "relayout":
+			Task {
+				let insets = await relayoutTables(Int(argument) ?? 5)
+				log(LogLine("relayout", values: [("bottoms", .list(insets.map { .count($0) })), ("bounded", .flag(filterHintsRoomBounded()))] + filterHintsValues()))
+			}
 		// "<width> <height>" sets the size of the content of the main window, for a check of a layout at another width.
 		case "windowsize":
 			let size = argument.split(separator: " ").compactMap { Double($0) }
@@ -1853,31 +1859,66 @@ final class DebugHarness {
 	/// The visible main window.
 	var mainWindow: NSWindow? { NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true } }
 
+	/// Lays out the scroll view and the table of the transactions again `count` times, with a turn of the run loop
+	/// after each, in which the lines of the filters take their room again. Returns the bottom inset after each pass.
+	func relayoutTables(_ count: Int) async -> [Int] {
+		var insets: [Int] = []
+		for _ in 0..<count {
+			guard let table = transactionTables().first, let scroll = table.enclosingScrollView else { break }
+			scroll.tile()
+			table.tile()
+			scroll.needsLayout = true
+			scroll.layoutSubtreeIfNeeded()
+			try? await Task.sleep(for: .milliseconds(100))
+			insets.append(Int(scroll.contentInsets.bottom))
+		}
+		return insets
+	}
+
+	/// The transaction table, its scroll view, the lines of the active filters, and the part of the scroll view
+	/// inside its border that shows them.
+	private func filterHintsParts() -> (table: NSTableView, scroll: NSScrollView, lines: NSView?, area: NSView?)? {
+		guard let table = transactionTables().first, let scroll = table.enclosingScrollView else { return nil }
+		let area = scroll.subviews.first { $0 is FilterHintsClip }
+		return (table, scroll, area?.subviews.first { $0 is FilterHintsHost }, area)
+	}
+
 	/// Whether the lines of the active filters below the last row are in view: nil without the lines, false while
-	/// the list does not show its end.
+	/// the list does not show its end. The lines must start at the bottom of the last row and lie inside the list.
 	func filterHintsShown() -> Bool? {
-		guard let table = transactionTables().first, let clip = table.enclosingScrollView?.contentView,
-			let lines = clip.subviews.first(where: { $0 is FilterHintsHost }), !lines.isHidden, lines.frame.height > 0 else { return nil }
-		return clip.bounds.maxY >= lines.frame.maxY - 0.5 && abs(filterHintsGap(table, lines)) < 0.5
+		guard let parts = filterHintsParts(), let lines = parts.lines, let area = parts.area, !lines.isHidden, lines.frame.height > 0 else { return nil }
+		let shown = lines.convert(lines.bounds, to: nil)
+		let inside = area.convert(area.bounds, to: nil)
+		return shown.minY >= inside.minY - 0.5 && shown.maxY <= inside.maxY + 0.5 && abs(filterHintsGap(parts.table, lines)) < 0.5
+	}
+
+	/// Whether the bottom inset of the list holds at most the lines and 2 points, so that a room that grows from one
+	/// layout to the next fails the check.
+	func filterHintsRoomBounded() -> Bool {
+		guard let parts = filterHintsParts() else { return false }
+		return parts.scroll.contentInsets.bottom <= (parts.lines?.frame.height ?? 0) + 2
 	}
 
 	/// The numbers behind `filterHintsShown`: "gap" from the last row to the lines, "bottom" the inset that holds them,
-	/// "visible" the height of the visible list, "below" how far the lines end below it, and the size of the window.
+	/// "clip" the height of the clip view, "area" the height inside the border, "belowTenths" how far the lines end
+	/// below that part in tenths of a point, the scale of the screen, and the size of the window.
 	func filterHintsValues() -> [(StaticString, LogValue)] {
-		guard let table = transactionTables().first, let scroll = table.enclosingScrollView else { return [("table", .presence(false))] }
-		let clip = scroll.contentView
-		let lines = clip.subviews.first { $0 is FilterHintsHost }
-		let window = scroll.window?.contentLayoutRect.size ?? .zero
-		return [("rows", .count(table.numberOfRows)), ("gap", .count(Int((lines.map { filterHintsGap(table, $0) } ?? 0).rounded()))),
-			("bottom", .count(Int(scroll.contentInsets.bottom))), ("lines", .count(Int(lines?.frame.height ?? -1))),
-			("visible", .count(Int(clip.bounds.height - scroll.contentInsets.top - scroll.contentInsets.bottom))),
-			("belowTenths", .count(Int((((lines?.frame.maxY ?? 0) - clip.bounds.maxY) * 10).rounded()))),
-			("window", .count(Int(window.width))), ("windowHeight", .count(Int(window.height)))]
+		guard let parts = filterHintsParts() else { return [("table", .presence(false))] }
+		let lines = parts.lines
+		let below = lines.flatMap { l in parts.area.map { a in a.convert(a.bounds, to: nil).minY - l.convert(l.bounds, to: nil).minY } } ?? 0
+		let window = parts.scroll.window
+		return [("rows", .count(parts.table.numberOfRows)), ("gap", .count(Int((lines.map { filterHintsGap(parts.table, $0) } ?? 0).rounded()))),
+			("bottom", .count(Int(parts.scroll.contentInsets.bottom))), ("lines", .count(Int(lines?.frame.height ?? -1))),
+			("clip", .count(Int(parts.scroll.contentView.bounds.height))), ("area", .count(Int(parts.area?.frame.height ?? -1))),
+			("belowTenths", .count(Int((below * 10).rounded()))), ("scale", .count(Int(window?.backingScaleFactor ?? 0))),
+			("window", .count(Int(window?.contentLayoutRect.width ?? 0))), ("windowHeight", .count(Int(window?.contentLayoutRect.height ?? 0)))]
 	}
 
-	/// The distance from the bottom of the last row to the top of the lines, zero when the lines follow the last row.
+	/// The distance from the bottom of the last row to the top of the lines, in points of the window, zero when the
+	/// lines follow the last row.
 	private func filterHintsGap(_ table: NSTableView, _ lines: NSView) -> CGFloat {
-		lines.frame.minY - (table.frame.minY + (table.numberOfRows > 0 ? table.rect(ofRow: table.numberOfRows - 1).maxY : 0))
+		guard table.numberOfRows > 0 else { return 0 }
+		return table.convert(table.rect(ofRow: table.numberOfRows - 1), to: nil).minY - lines.convert(lines.bounds, to: nil).maxY
 	}
 
 	/// `extrun <path>|<function>|<fixture>` runs one function of an extension in its own host process.

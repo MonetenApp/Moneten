@@ -24,9 +24,10 @@ struct FilterHintLines: View {
 /// Puts `FilterHintLines` below the last row of the transaction table, so that the lines scroll with the rows.
 /// A SwiftUI `Table` has no footer, a row for the lines would need a `ForEach` of rows, which builds a view graph
 /// for every row, and `.contentMargins` does not reach the scroll view of a table on macOS 15. So this view, in
-/// the background of the table, finds the `NSTableView` beside it and adds the lines to its clip view, which
-/// moves them with the rows. A bottom inset of the scroll view lets the list scroll past the last row to the
-/// lines. No row carries a modifier.
+/// the background of the table, finds the `NSTableView` beside it and puts the lines on its scroll view, where
+/// each scroll moves them to the bottom of the last row. A bottom inset of the scroll view lets the list scroll
+/// past the last row to the lines. The clip view of macOS 15 ends above that inset and the one of macOS 26 reaches
+/// under it, so the lines lie on the scroll view and not in the clip view. No row carries a modifier.
 struct FilterHintsFooter: NSViewRepresentable {
 	let hints: [TransactionFilter.Hint]
 	/// The number of rows, so that a row that comes or goes in place moves the lines.
@@ -39,14 +40,28 @@ struct FilterHintsFooter: NSViewRepresentable {
 	static func dismantleNSView(_ anchor: FilterHintsAnchor, coordinator: ()) { anchor.detach() }
 }
 
-/// The hosting view of the lines in the clip view. The debug harness finds it by its class.
+/// The hosting view of the lines. The debug harness finds it by its class.
 final class FilterHintsHost: NSHostingView<FilterHintLines> {}
+
+/// The part of the scroll view inside its border, which cuts the lines off where the list ends. A click outside
+/// the lines goes to the table.
+final class FilterHintsClip: NSView {
+	override var isFlipped: Bool { true }
+
+	override func hitTest(_ point: NSPoint) -> NSView? {
+		let hit = super.hitTest(point)
+		return hit === self ? nil : hit
+	}
+}
 
 /// A view without content in the background of the table. It finds the table and places the lines.
 final class FilterHintsAnchor: NSView {
 	private var hints: [TransactionFilter.Hint] = []
 	private var rowCount = 0
 	private let host = FilterHintsHost(rootView: FilterHintLines(hints: []))
+	private let container = FilterHintsClip()
+	/// The height of the lines, measured when the hints change.
+	private var linesHeight: CGFloat = 0
 	private weak var table: NSTableView?
 	private var observers: [NSObjectProtocol] = []
 	private var insetObservation: NSKeyValueObservation?
@@ -63,7 +78,10 @@ final class FilterHintsAnchor: NSView {
 	override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
 	func update(hints: [TransactionFilter.Hint], rowCount: Int) {
-		if hints != self.hints { host.rootView = FilterHintLines(hints: hints) }
+		if hints != self.hints {
+			host.rootView = FilterHintLines(hints: hints)
+			linesHeight = hints.isEmpty ? 0 : host.fittingSize.height
+		}
 		self.hints = hints
 		self.rowCount = rowCount
 		placeSoon()
@@ -100,14 +118,24 @@ final class FilterHintsAnchor: NSView {
 		}
 		table = found
 		let clip = scroll.contentView
-		clip.addSubview(host)
+		container.clipsToBounds = true
+		container.addSubview(host)
+		scroll.addSubview(container)
 		let center = NotificationCenter.default
-		for view in [found, clip] as [NSView] {
+		for view in [found, clip, scroll] as [NSView] {
 			view.postsFrameChangedNotifications = true
-			observers.append(center.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: .main) { [weak self] _ in
-				MainActor.assumeIsolated { self?.placeSoon() }
+			observers.append(center.addObserver(forName: NSView.frameDidChangeNotification, object: view, queue: nil) { [weak self] _ in
+				MainActor.assumeIsolated {
+					self?.position()
+					self?.placeSoon()
+				}
 			})
 		}
+		// Each scroll moves the lines at once, in the same turn as the rows.
+		clip.postsBoundsChangedNotifications = true
+		observers.append(center.addObserver(forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { [weak self] _ in
+			MainActor.assumeIsolated { self?.position() }
+		})
 		insetObservation = scroll.observe(\.contentInsets) { [weak self] _, _ in
 			DispatchQueue.main.async { self?.placeSoon() }
 		}
@@ -140,28 +168,44 @@ final class FilterHintsAnchor: NSView {
 		return nil
 	}
 
-	/// Puts the lines below the last row and makes room for them at the end of the list.
+	/// The width of the border of the table, which the clip view leaves inside the scroll view, at most 4 points.
+	private func border(of scroll: NSScrollView) -> CGFloat {
+		min(4, max(0, scroll.contentView.frame.minX - scroll.bounds.minX))
+	}
+
+	/// Makes room for the lines at the end of a list that is longer than the window, then places them. The room
+	/// comes from fixed sizes only: the height of the rows, of the lines, of the scroll view, and of its border.
+	/// It never reads the room that it wrote, so it cannot grow from one layout to the next.
 	private func place() {
-		guard let table, let scroll = table.enclosingScrollView, host.superview != nil else { return }
-		let clip = scroll.contentView
+		guard let table, let scroll = table.enclosingScrollView, container.superview != nil else { return }
 		let rows = table.numberOfRows
-		let height = hints.isEmpty ? 0 : host.fittingSize.height
 		let lastRow = rows > 0 ? table.rect(ofRow: rows - 1).maxY : 0
-		host.isHidden = hints.isEmpty
+		let border = border(of: scroll)
+		let insets = scroll.contentInsets
+		// The inset of SwiftUI without the room of the lines.
+		let base = insets.bottom == writtenBottom ? insets.bottom - room : insets.bottom
+		let visible = scroll.bounds.height - 2 * border - insets.top - base
+		let overflow = lastRow + linesHeight - visible
+		setRoom(hints.isEmpty || overflow <= 0 ? 0 : min(linesHeight, overflow) + border, in: scroll)
+		position()
+	}
+
+	/// Moves the lines to the bottom of the last row, in the coordinates of the scroll view, and hides them while
+	/// the list does not show that part. It runs on every scroll and changes no inset.
+	private func position() {
+		guard let table, let scroll = table.enclosingScrollView, container.superview === scroll else { return }
+		let clip = scroll.contentView
+		let border = border(of: scroll)
+		let area = scroll.bounds.insetBy(dx: border, dy: border)
+		if container.frame != area { container.frame = area }
+		let rows = table.numberOfRows
+		let lastRow = rows > 0 ? table.rect(ofRow: rows - 1).maxY : 0
 		// The clip view can reach under the sidebar, and its insets keep the rows out of that part.
 		let width = clip.bounds.width - scroll.contentInsets.left - scroll.contentInsets.right
-		let frame = NSRect(x: table.frame.minX, y: table.frame.minY + lastRow, width: width, height: height)
+		let lines = NSRect(x: table.frame.minX, y: table.frame.minY + lastRow, width: width, height: linesHeight)
+		let frame = clip.convert(lines, to: container)
 		if host.frame != frame { host.frame = frame }
-		// The table fills the clip view when it has few rows, so the lines need room only below a long list.
-		let needed = max(0, lastRow + height - table.frame.height)
-		// The border of the table lies inside the scroll view, so the end of the list stops about a point short of
-		// the inset, more or less with the scale of the screen. The room grows by what the clip view cannot reach
-		// with the insets it has now, so the last pixel of the lines shows too and the room stays once it fits.
-		let ours = scroll.contentInsets.bottom == writtenBottom ? room : 0
-		var end = clip.bounds
-		end.origin.y = frame.maxY
-		let shortfall = frame.maxY - clip.constrainBoundsRect(end).maxY
-		setRoom(hints.isEmpty ? 0 : max(needed, ours + shortfall), in: scroll)
+		host.isHidden = hints.isEmpty || !frame.intersects(container.bounds)
 	}
 
 	private func setRoom(_ newRoom: CGFloat, in scroll: NSScrollView) {
@@ -197,7 +241,7 @@ final class FilterHintsAnchor: NSView {
 		adjustedInsets = nil
 		writtenBottom = nil
 		room = 0
-		host.removeFromSuperview()
+		container.removeFromSuperview()
 		table = nil
 		searches = 0
 	}

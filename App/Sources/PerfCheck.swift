@@ -64,18 +64,26 @@ struct PerfScenario {
 				await c.select("Bulk")
 				if c.model.visibleTransactions.count != PerfScenario.transactions { c.fail("the filter hid rows of Bulk", ("visible", .count(c.model.visibleTransactions.count))) }
 				if c.harness.filterHintsShown() != false { c.fail("the lines of the filters are in view before the end of the list", c.harness.filterHintsValues()) }
+				if !c.harness.filterHintsRoomBounded() { c.fail("the room of the lines grew past their height", c.harness.filterHintsValues()) }
 			}),
 		PerfScenario(name: "filter-hint-scroll-to-end", budget: halfSecond,
 			run: { c in
 				await c.harness.scrollTablesToEnd()
 				await c.settle()
 				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list", c.harness.filterHintsValues()) }
+				if !c.harness.filterHintsRoomBounded() { c.fail("the room of the lines grew past their height", c.harness.filterHintsValues()) }
+				// The room must not grow from one layout to the next (CI round 2 of #501, where it reached a million points).
+				let bottoms = await c.harness.relayoutTables(5)
+				if Set(bottoms).count > 1 || !c.harness.filterHintsRoomBounded() {
+					c.fail("the room of the lines changed over five layouts", [("bottoms", .list(bottoms.map { .count($0) }))] + c.harness.filterHintsValues())
+				}
 				// SwiftUI writes the insets of the table again when the selection changes, which took the room of the lines.
 				c.model.selectedTransactions = Set(c.model.visibleTransactions.suffix(1).map(\.id))
 				await c.settle()
 				await c.harness.scrollTablesToEnd()
 				await c.settle()
 				if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list after a selection", c.harness.filterHintsValues()) }
+				if !c.harness.filterHintsRoomBounded() { c.fail("the room of the lines grew past their height", c.harness.filterHintsValues()) }
 				c.model.selectedTransactions = []
 				// The smallest main window, which a runner with a small screen comes close to. The window gets its frame back.
 				if let window = c.harness.mainWindow {
@@ -85,6 +93,7 @@ struct PerfScenario {
 					await c.harness.scrollTablesToEnd()
 					await c.settle()
 					if c.harness.filterHintsShown() != true { c.fail("the lines of the filters are not in view at the end of the list in a small window", c.harness.filterHintsValues()) }
+					if !c.harness.filterHintsRoomBounded() { c.fail("the room of the lines grew past their height", c.harness.filterHintsValues()) }
 					window.setFrame(frame, display: true)
 				} else {
 					c.fail("no main window")
