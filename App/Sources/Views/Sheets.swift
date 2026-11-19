@@ -314,7 +314,8 @@ struct AccountSettingsSheet: View {
 			// is asked.
 			.alert(access.flatMap(model.secretName(of:)) == nil ? Text("Remove the saved PIN of “\(access?.bankName ?? "")”?")
 				: Text("Remove the saved login data of “\(access?.bankName ?? "")”?"), isPresented: model.presents(.removeSavedPIN)) {
-				Button("OK") { if let access { model.removeSavedPIN(of: access.id) } }
+				// Removing is the destructive answer, so Return never chooses it, and Escape chooses Cancel.
+				Button("OK", role: .destructive) { if let access { model.removeSavedPIN(of: access.id) } }
 				Button("Cancel", role: .cancel) {}
 			} message: {
 				if access.flatMap(model.secretName(of:)) == nil {
