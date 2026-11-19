@@ -315,7 +315,7 @@ final class DebugHarness {
 		// presses a control, "pick <yyyymmdd>" clicks that day in the open calendar, and "state" logs the date that
 		// each field reads, whether it has the focus, and the open popovers.
 		// "closepopover" closes the popover as a click outside does, "close" ends the sheet as "vatclose" does, and
-		// "calendarsnapshot <name>" draws the calendar alone.
+		// "calendarsnapshot <name>" draws the calendar alone, and "today <yyyy-mm-dd>" sets the day that typed days complete against.
 		case "datefield": dateField(argument)
 		// "<setting> <password>" turns an unlock setting on as the Security tab does, after the password check.
 		case "storepassword":
@@ -740,6 +740,14 @@ final class DebugHarness {
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
+		// "<name>|<comment>" gives the newest row with that name the comment, as "Add Comment..." saves it.
+		case "comment":
+			let parts = argument.components(separatedBy: "|")
+			guard parts.count == 2, let t = model.ledger.transactions.filter({ $0.name == parts[0] }).max(by: { $0.bookingDate < $1.bookingDate }) else {
+				return log("comment refused", ("needs", .word("name|comment")))
+			}
+			model.setComment(parts[1], for: [t.id])
+			log("comment done", ("set", .flag(model.ledger.transaction(t.id)?.comment != nil)))
 		// "<name>|<purpose>" gives the newest row with that name the purpose, as "Edit Transaction..." saves it.
 		// "check <name>|<purpose>" logs how many rows have the name and whether each has the purpose.
 		case "edit":
@@ -774,10 +782,23 @@ final class DebugHarness {
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
 				let rows = model.ledger.transactions(ofAccount: account.id).filter { $0.isFetched || $0.review != nil }
 				for t in rows {
-					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("review", .state(t.review)))
+					log("row", ("day", .day(t.bookingDate)), ("pending", .flag(t.isPending)), ("new", .flag(t.isNew)), ("mark", .flag(model.newMarks.shows(t))), ("review", .state(t.review)))
 				}
 				log("rows", ("", .count(rows.count)), ("new", .count(model.ledger.newTransactionCounts[account.id] ?? 0)), ("balance", .presence(account.bankBalanceMinor != nil)))
 			}
+		#if DEBUG || PERF_HARNESS
+		// "<account>|<name>" writes the rows of that account into <name>.tsv in the debug folder, for a check that compares
+		// them with a made-up import file. Like a snapshot, the file shows the data of the check, so it never goes into debug.log.
+		case "dumprows": dumpRows(argument)
+		// "<account>|<path>[|<source IDs>]" delivers the rows of a made-up CAMT, MT940, or CSV file as a refresh of the bank
+		// would, through the scripted connector and never a bank, for the checks of pending rows that a bank and a file both
+		// bring. The path must lie in the debug folder or the data folder, and "-" delivers no row. The source IDs, separated
+		// by commas and empty for none, go to the rows in their order. The refresh covers the 30 days before today and every
+		// day of the file.
+		case "fetchfile": fetchFile(argument)
+		// "<name>" writes the title and the text of the alert, such as the result of an import, into <name>.txt in the debug folder, as "dumprows" does.
+		case "alerttext": alertText(argument)
+		#endif
 		// The manual rows of an account by their stored day and value day, as the transaction sheet saved them.
 		case "manualrows":
 			if let account = model.ledger.accounts.first(where: { $0.name == argument }) {
@@ -983,8 +1004,19 @@ final class DebugHarness {
 			Task {
 				log("exportall", ("", .word(await model.saveAllData(to: URL(filePath: argument)) ? "done" : "error=set")))
 			}
-		// "<path>": imports that complete export without the open panel. The reason of a refusal can quote the file.
-		case "importall": Task { log("importall", ("", .word(await model.readAllData(from: URL(filePath: argument)) == "done" ? "done" : "refused"))) }
+		// "<path>": imports that complete export without the open panel. The path must lie in the debug folder or the data folder.
+		// The reason of a refusal can quote the file, so only the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
+		#if DEBUG || PERF_HARNESS
+		case "importall":
+			guard mayRead(argument) else { return log("importall refused", ("path", .word("outside"))) }
+			Task {
+				// The import starts later, so the path is resolved again right before the read, as "backup" does.
+				guard let url = readTarget(argument) else { return log("importall refused", ("path", .word("outside"))) }
+				let outcome = await model.readAllData(from: url)
+				if outcome != "done" { model.alert = AlertMessage(title: String(localized: "Could not import the data."), message: outcome) }
+				log("importall", ("", .word(outcome == "done" ? "done" : "refused")))
+			}
+		#endif
 		case "exportcsv":
 			model.export(model.rowsToExport, to: URL(filePath: argument))
 			log("exportcsv", ("rows", .count(model.rowsToExport.count)))
@@ -1009,6 +1041,7 @@ final class DebugHarness {
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
+			case "newGroup": model.sheet = .newGroup
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }
@@ -1129,6 +1162,31 @@ final class DebugHarness {
 				("selected", .count(model.visibleSelection.count)), ("checked", .count(originals.filter(\.isChecked).count)),
 				("review", originals.first?.review.map { .state($0) } ?? .word("none")), ("sheet", model.sheet.map { .state($0) } ?? .word("none")))
 		case "selectRows": model.selectedTransactions = Set(model.visibleTransactions.prefix(Int(argument) ?? 1).map(\.id))
+		// "account" or "category": "Go to" from the first row of the list to its account or category, with the last row of that
+		// view selected, so that the table must scroll to it. "reveal" then logs whether the table shows the selected row.
+		case "goto":
+			guard let first = model.visibleTransactions.first else { return log("goto no rows") }
+			let target: SidebarSelection? = switch argument {
+			case "account": .account(first.accountID)
+			case "category": model.ledger.effectiveCategoryID(of: first).map { .category($0) }
+			default: nil
+			}
+			guard let target, let last = model.rows(for: TableKey(selection: target, filter: model.filter)).rows.last else { return log("goto no target") }
+			model.go(to: target, selecting: last.id)
+			log("goto", ("", .choice(argument, of: ["account", "category"])))
+		case "reveal":
+			guard let table = transactionTables().first else { return log("reveal no table") }
+			let shown = table.rows(in: table.visibleRect)
+			log("reveal", ("selected", .count(model.visibleSelection.count)), ("row", .position(table.selectedRow >= 0 ? table.selectedRow : nil)),
+				("rows", .count(table.numberOfRows)), ("shown", .flag(table.selectedRow >= 0 && NSLocationInRange(table.selectedRow, shown))))
+		// "<n>": searches for the name of row n, which hides the selected rows with another name.
+		case "searchrow":
+			guard let n = Int(argument), model.visibleTransactions.indices.contains(n) else { return log("searchrow no row") }
+			model.filter.searchText = TransactionFilter.searchText(for: model.visibleTransactions[n].name)
+			log("searchrow", ("selected", .count(model.selectedTransactions.count)), ("shown", .count(model.visibleSelection.count)))
+		// "menu" runs "Add Comment..." of the Account menu, "row" the comment item of the context menu of the first row. Each logs
+		// how many rows the comment sheet would change. The rows that a search hides must never be among them.
+		case "comment": comment(argument)
 		// What a drop of the selected rows on the category "Name" in the sidebar does, with the payload sent
 		// through an item provider as a drag sends it. The harness cannot drag.
 		case "droprows":
@@ -1453,6 +1511,19 @@ final class DebugHarness {
 		let popoverWindow = NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") && !($0.contentView.map(fields) ?? []).isEmpty }
 		let window = popoverWindow ?? topSheet
 		switch parts.first ?? "" {
+		#if DEBUG || PERF_HARNESS
+		// "today <yyyy-mm-dd>" completes typed days as if that were today, "today" alone uses the real day again.
+		case "today":
+			guard parts.count <= 2 else { return log("datefield today refused") }
+			if parts.count == 2 {
+				// Day(string:) is nil for a day that does not exist, such as 2026-02-30.
+				guard parts[1].wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}/) != nil, let day = Day(string: parts[1]) else { return log("datefield today refused") }
+				DateField.debugToday = day
+			} else {
+				DateField.debugToday = nil
+			}
+			log("datefield today", ("", DateField.debugToday.map { .day($0) } ?? .word("real")))
+		#endif
 		case "open":
 			guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true }), main.attachedSheet == nil else { return }
 			let host = NSHostingView(rootView: DateFieldHarnessView().environment(model).frame(width: 300))
@@ -1991,6 +2062,70 @@ final class DebugHarness {
 		log(LogLine("savedsearch", values: values + Self.filterTargets(model)))
 	}
 
+	#if DEBUG || PERF_HARNESS
+	/// The debug folder and the throwaway data folder of the run, the only places that "fetchfile" and "importall" read.
+	private var readableFolders: [String] { [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? []) }
+
+	/// Whether "fetchfile" or "importall" may read the file at `path`, checked when the command arrives.
+	private func mayRead(_ path: String) -> Bool { HarnessRun.allowsRead(path, in: readableFolders) }
+
+	/// The canonical path of that file, resolved once right before the read, or nil when it no longer lies inside the folders
+	/// (`HarnessRun.readTarget` says what this guards against). The command then reads this path and not the path it was given.
+	private func readTarget(_ path: String) -> URL? { HarnessRun.readTarget(path, in: readableFolders).map { URL(filePath: $0) } }
+
+	/// The file <name>.<ext> in the debug folder, or nil for a name with other characters than letters, digits, "-", and "_",
+	/// so that no name reaches outside the folder.
+	private func ownFile(_ name: String, _ ext: String) -> URL? {
+		guard (1...64).contains(name.count), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+		return folder.appending(path: "\(name).\(ext)")
+	}
+
+	private func dumpRows(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }), let file = ownFile(parts[1], "tsv") else {
+			return log("dumprows refused")
+		}
+		let rows = model.ledger.transactions(ofAccount: account.id).map { t in
+			[t.bookingDate.rawValue.description, t.valueDate.map { $0.rawValue.description } ?? "", t.amountMinor.description, t.currency, t.name, t.purpose,
+				t.counterpartyIBAN ?? "", t.counterpartyBIC ?? "", t.bookingText ?? "", t.isPending ? "pending" : "booked", model.ledger.categoryPath(t.categoryID), t.comment ?? ""]
+				.map { $0.replacing("\t", with: " ").replacing("\n", with: "\\n") }.joined(separator: "\t")
+		}
+		try? (rows.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+		log("dumprows", ("", .count(rows.count)))
+	}
+
+	private func alertText(_ name: String) {
+		guard let model, let file = ownFile(name, "txt") else { return log("alerttext refused") }
+		let text = model.alert.map { "\($0.title)\n\($0.message)" }
+		try? (text ?? "").write(to: file, atomically: true, encoding: .utf8)
+		log("alerttext", ("", .presence(text != nil)))
+	}
+
+	private func fetchFile(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard (2...3).contains(parts.count), let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
+		guard parts[1] == "-" || mayRead(parts[1]) else { return log("fetchfile refused", ("path", .word("outside"))) }
+		let url = parts[1] == "-" ? nil : readTarget(parts[1])
+		guard parts[1] == "-" || url != nil else { return log("fetchfile refused", ("path", .word("outside"))) }
+		var rows: [Transaction]
+		do { rows = try url.map { try TransactionFileImporter.parse(Data(contentsOf: $0), currency: account.currency).transactions } ?? [] }
+		catch { return log("fetchfile", ("error", .type(of: error))) }
+		let ids = parts.count > 2 ? parts[2].components(separatedBy: ",") : []
+		guard ids.count <= rows.count else { return log("fetchfile refused", ("ids", .count(ids.count)), ("rows", .count(rows.count))) }
+		for i in rows.indices {
+			rows[i].accountID = account.id
+			if ids.indices.contains(i), !ids[i].isEmpty { rows[i].sourceID = ids[i] }
+		}
+		let from = rows.map(\.bookingDate).min().map { min($0, Day.today().adding(days: -30)) } ?? Day.today().adding(days: -30)
+		let result = RefreshResult(balance: nil, transactions: FetchedTransactions(rows: rows, from: from))
+		let request = RefreshRequest(access: SyncDemo.access, accounts: [AccountRequest(accountID: account.id, name: account.name, remoteID: "1234567890", currency: account.currency)])
+		model.sync.refresh(request, with: ScriptedConnector([.fetched(account.id, result)]), attended: true)
+		log("fetchfile", ("rows", .count(rows.count)))
+	}
+	#endif
+
 	private func csvPreview(_ argument: String) {
 		guard let preview = model?.fileImport?.preview else { return log("csv no preview") }
 		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
@@ -2148,6 +2283,30 @@ final class DebugHarness {
 		}
 		log("menuexport item", ("title", .hash(menu.items[index].title)))
 		menu.performActionForItem(at: index)
+	}
+
+	private func comment(_ argument: String) {
+		guard let model else { return }
+		let titles = [String(localized: "Add Comment..."), String(localized: "Edit Comment...")]
+		let menu: NSMenu? = switch argument {
+		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
+		case "menu": NSApp.mainMenu?.items.compactMap(\.submenu).first { $0.items.contains { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command } }
+		case "row": contextMenu(row: 0, sidebar: false)
+		default: nil
+		}
+		menu?.update()
+		guard let menu, let index = menu.items.firstIndex(where: { titles.contains($0.title) }) else { return log("comment no item") }
+		let enabled = menu.items[index].isEnabled
+		// SwiftUI enables the commands of the menu bar only while the app is active, which a harness run is not. The check then runs
+		// the action of the item, as `menuexport` does.
+		if argument == "menu", !enabled { model.openCommentSheet() } else { menu.performActionForItem(at: index) }
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+			guard let model = self?.model else { return }
+			var ids: Set<UUID> = []
+			if case let .comment(s) = model.sheet { ids = s }
+			self?.log("comment", ("", .choice(argument, of: ["menu", "row"])), ("enabled", .flag(enabled)), ("sheet", .flag(!ids.isEmpty)),
+				("rows", .count(ids.count)), ("hidden", .count(ids.count - model.shown(ids).count)))
+		}
 	}
 
 	/// "Create Rule" in the context menu of the transaction table, as a right click builds it. Each item of the menu by
@@ -2469,6 +2628,8 @@ enum DemoData {
 		case "first": known + [row(2, -20_000, "Hotel Beispiel", "Kaution", pending: true)]
 		case "booked": known + [row(0, -20_000, "Hotel Beispiel GmbH", "Kaution Zimmer 12")]
 		case "parking": known + [row(1, -1_500, "Parkhaus Beispiel", "Reservierung", pending: true)]
+		// A card payment abroad of -11.400,00 € that the bank converted from -12.345,00 US dollars.
+		case "card": known + [{ var t = row(0, -1_140_000, "Karte", "Kartenzahlung"); t.originalAmount = Money(minorUnits: -1_234_500, currency: "USD"); return t }()]
 		default: known
 		}
 		let result = RefreshResult(balance: Money(minorUnits: 1_234_56, currency: "EUR"),

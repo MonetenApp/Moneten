@@ -686,6 +686,21 @@ public struct Ledger: Sendable {
 		countNew()
 	}
 
+	/// The new transactions of an account count as seen, after `Store.markSeen` wrote it. Only the flag changes, so the
+	/// order and the search texts stay: `update` would build the search text of each row again, about 100 ms for the
+	/// 50,000 rows of an import, on the main thread.
+	public mutating func markSeen(account id: UUID) {
+		guard newTransactionCounts[id] != nil else { return }
+		for i in transactions.indices where transactions[i].accountID == id && transactions[i].isNew {
+			transactions[i].isNew = false
+			let tid = transactions[i].id
+			if partRows[tid] != nil {
+				for j in partRows[tid]!.indices { partRows[tid]![j].isNew = false }
+			}
+		}
+		newTransactionCounts[id] = nil
+	}
+
 	/// Takes over a merge that the database stored: removes the dropped rows, upserts the others and
 	/// the account, and records the value of a portfolio.
 	public mutating func apply(_ r: Reconciliation) {
