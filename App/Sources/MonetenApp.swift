@@ -184,10 +184,10 @@ struct AppCommands: Commands {
 		}
 		CommandMenu("Account") {
 			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)
-			Button("Add Account Group") { model.sheet = .newGroup }.disabled(!unlocked)
+			Button("Add Account Group") { Task { await model.addGroup() } }.disabled(!unlocked)
 			Divider()
-			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }.disabled(!unlocked)
-			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }.disabled(!unlocked)
+			Button("Add Category") { model.sheet = .newCategory() }.disabled(!unlocked)
+			Button("Add Category Group") { Task { await model.addCategoryGroup() } }.disabled(!unlocked)
 			Divider()
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
@@ -201,10 +201,10 @@ struct AppCommands: Commands {
 				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
-				.disabled(!unlocked || model.selectedAccount == nil || model.isTransferringTransactions || model.sheet != nil)
+				.disabled(!unlocked || !(model.selectedAccount?.takesImportedTransactions ?? false) || model.isTransferringTransactions || model.sheet != nil)
 			Button("Export Transactions...") { model.exportTransactions() }
 				.disabled(!unlocked || model.selection == nil || model.isTransferringTransactions)
-			Button(model.removeTitle ?? "Remove...") { if let row = model.selection { model.confirmRemove(row) } }
+			Button(model.removeTitle ?? String(localized: "Remove...")) { if let row = model.selection { model.confirmRemove(row) } }
 				.disabled(!unlocked || model.removeTitle == nil || model.sheet != nil)
 			Divider()
 			Button(model.refreshTitle) { if let scope = model.refreshScopeOfSelection { model.refresh(scope) } }

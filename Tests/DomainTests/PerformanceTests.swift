@@ -459,6 +459,19 @@ struct PerformanceTests {
 		#expect(sorted == 0)
 	}
 
+	@Test("The amounts of 500 rows, many screens of the list, take their currency and the format of the region within a frame")
+	func amountFormatting() {
+		let germany = Locale(identifier: "de_DE")
+		let amounts = (0..<500).map { Money(minorUnits: Int64($0) * 1_337 - 300_000, currency: $0 % 7 == 0 ? "USD" : "EUR") }
+		var characters = 0
+		let time = fastest { characters = amounts.reduce(0) { $0 + Format.money($1, locale: germany).count } }
+		print("500 amounts with their currency: \(time)")
+		#expect(characters > 0)
+		#if !DEBUG
+		#expect(time < budget(.milliseconds(16)))
+		#endif
+	}
+
 	@Test("Leaving an account counts 50,000 imported rows as seen within a frame, and the next visit finds nothing new")
 	func leaveAfterLargeImport() {
 		let imported = Account(position: 0, name: "Account 7", kind: .giro, source: .offline)
@@ -480,13 +493,18 @@ struct PerformanceTests {
 			seen = marks.leave(account: imported.id, in: ledger)
 			ledger.markSeen(account: imported.id)
 		}
-		print("leave after an import of 50,000 rows \(leave)")
+		print("leave after an import of 50,000 rows \(leave), budget \(budget(.milliseconds(50)))")
 		#expect(seen == 50_000)
 		#expect(ledger.newTransactionCounts[imported.id, default: 0] == 0)
 		#expect(ledger.newTransactionCounts[other.id] == 1_000)
 		#expect(ledger.transactions(ofAccount: imported.id).allSatisfy { !$0.isNew })
 		#expect(marks.open(account: imported.id, in: ledger) == 0)
+		// 6 to 10 ms in release, at a load of 20 to 28. A debug build took 17 to 69 ms at the same load, so the budget holds
+		// for a release build only, as for the other ledger budgets: `scripts/test.sh -c release -Xswiftc -enable-testing
+		// --filter PerformanceTests`, which CI runs as its own step.
+		#if !DEBUG
 		#expect(leave < budget(.milliseconds(50)))
+		#endif
 	}
 
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {

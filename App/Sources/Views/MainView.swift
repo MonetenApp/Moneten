@@ -54,7 +54,10 @@ struct MainView: View {
 						.interactiveDismissDisabled()
 				}
 		}
-		.onAppear { model.alerts.isViewOnScreen = true }
+		.onAppear {
+			model.alerts.isViewOnScreen = true
+			model.showHeldSheet()
+		}
 		.onDisappear {
 			model.alerts.isViewOnScreen = false
 			// A sheet that goes with the view, for example at the lock, can end without `onDismiss`.
@@ -89,15 +92,14 @@ struct SheetView: View {
 	var body: some View {
 		switch kind {
 		case .newAccount: if let setup = model.setup { AccountSetupSheet(setup: setup) }
-		case .newGroup: NameSheet(title: "Add Account Group", placeholder: "Name") { name in Task { await model.addGroup(name: name) } }
-		case let .newCategory(isGroup, ids): NewCategorySheet(isGroup: isGroup, assigning: ids)
+		case let .newCategory(ids): NewCategorySheet(assigning: ids)
 		case let .assignCategory(ids, accounts): CategoryPickerSheet(ids: ids, accounts: accounts)
 		case let .accountSettings(id): AccountSettingsSheet(accountID: id)
 		case let .calibration(id): CalibrationSheet(accountID: id)
 		case let .groupSettings(id): GroupSettingsSheet(groupID: id)
 		case let .categorySettings(id): CategorySettingsSheet(categoryID: id)
 		case let .transaction(id): TransactionSheet(transactionID: id)
-		case let .split(row): SplitSheet(row: row)
+		case let .split(row): SplitSheet(sheet: kind, row: row)
 		case let .undoSplit(id): UndoSplitSheet(rowID: id)
 		case let .comment(ids): CommentSheet(ids: ids)
 		case .migration: MigrationSheet()
@@ -106,9 +108,9 @@ struct SheetView: View {
 		case .exporting: ExportProgressSheet()
 		case .setPassword: SetPasswordSheet()
 		case .changePassword: ChangePasswordSheet()
-		case .saveSearch: NameSheet(title: "Save Search", placeholder: "Name") { name in model.saveSearch(name: name) }
+		case .saveSearch: NameSheet(kind: kind, title: "Save Search", placeholder: "Name") { name in model.saveSearch(name: name) }
 		case let .renameSearch(id):
-			NameSheet(title: "Rename Search", placeholder: "Name", name: model.savedSearches.first { $0.id == id }?.name ?? "") { name in
+			NameSheet(kind: kind, title: "Rename Search", placeholder: "Name", name: model.savedSearches.first { $0.id == id }?.name ?? "") { name in
 				model.rename(search: id, to: name)
 			}
 		}

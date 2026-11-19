@@ -42,6 +42,14 @@ The app SHALL, while it is locked, show no account names, balances, transactions
 - **THEN** both windows are hidden
 - **AND** they are visible again after the user unlocks the app
 
+#### Scenario: Account settings with unsaved input
+
+- **GIVEN** the settings of the account "Girokonto" are open, and the user changed the name to "Haushaltskonto" and picked a new color without saving
+- **WHEN** the app locks after 10 minutes of inactivity
+- **THEN** no window, sheet, or window title shows "Girokonto", "Haushaltskonto", or another account detail while the app is locked
+- **AND** after the user unlocks the app, the settings of the account show again with the name "Haushaltskonto" and the new color
+- **AND** the app stored neither the name nor the color, in the database or anywhere else, before the user confirms the settings
+
 #### Scenario: Payment window in progress
 
 - **GIVEN** a payment window with the recipient "Erika Mustermann" and the amount 120,00 €

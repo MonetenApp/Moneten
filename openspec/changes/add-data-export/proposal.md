@@ -47,6 +47,7 @@ None.
 - Transaction import and CSV export run one at a time, including cancellation cleanup, so each operation keeps its progress and cancel control.
 - CSV text cells get an apostrophe before CSV quoting when they start with a tab, a carriage return, or a line feed, or when their first character after leading whitespace is `=`, `+`, `-`, `@`, or one of the full-width signs `＝`, `＋`, `－`, `＠`. Amounts and dates stay as they are. A CSV import of such a file keeps the apostrophe in the text fields. This formula-injection protection was not observed in MoneyMoney.
 - CSV dates and amounts use ASCII digits in every locale, including ar_EG. Date order and decimal marks follow the locale.
+- The export always writes Gregorian dates. A region with the Buddhist, the Islamic, the Japanese, or the Republic of China calendar gets the Gregorian date in its order of day, month, and year. A year of its own calendar, such as 2569 for 2026 in Thailand, reads as a Gregorian year in a spreadsheet and in the import of this app, and the era that would mark it, such as "BE", makes the date unreadable (#466).
 - The account context menu exports the whole account, regardless of row selection, search, or filters.
 
 - The complete JSON export and its import come from issue #8. They are new.

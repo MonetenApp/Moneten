@@ -193,24 +193,37 @@ class ReleaseNotesTests(unittest.TestCase):
 		result = self.run_script("check-release", "0.1.4", "--build", "105", "--feed", str(first))
 		self.assertIn("has no revision", result.stderr)
 
-	def test_a_first_feed_takes_the_revision_of_a_key_change(self):
-		"""The new feed of a key change starts above the last revision of the old feed."""
+	def key_change(self, out, *source):
+		return self.run_script("appcast", "0.1.4", "--build", "105", *source, "--min-macos", "15.0",
+			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.4/Moneten-0.1.4.dmg",
+			"--length", "1000", "--signature", "sig==", "--out", str(out))
+
+	def test_the_first_feed_of_a_key_change_starts_above_the_old_feed(self):
+		"""Every installed copy keeps the highest revision that it read, so the new feed of a key change
+		takes its revision from the old feed. A number typed by hand could be below it, and then every
+		copy that read the old feed would refuse the new one."""
+		old, _ = self.two_versions()
+		old.write_text(old.read_text().replace(">1</moneten:revision>", ">7</moneten:revision>"))
 		feed = self.dir / "feed.xml"
-		result = self.run_script("appcast", "0.1.3", "--build", "100", "--first-release", "--revision", "7", "--min-macos", "15.0",
-			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
-			"--length", "1000", "--signature", "sig==", "--out", str(feed))
+		result = self.key_change(feed, "--first-release", "--above-feed", str(old))
 		self.assertEqual(result.returncode, 0, result.stderr)
-		self.assertEqual(self.revisions(feed), ["7"])
+		self.assertEqual(self.revisions(feed), ["8"])
+		self.assertEqual(re.findall(r"<title>([^<]+)</title>", feed.read_text())[1:], ["0.1.4"])
+
 		later = self.dir / "later.xml"
-		result = self.run_script("appcast", "0.1.3", "--build", "100", "--feed", str(feed), "--revision", "9", "--min-macos", "15.0",
-			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
-			"--length", "1000", "--signature", "sig==", "--out", str(later))
-		self.assertIn("--revision is only for a first feed", result.stderr)
+		result = self.key_change(later, "--feed", str(feed), "--above-feed", str(old))
+		self.assertIn("--above-feed is only for a first feed", result.stderr)
 		self.assertFalse(later.exists())
-		result = self.run_script("appcast", "0.1.3", "--build", "100", "--first-release", "--revision", "0", "--min-macos", "15.0",
-			"--url", "https://github.com/MonetenApp/Moneten/releases/download/v0.1.3/Moneten-0.1.3.dmg",
-			"--length", "1000", "--signature", "sig==", "--out", str(later))
-		self.assertIn("0 is not a whole number of 1 or more", result.stderr)
+		empty = self.dir / "empty.xml"
+		empty.write_text('<?xml version="1.0" encoding="utf-8"?>\n<rss version="2.0"><channel /></rss>\n')
+		result = self.key_change(later, "--first-release", "--above-feed", str(empty))
+		self.assertIn("the old feed %s has no items, so its revision is unknown" % empty, result.stderr)
+		result = self.key_change(later, "--first-release", "--above-feed", str(self.dir / "missing.xml"))
+		self.assertIn("cannot read the old feed %s" % (self.dir / "missing.xml"), result.stderr)
+		self.assertFalse(later.exists())
+		result = self.key_change(later, "--first-release", "--revision", "5")
+		self.assertIn("unrecognized arguments: --revision 5", result.stderr)
+		self.assertFalse(later.exists())
 
 	def test_appcast_without_readable_feed_fails(self):
 		result = self.appcast("0.1.3", 100, self.dir / "out.xml", feed=self.dir / "missing.xml")

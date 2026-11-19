@@ -387,8 +387,13 @@ public final class Store: SavedPINStore {
 		}
 	}
 
-	public func deleteGroup(_ id: UUID) throws {
-		_ = try write { db in try AccountGroup.deleteOne(db, key: id) }
+	/// Deletes a group and stores the rows of `change`, which `Ledger.removal(ofGroup:)` gives, in one transaction, so the
+	/// accounts and subgroups go to the group above it and never to the top level, where the foreign key would put them.
+	public func deleteGroup(_ id: UUID, moving change: AccountTreeChange) throws {
+		try write { db in
+			try Self.save(groups: change.groups, accounts: change.accounts, categories: [], transactions: [], relinking: [], in: db)
+			_ = try AccountGroup.deleteOne(db, key: id)
+		}
 	}
 
 	/// Removes a category and its subcategories. Their transactions become uncategorized.

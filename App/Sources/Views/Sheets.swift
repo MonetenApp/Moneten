@@ -102,6 +102,8 @@ struct SheetButtons<Content: View>: View {
 }
 
 struct NameSheet: View {
+	@Environment(AppModel.self) private var model
+	let kind: SheetKind
 	var title: LocalizedStringKey
 	var placeholder: LocalizedStringKey
 	/// The name the field starts with, such as the current name for a rename.
@@ -117,20 +119,31 @@ struct NameSheet: View {
 				TextField(placeholder, text: $name, prompt: Text("Required"))
 			}
 		}
+		.keepsInput(name, of: kind)
+		.onAppear { if let held: String = model.heldInput(for: kind) { name = held } }
 	}
 }
 
 struct NewCategorySheet: View {
 	@Environment(AppModel.self) private var model
-	let isGroup: Bool
 	/// The transactions to move into the new category.
 	var assigning: Set<UUID> = []
 	@State private var name = ""
 	@State private var parentID: UUID?
 
+	struct Input: Hashable, Sendable {
+		var name: String
+		var parentID: UUID?
+	}
+
+	private var kind: SheetKind { .newCategory(assigning: assigning) }
+
 	var body: some View {
-		SheetFrame(title: isGroup ? "Add Category Group" : "Add Category", canConfirm: !name.isEmpty, onConfirm: {
-			Task { await model.addCategory(name: name, isGroup: isGroup, parentID: parentID, assigning: assigning) }
+		let check = model.ledger.checkCategoryName(name, in: parentID)
+		SheetFrame(title: "Add Category", canConfirm: check.acceptedName != nil, onConfirm: {
+			// A taken name keeps the sheet open, and the footer says why.
+			guard let accepted = check.acceptedName else { return false }
+			Task { await model.addCategory(name: accepted, parentID: parentID, assigning: assigning) }
 			return true
 		}) {
 			Section {
@@ -139,11 +152,35 @@ struct NewCategorySheet: View {
 					Text("None").tag(UUID?.none)
 					ForEach(model.ledger.categoriesInSidebarOrder.filter(\.isGroup)) { Text(model.ledger.categoryPath($0.id)).tag(UUID?.some($0.id)) }
 				}
+			} footer: {
+				if check == .taken { CategoryNameTaken(parentID: parentID) }
 			}
 		}
+		.keepsInput(Input(name: name, parentID: parentID), of: kind)
 		.onAppear {
 			if case let .category(id) = model.selection, let c = model.ledger.category(id) { parentID = c.isGroup ? c.id : c.parentID }
+			if let held: Input = model.heldInput(for: kind) {
+				name = held.name
+				parentID = held.parentID
+			}
 		}
+	}
+}
+
+/// The note under the name field of a category whose name another category or category group in the same group has.
+struct CategoryNameTaken: View {
+	@Environment(AppModel.self) private var model
+	let parentID: UUID?
+
+	var body: some View {
+		Group {
+			if let group = parentID.flatMap(model.ledger.category) {
+				Text("This name is taken in the group \(group.name).")
+			} else {
+				Text("This name is taken at the top level.")
+			}
+		}
+		.foregroundStyle(Palette.red)
 	}
 }
 
@@ -156,8 +193,28 @@ struct AccountSettingsSheet: View {
 	@State private var opened: Account?
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
+	@State private var calibrating = false
+	/// The balance typed in the calibration window on top of the settings, while it is open.
+	@State private var calibrationBalance = ""
 	@State private var color = Color.accentColor
 	@State private var originalColor = Color.accentColor
+
+	/// What the lock keeps of the settings: the edited account, the account as the settings opened, the fields, and
+	/// whether the calibration window is open on top of them with its typed balance.
+	private struct Input: Hashable, Sendable {
+		var account: Account?
+		var opened: Account?
+		var initialBalance: String
+		var color: Color
+		var originalColor: Color
+		var calibrating: Bool
+		var calibrationBalance: String
+	}
+
+	private var input: Input {
+		Input(account: account, opened: opened, initialBalance: initialBalance, color: color, originalColor: originalColor,
+			calibrating: calibrating, calibrationBalance: calibrationBalance)
+	}
 
 	/// The typed initial balance, nil while it is empty, cannot be read, or is above `Money.maxMinorUnits`.
 	private func typedInitialBalance(in currency: String) -> Money? {
@@ -211,13 +268,12 @@ struct AccountSettingsSheet: View {
 									.marksUnreadableAmount(initialBalance)
 									.multilineTextAlignment(.trailing)
 									.monospacedDigit()
-								Button("Calibrate") {
-									if let value = original.initialBalanceMeetingBankBalance(of: model.ledger.transactions(ofAccount: original.id)) {
-										initialBalance = Format.editableAmount(value, original.currency)
-									}
+								// A portfolio shows the values of its bank, so an initial balance would change none of them.
+								if original.kind != .portfolio {
+									Button("Calibrate...") { calibrating = true }
+										.accessibilityIdentifier("calibrate")
+										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
-								.disabled(original.reportedBalance == nil)
-								.help("Make the booked transactions meet the balance of the bank")
 							}
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)
@@ -242,14 +298,42 @@ struct AccountSettingsSheet: View {
 					}
 				}
 			}
+			.keepsInput(input, of: .accountSettings(accountID))
+			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
+			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
+			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
+			.sheet(isPresented: $calibrating, onDismiss: { calibrationBalance = "" }) {
+				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
+			}
 			.onAppear {
 				account = original
 				opened = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
 				color = AccountColors.color(of: original)
 				originalColor = color
+				// After the unlock, the settings show the input from before the lock. Saving merges it with the
+				// account as it is now, as for a refresh that ended while the settings were open.
+				if let held: Input = model.heldInput(for: .accountSettings(accountID)) {
+					account = held.account
+					opened = held.opened
+					initialBalance = held.initialBalance
+					color = held.color
+					originalColor = held.originalColor
+					calibrationBalance = held.calibrationBalance
+					// The calibration window opens again one turn later, on top of the settings that are on screen then.
+					if held.calibrating { DispatchQueue.main.async { calibrating = true } }
+				}
 			}
 		}
+	}
+
+	/// The calibration window saved `saved`. The field shows its initial balance, and the settings take it as the
+	/// value they opened with, so that OK neither enters it again nor brings back a value typed before, also when
+	/// the calibration kept the value. Only a confirmed calibration calls this, never a refresh or Cancel.
+	private func tookCalibration(_ saved: Account) {
+		account?.initialBalanceMinor = saved.initialBalanceMinor
+		opened?.initialBalanceMinor = saved.initialBalanceMinor
+		initialBalance = Format.editableAmount(saved.initialBalanceMinor, saved.currency)
 	}
 }
 
@@ -258,6 +342,11 @@ struct AccountSettingsSheet: View {
 struct CalibrationSheet: View {
 	@Environment(AppModel.self) private var model
 	let accountID: UUID
+	/// Called with the account after OK saved it, for the account settings under the window.
+	var onSaved: (Account) -> Void = { _ in }
+	/// The typed balance for the account settings under the window, which keep it in their input across a lock. Without
+	/// it, the window is a sheet of its own and keeps its input as `SheetKind.calibration`.
+	var keptBalance: Binding<String>? = nil
 	@State private var balance = ""
 
 	/// The typed balance, nil while it cannot be read or is above `Money.maxMinorUnits`.
@@ -276,6 +365,8 @@ struct CalibrationSheet: View {
 			SheetFrame(title: "Calibrate \(account.name)", canConfirm: calibrated(account) != nil, onConfirm: {
 				guard let current = model.ledger.account(accountID), let a = calibrated(current) else { return true }
 				model.save(account: a)
+				// A failed write leaves the ledger as it was and posts an alert, and the settings keep what was typed.
+				if let saved = model.ledger.account(accountID), saved.initialBalanceMinor == a.initialBalanceMinor { onSaved(saved) }
 				return true
 			}) {
 				Section {
@@ -296,10 +387,18 @@ struct CalibrationSheet: View {
 					}
 				}
 			}
+			.keepsInput(balance, of: keptBalance == nil ? .calibration(accountID) : nil)
+			.onChange(of: balance) { if let keptBalance, keptBalance.wrappedValue != balance { keptBalance.wrappedValue = balance } }
 			.onAppear {
 				let today = Day.today()
 				let value = model.proposedCalibration(of: account)?.balanceToday ?? model.ledger.computedBalance(of: account, through: today)
 				balance = Format.editableAmount(value.minorUnits, value.currency)
+				if let keptBalance {
+					// The settings under the window brought its balance back after the unlock.
+					if !keptBalance.wrappedValue.isEmpty { balance = keptBalance.wrappedValue }
+				} else if let held: String = model.heldInput(for: .calibration(accountID)) {
+					balance = held
+				}
 			}
 		}
 	}
@@ -309,21 +408,37 @@ struct GroupSettingsSheet: View {
 	@Environment(AppModel.self) private var model
 	let groupID: UUID
 	@State private var group: AccountGroup?
+	/// The group as the settings opened, so that a name the user did not change stays as it is stored.
+	@State private var opened: AccountGroup?
 
 	var body: some View {
-		SheetFrame(title: "Account Group Settings", onConfirm: {
-			if let group { model.save(group: group) }
+		// An empty name keeps OK disabled, and the field asks for a name ("Create and rename account groups"). This holds
+		// also for a name that a migration or an import stored empty, so OK never saves it again.
+		let canConfirm = group.map { Account.acceptedName($0.name) != nil } ?? true
+		SheetFrame(title: "Account Group Settings", canConfirm: canConfirm, onConfirm: {
+			// A move or a collapse while the settings were open keeps its parent, position, and state.
+			guard let group, let opened, var current = model.ledger.group(groupID) else { return true }
+			current.takeSettings(from: group, opened: opened)
+			model.save(group: current)
 			return true
 		}) {
 			if let binding = Binding($group) {
 				Section {
-					TextField("Name", text: binding.name)
+					TextField("Name", text: binding.name, prompt: Text("Required"))
 					Toggle("Display balance in sidebar", isOn: binding.showSum)
 					Toggle("Group transactions by account", isOn: binding.groupsByAccount)
 				}
 			}
 		}
-		.onAppear { group = model.ledger.group(groupID) }
+		.keepsInput(group, of: .groupSettings(groupID))
+		.onAppear {
+			group = model.ledger.group(groupID)
+			// The stored group, also after the unlock: nothing writes it while the app is locked, so it is the group as
+			// the settings opened before the lock.
+			opened = group
+			// The input is optional: nil from `heldInput` means that nothing returns, and the group stays as loaded.
+			if let held: AccountGroup? = model.heldInput(for: .groupSettings(groupID)), let held { group = held }
+		}
 	}
 }
 
@@ -343,7 +458,11 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.onAppear { text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? "" }
+		.keepsInput(text, of: .comment(ids))
+		.onAppear {
+			text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? ""
+			if let held: String = model.heldInput(for: .comment(ids)) { text = held }
+		}
 	}
 }
 
@@ -362,6 +481,27 @@ struct TransactionSheet: View {
 	/// The suggestions for the name as it stands. Only a change of the name searches again, never a redraw.
 	@State private var suggestions: [Transaction] = []
 	@FocusState private var nameHasFocus: Bool
+
+	/// The text of the date fields as the user typed it, also while it is not a date yet.
+	@State private var dateText = ""
+	@State private var valueDateText = ""
+
+	/// What the lock keeps of the fields, and the account that a new transaction goes into.
+	struct Input: Hashable, Sendable {
+		var accountID: UUID?
+		var date: Day?
+		var dateText: String
+		var hasValueDate: Bool
+		var valueDate: Day?
+		var valueDateText: String
+		var draft: TransactionDraft
+		var comment: String
+	}
+
+	private var input: Input {
+		Input(accountID: account?.id, date: date, dateText: dateText, hasValueDate: hasValueDate, valueDate: valueDate,
+			valueDateText: valueDateText, draft: draft, comment: comment)
+	}
 
 	private var existing: Transaction? { transactionID.flatMap { model.ledger.row($0) } }
 	private var account: Account? { existing.flatMap { model.ledger.account($0.accountID) } ?? model.selectedAccount }
@@ -388,7 +528,7 @@ struct TransactionSheet: View {
 			}
 			if editable {
 				Section {
-					DateField(title: "Date", day: $date)
+					DateField(title: "Date", day: $date, typed: $dateText)
 					if existing != nil {
 						LabeledContent("Value date") {
 							HStack {
@@ -399,7 +539,7 @@ struct TransactionSheet: View {
 								.labelsHidden()
 								.accessibilityIdentifier("valuedate-switch")
 								if hasValueDate {
-									DateField(title: "Value date", day: $valueDate, identifier: "valuedate")
+									DateField(title: "Value date", day: $valueDate, identifier: "valuedate", typed: $valueDateText)
 										.labelsHidden()
 								}
 							}
@@ -410,7 +550,7 @@ struct TransactionSheet: View {
 						.textInputSuggestions(suggestions) { t in
 							Text(t.name).textInputCompletion(t.name)
 						}
-					TextField("Amount", text: $draft.amount, prompt: Text("-0,00"))
+					TextField("Amount", text: $draft.amount, prompt: Text(verbatim: "-" + Format.emptyAmount(account?.currency ?? "EUR")))
 						.multilineTextAlignment(.trailing)
 						.marksUnreadableAmount(draft.amount)
 						.monospacedDigit()
@@ -446,8 +586,19 @@ struct TransactionSheet: View {
 			}
 		}
 		.onChange(of: draft.amount) { problem = nil }
+		.keepsInput(input, of: .transaction(transactionID))
 		.onAppear {
 			load()
+			// A new transaction takes its input only in the account that it was started in.
+			if let held: Input = model.heldInput(for: .transaction(transactionID)), transactionID != nil || held.accountID == account?.id {
+				date = held.date
+				dateText = held.dateText
+				hasValueDate = held.hasValueDate
+				valueDate = held.valueDate
+				valueDateText = held.valueDateText
+				draft = held.draft
+				comment = held.comment
+			}
 			nameHasFocus = editable
 		}
 	}
@@ -458,10 +609,10 @@ struct TransactionSheet: View {
 			date = t.bookingDate
 			hasValueDate = t.valueDate != nil
 			valueDate = t.valueDate
-			draft = TransactionDraft(template: t)
+			draft = TransactionDraft(template: t, locale: .autoupdatingCurrent)
 			comment = t.comment ?? ""
 		} else if let account {
-			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection)
+			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection, locale: .autoupdatingCurrent)
 		}
 	}
 

@@ -13,10 +13,10 @@ public struct TransactionDraft: Hashable, Sendable {
 
 	/// The fields of `t`: the window for a new transaction repeats a selected one, and the window
 	/// for an existing one starts from its values. The amount keeps its sign and shows every decimal
-	/// place of its currency with a decimal comma, such as "-12,00".
-	public init(template t: Transaction) {
+	/// place of its currency with the decimal mark of `locale`, such as "-12,00" in Germany.
+	public init(template t: Transaction, locale: Locale) {
 		name = t.name
-		amount = AmountParser.editableText(t.amount, decimalMark: .comma)
+		amount = Format.editableAmount(t.amount, locale: locale)
 		purpose = t.purpose
 		categoryID = t.categoryID
 	}
@@ -91,9 +91,9 @@ extension Ledger {
 	/// What "Add Transaction..." in `account` starts from: the one selected row of the account, also a part of a split,
 	/// or an empty draft. A row in another currency gives no amount, because the window stores the amount in the
 	/// currency of the account and would change its value.
-	public func newTransactionDraft(in account: Account, selection: Set<UUID>) -> TransactionDraft {
+	public func newTransactionDraft(in account: Account, selection: Set<UUID>, locale: Locale) -> TransactionDraft {
 		guard selection.count == 1, let id = selection.first, let t = row(id), t.accountID == account.id else { return TransactionDraft() }
-		var draft = TransactionDraft(template: t)
+		var draft = TransactionDraft(template: t, locale: locale)
 		if t.currency != account.currency { draft.amount = "" }
 		return draft
 	}

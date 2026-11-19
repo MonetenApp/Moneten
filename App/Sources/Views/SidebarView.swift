@@ -8,44 +8,54 @@ struct SidebarView: View {
 	var body: some View {
 		let selection = Binding<SidebarSelection?>(get: { model.selection }, set: { model.navigate(to: $0) })
 		let amounts = model.ledger.sidebarAmounts(today: .today())
-		List(selection: selection) {
-			if !model.hasPassword {
-				Button {
-					model.sheet = .setPassword
-				} label: {
-					Label("No database password protects your data. Set one now.", systemImage: "exclamationmark.shield")
-						.font(.callout)
-						.foregroundStyle(.orange)
+		ScrollViewReader { proxy in
+			List(selection: selection) {
+				if !model.hasPassword {
+					Button {
+						model.sheet = .setPassword
+					} label: {
+						Label("No database password protects your data. Set one now.", systemImage: "exclamationmark.shield")
+							.font(.callout)
+							.foregroundStyle(.orange)
+					}
+					.buttonStyle(.plain)
 				}
-				.buttonStyle(.plain)
-			}
-			Section("Accounts") {
-				AccountTree(parent: nil)
-			}
-			if !model.savedSearches.isEmpty {
-				Section("Searches") {
-					ForEach(model.savedSearches) { SavedSearchRow(search: $0).tag(SidebarSelection.search($0.id)) }
+				Section("Accounts", isExpanded: Binding(get: { model.showsAccountsSection }, set: { model.showsAccountsSection = $0 })) {
+					AccountTree(parent: nil)
+				}
+				if !model.savedSearches.isEmpty {
+					Section("Searches") {
+						ForEach(model.savedSearches) { SavedSearchRow(search: $0).tag(SidebarSelection.search($0.id)) }
+					}
+				}
+				Section("Categories", isExpanded: Binding(get: { model.showsCategoriesSection }, set: { model.showsCategoriesSection = $0 })) {
+					CategoryTree(parent: nil, amounts: amounts)
+					if let d = model.ledger.defaultCategory {
+						CategoryRow(category: d, amount: amounts[d.id]).tag(SidebarSelection.category(d.id))
+					}
 				}
 			}
-			Section("Categories") {
-				CategoryTree(parent: nil, amounts: amounts)
-				if let d = model.ledger.defaultCategory {
-					CategoryRow(category: d, amount: amounts[d.id]).tag(SidebarSelection.category(d.id))
+			.listStyle(.sidebar)
+			// A new group at the end of a long section lies below the rows on screen, where the list builds no row and the
+			// name field never gets the focus. The rows of both trees have the ID of their group as their identity.
+			.onChange(of: model.namingRow) { _, row in
+				switch row {
+				case let .group(id), let .category(id): proxy.scrollTo(id)
+				default: break
 				}
 			}
-		}
-		.listStyle(.sidebar)
-		.safeAreaInset(edge: .bottom, spacing: 0) {
-			HStack(spacing: 4) {
-				AddMenuButton()
-				RefreshAllButton()
-				Spacer()
+			.safeAreaInset(edge: .bottom, spacing: 0) {
+				HStack(spacing: 4) {
+					AddMenuButton()
+					RefreshAllButton()
+					Spacer()
+				}
+				// The sidebar floats with corners of about 20 points. A round button of 24 points, 8 points
+				// from the bottom and the leading edge, sits concentric in the corner: 12 + 8 = 20.
+				.padding(.leading, 8)
+				.padding(.bottom, 8)
+				.padding(.top, 4)
 			}
-			// The sidebar floats with corners of about 20 points. A round button of 24 points, 8 points
-			// from the bottom and the leading edge, sits concentric in the corner: 12 + 8 = 20.
-			.padding(.leading, 8)
-			.padding(.bottom, 8)
-			.padding(.top, 4)
 		}
 	}
 }
@@ -58,10 +68,10 @@ struct AddMenuButton: View {
 	var body: some View {
 		Menu {
 			Button("Add account") { model.addAccount() }
-			Button("Add account group") { model.sheet = .newGroup }
+			Button("Add account group") { Task { await model.addGroup() } }
 			Divider()
-			Button("Add category") { model.sheet = .newCategory(isGroup: false) }
-			Button("Add category group") { model.sheet = .newCategory(isGroup: true) }
+			Button("Add category") { model.sheet = .newCategory() }
+			Button("Add category group") { Task { await model.addCategoryGroup() } }
 			Divider()
 			Button("Import from MoneyMoney...") { model.sheet = .migration }
 		} label: {
@@ -117,7 +127,7 @@ struct AccountTree: View {
 		ForEach(model.ledger.accountTree(in: parent)) { item in
 			switch item {
 			case let .group(group):
-				DisclosureGroup(isExpanded: Binding(get: { group.isExpanded }, set: { var g = group; g.isExpanded = $0; model.save(group: g) })) {
+				DisclosureGroup(isExpanded: Binding(get: { group.isExpanded }, set: { model.setExpanded(group: group.id, $0) })) {
 					AccountTree(parent: group.id)
 				} label: {
 					GroupRow(group: group).draggable(model.startDrag(treeItem: group.id))
@@ -143,7 +153,15 @@ struct GroupRow: View {
 
 	var body: some View {
 		HStack {
-			Label { Text(group.name).atLeastEllipsisWide() } icon: { Image(systemName: "folder") }
+			Label {
+				if model.namingRow == .group(group.id) {
+					SidebarNameField(row: .group(group.id), name: group.name)
+				} else {
+					Text(group.name).atLeastEllipsisWide()
+				}
+			} icon: {
+				Image(systemName: "folder")
+			}
 			// A collapsed group stands for its accounts and shows their markers.
 			let markers = group.isExpanded ? nil : model.ledger.markers(ofGroup: group.id)
 			if let markers, markers.newTransactions > 0 {
@@ -167,7 +185,7 @@ struct GroupRow: View {
 		.onDrop(of: [.monetenTreeItem], delegate: GroupDrop(model: model, group: group))
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: group.id) }
-			Button("Add Account Group") { model.sheet = .newGroup }
+			Button("Add Account Group") { Task { await model.addGroup() } }
 			Divider()
 			Button("Export Transactions...") { model.exportTransactions(of: .group(group.id)) }
 				.disabled(model.isTransferringTransactions)
@@ -217,7 +235,7 @@ struct AccountRow: View {
 		}
 		.contextMenu {
 			Button("Add Account...") { model.addAccount(group: account.groupID) }
-			Button("Add Account Group") { model.sheet = .newGroup }
+			Button("Add Account Group") { Task { await model.addGroup() } }
 			if account.takesManualTransactions {
 				Button("Add Transaction...") { model.navigate(to: .account(account.id)); model.sheet = .transaction(nil) }
 			}
@@ -226,7 +244,7 @@ struct AccountRow: View {
 				model.navigate(to: .account(account.id))
 				Task { await model.importFile(into: account.id) }
 			}
-			.disabled(model.isTransferringTransactions)
+			.disabled(!account.takesImportedTransactions || model.isTransferringTransactions)
 			Button("Export Transactions...") { model.exportTransactions(of: .account(account.id)) }
 				.disabled(model.isTransferringTransactions)
 			Divider()
@@ -265,7 +283,7 @@ struct CategoryTree: View {
 			if model.ledger.childCategories(of: category.id).isEmpty {
 				CategoryRow(category: category, amount: amounts[category.id]).draggable(model.startDrag(category: category.id)).tag(SidebarSelection.category(category.id))
 			} else {
-				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { var c = category; c.isExpanded = $0; model.save(category: c) })) {
+				DisclosureGroup(isExpanded: Binding(get: { category.isExpanded }, set: { model.setExpanded(category: category.id, $0) })) {
 					CategoryTree(parent: category.id, amounts: amounts)
 				} label: {
 					CategoryRow(category: category, amount: amounts[category.id]).draggable(model.startDrag(category: category.id))
@@ -290,7 +308,11 @@ struct CategoryRow: View {
 	var body: some View {
 		HStack {
 			Label {
-				Text(category.name)
+				if model.namingRow == .category(category.id) {
+					SidebarNameField(row: .category(category.id), name: category.name)
+				} else {
+					Text(category.name)
+				}
 			} icon: {
 				Image(systemName: CategorySymbols.name(of: category))
 					.foregroundStyle(CategoryColors.color(of: category, in: model.ledger))
@@ -311,13 +333,97 @@ struct CategoryRow: View {
 	}
 }
 
+/// The name of a new group, typed in its sidebar row. Return, and a move of the focus away from the row, store the
+/// name. Escape keeps the name the row had. A row that leaves the screen while it is in edit mode, such as when
+/// another new group takes the edit mode, stores the name as a click elsewhere does.
+///
+/// The sidebar can build a row more than once, and only one copy gets the focus. Only the copy that had the focus
+/// stores its text and ends edit mode, so that another copy, which still holds the name the row had, never stores
+/// that name over the typed one when it leaves the screen.
+struct SidebarNameField: View {
+	@Environment(AppModel.self) private var model
+	let row: SidebarSelection
+	@State private var text: String
+	@State private var ended = false
+	@State private var hadFocus = false
+	/// The parent of a category group whose typed name Return refused as taken, with nil for the top level.
+	@State private var taken: UUID?? = nil
+	/// Set between Return with a taken name and the focus coming back, so that the field does not end edit mode then.
+	@State private var keepsFocus = false
+	@FocusState private var focused: Bool
+
+	init(row: SidebarSelection, name: String) {
+		self.row = row
+		_text = State(initialValue: name)
+	}
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 2) {
+			TextField("Name", text: $text)
+				.labelsHidden()
+				.focused($focused)
+				.onSubmit(submit)
+				.onExitCommand { end(storing: false) }
+				.onChange(of: focused) { _, now in
+					if now { hadFocus = true; keepsFocus = false } else if !keepsFocus { end(storing: true) }
+				}
+				.onChange(of: text) { taken = nil }
+				.onDisappear { end(storing: true) }
+				// The row joins the list one update after the group, so the focus waits for it.
+				.onAppear { DispatchQueue.main.async { focused = true } }
+			if let parentID = taken {
+				SidebarNameTaken(parentID: parentID)
+			}
+		}
+	}
+
+	/// Return stores the name, unless another entry of the group has it: then the row stays in edit mode and says so.
+	private func submit() {
+		let check = model.takenName(row, typed: text)
+		guard check.taken else { return end(storing: true) }
+		taken = .some(check.parentID)
+		// Return can end the editing of the field. The focus comes back, and a later move of the focus ends edit mode again.
+		keepsFocus = true
+		DispatchQueue.main.async {
+			focused = true
+			DispatchQueue.main.async { keepsFocus = false }
+		}
+	}
+
+	private func end(storing: Bool) {
+		guard !ended, hadFocus else { return }
+		ended = true
+		model.endNaming(row, typed: storing ? text : nil)
+	}
+}
+
+/// The note under the name field of a new category group whose name another entry of its group has. A sidebar row has
+/// room for one line under the field, so the note is shorter than that of the sheet ("CategoryNameTaken").
+private struct SidebarNameTaken: View {
+	@Environment(AppModel.self) private var model
+	let parentID: UUID?
+
+	var body: some View {
+		Group {
+			if let group = parentID.flatMap(model.ledger.category) {
+				Text("Name taken in \(group.name).")
+			} else {
+				Text("Name taken at the top level.")
+			}
+		}
+		.font(.caption)
+		.foregroundStyle(Palette.red)
+		.lineLimit(1)
+	}
+}
+
 private struct CategoryContextMenu: View {
 	@Environment(AppModel.self) private var model
 	let category: Domain.Category
 
 	var body: some View {
-		Button("Add Category") { model.sheet = .newCategory(isGroup: false) }
-		Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }
+		Button("Add Category") { model.sheet = .newCategory() }
+		Button("Add Category Group") { Task { await model.addCategoryGroup() } }
 		Divider()
 		Button("Export Transactions...") { model.exportTransactions(of: .category(category.id)) }
 			.disabled(model.isTransferringTransactions)

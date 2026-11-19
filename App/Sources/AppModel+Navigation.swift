@@ -135,7 +135,11 @@ extension AppModel {
 		case let .group(id):
 			guard let g = ledger.group(id) else { return nil }
 			question.messageText = String(localized: "Are you sure you want to remove the account group \(g.name)?")
-			question.informativeText = String(localized: "The accounts and groups in it are kept and move to the top level.")
+			question.informativeText = if let parent = g.parentID.flatMap(ledger.group) {
+				String(localized: "The accounts and groups in it are kept with their transactions and move to the group \(parent.name).")
+			} else {
+				String(localized: "The accounts and groups in it are kept with their transactions and move to the top level.")
+			}
 		case let .category(id):
 			guard let c = ledger.category(id), !c.isDefault else { return nil }
 			question.messageText = String(localized: "Are you sure you want to remove the category \(c.name)?")
@@ -209,7 +213,7 @@ extension AppModel {
 	/// it, because a click can wait for a drawing before it selects the account (issue #151).
 	func importFile(into accountID: UUID? = nil) async {
 		guard sheet == nil, let account = accountID.flatMap({ ledger.account($0) }) ?? selectedAccount else { return }
-		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
+		guard account.takesImportedTransactions, !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		let panel = NSOpenPanel()
 		panel.title = String(localized: "Import Transactions")
 		panel.message = String(localized: "CSV, CAMT (camt.052, camt.053), and MT940 files are supported.")
@@ -224,8 +228,8 @@ extension AppModel {
 
 	/// A CSV file with the header row of a saved profile imports without the preview, unless `alwaysPreview` is set.
 	func importFiles(_ urls: [URL], into account: Account, alwaysPreview: Bool) async {
-		// One import runs at a time. A canceled one ends at its next row, line, or entry.
-		guard !isTransferringTransactions, alert == nil else { return NSSound.beep() }
+		// One import runs at a time. A canceled one ends at its next row, line, or entry. A portfolio takes no file.
+		guard account.takesImportedTransactions, !isTransferringTransactions, alert == nil else { return NSSound.beep() }
 		guard sheet == nil else { return NSSound.beep() }
 		guard let importStore = store else { return }
 		let run = FileImport(names: urls.map(\.lastPathComponent))
@@ -335,8 +339,13 @@ extension AppModel {
 					let name = file.name, parsed = file.parsed, into = file.into, isNew = file.isNew
 					if isNew { save(account: into) }
 					// A new account that could not be saved, or one that the user deleted during the import.
-					guard ledger.account(into.id) != nil else {
+					guard let current = ledger.account(into.id) else {
 						problems.append(isNew ? String(localized: "\(name): The account \"\(into.name)\" could not be saved.") : String(localized: "\(name): The account \"\(into.name)\" does not exist."))
+						continue
+					}
+					// The last check of the account that the file goes into, whatever path chose it.
+					guard current.takesImportedTransactions else {
+						problems.append(String(localized: "\(name): The portfolio \"\(into.name)\" takes no transactions from a file."))
 						continue
 					}
 					do {

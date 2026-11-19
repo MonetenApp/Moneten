@@ -52,10 +52,6 @@ enum SidebarSelection: Hashable {
 	}
 }
 
-enum ViewMode: String, CaseIterable {
-	case list, barChart, pieChart
-}
-
 enum BalanceMode: String {
 	case daily, monthlyAverage
 }
@@ -64,8 +60,8 @@ enum BalanceMode: String {
 /// dates of a custom period, the ends of an amount range, and the IDs of a category and an account.
 enum Preference {
 	// The unlock settings (`Vault.PasswordEntry`) and the lock settings (`LockSettings`) live in the database: any
-	// program of the user can write the settings file, and every data folder shares it.
-	static let viewMode = "viewMode"
+	// program of the user can write the settings file, and every data folder shares it. The view modes keep their
+	// keys in `ViewModes.key(of:)`.
 	/// The selected sidebar row, which the next launch selects again.
 	static let selectedRow = "selectedSidebarRow"
 	static let balanceMode = "balanceMode"
@@ -203,6 +199,14 @@ final class AppModel {
 	/// that opening an account without new transactions redraws no row.
 	@ObservationIgnored private var visitedAccount: UUID?
 
+	/// The sidebar row of a new group whose name the user types, until Return, Escape, or a move of the focus away
+	/// from the row ends edit mode.
+	var namingRow: SidebarSelection?
+	/// Whether the sections "Accounts" and "Categories" of the sidebar show their rows. A new group opens its section,
+	/// so that its row in edit mode is on screen.
+	var showsAccountsSection = true
+	var showsCategoriesSection = true
+
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
@@ -308,8 +312,22 @@ final class AppModel {
 		choose(period: saved.period)
 		filter = saved.filter(in: ledger)
 	}
-	var viewMode: ViewMode = ViewMode(rawValue: UserDefaults.standard.string(forKey: Preference.viewMode) ?? "") ?? .barChart {
-		didSet { UserDefaults.standard.set(viewMode.rawValue, forKey: Preference.viewMode) }
+	#if DEBUG || PERF_HARNESS
+	/// Set by the debug harness: the next `save(account:)` fails, as a full disk would.
+	@ObservationIgnored var failsNextAccountSave = false
+	#endif
+	private var viewModes = ViewModes(stored: UserDefaults.standard.string(forKey:), store: { UserDefaults.standard.set($1, forKey: $0) })
+	/// The view mode of the selected view. Account views and category views each keep their own.
+	var viewMode: ViewMode {
+		get { viewModes[viewKind] }
+		set { viewModes.set(newValue, for: viewKind) { UserDefaults.standard.set($1, forKey: $0) } }
+	}
+	/// A view without a selection draws no chart, so its mode is that of the account views.
+	private var viewKind: ViewModes.Kind {
+		switch selection {
+		case .category?, .search?: .categories
+		case .account?, .group?, nil: .accounts
+		}
 	}
 	var balanceMode: BalanceMode = BalanceMode(rawValue: UserDefaults.standard.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
 		didSet { UserDefaults.standard.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
@@ -344,6 +362,19 @@ final class AppModel {
 	/// The rule that "Create Rule" puts into the settings of a category. The settings take it when they open,
 	/// and it is saved only when the user confirms them.
 	@ObservationIgnored var ruleDraft: (categoryID: UUID, rule: String)?
+	/// The input of the open sheet, which the lock keeps in memory so that the sheet shows again after the unlock.
+	/// The input belongs to the database file that was open at the lock (`DatabaseStamp`).
+	@ObservationIgnored var heldSheet = HeldSheet<SheetKind, any Sendable, DatabaseStamp>()
+	/// True while an unlock with the password opens the database, the only open that can give the held sheet back.
+	@ObservationIgnored private var isUnlocking = false
+	/// The sheet that the unlock gives back, from the unlock until `showHeldSheet()` opens it. The alerts wait for it.
+	@ObservationIgnored var returningSheet: SheetKind?
+	#if DEBUG || PERF_HARNESS
+	/// The last input that a sheet wrote while the app was unlocked, and the one that "sheetinput mark" remembered,
+	/// for the command "sheetinput" of the debug harness.
+	@ObservationIgnored var debugSheetInput: AnyHashable?
+	@ObservationIgnored var debugSheetInputMark: AnyHashable?
+	#endif
 
 	/// The alerts of the main window, which show once no sheet is on it.
 	@ObservationIgnored let alerts = SheetAlerts(window: "main")
@@ -359,6 +390,8 @@ final class AppModel {
 		didSet {
 			guard sheet != oldValue else { return }
 			Trail.log("sheet \(sheet?.trailName ?? "none")")
+			// A sheet that the unlock gave back takes its input until it closes.
+			if let oldValue { heldSheet.close(oldValue) }
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
@@ -441,7 +474,7 @@ final class AppModel {
 		installActivityMonitor()
 		installRefreshTriggers()
 		showDialogsInMainWindow()
-		alerts.hasSheet = { [weak self] in self?.sheet != nil }
+		alerts.hasSheet = { [weak self] in self?.sheet != nil || self?.returningSheet != nil }
 		updater.isBusy = { [weak self] in self.map { $0.sync.isRefreshing || $0.sync.broker.current != nil } ?? false }
 		// A window that opens while SwiftUI builds the scenes stops the app, so the checks run after it.
 		DispatchQueue.main.async { [updater] in LaunchChecks.run(updater: updater) }
@@ -477,6 +510,8 @@ final class AppModel {
 
 	private func startOpening() async {
 		guard opening == nil else { return }
+		// A launch or "Try Again" may open another database than the one that was locked.
+		dropHeldSheet()
 		phase = .starting
 		// A second running copy of the app, such as one in the Downloads folder, opens nothing in this data folder.
 		if folderLock == nil {
@@ -576,6 +611,7 @@ final class AppModel {
 		guard folderLock != nil else { return }
 		do {
 			let store = try vault.create(password: password, starterCategories: StarterCategories.make(language: starterLanguage))
+			dropHeldSheet()
 			// `create` removed the entries of a database that was here before, so every unlock setting is off.
 			unlockSettings = []
 			hasPassword = password != nil
@@ -600,6 +636,9 @@ final class AppModel {
 	@discardableResult
 	func unlock(password: String, offered: Set<Vault.PasswordEntry> = []) async -> UnlockResult {
 		guard opening == nil, phase == .locked else { return phase == .unlocked ? .unlocked : .busy }
+		// Only an unlock of the file that was locked gets the held sheet back (`open`).
+		isUnlocking = true
+		defer { isUnlocking = false }
 		do {
 			try await openAway { vault, upgrading in
 				offered.isEmpty
@@ -614,6 +653,7 @@ final class AppModel {
 		} catch is OpenOvertaken {
 			return phase == .unlocked ? .unlocked : .busy
 		} catch {
+			dropHeldSheet()
 			phase = .failed(vault.explanation(of: error))
 			return .failed
 		}
@@ -674,6 +714,13 @@ final class AppModel {
 				?? firstSidebarRow
 		}
 		lastActivity = Date()
+		// The held sheet returns only when this open is the unlock of the database file that was locked. The stamp is
+		// taken now that the store is open, so it names the file that the store reads, also when another file took the
+		// place of the database between the start of the unlock and the open. A launch, a new database, and a file
+		// that changed while the app was locked drop it. A change after this stamp is a change on disk of the open
+		// store, which closes the database and drops the input (`checkDisk`).
+		returningSheet = heldSheet.unlock(database: isUnlocking ? vault.databaseStamp() : nil)
+		isUnlocking = false
 		phase = .unlocked
 		watchDisk()
 		extensions.open(store)
@@ -724,7 +771,21 @@ final class AppModel {
 		accesses = [:]
 		bankNotices = BankNotices()
 		bankHistories = [:]
+		// Only the lock keeps the input of the open sheet, for the file as the store left it. Any other close ends
+		// this database for good. The held input is not observed, so this changes no view in the drawing that shows
+		// the lock screen (issue #151).
+		if next == .locked {
+			heldSheet.lock(closing: sheet, database: vault.databaseStamp())
+			returningSheet = nil
+			#if DEBUG || PERF_HARNESS
+			debugSheetInput = nil
+			#endif
+		} else {
+			dropHeldSheet()
+		}
 		sheet = nil
+		// A name half typed into a new group is lost, and the group keeps the name it has in the database.
+		namingRow = nil
 		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
 		// table never goes in the drawing that changes its rows (issue #151).
@@ -1249,6 +1310,12 @@ final class AppModel {
 		guard let store else { return }
 		let wasClosed = ledger.account(account.id)?.isClosed
 		do {
+			#if DEBUG || PERF_HARNESS
+			if failsNextAccountSave {
+				failsNextAccountSave = false
+				throw CocoaError(.fileWriteOutOfSpace)
+			}
+			#endif
 			var saved = account
 			var entry: Transaction?
 			var removed: UUID?
@@ -1282,9 +1349,10 @@ final class AppModel {
 
 	/// Opens the "Add Account" assistant, or with `purpose` "Look for New Accounts..." or "Edit Login
 	/// Data...". The new accounts go into `group`.
-	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add) {
+	/// `connecting` is the migrated account whose "Connect..." opened the assistant.
+	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add, connecting: Account? = nil) {
 		setup?.cancel()
-		setup = AccountSetup(model: self, groupID: group, purpose: purpose)
+		setup = AccountSetup(model: self, groupID: group, purpose: purpose, connecting: connecting)
 		sheet = .newAccount
 	}
 
@@ -1372,17 +1440,28 @@ final class AppModel {
 		}
 	}
 
-	func addGroup(name: String) async {
-		guard let store else { return }
-		let g = AccountGroup(name: name, position: ledger.nextTreePosition(in: nil))
-		do {
-			try store.save(g)
-			await replacingTable {
-				ledger.upsert(g)
-				selection = .group(g.id)
+	/// "Add Account Group" stores a new group at the end of the section "Accounts" and puts its row in edit mode for
+	/// the name. A `name` gives the group that name and no edit mode, for the seeded data of the debug builds.
+	func addGroup(name: String? = nil) async {
+		// The name and the place come from the ledger after the wait for the table, without a suspension up to the
+		// upsert, so that a second "Add Account Group" during the wait sees the first group and takes "New group 2".
+		let added: AccountGroup? = await replacingTable {
+			guard let store else { return nil }
+			var g = ledger.newAccountGroup()
+			if let name { g.name = name }
+			do {
+				try store.save(g)
+			} catch {
+				alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+				return nil
 			}
-		} catch {
-			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+			ledger.upsert(g)
+			selection = .group(g.id)
+			return g
+		}
+		if let added, name == nil {
+			showsAccountsSection = true
+			namingRow = .group(added.id)
 		}
 	}
 
@@ -1394,6 +1473,14 @@ final class AppModel {
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
+	}
+
+	/// The disclosure triangle of a group row. The row can call it with the group of an earlier drawing, so the group
+	/// comes from the ledger: a copy from the drawing before a rename in the sidebar would store the old name again.
+	func setExpanded(group id: UUID, _ expanded: Bool) {
+		guard var g = ledger.group(id), g.isExpanded != expanded else { return }
+		g.isExpanded = expanded
+		save(group: g)
 	}
 
 	/// "Move to Group" and a drop on a group row put the account at the end of the group.
@@ -1463,11 +1550,11 @@ final class AppModel {
 	func remove(group id: UUID) async {
 		guard let store else { return }
 		do {
-			try store.deleteGroup(id)
+			// The accounts and subgroups take the place of the group in the group above it ("Remove an account group").
+			let change = ledger.removal(ofGroup: id)
+			try store.deleteGroup(id, moving: change)
 			await replacingTable {
-				let groups = ledger.groups.filter { $0.id != id }.map { g -> AccountGroup in var g = g; if g.parentID == id { g.parentID = nil }; return g }
-				let accounts = ledger.accounts.map { a -> Account in var a = a; if a.groupID == id { a.groupID = nil }; return a }
-				ledger.replace(groups: groups, accounts: accounts)
+				ledger.remove(group: id, moving: change)
 				filter.dropMissing(in: ledger)
 				if selection == .group(id) { selection = nil }
 			}
@@ -1597,6 +1684,13 @@ final class AppModel {
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
 		guard !isStoringMigration, let store else { return }
+		#if DEBUG || PERF_HARNESS
+		// A run of the debug harness reaches only the made-up bank and local services, also from a button that no command
+		// checks, such as "Refresh All Accounts" in the popover of the menu bar icon (issue #498).
+		if let harness = DebugHarness.shared, !harness.mayRefresh(plan) {
+			return harness.log("refresh refused", ("attended", .flag(attended)))
+		}
+		#endif
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {
@@ -1656,14 +1750,72 @@ final class AppModel {
 
 	// MARK: Categories
 
-	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) async {
+	/// `name` is the accepted name of `Ledger.checkCategoryName(_:in:renaming:)`, which the sheet checks before it calls this.
+	func addCategory(name: String, parentID: UUID?, assigning ids: Set<UUID> = []) async {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
-		let c = Domain.Category(parentID: parentID, position: position, name: name, isGroup: isGroup)
+		let c = Domain.Category(parentID: parentID, position: position, name: name)
 		await replacingTable {
 			save(category: c)
 			if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
 			selection = .category(c.id)
 		}
+	}
+
+	/// The disclosure triangle of a category group, with the category from the ledger, as in `setExpanded(group:_:)`.
+	func setExpanded(category id: UUID, _ expanded: Bool) {
+		guard var c = ledger.category(id), c.isExpanded != expanded else { return }
+		c.isExpanded = expanded
+		save(category: c)
+	}
+
+	/// "Add Category Group" stores a new group beside the selection and puts its row in edit mode for the name.
+	/// A collapsed group that gets it expands, so that the row is on screen.
+	func addCategoryGroup() async {
+		// The selection of the command, read before the wait, in which an earlier "Add Category Group" selects its group.
+		let selected: UUID? = if case let .category(id) = selection { id } else { nil }
+		// The name and the place come from the ledger after the wait, as in `addGroup(name:)`.
+		let added: Domain.Category? = await replacingTable {
+			let c = ledger.newCategoryGroup(selected: selected)
+			save(category: c)
+			guard ledger.category(c.id) != nil else { return nil }
+			if let parentID = c.parentID, var parent = ledger.category(parentID), !parent.isExpanded {
+				parent.isExpanded = true
+				save(category: parent)
+			}
+			selection = .category(c.id)
+			return c
+		}
+		if let added {
+			showsCategoriesSection = true
+			namingRow = .category(added.id)
+		}
+	}
+
+	/// Ends edit mode of the row and stores the typed name. A nil `typed`, from Escape, keeps the name the row had,
+	/// and so do a name that is empty or only spaces and the same name again.
+	func endNaming(_ row: SidebarSelection, typed: String?) {
+		if namingRow == row { namingRow = nil }
+		guard let typed else { return }
+		switch row {
+		case let .group(id):
+			guard var g = ledger.group(id), let name = GroupName.edited(typed, keeping: g.name) else { return }
+			g.name = name
+			save(group: g)
+		case let .category(id):
+			// A name that another entry of the group has keeps the old name, also when the focus leaves the row with it.
+			guard var c = ledger.category(id), let name = GroupName.edited(typed, keeping: c.name),
+				ledger.checkCategoryName(name, in: c.parentID, renaming: id) != .taken else { return }
+			c.name = name
+			save(category: c)
+		default: break
+		}
+	}
+
+	/// Whether Return keeps the row in edit mode: the typed name of a category group that another entry of its group has
+	/// ("Name of a category"). The parent of the group, for the note under the field, or nil for the top level.
+	func takenName(_ row: SidebarSelection, typed: String) -> (taken: Bool, parentID: UUID?) {
+		guard case let .category(id) = row, let c = ledger.category(id) else { return (false, nil) }
+		return (ledger.checkCategoryName(typed, in: c.parentID, renaming: id) == .taken, c.parentID)
 	}
 
 	func save(category: Domain.Category) {
@@ -1988,9 +2140,8 @@ struct AlertMessage: Identifiable {
 
 enum SheetKind: Identifiable, Equatable {
 	case newAccount
-	case newGroup
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
-	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
+	case newCategory(assigning: Set<UUID> = [])
 	/// The category picker of ⌘K for these transactions.
 	/// `accounts` are those of the transactions, looked up once when the picker opens.
 	case assignCategory(Set<UUID>, accounts: Set<UUID>)

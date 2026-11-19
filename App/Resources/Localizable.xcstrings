@@ -618,6 +618,16 @@
         }
       }
     },
+    "%@: The portfolio \"%@\" takes no transactions from a file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: Das Depot „%2$@“ übernimmt keine Umsätze aus einer Datei."
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -967,26 +977,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "+ %lld weitere"
-          }
-        }
-      }
-    },
-    "-0,00" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "-0,00"
-          }
-        }
-      }
-    },
-    "0,00" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "0,00"
           }
         }
       }
@@ -1874,12 +1864,102 @@
         }
       }
     },
-    "Already present and skipped: %lld accounts, %@ transactions." : {
+    "Already present and skipped: %lld accounts, %lld transactions." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bereits vorhanden und übersprungen: %1$lld Konten, %2$@ Umsätze."
+            "value" : "Bereits vorhanden und übersprungen: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konto"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konten"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsatz"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsätze"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already present and skipped: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg account"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg accounts"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transaction"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transactions"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -2654,16 +2734,6 @@
         }
       }
     },
-    "Calibrate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kalibrieren"
-          }
-        }
-      }
-    },
     "Calibrate %@" : {
       "localizations" : {
         "de" : {
@@ -3165,6 +3235,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden mit"
+          }
+        }
+      }
+    },
+    "Connect..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden..."
           }
         }
       }
@@ -4446,6 +4526,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Datenbankpasswort eingeben"
+          }
+        }
+      }
+    },
+    "Enter the correct balance at the end of today, and the initial balance changes by the difference" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den richtigen Saldo am Ende des heutigen Tages eingeben, und der Anfangssaldo ändert sich um die Differenz"
           }
         }
       }
@@ -6069,16 +6159,6 @@
         }
       }
     },
-    "Make the booked transactions meet the balance of the bank" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gebuchten Umsätze an den Saldo der Bank anpassen"
-          }
-        }
-      }
-    },
     "Mandate reference" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -6779,6 +6859,26 @@
         }
       }
     },
+    "Name taken at the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name auf oberster Ebene vergeben."
+          }
+        }
+      }
+    },
+    "Name taken in %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Name in %@ vergeben."
+          }
+        }
+      }
+    },
     "Name, IBAN, or Bankleitzahl" : {
       "localizations" : {
         "de" : {
@@ -6840,6 +6940,17 @@
         }
       }
     },
+    "New group" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Gruppe"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "New hosts it contacts:" : {
       "localizations" : {
         "de" : {
@@ -6886,6 +6997,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Neuer Umsatz"
+          }
+        }
+      }
+    },
+    "Newest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuester Umsatz"
           }
         }
       }
@@ -7446,6 +7567,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ältere Umsätze fehlen möglicherweise. Wählen Sie „Konto aktualisieren (erzwungen)“ mit der Wahltaste, um sie abzurufen."
+          }
+        }
+      }
+    },
+    "Oldest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ältester Umsatz"
           }
         }
       }
@@ -9946,12 +10077,22 @@
         }
       }
     },
-    "The accounts and groups in it are kept and move to the top level." : {
+    "The accounts and groups in it are kept with their transactions and move to the group %@." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Konten und Gruppen darin bleiben erhalten und rücken auf die oberste Ebene."
+            "value" : "Die Konten und Gruppen darin bleiben mit ihren Umsätzen erhalten und rücken in die Gruppe %@."
+          }
+        }
+      }
+    },
+    "The accounts and groups in it are kept with their transactions and move to the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Konten und Gruppen darin bleiben mit ihren Umsätzen erhalten und rücken auf die oberste Ebene."
           }
         }
       }
@@ -12630,6 +12771,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dieser Mac hat keinen Touch ID-Sensor."
+          }
+        }
+      }
+    },
+    "This name is taken at the top level." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Name ist auf der obersten Ebene bereits vergeben."
+          }
+        }
+      }
+    },
+    "This name is taken in the group %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Name ist in der Gruppe %@ bereits vergeben."
           }
         }
       }

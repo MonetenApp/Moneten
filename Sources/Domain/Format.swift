@@ -12,8 +12,31 @@ public enum Format {
 		return d.noon.formatted(style)
 	}
 
-	/// An amount without its currency, such as "−42,50", for a list in one currency: the marks of the region and the
-	/// decimal places of the currency.
+	/// An amount with its currency in the number format of `locale`, such as "−42,50 €" in Germany and "−€42.50" in the
+	/// United States. Every amount shows its currency, also a row of a list in the currency of its view. The minus sign
+	/// is U+2212, as in MoneyMoney.
+	public static func money(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		minus(m.decimal.formatted(.currency(code: m.currency).locale(locale)))
+	}
+
+	/// One amount for each currency, never added up, such as the sum of a group with euro and dollar accounts.
+	public static func sums(_ s: MoneySums, locale: Locale = .autoupdatingCurrent) -> String {
+		sums(s.amounts, locale: locale)
+	}
+
+	public static func sums(_ amounts: [Money], locale: Locale = .autoupdatingCurrent) -> String {
+		amounts.map { money($0, locale: locale) }.joined(separator: "  ")
+	}
+
+	/// The text of an existing amount in an amount field, such as "-89,00" in Germany and "-89.00" in the United States:
+	/// the decimal mark of `locale`, no thousands separators, and every decimal place of the currency, so that
+	/// `AmountParser` reads it back unchanged in either region.
+	public static func editableAmount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
+		AmountParser.editableText(m, decimalMark: DecimalMark(region: locale))
+	}
+
+	/// An amount without its currency, such as "−42,50": the marks of the region and the decimal places of the
+	/// currency. `foreignAmount` adds the code to it.
 	public static func amount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
 		minus(m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces))))
 	}

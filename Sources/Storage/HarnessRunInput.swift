@@ -1,21 +1,8 @@
-/// The rules for the input of the debug harness commands of the release checks that click, type made-up rows, or read a
-/// day. The harness runs in a Debug or Perf build without a sandbox, so a click in a save panel would write outside the
-/// throwaway folders, and a command must refuse a value that it would otherwise bend into another one. The rules live
-/// here so that a test checks them, and the note on Release builds of `HarnessRun` applies to them too: they hold no
-/// name of a file.
+/// The rules for the input of the debug harness commands of the release checks that type made-up rows or read a number
+/// of days. A command must refuse a value that it would otherwise bend into another one. `HarnessRun.mayClick` holds the
+/// rule of their clicks. The rules live here so that a test checks them, and the note on Release builds of `HarnessRun`
+/// applies to them too: they hold no name of a file.
 extension HarnessRun {
-	/// Whether a command of the release checks may click the control `title` on `surface`. A save or open panel takes
-	/// only what `mayPress` lets the harness press there, its "Cancel" in the language of the run, so a panel never
-	/// writes or reads a file. A bank dialog and the surfaces before the unlock take no click of these commands. Any
-	/// other surface takes only a title of `allowed`, compared in full, never by prefix.
-	public static func mayClick(_ title: String, allowed: Set<String>, on surface: Surface, localized: (String) -> String) -> Bool {
-		switch surface {
-		case .filePanel: mayPress(title, isSwitch: false, on: .filePanel, localized: localized)
-		case .other: allowed.contains(title)
-		case .startWindow, .startAlert, .passwordSheet, .bankDialog: false
-		}
-	}
-
 	/// The keys of one made-up row of "addrow" and the check of each value.
 	static let rowKeys: [String: @Sendable (String) -> Bool] = {
 		let text: @Sendable (String) -> Bool = { !$0.isEmpty && $0.count <= 140 }
@@ -23,7 +10,7 @@ extension HarnessRun {
 		let amount: @Sendable (String) -> Bool = { Int64($0).map { $0.magnitude <= maxMinorUnits.magnitude } ?? false }
 		return ["name": text, "purpose": text, "comment": text, "iban": text, "booking": text, "reference": text, "mandate": text,
 			"creditor": text, "id": text, "amount": amount, "balance": amount, "currency": isCurrencyCode,
-			"days": { day($0) != nil }, "balanceday": { day($0) != nil }, "from": { day($0) != nil },
+			"days": { daysAgo($0) != nil }, "balanceday": { daysAgo($0) != nil }, "from": { daysAgo($0) != nil },
 			"count": { Int($0).map { (0...100_000).contains($0) } ?? false },
 			"pending": flag, "failed": flag, "complete": flag, "older": flag, "manual": flag,
 			"via": { $0 == "refresh" }, "rows": { $0 == "none" }, "stored": flag, "category": text]
@@ -46,7 +33,7 @@ extension HarnessRun {
 	}
 
 	/// A number of days before today from 0 to 100 years, or nil for any other text.
-	public static func day(_ text: String) -> Int? {
+	public static func daysAgo(_ text: String) -> Int? {
 		Int(text).flatMap { (0...36_500).contains($0) ? $0 : nil }
 	}
 

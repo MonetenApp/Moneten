@@ -434,6 +434,12 @@ final class ExtensionLibrary {
 		records[id] != nil
 	}
 
+	/// Whether `name` belongs to the catalog: installed from it or listed in its index. The debug harness trusts a file
+	/// extension only under another name, because a refresh runs the installed package of a catalog name in place of the file.
+	func isCatalogName(_ name: String) -> Bool {
+		isCatalog(name) || index?.entry(name) != nil
+	}
+
 	private func isCatalog(_ name: String) -> Bool {
 		switch records[name] {
 		case .catalog?, .unreadableCatalog?: true
