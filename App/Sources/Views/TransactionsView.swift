@@ -524,7 +524,7 @@ struct TransactionTable: View {
 			}
 			// The table starts the first cell 6 points from the edge of the row. With the gap of 17
 			// points, the name then starts 118 points from the edge, as in MoneyMoney.
-			.width(95)
+			.width(DateCell.columnWidth)
 			.customizationID("date")
 			// A group or category view names the account of a selected row.
 			TableColumn("Name / Purpose") { (t: Transaction) in
@@ -605,7 +605,11 @@ struct TransactionTable: View {
 
 	/// The rows of each account in the order of the sidebar with their headings, or nil when the view is not grouped.
 	private var grouping: GroupedTransactions? {
-		guard groupedByAccount, case let .group(id) = key.selection else { return nil }
+		guard groupedByAccount, case let .group(id) = key.selection else {
+			// The option can go while the view stays, and the copy of up to 50,000 rows goes with it.
+			grouped.forget()
+			return nil
+		}
 		return grouped.rows(rows, groupedBy: orderedAccounts(in: id))
 	}
 
@@ -653,6 +657,13 @@ final class GroupedRows {
 		}
 		return grouped
 	}
+
+	func forget() {
+		guard !source.isEmpty || !accounts.isEmpty else { return }
+		source = []
+		accounts = []
+		grouped = GroupedTransactions([], groupedBy: [])
+	}
 }
 
 /// A cell of the first row of an account under "Group transactions by account", with the heading of the account above
@@ -678,13 +689,18 @@ struct AccountHeading<Content: View>: View {
 						.frame(maxWidth: .infinity)
 						.frame(height: 20)
 						.overlay(alignment: .leading) {
-							if column == .first {
-								// Wider than the column, as an overlay, so a long name is not cut at the width of the date.
+							if column == .middle {
+								// The name starts at the edge of the date column, as the heading of a section did, and runs to
+								// the end of the name column. It stands in this column and not in the first one, whose part of
+								// the heading this column's background would cover after the width of the date (#526).
 								Text(heading.account.name)
 									.font(.system(size: 11, weight: .semibold))
 									.foregroundStyle(.secondary)
 									.lineLimit(1)
-									.fixedSize()
+									.truncationMode(.tail)
+									.frame(maxWidth: .infinity, alignment: .leading)
+									.padding(.leading, -(DateCell.columnWidth + 2 * RowChrome.halfGap))
+									.help(heading.account.name)
 									.accessibilityAddTraits(.isHeader)
 							}
 						}
@@ -848,6 +864,9 @@ struct DateCell: View {
 				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model).padding(.leading, -DateCell.cellInset) }
 		}
 	}
+
+	/// The width of the date column. The heading of a grouped account starts this far and the gap before the name column.
+	static let columnWidth: CGFloat = 95
 
 	/// The distance from the edge of the row to the first cell. The ribbon starts at the edge.
 	static let cellInset: CGFloat = 6
@@ -1115,7 +1134,7 @@ private struct RowReveal: View {
 		let row = model.revealedRow.flatMap { $0.key == key ? $0 : nil }
 		// The position is looked up by the ID on each turn of the wait, so `model.rows(for:)` runs up to about 25 times
 		// for one request. A refresh can move the row while the table waits, and the user can select another row; then
-		// there is nothing to reveal. "Go to" opens an account or a category, whose table has no section headings, so
+		// there is nothing to reveal. "Go to" opens an account or a category, whose table is never grouped by account, so
 		// the position in the rows is the row of the table.
 		TableScroller(request: row?.request) { [model, key] in
 			guard let r = row, model.selectedTransactions == [r.id] else { return nil }

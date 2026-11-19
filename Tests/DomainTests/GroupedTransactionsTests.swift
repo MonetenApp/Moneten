@@ -27,7 +27,17 @@ struct GroupedTransactionsTests {
 		#expect(grouped.headings[rows[0].id]?.isFirst == false)
 	}
 
-	@Test("The rows of an account that is not in the list of accounts are not shown")
+	@Test("An account without rows before Giro leaves the heading Giro the first")
+	func emptyAccountFirst() {
+		let rows = [row(savings, day: 20), row(giro, day: 19)]
+		let grouped = GroupedTransactions(rows, groupedBy: [card, giro, savings])
+
+		#expect(grouped.headings[rows[1].id]?.account.name == "Giro")
+		#expect(grouped.headings[rows[1].id]?.isFirst == true)
+		#expect(grouped.headings[rows[0].id]?.isFirst == false)
+	}
+
+		@Test("The rows of an account that is not in the list of accounts are not shown")
 	func rowsOfAnotherAccount() {
 		let rows = [row(card, day: 3), row(giro, day: 2)]
 		let grouped = GroupedTransactions(rows, groupedBy: [giro])
