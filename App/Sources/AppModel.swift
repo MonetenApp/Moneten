@@ -1580,11 +1580,26 @@ final class AppModel {
 	/// that ask the bank for the full history. Offline the accounts keep their last state, and the app says
 	/// why nothing happens.
 	func refresh(_ scope: RefreshScope, enforced: Bool = false) {
+		// Before the network, because a connection would not help: the accounts need a bank access first.
+		if let offer = ledger.connectOffer(scope, selected: selectedAccount?.id) { return offerConnect(offer) }
 		guard autoRefresh.isOnline else {
 			alert = AlertMessage(title: SyncFailure.offline.message, message: String(localized: "Connect this Mac to the Internet and try again."))
 			return
 		}
 		refresh(ledger.refreshAccounts(scope), enforced: enforced)
+	}
+
+	/// The alert of a refresh command that found only accounts without a bank access, with "Connect..." as in their header.
+	private func offerConnect(_ offer: ConnectOffer) {
+		let account = offer.account
+		alert = AlertMessage(
+			title: offer.count == 1 ? String(localized: "“\(account.name)” is not connected to a bank yet.") : String(localized: "The accounts are not connected to a bank yet."),
+			message: offer.count == 1 ? String(localized: "An account without a bank access cannot be refreshed. Connect sets up the access to its bank.")
+				: String(localized: "An account without a bank access cannot be refreshed. Connect sets up the access for “\(account.name)”, and the assistant offers the other accounts of the same bank."),
+			action: AlertAction(title: String(localized: "Connect...")) { [weak self] in
+				guard let self, let current = ledger.account(account.id), ledger.connectOffer(.account(current.id), selected: current.id) != nil else { return }
+				addAccount(group: current.groupID, connecting: current)
+			})
 	}
 
 	/// "Cancel Refresh". The lock cancels too, and then the accounts stay due for the unlock.
@@ -1676,8 +1691,9 @@ final class AppModel {
 		navigate(to: .account(first.id))
 	}
 
+	/// A command that would only offer "Connect..." is enabled too, so that it says why it cannot refresh.
 	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !isStoringMigration && !ledger.refreshAccounts(scope).isEmpty
+		phase == .unlocked && !isStoringMigration && (!ledger.refreshAccounts(scope).isEmpty || ledger.connectOffer(scope, selected: nil) != nil)
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the
@@ -2136,6 +2152,14 @@ struct AlertMessage: Identifiable {
 	let id = UUID()
 	var title: String
 	var message: String
+	/// A button before "Cancel", such as "Connect..." of a refresh without a bank access. Without it the alert has only OK.
+	var action: AlertAction?
+}
+
+/// The button of an alert that does something. It runs once the alert has slid out of the window.
+struct AlertAction {
+	var title: String
+	var run: @MainActor () -> Void
 }
 
 enum SheetKind: Identifiable, Equatable {

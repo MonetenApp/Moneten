@@ -76,20 +76,16 @@ struct HeaderView: View {
 					HStack(spacing: 8) {
 						if let iban = account.iban { Text(iban.formatted) }
 						switch account.source {
+						// An open account shows the notice below. The assistant leaves a closed account as it is, so it has no offer.
 						case .migrated:
-							Text("Taken over from MoneyMoney. Not connected to a bank yet.")
-							// The assistant finds the account at its bank and offers to connect it. It leaves a closed account
-							// as it is, so a closed account has no offer.
-							if !account.isClosed {
-								Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
-									.controlSize(.small)
-							}
+							Text(account.isClosed ? "Taken over from MoneyMoney. Not connected to a bank." : "Taken over from MoneyMoney.")
 						case .offline: Text("Offline account")
 						case .bank: AccountRefreshLine(account: account)
 						}
 					}
 					.font(.callout)
 					.foregroundStyle(Palette.detail)
+					if account.source == .migrated, !account.isClosed { ConnectNotice(account: account) }
 					Group {
 						switch model.bankHistories[account.id] {
 						case .noTransactions where account.kind != .portfolio: Text("The bank provides no transactions for this account.")
@@ -140,6 +136,29 @@ struct HeaderView: View {
 		.padding(.horizontal, 16)
 		.padding(.top, 12)
 		.padding(.bottom, 8)
+	}
+}
+
+/// The notice of an open migrated account without a bank access. After a migration every account is in this
+/// state, so "Connect..." is the first thing a switching user needs: a bordered button of the normal size in the
+/// accent color, which stands out on the band in light and dark, unlike the small gray one before (issue #531).
+/// The assistant finds the account at its bank and offers to connect it.
+struct ConnectNotice: View {
+	@Environment(AppModel.self) private var model
+	let account: Account
+
+	var body: some View {
+		HStack(spacing: 10) {
+			Label("This account has no bank access yet, so it cannot be refreshed.", systemImage: "exclamationmark.circle")
+				.font(.callout.weight(.medium))
+				.foregroundStyle(Palette.onBand)
+			Button("Connect...") { model.addAccount(group: account.groupID, connecting: account) }
+				.buttonStyle(.borderedProminent)
+				.controlSize(.regular)
+				.tint(.accentColor)
+				.foregroundStyle(.white)
+		}
+		.padding(.top, 4)
 	}
 }
 

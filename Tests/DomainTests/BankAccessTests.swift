@@ -345,6 +345,51 @@ struct BankAccessTests {
 		#expect(Ledger(accounts: [closed]).refreshAccounts(.account(closed.id)).isEmpty)
 	}
 
+	@Test("A refresh command with only migrated accounts offers Connect for the selected one, else for the first in the sidebar")
+	func connectOffer() {
+		var giro = Self.migrated("Giro")
+		var savings = Self.migrated("Sparen")
+		var old = Self.migrated("Giro (alt)", closed: true)
+		(giro.position, savings.position, old.position) = (0, 1, 2)
+		// The order of the ledger is not the order of the sidebar.
+		let ledger = Ledger(accounts: [old, savings, giro, Account(position: 3, name: "Cash", kind: .cash, source: .offline)])
+		#expect(ledger.connectOffer(.all, selected: nil) == ConnectOffer(account: giro, count: 2))
+		#expect(ledger.connectOffer(.all, selected: savings.id) == ConnectOffer(account: savings, count: 2))
+		// A selected account that the command does not cover, such as the closed one, does not change the offer.
+		#expect(ledger.connectOffer(.all, selected: old.id) == ConnectOffer(account: giro, count: 2))
+		#expect(ledger.connectOffer(.account(savings.id), selected: savings.id) == ConnectOffer(account: savings, count: 1))
+	}
+
+	@Test("A refresh command offers no Connect when it finds an account to refresh, or only offline and closed accounts")
+	func noConnectOffer() {
+		let privat = AccountGroup(name: "Private", position: 0)
+		let business = AccountGroup(name: "Business", position: 1)
+		var savings = Self.migrated("Sparen")
+		savings.groupID = privat.id
+		let ledger = Ledger(groups: [privat, business], accounts: [Self.bankAccount("Girokonto", group: business.id), savings])
+		#expect(ledger.connectOffer(.all, selected: savings.id) == nil)
+		#expect(ledger.connectOffer(.group(business.id), selected: nil) == nil)
+		#expect(ledger.connectOffer(.group(privat.id), selected: nil) == ConnectOffer(account: savings, count: 1))
+		#expect(ledger.connectOffer(.account(savings.id), selected: savings.id) == ConnectOffer(account: savings, count: 1))
+
+		let cash = Account(position: 0, name: "Cash", kind: .cash, source: .offline)
+		let old = Self.migrated("Giro (alt)", closed: true)
+		let nothing = Ledger(accounts: [cash, old])
+		#expect(nothing.connectOffer(.all, selected: nil) == nil)
+		#expect(nothing.connectOffer(.account(cash.id), selected: cash.id) == nil)
+		#expect(nothing.connectOffer(.account(old.id), selected: old.id) == nil)
+	}
+
+	@Test("An account with the interval never counts for Refresh Account only, so Refresh All offers Connect beside it")
+	func connectOfferBesideNever() {
+		var card = Self.bankAccount("Old card")
+		card.refreshInterval = .never
+		let savings = Self.migrated("Sparen")
+		let ledger = Ledger(accounts: [card, savings])
+		#expect(ledger.connectOffer(.all, selected: nil) == ConnectOffer(account: savings, count: 1))
+		#expect(ledger.connectOffer(.account(card.id), selected: card.id) == nil)
+	}
+
 	@Test("Refresh Accounts on a group fetches the accounts of the group and of its subgroups")
 	func refreshGroup() {
 		let privat = AccountGroup(name: "Private", position: 0)

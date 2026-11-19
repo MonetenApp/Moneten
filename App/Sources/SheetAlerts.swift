@@ -88,6 +88,15 @@ final class SheetAlerts {
 		}
 	}
 
+	/// Runs the action of an alert once the alert has slid out, so that a sheet that it opens does not meet the
+	/// alert on its way out of the window, which AppKit does not survive (see the type).
+	private func run(_ action: AlertAction, after alert: NSWindow) {
+		Task { @MainActor [weak alert] in
+			while alert?.isVisible == true { try? await Task.sleep(for: .milliseconds(50)) }
+			action.run()
+		}
+	}
+
 	/// The window when nothing else is on it: no sheet, also none that still slides out, and no alert.
 	private func freeWindow(waitedForDismissal: Bool) -> NSWindow? {
 		guard !hasSheet(), !isSheetOnScreen || waitedForDismissal, closing?.isVisible != true,
@@ -100,6 +109,10 @@ final class SheetAlerts {
 		let panel = NSAlert()
 		panel.messageText = message.title
 		panel.informativeText = message.message
+		if let action = message.action {
+			panel.addButton(withTitle: action.title)
+			panel.addButton(withTitle: String(localized: "Cancel"))
+		}
 		self.panel = panel
 		shown = message.id
 		panel.beginSheetModal(for: window) { [weak self] response in
@@ -107,11 +120,12 @@ final class SheetAlerts {
 			self.panel = nil
 			shown = nil
 			closing = panel.window
-			// Only OK removes the message here. `closeFirst` removed it already, and a hidden one stays first.
-			if response == .alertFirstButtonReturn, line.first?.id == message.id {
+			// Only a button removes the message here. `closeFirst` removed it already, and a hidden one stays first.
+			if response == .alertFirstButtonReturn || response == .alertSecondButtonReturn, line.first?.id == message.id {
 				line.removeFirst()
 				if line.isEmpty { Trail.log("alert closed") }
 			}
+			if response == .alertFirstButtonReturn, let action = message.action { run(action, after: panel.window) }
 			present()
 		}
 	}

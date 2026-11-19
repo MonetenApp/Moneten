@@ -87,8 +87,10 @@ The app SHALL create the account groups and accounts of the source with their na
 
 #### Scenario: No bank access yet
 
-- **WHEN** the user selects an open migrated account
-- **THEN** the account shows that it is not connected to a bank and offers to connect it
+- **GIVEN** the open migrated account "Giro" without a bank access
+- **WHEN** the user selects "Giro"
+- **THEN** the header shows the notice "This account has no bank access yet, so it cannot be refreshed."
+- **AND** the notice has "Connect..." as a bordered button in the accent color, at the normal size of a button
 
 ### Requirement: Categories
 
@@ -549,7 +551,7 @@ The app SHALL let the user choose the account to connect when more than one open
 
 ### Requirement: Connect from a migrated account
 
-The app SHALL offer "Connect..." in the header of an open migrated account without a bank access. It opens the add account assistant with the IBAN of the account, else its Bankleitzahl, as the bank entry. When the account matches exactly one account of the bank, counting accounts that the app has connected already, and that row is a choice, the row has the account chosen. In every other case the rows stay as the assistant sets them.
+The app SHALL offer "Connect..." in a notice in the header of an open migrated account without a bank access. It opens the add account assistant with the IBAN of the account, else its Bankleitzahl, as the bank entry. When the account matches exactly one account of the bank, counting accounts that the app has connected already, and that row is a choice, the row has the account chosen. In every other case the rows stay as the assistant sets them.
 
 #### Scenario: Connect from the account
 
@@ -561,7 +563,39 @@ The app SHALL offer "Connect..." in the header of an open migrated account witho
 #### Scenario: A closed migrated account
 
 - **WHEN** the user selects the closed migrated account "Giro (alt)"
-- **THEN** the header shows no "Connect...", because the assistant leaves a closed account as it is
+- **THEN** the header says that the account came from the source app and is not connected to a bank
+- **AND** it shows no notice and no "Connect...", because the assistant leaves a closed account as it is
+
+### Requirement: Refresh commands and accounts without a bank access
+
+The app SHALL say that an account has no bank access yet and offer "Connect..." for it when a refresh command finds no account to refresh but an open migrated account without a bank access. Every refresh command does this, also ⌘R and the refresh button under the sidebar. "Connect..." opens the add account assistant for the selected account when the command covers it, else for the first such account in the order of the sidebar.
+
+#### Scenario: Only migrated accounts
+
+- **GIVEN** the open migrated accounts "Giro" and "Sparen" without a bank access, and no other account
+- **WHEN** the user presses ⌘R
+- **THEN** the app contacts no bank
+- **AND** it says "The accounts are not connected to a bank yet." with the buttons "Connect..." and "Cancel"
+- **AND** "Connect..." opens the add account assistant for "Giro"
+
+#### Scenario: One migrated account
+
+- **GIVEN** the open migrated account "Sparen" without a bank access
+- **WHEN** the user selects "Sparen" and chooses "Refresh Account"
+- **THEN** the app says "“Sparen” is not connected to a bank yet." with the buttons "Connect..." and "Cancel"
+- **AND** "Connect..." opens the add account assistant for "Sparen"
+
+#### Scenario: Connected accounts besides migrated ones
+
+- **GIVEN** the account "Girokonto" of a bank access and the open migrated account "Sparen" without a bank access
+- **WHEN** the user presses ⌘R
+- **THEN** the app refreshes "Girokonto" and says nothing about "Sparen"
+
+#### Scenario: Nothing to connect
+
+- **GIVEN** the offline account "Cash" and the closed migrated account "Giro (alt)", and no other account
+- **WHEN** the user looks at "Refresh All Accounts"
+- **THEN** the command is disabled
 
 #### Scenario: Connect one of several accounts with the same IBAN
 
