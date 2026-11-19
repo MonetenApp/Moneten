@@ -57,6 +57,37 @@ The app SHALL keep the data folder outside the application file, so that an upda
 - **WHEN** the user moves the application file to the Trash and installs the app again
 - **THEN** the app shows the 3 accounts after the user has entered the database password
 
+### Requirement: No environment variable moves the data folder of a release build
+
+The app SHALL, in a release build, keep its data folder in `Library/Application Support/Moneten` of the home folder that the user database of macOS names for the user. No environment variable changes that folder, because another program of the user can start the app with any environment and let it open a database that the user did not create. When the user database names no home folder, the app opens no data folder, shows that it cannot find the home folder, and quits.
+
+#### Scenario: A program sets the home folder of the app
+
+- **GIVEN** a release build, and the user "beispiel" with the home folder `/Users/beispiel` and a database in `/Users/beispiel/Library/Application Support/Moneten`
+- **WHEN** another program starts the app with `open --env CFFIXED_USER_HOME=/Users/Shared/andere Moneten.app`
+- **THEN** the app opens the database in `/Users/beispiel/Library/Application Support/Moneten`
+- **AND** the app creates and opens nothing in `/Users/Shared/andere`
+
+#### Scenario: A program names another data folder
+
+- **GIVEN** a release build, and another program ran `launchctl setenv MONETEN_DATA_DIR /Users/Shared/andere`
+- **WHEN** the user starts the app
+- **THEN** the app opens the database in `~/Library/Application Support/Moneten`
+- **AND** the app creates and opens nothing in `/Users/Shared/andere`
+
+#### Scenario: No home folder in the user database
+
+- **GIVEN** a release build, and the user database of macOS names no home folder for the user
+- **WHEN** the user starts the app
+- **THEN** the app shows that it cannot find the home folder of the user and quits
+- **AND** the app opens no database
+
+#### Scenario: The user database names no home folder while the app runs
+
+- **GIVEN** a release build that opened the database in `/Users/beispiel/Library/Application Support/Moneten`
+- **WHEN** the user database of macOS names no home folder for a moment, for example while the directory service restarts, and the user then installs an extension
+- **THEN** the app keeps running and installs the extension in `/Users/beispiel/Library/Application Support/Moneten/Extensions`
+
 ### Requirement: A copy of the data folder is a complete backup
 
 The app SHALL make it possible to back up everything by copying the data folder while the app is closed. The app does not exclude the folder from Time Machine. A copy that is put back in place restores accounts, categories, rules, transactions, extensions, and statements.

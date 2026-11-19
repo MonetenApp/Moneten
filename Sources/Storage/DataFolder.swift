@@ -1,20 +1,32 @@
 import Foundation
+import Synchronization
 
 /// The folder that holds all data of the app: "Database", "Extensions", "Statements", and "Bank Data".
 public struct DataFolder: Sendable {
 	public let root: URL
 
-	/// `~/Library/Application Support/Moneten`, or the folder at `path` when the caller gives one.
-	/// Only debug and Perf builds of the app pass the folder of `MONETEN_DATA_DIR` (issue #327). The app
-	/// decides, because Xcode builds this package without the compilation conditions of the app.
+	/// `~/Library/Application Support/Moneten` in the home folder of the user database, or the folder at `path` when the
+	/// caller gives one. Only debug and Perf builds of the app pass the folder of `MONETEN_DATA_DIR` (issue #327). The app
+	/// decides, because Xcode builds this package without the compilation conditions of the app. Nil without a path and
+	/// without a home folder in the user database: the app then opens no data folder at all (issue #422).
 	/// The first call after the rename to Moneten (ADR 0013) moves the data of the old name.
-	public static func standard(override path: String?) -> DataFolder {
+	public static func standard(override path: String?) -> DataFolder? {
+		standard(override: path, home: userHome)
+	}
+
+	/// The home folder that holds the data folder. It comes from the user database of macOS, never from Foundation,
+	/// whose home folder follows `CFFIXED_USER_HOME`: another program of the user could start the app with
+	/// `open --env CFFIXED_USER_HOME=<folder>` and let it open a database that the user did not create (issue #422).
+	static var userHome: String? { userDatabaseHome() }
+
+	static func standard(override path: String?, home: String?) -> DataFolder? {
 		if let path, !path.isEmpty {
 			let folder = DataFolder(root: URL(fileURLWithPath: path, isDirectory: true))
 			try? folder.adoptLegacyNames()
 			return folder
 		}
-		let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+		guard let home else { return nil }
+		let support = URL(fileURLWithPath: home, isDirectory: true).appendingPathComponent("Library/Application Support", isDirectory: true)
 		let legacy = support.appendingPathComponent(Self.legacyName, isDirectory: true)
 		let folder = DataFolder(root: support.appendingPathComponent("Moneten", isDirectory: true), legacyRoot: legacy)
 		do {
@@ -82,5 +94,34 @@ public struct DataFolder: Sendable {
 	/// The identifier that the Keychain entries had before ADR 0013.
 	var legacyKeychainAccount: String {
 		legacyRoot.appendingPathComponent("Database", isDirectory: true).appendingPathComponent("\(Self.legacyName).sqlite").standardizedFileURL.path
+	}
+}
+
+/// The data folder of one run of the app. The first lookup that finds the folder decides it for the rest of the run, and
+/// no later read looks it up again. The directory service of macOS can name no home folder for a moment, for example
+/// while it restarts or while the directory of a network account is offline, and a running session keeps its data
+/// folder through that. The move of the folder of the old name (ADR 0013) runs with that one lookup. A lookup that finds
+/// no folder is not kept, but the app quits at launch in that case anyway.
+public final class DataFolderOfRun: Sendable {
+	private let found = Mutex<DataFolder?>(nil)
+	private let lookup: @Sendable () -> DataFolder?
+
+	/// The data folder of `DataFolder.standard(override:)`.
+	public convenience init(override path: String?) {
+		self.init { DataFolder.standard(override: path) }
+	}
+
+	init(lookup: @escaping @Sendable () -> DataFolder?) {
+		self.lookup = lookup
+	}
+
+	/// The folder of this run, or nil while no lookup has found one. The lookup runs inside the lock, so two first
+	/// reads at the same time move the folder of the old name only once.
+	public var folder: DataFolder? {
+		found.withLock { found in
+			if let found { return found }
+			found = lookup()
+			return found
+		}
 	}
 }

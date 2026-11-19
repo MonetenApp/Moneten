@@ -1011,6 +1011,13 @@ The app SHALL stop the dialog when the bank reports that the PIN must be changed
 - **THEN** the account shows that the server requires a PIN change and where to change it
 - **AND** the app sends no further request with the old PIN
 
+#### Scenario: OLB requires a PIN change
+
+- **GIVEN** a first login with a start PIN at an access whose FinTS address is on the host `hbci.olb.de`
+- **WHEN** the bank answers the login with the request to change the PIN
+- **THEN** the access shows that OLB requires a PIN change, that the user changes the PIN on the website of OLB, and then runs "Edit Login Data..."
+- **AND** the app sends no further request with the old PIN, because the FinTS server of OLB offers no PIN change
+
 ### Requirement: Handle a blocked access
 
 The app SHALL stop when the bank reports that the PIN or the access is blocked, show the message of the bank, tell the user to ask the bank to unblock it, and not log in again for that access until the user starts a refresh by hand. When one code of the bank means a wrong PIN or a block, the app treats the answer as a block only when its text reports a block that happened and names no remaining attempts, no block to come, and no denial, and as a wrong PIN with the text of the bank otherwise.
