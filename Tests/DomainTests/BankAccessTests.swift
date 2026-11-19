@@ -345,6 +345,18 @@ struct BankAccessTests {
 		#expect(Ledger(accounts: [closed]).refreshAccounts(.account(closed.id)).isEmpty)
 	}
 
+	@Test("Only an open migrated account without an access needs connecting, not an offline, a closed, or a connected one")
+	func needsConnecting() {
+		#expect(Self.migrated("Giro").needsConnecting)
+		#expect(!Self.migrated("Giro (alt)", closed: true).needsConnecting)
+		#expect(!Account(position: 0, name: "Cash", kind: .cash, source: .offline).needsConnecting)
+		#expect(!Self.bankAccount("Girokonto").needsConnecting)
+		// A migrated account that a setup connected keeps its source until a refresh, and has an access.
+		var connected = Self.migrated("Sparen")
+		connected.accessID = Self.accessID
+		#expect(!connected.needsConnecting)
+	}
+
 	@Test("A refresh command with only migrated accounts offers Connect for the selected one, else for the first in the sidebar")
 	func connectOffer() {
 		var giro = Self.migrated("Giro")

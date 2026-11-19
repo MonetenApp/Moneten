@@ -85,7 +85,7 @@ struct HeaderView: View {
 					}
 					.font(.callout)
 					.foregroundStyle(Palette.detail)
-					if account.source == .migrated, !account.isClosed { ConnectNotice(account: account) }
+					if account.needsConnecting { ConnectNotice(account: account) }
 					Group {
 						switch model.bankHistories[account.id] {
 						case .noTransactions where account.kind != .portfolio: Text("The bank provides no transactions for this account.")

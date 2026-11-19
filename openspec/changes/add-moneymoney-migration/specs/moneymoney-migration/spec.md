@@ -566,6 +566,28 @@ The app SHALL offer "Connect..." in a notice in the header of an open migrated a
 - **THEN** the header says that the account came from the source app and is not connected to a bank
 - **AND** it shows no notice and no "Connect...", because the assistant leaves a closed account as it is
 
+### Requirement: Mark of an account without a bank access in the sidebar
+
+The app SHALL show the symbol of a network with a slash on the left of the sidebar row of an open migrated account without a bank access, in the secondary color, with the help tag "Not connected to a bank". The color mark of the account stays.
+
+#### Scenario: Only the account that needs connecting
+
+- **GIVEN** the open migrated account "Girokonto" without a bank access, the offline account "Bargeld", the closed migrated account "Giro (alt)", and the account "Tagesgeld" of a bank access
+- **WHEN** the sidebar shows them
+- **THEN** only the row of "Girokonto" shows the mark, on the left of its color mark, and the help tag of the mark says "Not connected to a bank"
+- **AND** the rows of "Bargeld", "Giro (alt)", and "Tagesgeld" show no mark
+
+#### Scenario: A long name
+
+- **GIVEN** the open migrated account "Gemeinschaftskonto Haushalt und Urlaub Familie Mustermann" without a bank access, with a balance of 1.234,56 €
+- **WHEN** the sidebar is 240 points wide
+- **THEN** the row shows the mark, the color mark, the start of the name with an ellipsis, and 1.234,56 €
+
+#### Scenario: Connected
+
+- **WHEN** the user connects "Girokonto" to its bank
+- **THEN** its row shows no mark
+
 ### Requirement: Refresh commands and accounts without a bank access
 
 The app SHALL say that an account has no bank access yet and offer "Connect..." for it when a refresh command finds no account to refresh but an open migrated account without a bank access. Every refresh command of the main window does this, also ⌘R, the refresh button under the sidebar, and the context menu of the account. "Connect..." opens the add account assistant for the selected account when the command covers it, else for the first such account in the order of the sidebar.

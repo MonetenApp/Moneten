@@ -7515,6 +7515,16 @@
         }
       }
     },
+    "Not connected to a bank" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht mit einer Bank verbunden"
+          }
+        }
+      }
+    },
     "Not imported" : {
       "localizations" : {
         "de" : {

@@ -279,7 +279,7 @@ extension Ledger {
 		let chosen = accountIDs(in: scope)
 		let covered = accounts.filter { chosen?.contains($0.id) != false }
 		guard !covered.contains(where: { Self.refreshes($0, scope) }) else { return nil }
-		let waiting = covered.filter { $0.source == .migrated && $0.accessID == nil && !$0.isClosed }
+		let waiting = covered.filter(\.needsConnecting)
 		guard !waiting.isEmpty else { return nil }
 		let account = waiting.first { $0.id == selected } ?? {
 			let ids = Set(waiting.map(\.id))

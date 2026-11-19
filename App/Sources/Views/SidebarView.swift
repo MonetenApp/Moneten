@@ -209,6 +209,13 @@ struct AccountRow: View {
 	var body: some View {
 		let newCount = model.ledger.newTransactionCounts[account.id] ?? 0
 		HStack {
+			// An account that still needs a bank access shows it at a glance. The color mark of the account stays.
+			if account.needsConnecting {
+				Image(systemName: "network.slash")
+					.foregroundStyle(.secondary)
+					.help("Not connected to a bank")
+					.accessibilityLabel("Not connected to a bank")
+			}
 			Label {
 				Text(account.name).strikethrough(account.isClosed).atLeastEllipsisWide()
 			} icon: {
