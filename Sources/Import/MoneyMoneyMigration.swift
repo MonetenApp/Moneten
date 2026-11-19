@@ -49,6 +49,14 @@ public struct MoneyMoneyMigration: Sendable {
 				transactions: exports.transactions, into: ledger, deleted: deleted, progress: progress, isCanceled: isCanceled)
 		}
 
+		/// The booking dates of the oldest and the newest transaction that the import adds, for the summary before
+		/// the import. Nil when it adds none. A second run names only the days of its new transactions, as its count does.
+		public var transactionDays: ClosedRange<Day>? {
+			guard let first = transactions.first else { return nil }
+			let (oldest, newest) = transactions.reduce((first.bookingDate, first.bookingDate)) { (min($0.0, $1.bookingDate), max($0.1, $1.bookingDate)) }
+			return oldest...newest
+		}
+
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
 				&& updatedCategories.isEmpty && relinkedDeletedRows.isEmpty
@@ -356,23 +364,26 @@ public struct MoneyMoneyMigration: Sendable {
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
 			if isCanceled() { throw CancellationError() }
-			guard let source = item["uuid"] as? String, let name = item["name"] as? String else { continue }
+			guard let source = item["uuid"] as? String, let listedName = item["name"] as? String else { continue }
 			let indentation = (item["indentation"] as? Int) ?? 0
 			let parent = indentation > 0 ? parents[indentation - 1] : nil
 			let position = positions[parent, default: 0]
 			positions[parent] = position + 1
 			if (item["group"] as? Bool) == true {
-				let id = ledger.groups.first(where: { $0.name == name && $0.parentID == parent })?.id
+				let id = ledger.groups.first(where: { $0.name == listedName && $0.parentID == parent })?.id
 				if let id {
 					parents[indentation] = id
 				} else {
-					let g = AccountGroup(name: name, parentID: parent, position: position)
+					let g = AccountGroup(name: listedName, parentID: parent, position: position)
 					plan.groups.append(g)
 					parents[indentation] = g.id
 				}
 				continue
 			}
 			let isPortfolio = (item["portfolio"] as? Bool) == true || Self.kind(item["type"] as? String) == .portfolio
+			let kind = isPortfolio ? .portfolio : Self.kind(item["type"] as? String)
+			// The plan, its report, and the error of a balance name the account as it is stored ("Account name").
+			let name = Account.name(from: listedName, kind: kind)
 			if isPortfolio { plan.portfolios.append((name, false)) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
@@ -421,8 +432,7 @@ public struct MoneyMoneyMigration: Sendable {
 				if changed { plan.updatedAccounts.append(existing) }
 				continue
 			}
-			var account = Account(groupID: parent, position: position, name: name,
-				kind: isPortfolio ? .portfolio : Self.kind(item["type"] as? String),
+			var account = Account(groupID: parent, position: position, name: name, kind: kind,
 				source: .migrated, currency: currency, bic: bic,
 				accountNumber: number, bankCode: bankCode, owner: Self.string(item["owner"]),
 				bankBalanceMinor: balanceMinor, bankBalanceDate: balanceDate,

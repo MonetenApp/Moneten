@@ -130,11 +130,14 @@ struct AmountOverflowTests {
 		var account = giro
 		account.bankBalanceMinor = 0
 		account.bankBalanceDate = Date()
-		#expect(account.initialBalanceMeetingBankBalance(of: rows([limit, -limit, limit])) == -limit)
-		#expect(account.initialBalanceMeetingBankBalance(of: rows([limit, limit])) == nil)
+		func stored(_ rows: [Transaction]) -> Int64? {
+			account.exactInitialBalanceMeetingBankBalance(of: rows).flatMap(Int64.init(limitedAmount:))
+		}
+		#expect(stored(rows([limit, -limit, limit])) == -limit)
+		#expect(stored(rows([limit, limit])) == nil)
 		// 10,000 rows at the limit and a balance of 0: a clamp would store 776.627.963.145.224.193 minor units.
 		let many = (0..<10_000).map { _ in Transaction(accountID: Self.giroID, bookingDate: Self.day, amountMinor: limit, name: "Musterfirma GmbH") }
-		#expect(account.initialBalanceMeetingBankBalance(of: many) == nil)
+		#expect(stored(many) == nil)
 		let l = Ledger(groups: [group], accounts: [account], categories: [food], transactions: many)
 		#expect(l.calibratedInitialBalance(of: account, balanceToday: 0, today: .today()) == nil)
 		#expect(ledger([limit, -limit], account: account).calibratedInitialBalance(of: account, balanceToday: limit, today: .today()) == limit)

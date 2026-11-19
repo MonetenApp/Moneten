@@ -349,6 +349,16 @@ final class DebugHarness {
 			#endif
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
 			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
+		#if DEBUG || PERF_HARNESS
+		// "<account name>": "Connect..." in the header of the migrated account, which "setup" then drives.
+		case "connectmigrated":
+			// It starts a bank setup, so it runs only against the made-up bank.
+			guard HarnessRun.mayReach(.fints, fakeBank: usesFakeBank) else { return log("connectmigrated refused") }
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.source == .migrated }) else { return log("connectmigrated", ("", .word("no account"))) }
+			model.navigate(to: .account(account.id))
+			model.addAccount(group: account.groupID, connecting: account)
+			log("connectmigrated", ("setup", .flag(model.setup != nil)), ("entry", .flag(model.setup?.entry == account.setupEntry)))
+		#endif
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -357,9 +367,16 @@ final class DebugHarness {
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
 				accountNumber: "9", bankCode: "12030000"))
+		#if DEBUG || PERF_HARNESS
+		// "<name>": a migrated portfolio without an access, with the test IBAN and the account number of "Girokonto" of the made-up bank.
+		case "migratedportfolio":
+			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .portfolio, source: .migrated,
+				iban: IBAN("DE02120300000000202051"), accountNumber: "202051", bankCode: "12030000"))
+		#endif
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
+		#if DEBUG || PERF_HARNESS
 		// "<name>": shows the question of "Remove Account..." for the account as a sheet of the main window, which `key escape`
 		// cancels, and writes its picture as removequestion.png. The menu command runs it modally, where no command of the harness
 		// arrives. An answer only logs, so not even "Remove" removes the account.
@@ -372,25 +389,27 @@ final class DebugHarness {
 				self?.log("removequestion answer", ("cancel", .flag(response == .alertSecondButtonReturn)))
 			}
 			DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-				guard let self, let frame = question.window.contentView?.superview, let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds),
-					let picture = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
-				// The glass behind the alert draws plain white into a cache, also in the dark mode, so the picture leaves it out and
-				// draws the alert on the window background of the appearance.
-				let glass = frame.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") }
-				glass.forEach { $0.isHidden = true }
-				frame.cacheDisplay(in: frame.bounds, to: rep)
-				glass.forEach { $0.isHidden = false }
-				NSGraphicsContext.saveGraphicsState()
-				NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: picture)
-				question.window.effectiveAppearance.performAsCurrentDrawingAppearance {
-					NSColor.windowBackgroundColor.setFill()
-					NSRect(origin: .zero, size: picture.size).fill()
-				}
-				rep.draw(in: NSRect(origin: .zero, size: picture.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-				NSGraphicsContext.restoreGraphicsState()
-				try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("removequestion.png"))
-				log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")), ("glass", .count(glass.count)))
+				guard let self else { return }
+				let glass = writePicture(of: question, to: "removequestion.png")
+				log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")), ("glass", .count(glass)))
 			}
+		// "<name>": shows the question of "Remove Account Group..." for the group as a sheet of the main window, which `key escape`
+		// cancels, and writes its picture as removegroupquestion.png. The menu command runs it modally, where no command of the
+		// harness arrives. An answer only logs, so not even "Remove" removes the group.
+		case "removegroupquestion":
+			guard let g = model.ledger.groups.first(where: { $0.name == argument }), let question = model.removeQuestion(.group(g.id)),
+				let main = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else {
+				return log("removegroupquestion", ("", .presence(false)))
+			}
+			question.beginSheetModal(for: main) { [weak self] response in
+				self?.log("removegroupquestion answer", ("cancel", .flag(response == .alertSecondButtonReturn)))
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+				guard let self else { return }
+				let glass = writePicture(of: question, to: "removegroupquestion.png")
+				log("removegroupquestion", ("nested", .flag(g.parentID != nil)), ("glass", .count(glass)))
+			}
+		#endif
 		// "<name>": what "Remove" in the context menu of a category does.
 		case "removecategory":
 			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
@@ -448,21 +467,27 @@ final class DebugHarness {
 		// stays a moment longer, so the check waits for it before "key" sends a key to the sheet on top.
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		#if DEBUG || PERF_HARNESS
-		// "<n>" focuses editable field number n, counted from 0, of the sheet on top, or without a sheet of the main window,
-		// such as the field of the lock screen or of the first launch.
+		// "<n>" puts the focus in editable field n, counted from 0, of the sheet on top, or without a sheet of the main window,
+		// such as the field of the lock screen or of the first launch. Then it logs the count of editable fields, the field
+		// that has the focus, and whether a field editor has it. Without an argument it only logs, so that a check can wait
+		// for the field and the focus without moving the focus again.
 		case "focusfield":
 			func fields(in view: NSView) -> [NSTextField] {
 				if let field = view as? NSTextField, field.isEditable { return [field] }
 				return view.subviews.flatMap(fields)
 			}
-			guard let sheet = fieldWindow, let view = sheet.contentView, let position = Int(argument) else { return }
+			guard let sheet = fieldWindow, let view = sheet.contentView else { return log("focusfield", ("count", .count(0))) }
 			let editable = fields(in: view)
-			guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
-			// The field editor of the sheet takes the text of "type" while the app stays behind.
-			sheet.makeKeyAndOrderFront(nil)
-			sheet.makeFirstResponder(editable[position])
-			editable[position].selectText(nil)
-			log("focusfield", ("count", .count(editable.count)), ("position", .position(position)), ("editor", .flag(sheet.firstResponder is NSTextView)))
+			if let position = Int(argument) {
+				guard editable.indices.contains(position) else { return log("focusfield", ("count", .count(editable.count))) }
+				// The field editor of the sheet takes the text of "type" while the app stays behind.
+				sheet.makeKeyAndOrderFront(nil)
+				sheet.makeFirstResponder(editable[position])
+				editable[position].selectText(nil)
+			}
+			let editor = sheet.firstResponder as? NSTextView
+			let focused = editable.firstIndex { field in editor != nil && field.currentEditor() === editor }
+			log("focusfield", ("count", .count(editable.count)), ("position", .position(focused)), ("editor", .flag(editor != nil)))
 		#endif
 		// "<text>" types into the field that has the focus: in the sheet on screen, or else in the key window. A harness
 		// run keeps the app in the background, where no window is key, so then in the frontmost window with a focused field.
@@ -1029,12 +1054,18 @@ final class DebugHarness {
 		case "migrationfixture":
 			MigrationSheet.fixtureFolder = URL(filePath: argument)
 			MigrationSheet.simulatedFailure = nil
+			MigrationSheet.shownStep = nil
 			model.sheet = .migration
 		case "migrationfailure":
 			let failures: [String: MoneyMoneyExporter.Failure] = ["notInstalled": .notInstalled, "notRunning": .notRunning, "locked": .locked, "notAllowed": .notAllowed]
 			guard let failure = failures[argument] else { return log("migrationfailure: unknown failure") }
 			MigrationSheet.simulatedFailure = failure
+			MigrationSheet.shownStep = nil
 			model.sheet = .migration
+		// The step that the migration sheet shows, or "none" without the sheet. A check waits for a step before it presses
+		// Return, because a Return that comes twice confirms the next step too.
+		case "migrationstate":
+			log("migrationstate", ("step", model.sheet == .migration ? MigrationSheet.shownStep ?? .word("none") : .word("none")))
 		#endif
 		// "<path>": writes the complete export to that file without the warning and the save panel.
 		case "exportall":
@@ -1074,6 +1105,7 @@ final class DebugHarness {
 				#if DEBUG || PERF_HARNESS
 				MigrationSheet.fixtureFolder = nil
 				MigrationSheet.simulatedFailure = nil
+				MigrationSheet.shownStep = nil
 				#endif
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
@@ -1097,6 +1129,18 @@ final class DebugHarness {
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
 			default: model.sheet = nil
 			}
+		#if DEBUG || PERF_HARNESS
+		// "<minor units>": whether the initial balance of the selected account is that many minor units, and whether the
+		// user entered it. The log holds no amount.
+		case "initialbalance":
+			let account = model.selectedAccount
+			log("initialbalance", ("matches", .flag(account.map { String($0.initialBalanceMinor) == argument } ?? false)),
+				("entered", .flag(account.map { $0.initialBalanceIsSet && !$0.initialBalanceIsDerived } ?? false)))
+		// The next save of an account fails, as a full disk would, so a check can see when its alert shows.
+		case "failaccountsave":
+			model.failsNextAccountSave = true
+			log("failaccountsave")
+		#endif
 		// "Name|rule" saves the rule of a category without the check of the settings, as an older version could have stored it.
 		case "rule":
 			let parts = argument.split(separator: "|", maxSplits: 1).map(String.init)
@@ -1382,7 +1426,12 @@ final class DebugHarness {
 			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
 			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
 			("kinds", .list(setup.candidates.map { .state($0.account.kind) })), ("matches", .list(setup.candidates.map { .state($0.match) })),
-			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) }))]))
+			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) })),
+			// For each row, the position in its choice of the account that it connects, or "-" for a new account.
+			("connecting", .list(setup.candidates.map { row in
+				guard case let .choice(accounts) = row.match else { return .position(nil) }
+				return .position(accounts.firstIndex { $0.id == setup.connecting[row.account.id] })
+			}))]))
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -2311,7 +2360,8 @@ final class DebugHarness {
 		for index in 0..<list.numberOfRows {
 			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
-			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
+			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })),
+				("enabled", .list((menu?.items ?? []).map { .flag($0.isEnabled) })))
 			if choice.count == 2, choice[0] == index,
 				// "Move to Group" is the only submenu of a row, and its title follows the language.
 				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
@@ -2573,6 +2623,30 @@ final class DebugHarness {
 			("automatic", .flag(on.contains(.automaticUnlock))), ("touchID", .flag(on.contains(.touchID))), ("watch", .flag(on.contains(.appleWatch))),
 			("keychainAutomatic", stored(.automaticUnlock)), ("keychainTouchID", stored(.touchID)), ("keychainWatch", stored(.appleWatch)))
 	}
+
+	#if DEBUG || PERF_HARNESS
+	/// Writes the picture of an alert that runs as a sheet, and returns how many glass views it left out. The glass behind
+	/// the alert draws plain white into a cache, also in the dark mode, so the picture leaves it out and draws the alert on the
+	/// window background of the appearance.
+	private func writePicture(of question: NSAlert, to file: String) -> Int {
+		guard let frame = question.window.contentView?.superview, let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds),
+			let picture = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return 0 }
+		let glass = frame.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") }
+		glass.forEach { $0.isHidden = true }
+		frame.cacheDisplay(in: frame.bounds, to: rep)
+		glass.forEach { $0.isHidden = false }
+		NSGraphicsContext.saveGraphicsState()
+		NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: picture)
+		question.window.effectiveAppearance.performAsCurrentDrawingAppearance {
+			NSColor.windowBackgroundColor.setFill()
+			NSRect(origin: .zero, size: picture.size).fill()
+		}
+		rep.draw(in: NSRect(origin: .zero, size: picture.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+		NSGraphicsContext.restoreGraphicsState()
+		try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent(file))
+		return glass.count
+	}
+	#endif
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {

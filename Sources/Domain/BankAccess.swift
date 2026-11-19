@@ -106,6 +106,17 @@ public struct SetupListing: Sendable {
 		let all = listed.map { Candidate(account: $0, match: ledger.setupMatch(for: $0, listed: listed)) }
 		candidates = onlyNew ? all.filter { !$0.isPresent } : all
 	}
+
+	/// What "Connect..." of `account` chooses: the account in the row of the one listed account that it matches,
+	/// when that row is a choice. An account that matches several listed accounts, such as a migrated account
+	/// without a subnumber, is chosen in none, also when the app has connected all of them but one, because the
+	/// user has not said which subaccount it is.
+	public func connecting(_ account: Account) -> [UUID: UUID] {
+		let matching = listed.filter { Ledger.isSame(account, as: $0) }
+		guard matching.count == 1, let row = candidates.first(where: { $0.account.id == matching[0].id }),
+			case let .choice(accounts) = row.match, accounts.contains(where: { $0.id == account.id }) else { return [:] }
+		return [row.account.id: account.id]
+	}
 }
 
 extension Ledger {
@@ -116,7 +127,14 @@ extension Ledger {
 	/// account is present. Of the others, an open account is connected, and a closed one is left as it
 	/// is. An open account that matches several listed accounts, such as a migrated account without a
 	/// subnumber, is a choice and is never connected on its own.
+	///
+	/// An account that the access of the candidate has, with the ID that the bank knows it by, is present
+	/// whatever its type says: a refresh can make an account a portfolio while the account list of the
+	/// bank still names a giro account.
 	public func setupMatch(for candidate: Account, listed: [Account]) -> SetupMatch {
+		if let own = accounts.first(where: { $0.accessID != nil && $0.accessID == candidate.accessID && $0.remoteID != nil && $0.remoteID == candidate.remoteID }) {
+			return .present(own)
+		}
 		let matches = accounts.filter { Self.isSame($0, as: candidate) }
 		if let present = matches.first(where: { $0.accessID != nil || $0.source == .offline }) { return .present(present) }
 		let open = matches.filter { !$0.isClosed }
@@ -127,9 +145,15 @@ extension Ledger {
 		}
 	}
 
-	private static func isSame(_ account: Account, as candidate: Account) -> Bool {
+	/// A portfolio holds positions and a cash account holds transactions, so an account without an access,
+	/// such as a migrated one, never takes over a listed account of the other type, even when a bank gives
+	/// both the same number or IBAN. An account with an access is matched whatever its type, because its
+	/// connection is established: a refresh of the same login can make it a portfolio, and a setup of that
+	/// login lists it with a new access ID that the store replaces by the known one.
+	fileprivate static func isSame(_ account: Account, as candidate: Account) -> Bool {
 		func number(_ a: Account) -> String? { a.accountNumber.map { String($0.drop { $0 == "0" }) } }
 		guard account.currency == candidate.currency else { return false }
+		guard account.accessID != nil || (account.kind == .portfolio) == (candidate.kind == .portfolio) else { return false }
 		if let mine = account.iban, let theirs = candidate.iban { return mine == theirs }
 		guard account.bankCode == candidate.bankCode, let mine = number(account), mine == number(candidate) else { return false }
 		return account.remoteID.map { $0 == candidate.remoteID } ?? true

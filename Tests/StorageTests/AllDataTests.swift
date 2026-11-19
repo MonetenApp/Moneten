@@ -396,6 +396,21 @@ struct AllDataTests {
 		#expect(haushalt.accountNumber == accountNumber)
 	}
 
+	/// The scenario "Empty name in an import of all data" of "Account name" in
+	/// openspec/changes/add-account-management/specs/account-management/spec.md.
+	@Test("An account whose name in the file is empty or only white space imports with the name of its type", arguments: ["", "  "])
+	func emptyAccountName(name: String) throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
+		var accounts = json["accounts"] as! [[String: Any]]
+		let index = try #require(accounts.firstIndex { $0["name"] as? String == "Haushalt" })
+		accounts[index]["name"] = name
+		json["accounts"] = accounts
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: try JSONSerialization.data(withJSONObject: json)))
+		let names = try target.loadLedger().accounts.map(\.name).sorted()
+		#expect(names == ["Bargeld", "Depot", "Giro account", "Girokonto"])
+	}
+
 	@Test("An export without returnReason imports its transactions with no return reason")
 	func missingReturnReason() throws {
 		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
