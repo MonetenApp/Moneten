@@ -32,26 +32,24 @@ struct CatalogStoreTests {
 		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		defer { try? store.close() }
 		let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
-		// The writer and the wait for it block on threads of their own. On a thread of Swift concurrency or of the global
-		// queue they kept those few threads of a runner of CI from every other test until the release (issue #541).
+		// Only the body on the main actor releases the writer, after the save started. A save that blocks the main actor
+		// until the writer ends never lets the body run, so the writer gives up at the limit and the test fails. The limit
+		// starts when the writer holds the database, on a thread of its own, and covers only the main actor. A watchdog
+		// in a task of Swift concurrency also counted the wait for one of the three threads of a runner of CI, which every
+		// test of the run shares (issue #548). The writer and the wait for it block on threads of their own, so they keep
+		// none of those threads from another test (issue #541).
+		let limit = budget(.seconds(30))
 		let writer = Task {
 			try await onOwnThread {
 				Result {
 					try store.queue.write { _ in
 						entered.signal()
-						release.wait()
+						return release.wait(timeout: .now() + .milliseconds(Int(limit / .milliseconds(1)))) == .timedOut
 					}
 				}
 			}.get()
 		}
 		await onOwnThread { entered.wait() }
-		let timedOut = Mutex(false)
-		let watchdog = Task.detached {
-			do { try await Task.sleep(for: .seconds(2)) } catch { return }
-			timedOut.withLock { $0 = true }
-			release.signal()
-		}
-		defer { watchdog.cancel() }
 		let savingStarted = Mutex(false)
 		let catalog = StoredCatalog(index: Data("index 122".utf8), signature: Data([3]), floors: Data("floors 3".utf8))
 		let saving = Task { @MainActor in
@@ -60,9 +58,9 @@ struct CatalogStoreTests {
 		}
 		while !savingStarted.withLock({ $0 }) { await Task.yield() }
 		release.signal()
-		try await writer.value
+		let writerGaveUp = try await writer.value
 		try await saving.value
-		#expect(!timedOut.withLock { $0 })
+		#expect(!writerGaveUp, "The main actor did not run while the save waited for the writer")
 		#expect(try store.catalog() == catalog)
 	}
 
