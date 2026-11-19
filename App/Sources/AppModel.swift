@@ -417,11 +417,9 @@ final class AppModel {
 	var sheetAlert: (alert: SheetAlert, token: AlertGate.Token?)?
 	/// The alert of `alerts` on the main window, from its opening until it has slid out.
 	@ObservationIgnored var windowAlert: AlertGate.Token?
-	/// When the last alert opened and the last dialog of the bank ended, for `alertSettle`.
+	/// When the last alert of the main window opened and the last dialog of the bank ended, for `alertSettle`.
 	@ObservationIgnored var alertOpenedAt: ContinuousClock.Instant?
 	@ObservationIgnored var bankDialogEndedAt: ContinuousClock.Instant?
-	/// The end of the wait of a dialog of the bank for the alert of the main window that gives way to it.
-	@ObservationIgnored var giveWayDeadline: ContinuousClock.Instant?
 	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
 	@ObservationIgnored private(set) var tableGeneration = 0

@@ -309,8 +309,9 @@ struct AccountSettingsSheet: View {
 				}
 			}
 			.keepsInput(input, of: .accountSettings(accountID))
-			// The question gives way to a dialog of the bank that comes while it shows, and shows again after it
-			// (`AlertGate`). It sits on the settings, which stay while it is asked.
+			// A dialog of the bank that comes while the question shows waits until the user answered it, and a question
+			// asked while a dialog shows waits for the dialog (`AlertGate`). It sits on the settings, which stay while it
+			// is asked.
 			.alert(access.flatMap(model.secretName(of:)) == nil ? Text("Remove the saved PIN of “\(access?.bankName ?? "")”?")
 				: Text("Remove the saved login data of “\(access?.bankName ?? "")”?"), isPresented: model.presents(.removeSavedPIN)) {
 				Button("OK") { if let access { model.removeSavedPIN(of: access.id) } }

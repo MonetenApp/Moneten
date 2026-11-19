@@ -13,8 +13,9 @@ public enum BankDialogPlace: Sendable, Equatable {
 	/// The place for the main window with or without a sheet, a crash report on the window, the window on top of the
 	/// sheet, and an alert or a question on the window or on its sheet (`AlertGate`). Nil while the dialog waits: behind
 	/// a crash report, which shows only without a sheet, while the window on top of the sheet slides out, a moment after
-	/// which it shows on the sheet, and while an alert or a question shows or slides out. An alert or a question on
-	/// screen gives way to the dialog at once, so the dialog waits only for its slide out.
+	/// which it shows on the sheet, and while an alert or a question shows or slides out. An alert of the main window
+	/// gives way to the dialog once it has settled on screen, and a question on the sheet holds the dialog until the user
+	/// answered it.
 	public init?(sheet: Bool, crashReport: Bool, overSheet: OverSheet, alert: OverSheet = .none) {
 		guard alert == .none else { return nil }
 		guard sheet else {
@@ -114,6 +115,8 @@ public struct AlertGate: Sendable {
 	private var current: Token?
 	/// The closing of the dialog of the bank that slides out.
 	private var dialogClosing: Token?
+	/// The alert of the main window that gave way to the dialog, and the end of the wait of the dialog for its slide out.
+	private var gaveWay: (token: Token, deadline: ContinuousClock.Instant)?
 	private var openings = 0
 
 	public init() {}
@@ -149,6 +152,7 @@ public struct AlertGate: Sendable {
 	/// The alert of `token` has slid out, or its time to do so is over. An alert that is no longer the one on screen
 	/// changes nothing.
 	public mutating func dismissed(_ token: Token) {
+		if gaveWay?.token == token { gaveWay = nil }
 		guard token == current else { return }
 		current = nil
 		alert = .none
@@ -166,12 +170,21 @@ public struct AlertGate: Sendable {
 	}
 
 	/// The alert of the main window of `token` gives way to the dialog of the bank: it starts to slide out, stays in
-	/// line, and the app closes it. False, and nothing changes, for an alert on the sheet, when the alert no longer shows,
-	/// for example because the user answered it, or when the dialog closed meanwhile.
-	public mutating func giveWay(_ token: Token) -> Bool {
+	/// line, and the app closes it. The dialog waits for the slide out until `deadline`, counted from its coming.
+	/// False, and nothing changes, for an alert on the sheet, when the alert no longer shows, for example because the
+	/// user answered it, or when the dialog closed meanwhile.
+	public mutating func giveWay(_ token: Token, until deadline: ContinuousClock.Instant) -> Bool {
 		guard !token.onSheet, shows(token), bankDialog == .open else { return false }
 		alert = .closing
+		gaveWay = (token, deadline)
 		return true
+	}
+
+	/// The end of the wait for the slide out of the alert of `token`, when it gave way to a dialog of the bank, until it
+	/// has slid out. Nil for an alert that did not give way, such as one that the user answered after a dialog that went
+	/// before the give way, so that a deadline of that dialog never cuts its slide out short.
+	public func giveWayDeadline(of token: Token) -> ContinuousClock.Instant? {
+		gaveWay?.token == token ? gaveWay?.deadline : nil
 	}
 
 	/// The broker closed its dialog, which starts to slide out. Returns the token of this closing for the time limit

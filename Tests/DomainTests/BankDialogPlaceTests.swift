@@ -46,7 +46,8 @@ struct BankDialogPlaceTests {
 				// Without a sheet no view on it presents the dialog, and without a window on top of it no view there.
 				if !sheet { #expect(place != .sheet && place != .overSheet) }
 				if overSheet != .open { #expect(place != .overSheet) }
-				// An alert or a question in the way always holds the dialog back, for no more than its slide out.
+				// An alert or a question in the way always holds the dialog back: an alert of the main window until it has given
+				// way and slid out, and a question on the sheet until the user answered it and it has slid out.
 				if alert != .none { #expect(place == nil) }
 				// Without an alert the rules of the window on top of the sheet hold as before.
 				if alert == .none {
@@ -184,7 +185,10 @@ struct AlertGateTests {
 
 	func closes(_ gate: inout AlertGate) -> AlertGate.Token? { gate.bankDialogCloses() }
 
-	func giveWay(_ token: AlertGate.Token, in gate: inout AlertGate) -> Bool { gate.giveWay(token) }
+	/// The deadline of a give way in these tests, 3 seconds after a fixed moment.
+	static let deadline = ContinuousClock.now + .seconds(3)
+
+	func giveWay(_ token: AlertGate.Token, in gate: inout AlertGate) -> Bool { gate.giveWay(token, until: Self.deadline) }
 
 	@Test("An alert opens while no dialog of the bank shows, slides out after its answer, and lets the next one open after")
 	func openAndAnswer() throws {
@@ -319,6 +323,30 @@ struct AlertGateTests {
 		#expect(closing(alert, in: &gate))
 		gate.dismissed(alert)
 		#expect(shows(&gate) == nil)
+	}
+
+	@Test("The deadline of a give way holds only for the slide out of the alert that gave way, not after a dialog that went before it")
+	func giveWayDeadline() throws {
+		var gate = AlertGate()
+		let alert = try #require(open(onSheet: false, &gate))
+		// A dialog of the bank comes and goes again within the settle time, before the alert gave way.
+		#expect(shows(&gate) == alert)
+		_ = closes(&gate)
+		#expect(!giveWay(alert, in: &gate))
+		gate.bankDialogDismissed(brokerShows: false)
+		// Long after, the user answers the alert. Its slide out gets no deadline of the dialog that went.
+		#expect(closing(alert, in: &gate))
+		#expect(gate.giveWayDeadline(of: alert) == nil)
+		gate.dismissed(alert)
+		// An alert that gives way keeps the deadline of its dialog for its slide out, and loses it once it has slid out.
+		let second = try #require(open(onSheet: false, &gate))
+		#expect(gate.giveWayDeadline(of: second) == nil)
+		#expect(shows(&gate) == second)
+		#expect(giveWay(second, in: &gate))
+		#expect(gate.giveWayDeadline(of: second) == Self.deadline)
+		#expect(gate.giveWayDeadline(of: alert) == nil)
+		gate.dismissed(second)
+		#expect(gate.giveWayDeadline(of: second) == nil)
 	}
 
 	@Test("A late report of an alert that gave way or closed earlier never ends the alert on screen")

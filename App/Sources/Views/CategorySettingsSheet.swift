@@ -126,7 +126,8 @@ struct CategorySettingsSheet: View {
 				validate(held.category?.rule ?? "")
 			}
 		}
-		// The question gives way to a dialog of the bank that comes while it shows, and shows again after it (`AlertGate`).
+		// A dialog of the bank that comes while the question shows waits until the user answered it, and a question asked
+		// while a dialog shows waits for the dialog (`AlertGate`).
 		.confirmationDialog("Should this categorization rule be applied to the existing transactions now?", isPresented: model.presents(.applyRule)) {
 			Button("Apply only to not yet categorized transactions.") { apply(.uncategorizedOnly) }
 			Button("Apply to all transactions.") { apply(.all) }

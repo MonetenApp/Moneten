@@ -55,7 +55,6 @@ extension AppModel {
 	private func showAskedSheetAlert() {
 		guard let asked = sheetAlert, asked.token == nil, alertMayOpen, let token = alertGate.openAlert(onSheet: true) else { return }
 		sheetAlert = (asked.alert, token)
-		alertOpenedAt = .now
 	}
 
 	/// Whether the timing lets an alert open: no dialog of the broker, also none that reaches `alertGate` only one turn
@@ -85,13 +84,12 @@ extension AppModel {
 	}
 
 	/// The alert of `alerts` closed, by a button, at the lock, or for the dialog of the bank, and slides out of `window`.
-	/// After a give way the wait keeps the deadline that started when the dialog came.
+	/// After a give way the wait keeps the deadline that started when the dialog came, and otherwise gets its own.
 	func windowAlertClosed(_ window: NSWindow) {
 		guard let token = windowAlert else { return }
 		windowAlert = nil
 		alertGate.closing(token)
-		let deadline = giveWayDeadline ?? .now + Self.slideOutLimit
-		giveWayDeadline = nil
+		let deadline = alertGate.giveWayDeadline(of: token) ?? .now + Self.slideOutLimit
 		afterSlideOut(of: window, until: deadline) { [weak self] in self?.alertSlidOut(token) }
 	}
 
@@ -142,11 +140,11 @@ extension AppModel {
 		// The alert of the main window gives way once it has finished its slide in, and the dialog waits at most
 		// `slideOutLimit` from now for both.
 		let deadline = ContinuousClock.now + Self.slideOutLimit
-		giveWayDeadline = deadline
 		let settled = (alertOpenedAt ?? .now) + Self.alertSettle
 		Task { [weak self] in
 			try? await Task.sleep(until: min(settled, deadline))
-			guard let self, alertGate.giveWay(token) else { return }
+			// A dialog that went away meanwhile leaves the alert, and its deadline goes with it.
+			guard let self, alertGate.giveWay(token, until: deadline) else { return }
 			// `alerts` reports the close with `windowAlertClosed(_:)`, which keeps the deadline.
 			alerts.giveWay()
 		}
