@@ -309,6 +309,19 @@ struct MoneyMoneyMigrationTests {
 		#expect(p.transactions.first { $0.name == "REWE Markt" }?.amountMinor == -4_590)
 	}
 
+	@Test("The plan names the days of the oldest and the newest transaction that the import adds, and what cannot be migrated")
+	func summaryDaysAndNotes() throws {
+		let first = try plan()
+		#expect(first.transactionDays == Day(year: 2026, month: 1, day: 1)...Day(year: 2026, month: 11, day: 4))
+		#expect(MoneyMoneyMigration.notMigratedNotes.allSatisfy(first.notes.contains))
+		let ledger = applying(first, to: Ledger())
+		let row: [String: Any] = ["id": 5, "accountUuid": "A1", "bookingDate": date(2026, 11, 9), "amount": -3.5, "currency": "EUR",
+			"name": "Bäckerei", "purpose": "", "booked": true, "checkmark": false]
+		let second = try secondPlan(into: ledger, balance: 1231.06, rows: [row])
+		#expect(second.transactionDays == Day(year: 2026, month: 11, day: 9)...Day(year: 2026, month: 11, day: 9))
+		#expect(try secondPlan(into: ledger, balance: 1234.56, rows: []).transactionDays == nil)
+	}
+
 	@Test("A second run adds only what is new")
 	func repeated() throws {
 		let first = try plan()

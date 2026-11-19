@@ -1874,12 +1874,102 @@
         }
       }
     },
-    "Already present and skipped: %lld accounts, %@ transactions." : {
+    "Already present and skipped: %lld accounts, %lld transactions." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bereits vorhanden und übersprungen: %1$lld Konten, %2$@ Umsätze."
+            "value" : "Bereits vorhanden und übersprungen: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konto"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Konten"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsatz"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg Umsätze"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already present and skipped: %#@accounts@, %#@transactions@."
+          },
+          "substitutions" : {
+            "accounts" : {
+              "argNum" : 1,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg account"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg accounts"
+                    }
+                  }
+                }
+              }
+            },
+            "transactions" : {
+              "argNum" : 2,
+              "formatSpecifier" : "lld",
+              "variations" : {
+                "plural" : {
+                  "one" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transaction"
+                    }
+                  },
+                  "other" : {
+                    "stringUnit" : {
+                      "state" : "translated",
+                      "value" : "%arg transactions"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6880,6 +6970,16 @@
         }
       }
     },
+    "Newest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neuester Umsatz"
+          }
+        }
+      }
+    },
     "Next" : {
       "localizations" : {
         "de" : {
@@ -7426,6 +7526,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ältere Umsätze fehlen möglicherweise. Wählen Sie „Konto aktualisieren (erzwungen)“ mit der Wahltaste, um sie abzurufen."
+          }
+        }
+      }
+    },
+    "Oldest transaction" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ältester Umsatz"
           }
         }
       }

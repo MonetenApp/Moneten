@@ -49,6 +49,14 @@ public struct MoneyMoneyMigration: Sendable {
 				transactions: exports.transactions, into: ledger, deleted: deleted, progress: progress, isCanceled: isCanceled)
 		}
 
+		/// The booking dates of the oldest and the newest transaction that the import adds, for the summary before
+		/// the import. Nil when it adds none. A second run names only the days of its new transactions, as its count does.
+		public var transactionDays: ClosedRange<Day>? {
+			guard let first = transactions.first else { return nil }
+			let (oldest, newest) = transactions.reduce((first.bookingDate, first.bookingDate)) { (min($0.0, $1.bookingDate), max($0.1, $1.bookingDate)) }
+			return oldest...newest
+		}
+
 		public var isEmpty: Bool {
 			groups.isEmpty && accounts.isEmpty && categories.isEmpty && transactions.isEmpty && updatedAccounts.isEmpty && updatedTransactions.isEmpty
 				&& updatedCategories.isEmpty && relinkedDeletedRows.isEmpty
