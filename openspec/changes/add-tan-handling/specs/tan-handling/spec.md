@@ -540,9 +540,9 @@ The app SHALL show only one dialog for two-factor authentication at a time. A fu
 - **WHEN** the dialog for "Musterbank" is open
 - **THEN** the dialog for "Beispielbank" appears after the first dialog closed
 
-### Requirement: The dialog opens over an open window
+### Requirement: The dialog opens over the account settings and the calibration window
 
-The app SHALL open the dialog on top of the window that is in front in the main window, such as the account settings or the calibration window over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed.
+The app SHALL open the dialog on top of the account settings, or on top of the calibration window when it is open over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed. The calibration window does not open while the dialog shows on the account settings.
 
 #### Scenario: TAN while the calibration window is open
 
@@ -556,6 +556,12 @@ The app SHALL open the dialog on top of the window that is in front in the main 
 - **GIVEN** the account settings of "Girokonto" are open, and the user chose "Cancel" in the calibration window over them
 - **WHEN** a refresh of "Musterbank" asks for a TAN while the calibration window slides out
 - **THEN** the dialog opens on top of the account settings after the calibration window has closed
+
+#### Scenario: Calibrate while the dialog shows
+
+- **GIVEN** the dialog for "Musterbank" shows on top of the account settings of "Girokonto"
+- **WHEN** "Calibrate..." of the settings is chosen
+- **THEN** the calibration window stays closed, and the dialog stays on top of the account settings
 
 ### Requirement: Cancel the dialog
 

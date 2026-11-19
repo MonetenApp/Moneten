@@ -521,10 +521,8 @@ final class DebugHarness {
 		case "dialogplace":
 			let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
 			let depth = main.map { Array(sequence(first: $0) { $0.attachedSheet }).count - 1 } ?? 0
-			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet)),
+			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet.phase)),
 				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)))
-		#endif
-		#if DEBUG || PERF_HARNESS
 		// "<n>" puts the focus in editable field n, counted from 0, of the sheet on top, or without a sheet of the main window,
 		// such as the field of the lock screen or of the first launch. Then it logs the count of editable fields, the field
 		// that has the focus, and whether a field editor has it. Without an argument it only logs, so that a check can wait

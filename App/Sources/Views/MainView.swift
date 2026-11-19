@@ -50,10 +50,7 @@ struct MainView: View {
 				.onAppear { model.alerts.isSheetOnScreen = true }
 				// A TAN dialog opens on top of the open sheet, for example during the login of "Add Account", or on top of
 				// the window over the sheet (`BankDialogPlace`).
-				.sheet(item: Binding(get: { model.bankDialogPlace == .sheet ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
-					SyncDialog(broker: model.sync.broker, sheet: sheet)
-						.interactiveDismissDisabled()
-				}
+				.bankDialog(at: .sheet, of: model)
 		}
 		.onAppear {
 			model.alerts.isViewOnScreen = true

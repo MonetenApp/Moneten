@@ -194,6 +194,11 @@ struct AccountSettingsSheet: View {
 	@State private var initialBalance = ""
 	@State private var confirmRemovePIN = false
 	@State private var calibrating = false
+	/// The opening of the calibration window on screen or sliding out, for `OverSheetState`.
+	@State private var calibration: OverSheetState.Token?
+	/// The number of the sheet of these settings (`OverSheetState.sheet`), so that the calibration window never opens
+	/// over another sheet that took their place.
+	@State private var sheetNumber: Int?
 	/// The balance typed in the calibration window on top of the settings, while it is open.
 	@State private var calibrationBalance = ""
 	@State private var color = Color.accentColor
@@ -270,7 +275,7 @@ struct AccountSettingsSheet: View {
 									.monospacedDigit()
 								// A portfolio shows the values of its bank, so an initial balance would change none of them.
 								if original.kind != .portfolio {
-									Button("Calibrate...") { calibrating = model.openOverSheet() }
+									Button("Calibrate...") { openCalibration() }
 										.accessibilityIdentifier("calibrate")
 										.help("Enter the correct balance at the end of today, and the initial balance changes by the difference")
 								}
@@ -306,16 +311,15 @@ struct AccountSettingsSheet: View {
 			// out waits for its `onDismiss` (`BankDialogPlace`).
 			.sheet(isPresented: $calibrating, onDismiss: {
 				calibrationBalance = ""
-				model.overSheetDismissed()
+				if let calibration { model.overSheetDismissed(calibration) }
 			}) {
 				CalibrationSheet(accountID: accountID, onSaved: tookCalibration, keptBalance: $calibrationBalance).environment(model)
-					.sheet(item: Binding(get: { model.bankDialogPlace == .overSheet ? model.sync.broker.sheet : nil }, set: { _ in })) { sheet in
-						SyncDialog(broker: model.sync.broker, sheet: sheet)
-							.interactiveDismissDisabled()
-					}
+					.bankDialog(at: .overSheet, of: model)
 			}
-			.onChange(of: calibrating) { _, open in if !open { model.closeOverSheet() } }
+			.onChange(of: calibrating) { _, open in if !open, let calibration { model.closeOverSheet(calibration) } }
 			.onAppear {
+				let number = sheetNumber ?? model.overSheet.sheet
+				sheetNumber = number
 				account = original
 				opened = original
 				initialBalance = Format.editableAmount(original.initialBalanceMinor, original.currency)
@@ -331,10 +335,19 @@ struct AccountSettingsSheet: View {
 					originalColor = held.originalColor
 					calibrationBalance = held.calibrationBalance
 					// The calibration window opens again one turn later, on top of the settings that are on screen then.
-					if held.calibrating { DispatchQueue.main.async { calibrating = model.openOverSheet() } }
+					// It stays closed when another sheet took the place of the settings before that turn.
+					if held.calibrating { DispatchQueue.main.async { openCalibration(over: number) } }
 				}
 			}
 		}
+	}
+
+	/// Opens the calibration window on top of the settings, unless a dialog of the bank shows on them or another sheet
+	/// took their place (`OverSheetState`).
+	private func openCalibration(over number: Int? = nil) {
+		guard let number = number ?? sheetNumber, let token = model.openOverSheet(over: number) else { return }
+		calibration = token
+		calibrating = true
 	}
 
 	/// The calibration window saved `saved`. The field shows its initial balance, and the settings take it as the
