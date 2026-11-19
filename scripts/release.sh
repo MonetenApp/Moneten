@@ -73,18 +73,75 @@ checked_current_feed() {
 	[ "$FEED_ARGS" = --first-release ] || check_feed "$WORK/current.xml" "$1" || fail "The current feed at $FEED_URL failed its check."
 }
 
-# Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only an answer of GitHub that
-# no stable release exists makes this the first release, so a network error never starts an empty feed.
+# Succeeds when the tag $1 is a stable version of the app, such as v1.2.3.
+app_tag() { printf '%s\n' "$1" | grep -qxE 'v[0-9]+\.[0-9]+\.[0-9]+'; }
+
+# Prints the published stable versions of the app in the file $1, which holds the pages of the list of
+# releases that gh api --paginate --slurp wrote. Fails unless each page is a list, each page before
+# the last holds 100 releases, and each release has a string tag_name and a Boolean draft, so a page
+# that is cut short or an answer of another shape never reads as a list without a version. A release
+# marked as a pre-release still counts, so the list ignores the field prerelease.
+app_releases() {
+	python3 -c '
+import json, re, sys
+try:
+	pages = json.load(open(sys.argv[1]))
+except ValueError as error:
+	sys.exit("it is not JSON: %s" % error)
+if not isinstance(pages, list) or not pages:
+	sys.exit("gh sent no page")
+for number, page in enumerate(pages, 1):
+	if not isinstance(page, list):
+		sys.exit("page %d is not a list of releases" % number)
+	if number < len(pages) and len(page) != 100:
+		sys.exit("page %d holds %d releases, but each page before the last holds 100" % (number, len(page)))
+	for release in page:
+		if not isinstance(release, dict) or not isinstance(release.get("tag_name"), str) or not isinstance(release.get("draft"), bool):
+			sys.exit("page %d holds a release without a string tag_name and a Boolean draft: %.200s" % (number, json.dumps(release)))
+		if not release["draft"] and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", release["tag_name"]):
+			print(release["tag_name"])
+' "$1"
+}
+
+# Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only a list of every release
+# that GitHub sent in full and in the expected shape, with no published stable version of the app,
+# makes this the first release, so a network error or a malformed answer never starts an empty feed.
+# GitHub marks the only published release as the latest one even when it was created with
+# --latest=false, so ext-v0.1.0 or bank-data can be the latest release before the first version of
+# the app. A 404 for the latest release is no proof
+# either, because GitHub leaves a release marked as a pre-release out of it. Each copy of the app
+# refuses a feed that starts again at revision 1, so the list decides in every case.
 current_feed() {
-	set -- -sS -o /dev/null -w '%{http_code}'
+	set -- -sS -o "$WORK/latest.json" -w '%{http_code}'
 	[ -z "$GH_TOKEN" ] || set -- "$@" -H "Authorization: Bearer $GH_TOKEN"
 	STATUS=$(curl "$@" "https://api.github.com/repos/$REPO/releases/latest")
 	case "$STATUS" in
-		404) FEED_ARGS=--first-release; echo "No stable release yet: this is the first feed." ;;
-		200) curl -fsSL -o "$WORK/current.xml" "$FEED_URL" || fail "The newest stable release has no readable $FEED_URL."
-			FEED_ARGS="--feed $WORK/current.xml" ;;
+		404) LATEST="" ;;
+		200) LATEST=$(python3 -c 'import json, sys; r = json.load(open(sys.argv[1])); tag = r.get("tag_name") if isinstance(r, dict) else None; isinstance(tag, str) or sys.exit(1); print(tag)' "$WORK/latest.json" 2>/dev/null) \
+			|| fail "GitHub sent no tag for the newest release." ;;
 		*) fail "GitHub answered $STATUS for the newest release." ;;
 	esac
+	if app_tag "$LATEST"; then
+		curl -fsSL -o "$WORK/current.xml" "$FEED_URL" || fail "The newest stable release $LATEST has no readable $FEED_URL."
+		FEED_ARGS="--feed $WORK/current.xml"
+		return
+	fi
+	gh api --paginate --slurp "repos/$REPO/releases?per_page=100" > "$WORK/releases.json" \
+		|| fail "The releases of $REPO cannot be read."
+	app_releases "$WORK/releases.json" > "$WORK/app-releases.txt" 2>"$WORK/releases-error" \
+		|| fail "The list of releases of $REPO has an unexpected shape, so it proves nothing about a first feed: $(cat "$WORK/releases-error")"
+	APP_RELEASES=$(paste -sd , "$WORK/app-releases.txt" | sed 's/,/, /g')
+	[ -z "$APP_RELEASES" ] || fail "The latest release is ${LATEST:-none}, not a version of the app, although these versions are published: $APP_RELEASES. Mark the newest version as the latest release."
+	FEED_ARGS=--first-release
+	echo "No stable release of the app yet${LATEST:+ (the latest release is $LATEST)}: this is the first feed."
+}
+
+# Fails unless GitHub reports v$1 as the latest release, which carries the feed of the feed URL.
+# Each failure comes after the publish, so it names the way to finish by hand.
+check_latest() {
+	BY_HAND="v$1 is public now, so a second publish stops at \"is not a draft\". Mark v$1 as the latest release, then do the rest of publish by hand as docs/releasing.md describes."
+	LATEST=$(gh api "repos/$REPO/releases/latest" -q .tag_name) || fail "GitHub does not answer for the latest release, so the feed URL may miss its feed. $BY_HAND"
+	[ "$LATEST" = "v$1" ] || fail "The latest release is ${LATEST:-none}, not v$1, so the feed URL misses its feed. $BY_HAND"
 }
 
 preflight() {
@@ -199,6 +256,41 @@ check_zip_paths() {
 	check_build_paths "$WORK/zip-paths.txt"
 }
 
+# Prints a crash report with one frame in each slice of the DWARF files named in $WORK/dwarf, at its
+# main function or else its first function. Each tool writes to a file before awk reads it: in a pipe,
+# the shell takes the status of awk, so a failing tool would leave an empty value, and the error
+# would name the symbolication instead of the tool. The script runs without pipefail, because grep -q
+# and head close their pipe early, and pipefail turns that into a failure.
+frames() {
+	while read -r f; do
+		dwarfdump --uuid "$f" > "$WORK/uuids" || fail "dwarfdump failed on the dSYM $f."
+		sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' "$WORK/uuids" > "$WORK/ids"
+		while read -r ID ARCH; do
+			nm -arch "$ARCH" -U -n "$f" > "$WORK/nm.txt" || fail "nm failed on the dSYM $f for $ARCH."
+			FUNCTION=$(awk '$2 ~ /^[Tt]$/ && $3 == "_main" { print $1; exit }' "$WORK/nm.txt")
+			[ -n "$FUNCTION" ] || FUNCTION=$(awk '$2 ~ /^[Tt]$/ { print $1; exit }' "$WORK/nm.txt")
+			otool -l -arch "$ARCH" "$f" > "$WORK/otool.txt" || fail "otool failed on the dSYM $f for $ARCH."
+			TEXT=$(awk '$1 == "segname" && $2 == "__TEXT" { getline; print $2; exit }' "$WORK/otool.txt")
+			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
+			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
+		done < "$WORK/ids"
+	done < "$WORK/dwarf"
+}
+
+# The frames of the dSYMs of this run stop with a message that names the tool when nm or otool fails.
+# A stub in front of PATH stands in for the failing tool.
+check_frame_tools() {
+	mkdir "$WORK/stub"
+	for TOOL in nm otool; do
+		rm -f "$WORK/stub/"*
+		printf '#!/bin/sh\necho "%s: stub failure" >&2\nexit 1\n' "$TOOL" > "$WORK/stub/$TOOL"
+		chmod +x "$WORK/stub/$TOOL"
+		(PATH="$WORK/stub:$PATH"; frames > /dev/null) 2>"$WORK/error" && fail "The frames of the dSYMs passed with a failing $TOOL."
+		grep -q "^$TOOL failed on the dSYM " "$WORK/error" || fail "A failing $TOOL stopped the frames of the dSYMs with another message: $(cat "$WORK/error")"
+	done
+	echo "The check of the dSYMs stops with the name of the tool when nm or otool fails."
+}
+
 # Zips dist/Moneten.dSYMs to $OUT/Moneten-$1-dSYMs.zip and checks the zip against the slices of the
 # app on the disk image, which check_dmg wrote. Then scripts/symbolicate-crash.sh must resolve a report
 # with one frame in each slice, at its main function or else its first function, to a function and
@@ -210,19 +302,7 @@ symbols() {
 	mkdir "$WORK/symbols"
 	ditto -x -k "$ZIP" "$WORK/symbols"
 	match_symbols "$WORK/app-slices" "$WORK/symbols"
-	while read -r f; do
-		dwarfdump --uuid "$f" | sed -n 's/^UUID: \([0-9A-F-]*\) (\([^)]*\)).*/\1 \2/p' > "$WORK/ids"
-		while read -r ID ARCH; do
-			# awk reads to the end and keeps the first match. An awk that exits early closes the pipe
-			# under nm and otool, and the runner of GitHub ignores SIGPIPE, so they print
-			# "LLVM ERROR: IO failure on output stream: Broken pipe".
-			FUNCTION=$(nm -arch "$ARCH" -U "$f" | awk '!found && $2 ~ /^[Tt]$/ && $3 == "_main" { print $1; found = 1 }')
-			[ -n "$FUNCTION" ] || FUNCTION=$(nm -arch "$ARCH" -U -n "$f" | awk '!found && $2 ~ /^[Tt]$/ { print $1; found = 1 }')
-			TEXT=$(otool -l -arch "$ARCH" "$f" | awk '!found && $1 == "segname" && $2 == "__TEXT" { getline; print $2; found = 1 }')
-			[ -n "$FUNCTION" ] && [ -n "$TEXT" ] || fail "The dSYM $f has no function or no __TEXT segment for $ARCH."
-			printf 'Frame: %s %s 0x%x\n' "${f##*/}" "$ID" $((0x$FUNCTION - TEXT))
-		done < "$WORK/ids"
-	done < "$WORK/dwarf" > "$WORK/report.txt"
+	frames > "$WORK/report.txt"
 	scripts/symbolicate-crash.sh "$WORK/report.txt" "$WORK/symbols" > "$WORK/symbolicated.txt" \
 		|| fail "scripts/symbolicate-crash.sh failed on the dSYMs of the release."
 	[ "$(grep -cE '^Frame: .* -> [^0 ].* \(in [^)]+\) \([^)]+:[0-9]+\)$' "$WORK/symbolicated.txt")" = "$(wc -l < "$WORK/report.txt" | tr -d ' ')" ] \
@@ -325,13 +405,31 @@ withdrawn_feed() {
 	check_feed "$WORK/withdrawn/appcast.xml" "$2" || fail "The feed without $1 failed its check, so nothing was uploaded."
 }
 
+# Writes the feed of the release with the tag $1 to the file $2.
+release_feed() { curl -fsSL -o "$2" "https://github.com/$REPO/releases/download/$1/appcast.xml"; }
+
+# Fails unless the feed of the release $1 is still $WORK/current.xml, byte for byte, the feed that
+# withdrawn_feed read. A publish in between replaced that feed or made another release the newest.
+# The upload would then drop the new release from the feed and give the feed the revision of a feed
+# that apps already read, so they would refuse it.
+check_unchanged_feed() {
+	rm -f "$WORK/live.xml"
+	release_feed "$1" "$WORK/live.xml" || fail "The feed of $1 cannot be read, so nothing was uploaded."
+	cmp -s "$WORK/current.xml" "$WORK/live.xml" \
+		|| fail "The feed of $1 changed after withdraw read it, because a release was published at the same time. Nothing was uploaded. Run withdraw again."
+}
+
 # The check of the signed result with the committed key stops a wrong key in the login Keychain: a
-# feed that no installed app can check would stop every update.
+# feed that no installed app can check would stop every update. check_unchanged_feed stops a publish
+# that ran at the same time. A publish in the few seconds between that check and the upload still
+# races, but the later upload wins, and the check after the upload of the other command fails: the
+# feed lists the withdrawn version again, or it lacks the published one.
 withdraw() {
 	KEY=$(committed_key)
 	check_production_key "$KEY"
 	withdrawn_feed "$1" "$KEY"
 	STABLE=$(gh api "repos/$REPO/releases/latest" -q .tag_name)
+	check_unchanged_feed "$STABLE"
 	gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/withdrawn/appcast.xml"
 	curl -fsSL -o "$WORK/published.xml" "$FEED_URL" || fail "The feed at $FEED_URL cannot be read."
 	check_feed "$WORK/published.xml" "$KEY" || fail "The feed at $FEED_URL failed its check."
@@ -405,7 +503,10 @@ publish() {
 		gh release upload "$STABLE" --repo "$REPO" --clobber "$WORK/draft-feed/appcast.xml"
 		;;
 	*)
+		# --latest takes the mark from ext-v0.1.0 or bank-data, which GitHub may hold as the latest
+		# release before the first version of the app.
 		gh release edit "v$1" --repo "$REPO" --draft=false --latest
+		check_latest "$1"
 		;;
 	esac
 	# The text of every earlier release follows its section in CHANGELOG.md, as the feed does. One
@@ -450,17 +551,25 @@ check_feeds() {
 	(checked_current_feed "$(public_key "$WORK/other.key")") 2>/dev/null && fail "A release accepted a current feed of another key."
 	# remove keeps the last version, so the withdrawal takes 0.0.2 out of a feed with two versions.
 	mkdir "$WORK/two"
-	printf '# Changelog\n\n## Unreleased\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
-	for BUILD in 1 2; do
-		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/appcast.xml"
+	printf '# Changelog\n\n## Unreleased\n\n## 0.0.3 (2026-01-03)\n\n- Three.\n\n## 0.0.2 (2026-01-02)\n\n- Two.\n\n## 0.0.1 (2026-01-01)\n\n- One.\n' > "$WORK/two/CHANGELOG.md"
+	for BUILD in 1 2 3; do
+		[ "$BUILD" = 1 ] && FEED_ARGS=--first-release || FEED_ARGS="--feed $WORK/two/$((BUILD - 1)).xml"
 		python3 scripts/release-notes.py --changelog "$WORK/two/CHANGELOG.md" appcast "0.0.$BUILD" --build "$BUILD" --min-macos 15.0 \
-			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/appcast.xml"
+			--url "$(dmg_url "0.0.$BUILD")" --length 1 --signature "c2lnbmF0dXJl" $FEED_ARGS --out "$WORK/two/$BUILD.xml"
+		"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/$BUILD.xml" >/dev/null
 	done
-	"$SPARKLE/sign_update" --ed-key-file "$1" "$WORK/two/appcast.xml" >/dev/null
-	CURRENT="$WORK/two/appcast.xml"
+	CURRENT="$WORK/two/2.xml"
 	(CHANGELOG="$WORK/two/CHANGELOG.md"; withdrawn_feed 0.0.2 "$KEY" "$1")
 	grep -q '<moneten:revision>3</moneten:revision>' "$WORK/withdrawn/appcast.xml" && ! grep -q '>0\.0\.2<' "$WORK/withdrawn/appcast.xml" \
 		|| fail "The withdrawal did not take 0.0.2 out of the feed with a revision one above the current one."
+	# The release still holds the feed that the withdrawal read, and then a publish of 0.0.3 replaces it.
+	release_feed() { cp "$LIVE" "$2"; }
+	LIVE="$WORK/two/2.xml"
+	(check_unchanged_feed v0.0.2) || fail "A withdrawal refused to upload over the feed that it read."
+	LIVE="$WORK/two/3.xml"
+	(check_unchanged_feed v0.0.2) 2>"$WORK/error" && fail "A withdrawal would upload over a feed that a publish replaced after it read it."
+	grep -qF "a release was published at the same time" "$WORK/error" \
+		|| fail "A withdrawal refused the feed of a publish at the same time for another reason: $(cat "$WORK/error")"
 	for CASE in "unsigned.xml:has no signature" "http.xml:has a disk image outside"; do
 		CURRENT="$WORK/${CASE%%:*}"
 		rm -rf "$WORK/withdrawn"
@@ -468,8 +577,92 @@ check_feeds() {
 		grep -qF "${CASE#*:}" "$WORK/error" || fail "A withdrawal refused the current feed ${CASE%%:*} for another reason: $(cat "$WORK/error")"
 		[ ! -e "$WORK/withdrawn/appcast.xml" ] || fail "A withdrawal wrote a feed from the current feed ${CASE%%:*}."
 	done
-	echo "A release refuses a current feed of another key, and a withdrawal raises the revision and refuses an unsigned feed and a forged disk image."
+	echo "A release refuses a current feed of another key, and a withdrawal raises the revision, refuses an unsigned feed and a forged disk image, and uploads nothing over a feed that a publish replaced."
 }
+
+# current_feed and check_latest with stubs of curl and gh in place of GitHub. STUB_LATEST is the tag
+# of the latest release, empty for none, "!" and the HTTP status of an error, or "{" and the JSON
+# that GitHub sends. STUB_RELEASES is what gh api --paginate --slurp prints for the list of releases,
+# "fail" for a list that cannot be read, or "@full:" and a page that follows a full page of 100
+# releases. STUB_FEED is the file at the feed URL, empty for none. Each case names the feed arguments
+# it expects, "first" or "feed", or else a part of the message of its failure.
+check_latest_rule() { (
+	curl() {
+		for URL; do :; done
+		while [ $# -gt 1 ]; do [ "$1" != -o ] || OUTPUT=$2; shift; done
+		case "$URL" in
+		*/releases/latest) case "$STUB_LATEST" in
+			"") printf 404 ;;
+			!*) printf %s "${STUB_LATEST#!}" ;;
+			\{*) printf %s "$STUB_LATEST" > "$OUTPUT"; printf 200 ;;
+			*) printf '{"tag_name": "%s"}' "$STUB_LATEST" > "$OUTPUT"; printf 200 ;;
+			esac ;;
+		"$FEED_URL") [ -n "$STUB_FEED" ] && cp "$STUB_FEED" "$OUTPUT" || return 22 ;;
+		*) return 7 ;;
+		esac
+	}
+	gh() {
+		case "$*:$STUB_LATEST" in
+		*/releases/latest*:) echo "gh: Not Found (HTTP 404)" >&2; return 1 ;;
+		*/releases/latest*:!*) echo "gh: Bad Gateway (HTTP ${STUB_LATEST#!})" >&2; return 1 ;;
+		*/releases/latest*) printf '%s\n' "$STUB_LATEST" ;;
+		*--paginate\ --slurp\ *) case "$STUB_RELEASES" in
+			fail) echo "gh: Bad Gateway (HTTP 502)" >&2; return 1 ;;
+			@full:*) python3 -c 'import json, sys; print(json.dumps([[{"tag_name": "ext-v0.0.%d" % n, "draft": False, "prerelease": False} for n in range(100)], json.loads(sys.argv[1])]))' "${STUB_RELEASES#@full:}" ;;
+			*) printf '%s\n' "$STUB_RELEASES" ;;
+			esac ;;
+		*) echo "gh: the stub knows no call $*" >&2; return 1 ;;
+		esac
+	}
+	printf '<rss/>\n' > "$WORK/stub-feed.xml"
+	while IFS='|' read -r STUB_LATEST STUB_RELEASES STUB_FEED WANT; do
+		[ -z "$STUB_FEED" ] || STUB_FEED="$WORK/stub-feed.xml"
+		rm -f "$WORK/current.xml"
+		CASE="latest ${STUB_LATEST:-none}, releases ${STUB_RELEASES:-empty}, feed ${STUB_FEED:-none}"
+		if (current_feed > /dev/null; echo "$FEED_ARGS") > "$WORK/args" 2>"$WORK/error"; then
+			case "$WANT:$(cat "$WORK/args")" in
+			first:--first-release) ;;
+			"feed:--feed $WORK/current.xml") cmp -s "$WORK/current.xml" "$STUB_FEED" || fail "The case $CASE did not read the feed." ;;
+			*) fail "The case $CASE gave the feed arguments $(cat "$WORK/args"), not $WANT." ;;
+			esac
+		else
+			case "$WANT" in first|feed) fail "The case $CASE failed: $(cat "$WORK/error")" ;; esac
+			grep -qF "$WANT" "$WORK/error" || fail "The case $CASE failed with another message: $(cat "$WORK/error")"
+		fi
+	done <<-'EOF'
+	ext-v0.1.0|[[{"tag_name": "ext-v0.1.0", "draft": false, "prerelease": false}, {"tag_name": "v0.1.0", "draft": true, "prerelease": false}]]||first
+	|[[]]||first
+	bank-data|[[{"tag_name": "bank-data", "draft": false}, {"tag_name": "v0.2.0-beta.1", "draft": false, "prerelease": true}]]||first
+	ext-v0.1.0|@full:[]||first
+	v0.1.0|[[{"tag_name": "v0.1.0", "draft": false}]]|feed|feed
+	v0.1.0|[[{"tag_name": "v0.1.0", "draft": false}]]||has no readable
+	ext-v0.1.0|[[{"tag_name": "ext-v0.2.0", "draft": false}, {"tag_name": "v0.1.0", "draft": false}]]|feed|Mark the newest version as the latest release
+	|[[{"tag_name": "v0.1.0", "draft": false, "prerelease": true}, {"tag_name": "ext-v0.1.0", "draft": false}]]|feed|The latest release is none, not a version of the app, although these versions are published: v0.1.0
+	ext-v0.1.0|@full:[{"tag_name": "v0.1.0", "draft": false}]||although these versions are published: v0.1.0
+	|fail||cannot be read
+	ext-v0.1.0|fail||cannot be read
+	!502|||GitHub answered 502
+	{}|[[]]||sent no tag for the newest release
+	{"tag_name": 1}|[[]]||sent no tag for the newest release
+	ext-v0.1.0|||unexpected shape, so it proves nothing about a first feed: it is not JSON
+	ext-v0.1.0|[{}]||unexpected shape, so it proves nothing about a first feed: page 1 is not a list of releases
+	ext-v0.1.0|{}||unexpected shape, so it proves nothing about a first feed: gh sent no page
+	ext-v0.1.0|[]||unexpected shape, so it proves nothing about a first feed: gh sent no page
+	ext-v0.1.0|[[{"tag_name": "v0.1.0"}]]||page 1 holds a release without a string tag_name and a Boolean draft
+	ext-v0.1.0|[[{"tag_name": "v0.1.0", "draft": "false"}]]||page 1 holds a release without a string tag_name and a Boolean draft
+	ext-v0.1.0|[[{"tag_name": 1, "draft": false}]]||page 1 holds a release without a string tag_name and a Boolean draft
+	ext-v0.1.0|[[{"draft": false}]]||page 1 holds a release without a string tag_name and a Boolean draft
+	ext-v0.1.0|[["v0.1.0 false"]]||page 1 holds a release without a string tag_name and a Boolean draft
+	ext-v0.1.0|[[], [{"tag_name": "v0.1.0", "draft": false}]]||page 1 holds 0 releases, but each page before the last holds 100
+	EOF
+	STUB_LATEST=v0.1.0; (check_latest 0.1.0) || fail "check_latest refused v0.1.0 as the latest release."
+	for STUB_LATEST in ext-v0.1.0 v0.0.9 "" !502; do
+		(check_latest 0.1.0) 2>"$WORK/error" && fail "check_latest accepted ${STUB_LATEST:-none} as the latest release v0.1.0."
+		grep -qF 'so a second publish stops at "is not a draft"' "$WORK/error" && grep -qF "do the rest of publish by hand" "$WORK/error" \
+			|| fail "check_latest with the latest release ${STUB_LATEST:-none} gave no way to finish by hand: $(cat "$WORK/error")"
+	done
+	echo "No latest release, or one that is no version of the app, starts the first feed only when a full list of the releases in the expected shape shows no published version, a version without a readable feed fails, and a failed check after a publish names the way to finish by hand."
+); }
 
 # The update keys of App/project.yml: a Debug build trusts the test key of Fixtures/update, and the
 # check of a release refuses that key and the placeholder.
@@ -537,8 +730,10 @@ dry_run() {
 		notes cut "$VERSION"
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
+	check_latest_rule
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"
+	check_frame_tools
 	check_keys
 	check_source_rule
 	# The test key, so a Debug build can read this feed (Fixtures/update/README.md).

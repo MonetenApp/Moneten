@@ -35,10 +35,10 @@ public struct FinTSAccount: Sendable, Equatable {
 	public var remoteID: String { iban ?? (subnumber.map { "\(number)/\($0)" } ?? number) }
 
 	/// The account as the setup adds it to the app, in `group` and linked to `access`, under the bank name of the access.
-	/// Without a product name it is named after its type.
+	/// Without a product name, or with one of only white space, it is named after its type.
 	public func account(access: Access, bank: FinTSBank, group: UUID?) -> Account {
 		let bankCode: String? = if case let .fints(code, _) = access.source { code } else { nil }
-		var account = Account(groupID: group, position: 0, name: productName ?? kind.title, kind: kind, source: .bank, currency: currency,
+		var account = Account(groupID: group, position: 0, name: productName.flatMap(Account.acceptedName) ?? kind.title, kind: kind, source: .bank, currency: currency,
 			bic: CooperativeBanks.bic(bic ?? bank.bic, bankCode: bankCode), accountNumber: number, bankCode: bankCode, bankName: access.bankName, owner: owner, accessID: access.id, remoteID: remoteID)
 		account.takeIBAN(iban)
 		return account
@@ -181,6 +181,7 @@ public struct FinTSConnector: BankConnector {
 		let accounts = request.accounts.filter { shared[$0.remoteID] == nil }
 		command.accounts = accounts.map { Command.Period(id: $0.remoteID, from: Self.firstDay($0.since, today: today)?.description) }
 		let byRemoteID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.remoteID, $0) })
+		let server = command.url.flatMap(URL.init(string:))
 		var state: AccessState?
 		var notices: [BankMessage] = []
 		func handle(_ message: HelperMessage) async throws {
@@ -190,15 +191,16 @@ public struct FinTSConnector: BankConnector {
 			case let .result(remoteID, result):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
 				do {
-					let (outcome, errors) = try result.get().outcome(of: account)
-					outcomes[account.accountID] = DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+					let (outcome, errors) = try result.get().outcome(of: account, server: server)
+					outcomes[account.accountID] = Targobank.outcome(DKB.outcome(outcome, account: remoteID, bankCode: command.bankCode, server: server),
+						account: remoteID, bankCode: command.bankCode, server: server)
 					notices += errors
 				} catch {
 					outcomes[account.accountID] = .failed(error as? SyncFailure ?? HelperFailure.unreadable)
 				}
 			case let .accountFailed(remoteID, error):
 				guard let account = byRemoteID[remoteID] else { throw HelperFailure.unreadable }
-				outcomes[account.accountID] = .failed(DKB.failure(of: error, account: remoteID, bankCode: command.bankCode, server: command.url.flatMap(URL.init(string:)))
+				outcomes[account.accountID] = .failed(DKB.failure(of: error, account: remoteID, bankCode: command.bankCode, server: server)
 					?? error.failure)
 			case let .state(data): state = AccessState(data)
 			case let .failed(error): throw error.failure
@@ -265,7 +267,7 @@ public struct FinTSConnector: BankConnector {
 					switch message {
 					case let .ask(id, ask):
 						guard let session else { throw HelperFailure.unreadable }
-						let request = try ask.request(server: command.url.flatMap { URL(string: $0) })
+						let request = try ask.request(server: command.url.flatMap { URL(string: $0) }, bankCode: command.bankCode)
 						let task = await asks.start(request, session)
 						guard ask.kind != "approve" else {
 							approvals[id] = task
@@ -316,9 +318,8 @@ public struct FinTSConnector: BankConnector {
 			process.cancel()
 			asks.close()
 		}
-		// A helper that closed its output but still runs gets the cancel and the grace too, so the run
-		// never waits for its end without a limit.
-		if process.isRunning { process.cancel() }
+		// A helper that closed its output but still runs already got the cancel and the grace from
+		// `HelperProcess`, so the run never waits for its end without a limit.
 		watchdog.stop()
 		for approval in approvals.values {
 			approval.cancel()

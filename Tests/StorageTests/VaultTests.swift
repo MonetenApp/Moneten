@@ -324,7 +324,7 @@ struct SchemaTests {
 		var savings = Account(position: 1, name: "Tagesgeld", kind: .savings, source: .bank, accessID: access.id, remoteID: "DE89370400440532013000")
 		try store.add(access, state: AccessState(Data([1, 2, 3])), accounts: [savings])
 		#expect(try store.loadLedger().account(savings.id)?.accessID == access.id)
-		savings.refreshError = RefreshError(message: "Zugang vorübergehend gesperrt", code: "9010", date: Self.noon(9), notices: ["Wartung am 14.11.2026"])
+		savings.refreshError = RefreshError(failure: .bank(BankMessage(code: "9010", text: "Zugang vorübergehend gesperrt")), date: Self.noon(9), notices: ["Wartung am 14.11.2026"])
 		try store.save(savings)
 		#expect(try store.loadLedger().account(savings.id) == savings)
 	}

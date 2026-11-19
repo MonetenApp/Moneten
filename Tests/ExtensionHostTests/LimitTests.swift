@@ -4,29 +4,44 @@ import Foundation
 import CLua
 import Synchronization
 import Testing
+import TestSupport
 
 /// Limits that hold inside the process of the tests, where the memory of each request can be followed.
 /// They run one after the other.
 @Suite(.serialized) struct LimitTests {
 	/// Answers every request with a new body of 8 MB and a header of `header` bytes, which Swift pushes
-	/// after the body, and counts the bodies that were freed.
+	/// after the body, and counts the bodies that were freed. The body is not HTML: an answer without a
+	/// content type counts as a page, and the search of 8 MB for its `<meta>` tags took about a second per
+	/// request in a debug build. Forty requests then held a thread of Swift concurrency for minutes on CI,
+	/// where the tests of every suite share three of them (issue #437).
 	final class LargeBodies: Transport, Sendable {
+		/// The `<meta>` tag at the start of a body that `html` sends.
+		static let meta = #"<meta charset="ISO-8859-1">"#
 		let header: Int
+		let html: Bool
 		let freed = Mutex(0)
 
-		init(header: Int = 0) {
+		/// With `html`, the body has no `Content-Type` and starts with a `<meta>` tag but has no end of
+		/// the head, so the host reads all 8 MB for the tags of the head.
+		init(header: Int = 0, html: Bool = false) {
 			self.header = header
+			self.html = html
 		}
 
 		func send(_ request: HTTPRequest) throws -> HTTPResponse {
 			let count = 8 * 1_048_576
 			let bytes = UnsafeMutableRawPointer.allocate(byteCount: count, alignment: 1)
 			bytes.initializeMemory(as: UInt8.self, repeating: 0x41, count: count)
+			if html { bytes.copyMemory(from: Array(Self.meta.utf8), byteCount: Self.meta.utf8.count) }
 			let body = Data(bytesNoCopy: bytes, count: count, deallocator: .custom { [self] pointer, _ in
 				pointer.deallocate()
 				freed.withLock { $0 += 1 }
 			})
-			return HTTPResponse(status: 200, headers: header > 0 ? ["X-Padding": String(repeating: "p", count: header)] : [:], body: body)
+			// A binary type keeps the host from reading 8 MB for the `<meta>` tags of an HTML head on
+			// every request. The memory that the tests follow does not change.
+			var headers = html ? [:] : ["Content-Type": "application/octet-stream"]
+			if header > 0 { headers["X-Padding"] = String(repeating: "p", count: header) }
+			return HTTPResponse(status: 200, headers: headers, body: body)
 		}
 	}
 
@@ -57,10 +72,31 @@ import Testing
 		#expect(bodies.freed.withLock { $0 } == 40)
 	}
 
+	/// An answer of 8 MB without a `Content-Type` counts as HTML, so the host reads all of it for the
+	/// `<meta>` tags of its head. The request completes under the memory limit, finds the tag, and frees
+	/// the body afterwards.
+	@Test func largeHTMLAnswerIsReadForMetaTags() {
+		let package = demo("""
+			WebBanking{version = 1}
+			function Fetch()
+				local content, charset = Connection():request("GET", "https://api.bank.example/statement")
+				return {#content, charset}
+			end
+			""", hosts: ["api.bank.example"])
+		let bodies = LargeBodies(html: true)
+		let session = HostSession(package: package, transport: bodies, memory: 64 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Fetch")) }
+		// Typed outside #expect: the compiler of the CI runner reads the product inside the macro as Int.
+		let size: Int64 = 8 * 1_048_576
+		#expect(result == .success(.array([.integer(size), .string("ISO-8859-1")])))
+		#expect(bodies.freed.withLock { $0 } == 1)
+	}
+
 	/// A finalizer that fills the memory runs while a request pushes its body. No memory error may
 	/// skip the end of the Swift function, so the state is back at one level of Swift afterwards.
-	@Test func finalizersDoNotLeaveTheHeadroomOn() {
-		let package = demo("""
+	@Test func finalizersDoNotLeaveTheHeadroomOn() async {
+		let (result, depth) = await onOwnThread {
+			Self.run("Stress", transport: LargeBodies(header: 1_048_576), demo("""
 			WebBanking{version = 1}
 			function Stress()
 				-- Fills the memory to the last bytes and keeps it: large blocks first, then small tables.
@@ -78,17 +114,17 @@ import Testing
 				junk = nil
 				return "done"
 			end
-			""", hosts: ["api.bank.example"])
-		let session = HostSession(package: package, transport: LargeBodies(header: 1_048_576), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
-		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Stress")) }
+			""", hosts: ["api.bank.example"]))
+		}
 		#expect(result == .success(.string("done")))
-		#expect(clua_nativedepth(session.lua.stack.L) == 1)
+		#expect(depth == 1)
 	}
 
 	/// Objects that only Swift functions allocate, each with a finalizer, become garbage as fast as
 	/// they come. The collector keeps up, so the loop never reaches the limit of the state.
-	@Test func garbageOfSwiftFunctionsIsCollected() {
-		let package = demo("""
+	@Test func garbageOfSwiftFunctionsIsCollected() async {
+		let (result, _) = await onOwnThread {
+			Self.run("Churn", transport: LargeBodies(), demo("""
 			WebBanking{version = 1}
 			function Churn()
 				-- A JSON object of the API is a userdata whose finalizer Swift registers. A Connection
@@ -96,10 +132,17 @@ import Testing
 				for i = 1, 1000000 do JSON("{}") end
 				return "done"
 			end
-			""")
-		let session = HostSession(package: package, transport: LargeBodies(), memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
-		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function("Churn")) }
+			"""))
+		}
 		#expect(result == .success(.string("done")))
+	}
+
+	/// Calls `function` of `package` in a state of 32 MB, and returns its result and the levels of Swift
+	/// that the state holds afterwards.
+	static func run(_ function: String, transport: LargeBodies, _ package: ExtensionPackage) -> (Result<LuaValue, ScriptError>, Int32) {
+		let session = HostSession(package: package, transport: transport, memory: 32 * 1_048_576, ask: { _ in .denied }, log: { _ in })
+		let result = Result { () throws(ScriptError) -> LuaValue in _ = try session.load(); return try session.call(.function(function)) }
+		return (result, clua_nativedepth(session.lua.stack.L))
 	}
 
 	/// A result of the API that a function pushes into a full Lua state fails the call as a memory

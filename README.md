@@ -34,6 +34,14 @@ Read [architecture](docs/architecture.md) for the modules and the data model, an
 
 [ADR 0009](docs/decisions/0009-database-password-as-in-moneymoney.md) and [architecture](docs/architecture.md#the-database-password-protects-everything) have the details.
 
+## Back up your data
+
+The app keeps all your data in one data folder with the subfolders "Database", "Extensions", and "Statements". "Show Database in Finder..." in the Help menu opens it.
+
+- A copy of the whole data folder holds all your data. Time Machine or any other backup of your Mac covers it. To open it on another Mac, set a database password first, because without one the key of the database stays in the Keychain of this Mac (see below).
+- "Backup Database..." in the Tools menu saves a copy of the database while the app runs. The copy holds the database only: statements and extensions are not part of it. So the command does not replace a regular backup of your Mac.
+- A backup opens with the database password that was valid when you made it, on any Mac. A backup made without a database password opens only on the same Mac and user account, with the key in the Keychain.
+
 ## Why this project exists
 
 MoneyMoney and Banking4 are two of the established banking apps for German users on the Mac. Both are closed source. New shareholders took over 90 percent of MoneyMoney's developer, the price doubled, and the developer announced a subscription. [Vision](docs/vision.md) explains what Moneten does differently and how it pays for itself.

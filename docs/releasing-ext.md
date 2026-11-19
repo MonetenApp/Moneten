@@ -19,7 +19,7 @@ The dry run needs no secrets and contacts no service. It builds the same zip, si
 scripts/release-ext.sh dry-run       # writes dist/ext
 ```
 
-The workflow runs the dry run on each pull request that changes the tool, the libraries in `Sources`, the package, or the packaging.
+The workflow runs the dry run on each pull request that changes an input of `ext`: `Tools/ext`, the libraries that it links (`Domain`, `CLua`, `ExtensionHost`, and `ExtensionConnector`), `Package.swift`, `Package.resolved`, the packaging, or the example extension that the check replays. A change elsewhere in `Sources`, such as `Storage` or `FinTS`, cannot change the binary and skips the dry run. The `test` job of CI still builds and tests `ext` for it.
 
 ## Set up once
 
@@ -29,7 +29,7 @@ The release uses the secrets of the app release, so the owner creates them only 
 2. Under Settings, Environments, `build`, "Deployment branches and tags", add the tag pattern `ext-v*` next to `main` and `v*` ([ADR 0019](decisions/0019-ext-releases-in-the-build-environment.md)). Without it GitHub refuses to start the job.
 3. Under Settings, Rules, add the tags `ext-v*` to the [ruleset](releasing.md#protected-tags) that allows only the owner to create, update, or delete the tags `v*`. A tag starts a signed release, so nobody else may push one.
 
-The job that holds the certificate can only read the repository. A second job without secrets creates the release. The workflow never marks the release as the latest release, because the update feed of the app lives on the latest release.
+The job that holds the certificate can only read the repository. A second job without secrets creates the release. The workflow never marks the release as the latest release, because the update feed of the app lives on the latest release. GitHub still reports `ext-v0.1.0` as the latest release while it is the only published release. The release scripts of the app accept that before the first version of the app, which takes the mark when it is published.
 
 ## Release a version
 

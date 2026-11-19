@@ -113,12 +113,12 @@ struct Ask: Decodable {
 	let kind: String
 	let purpose: String?
 	let prompt: String?
-	/// The name of the TAN method of an approval, for example "SecureGo plus".
+	/// The name of the TAN method of an approval, for example "SecureGo plus", or of a typed TAN.
 	let method: String?
 	let rejected: HelperError?
 	/// The PIN rules of the bank parameters, on a PIN request.
 	let rules: Rules?
-	/// The methods to choose from, and on a challenge the methods that the user can change to.
+	/// The methods to choose from, and on a challenge the methods that the bank allows the user, also a single one.
 	let methods: [Method]?
 	/// The ID of the method of a challenge.
 	let current: String?
@@ -161,8 +161,8 @@ struct Ask: Decodable {
 	/// the user blocked at a savings bank, stops the run, and the app never asks for its PIN again (task 1.24).
 	/// A login that ING accepts only after a login on its website stops the run too, because a new PIN does not help.
 	/// A flicker code that does not read fails the access, because the user cannot produce a TAN without it.
-	/// `server` is the FinTS address of the bank, whose rules some requests follow.
-	func request(server: URL?) throws -> UserRequest {
+	/// `server` is the FinTS address of the bank, whose rules some requests follow, and `bankCode` its Bankleitzahl.
+	func request(server: URL?, bankCode: String? = nil) throws -> UserRequest {
 		if kind == "pin" {
 			let rules = CooperativeBanks.pinRules(minLength: rules?.minLength, maxLength: rules?.maxLength, server: server)
 			guard let rejected else { return .pin(PINRequest(rules: rules)) }
@@ -175,7 +175,7 @@ struct Ask: Decodable {
 		let offered = (methods ?? []).map(\.method)
 		let challenge: Challenge
 		switch kind {
-		case "tanMethod": return secondFactor(.chooseTANMethod(offered, current: nil), methods: [])
+		case "tanMethod": return secondFactor(.chooseTANMethod(Oberbank.methods(offered, bankCode: bankCode), current: nil), methods: [], server: server)
 		case "tanMedium":
 			let media = media ?? []
 			challenge = media.isEmpty && FinTSServer.isApoBank(server) ? .nameTANMedium(.apoTANDevice) : .chooseTANMedium(media)
@@ -189,16 +189,28 @@ struct Ask: Decodable {
 			// The Deutsche Bank group takes a typed TAN in capitals (#231).
 			let field = FinTSServer.isDeutscheBankGroup(server) ? TANField(isUppercase: true)
 				: CommerzbankGroup.tanField(method: current, maxLength: maxLength, server: server)
-			return secondFactor(challenge, methods: offered, field: field)
+			return secondFactor(challenge, methods: changes, field: field, note: Oberbank.note(offered, bankCode: bankCode), server: server)
 		case "approve": challenge = .approveInApp(prompt: prompt ?? "", app: method, image: nil, step: nil)
 		default: throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "unknown request \(kind)"))
 		}
-		return secondFactor(challenge, methods: offered)
+		return secondFactor(challenge, methods: changes, server: server)
 	}
 
-	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField()) -> UserRequest {
-		.secondFactor(SecondFactorRequest(purpose: purpose == "login" ? .login : .download, system: .fintsServer, challenge: challenge, methods: methods,
-			method: current, field: field, olderTransactions: history == true))
+	/// The methods of a challenge that the user can change to: none when the bank allows a single method.
+	private var changes: [TANMethod] {
+		let offered = (methods ?? []).map(\.method)
+		return offered.count < 2 ? [] : offered
+	}
+
+	/// A request without a `note` of its own gets the note of OLB about OLB-Sign, which `server` decides by the names of
+	/// the methods that the request names (#237): all that the bank allows, also a single one, the methods to choose
+	/// from, and the method of the challenge.
+	private func secondFactor(_ challenge: Challenge, methods: [TANMethod], field: TANField = TANField(), note: String? = nil, server: URL?) -> UserRequest {
+		let purpose: SecondFactorRequest.Purpose = purpose == "login" ? .login : .download
+		var names = (self.methods ?? []).map(\.method.name) + (method.map { [$0] } ?? [])
+		if case let .chooseTANMethod(offered, _) = challenge { names += offered.map(\.name) }
+		return .secondFactor(SecondFactorRequest(purpose: purpose, system: .fintsServer, challenge: challenge, methods: methods, method: current,
+			field: field, olderTransactions: history == true, note: note ?? OLBGroup.tanNote(methods: names, purpose: purpose, server: server)))
 	}
 }
 
@@ -333,7 +345,8 @@ struct AccountResult: Decodable {
 		return errors.first { $0.failure.rejectsPIN } ?? errors.first
 	}
 
-	func outcome(of account: AccountRequest) throws -> (AccountOutcome, [BankMessage]) {
+	/// `server` is the FinTS address of the bank, whose rules some positions follow.
+	func outcome(of account: AccountRequest, server: URL?) throws -> (AccountOutcome, [BankMessage]) {
 		guard balance != nil || transactions != nil else {
 			return (.failed(shownError?.failure ?? .bank(BankMessage(text: String(localized: "The bank sent nothing for this account.")))), [])
 		}
@@ -349,7 +362,7 @@ struct AccountResult: Decodable {
 		let missesOlder = fetched?.from.map { from in account.lastFetched.map { $0 < from } ?? true } ?? false
 		let result = RefreshResult(balance: money, balanceDate: try balance?.date.map { try Self.day($0).date() }, transactions: fetched,
 			isComplete: transactions != nil && transactions?.from == nil, transactionFailure: transactionFailure, isPortfolio: securities == true,
-			holdings: try holdings?.map { try $0.holding(of: account) }, missesOlder: missesOlder)
+			holdings: try holdings?.map { try $0.holding(of: account, server: server) }, missesOlder: missesOlder)
 		let notices = errors.map { BankMessage(code: $0.code, text: $0.text, accountName: account.name) }
 		return (.fetched(result), transactionFailure == nil ? notices : [])
 	}
@@ -407,14 +420,20 @@ extension AccountResult {
 		/// The position in the app. Its name is the name of the bank, or else its ISIN or WKN. A nominal amount is in
 		/// the currency of the security. Without one its currency stays unknown: the value of the bank may already be
 		/// converted into another currency, so it does not tell the currency of the nominal amount.
-		func holding(of account: AccountRequest) throws -> Holding {
+		/// OLB and Bankhaus Neelmeyer send the purchase value of the whole position as its purchase price, which
+		/// `OLBGroup.purchasePrice` turns into the price of one unit, by the host of `server` (#237).
+		func holding(of account: AccountRequest, server: URL?) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
+			let quantityValue = try AccountResult.decimal(quantity)
 			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
 			let exchangeRate = try rate.map { ExchangeRate(base: $0.base.uppercased(), quoted: $0.quoted.uppercased(), rate: try AccountResult.decimal($0.rate)) }
+			let nominalCurrency = nominal == true ? currency?.uppercased() : nil
 			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
-				quantity: try AccountResult.decimal(quantity), isNominal: nominal == true, nominalCurrency: nominal == true ? currency?.uppercased() : nil,
+				quantity: quantityValue, isNominal: nominal == true, nominalCurrency: nominalCurrency,
 				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
-				purchasePrice: try purchase.map(Self.quote), exchangeRate: exchangeRate)
+				purchasePrice: OLBGroup.purchasePrice(try purchase.map(Self.quote), quantity: quantityValue,
+					isNominal: nominal == true, nominalCurrency: nominalCurrency, rate: exchangeRate, server: server),
+				exchangeRate: exchangeRate)
 			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
 			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }
 			return holding
