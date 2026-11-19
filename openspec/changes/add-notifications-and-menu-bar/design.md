@@ -25,4 +25,4 @@ Issue #40 builds the automatic refresh of add-account-refresh and this change to
 ## Risks / Trade-offs
 
 - A Focus silences the sound only when the banner is on, see "Decided for Moneten".
-- The notification about new statements waits for add-bank-statements, and the dashboard as the target of a click waits for add-dashboard.
+- The notification about new statements moved to add-bank-statements with its requirement on 19 November 2026, and the dashboard as the target of a click waits for add-dashboard.

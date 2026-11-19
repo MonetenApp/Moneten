@@ -16,7 +16,7 @@ So v0.1 adds the positions themselves: the types, their table, the positions in 
 
 v0.1 builds what the issue asks for: the types and their storage, the positions from HKWPD, a view with quantity, price, value, and the gain since purchase, and the value of securities in the totals and the balance chart. The requirements that the view needs to be usable come with it: the order, the search, the status line with the sum of the selected positions, the empty state, the total gain of a portfolio group, and a group of portfolios.
 
-The following requirements stay open in `tasks.md` and keep the spec as the target: positions from extensions, the details of a position, entering and editing the purchase price and keeping it across a refresh, comments, and the warning before removing a portfolio.
+The details of a position, entering and editing the purchase price and keeping it across a refresh, and comments moved to the change `defer-v0.1-follow-ups` on 19 November 2026 with their requirements. The warning before removing a portfolio stays open in `tasks.md`.
 
 ## Decisions
 
