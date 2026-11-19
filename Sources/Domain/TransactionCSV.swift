@@ -17,17 +17,25 @@ public enum TransactionCSV {
 	}
 
 	static func text(_ rows: [Transaction], ledger: Ledger, locale: Locale) throws -> String {
-		let dates = DateFormatter()
+		// Every date is Gregorian, in the order of day, month, and year and with the separators of the locale, in ASCII
+		// digits. A date of the Buddhist, the Islamic, the Japanese, or the Republic of China calendar, such as
+		// 03/11/2569 for 3 November 2026 in Thailand, has a year that a spreadsheet and the import of this app read as
+		// a Gregorian year, so the day would come back about 543 years later.
 		var dateLocale = Locale.Components(locale: locale)
 		dateLocale.numberingSystem = "latn"
+		dateLocale.calendar = .gregorian
+		let dates = DateFormatter()
 		dates.locale = Locale(components: dateLocale)
+		dates.calendar = Calendar(identifier: .gregorian)
 		dates.timeZone = TimeZone(identifier: "UTC")
-		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: locale)
+		dates.dateFormat = DateFormatter.dateFormat(fromTemplate: "ddMMyyyy", options: 0, locale: dates.locale)
 		var calendar = Calendar(identifier: .gregorian)
 		calendar.timeZone = TimeZone(identifier: "UTC")!
 		func day(_ d: Day?) -> String {
 			guard let d, let date = calendar.date(from: DateComponents(year: d.year, month: d.month, day: d.day)) else { return "" }
-			return dates.string(from: date)
+			// The Arabic patterns put direction marks between the fields, which no spreadsheet and no import reads as part
+			// of a date.
+			return String(String.UnicodeScalarView(dates.string(from: date).unicodeScalars.filter { !directionMarks.contains($0) }))
 		}
 		let mark = locale.decimalSeparator ?? "."
 		func amount(_ minorUnits: Int64, _ currency: String) -> String {
@@ -50,6 +58,9 @@ public enum TransactionCSV {
 		}
 		return lines.joined(separator: "\r\n") + "\r\n"
 	}
+
+	/// The left-to-right mark, the right-to-left mark, and the Arabic letter mark.
+	private static let directionMarks: Set<Unicode.Scalar> = ["\u{200E}", "\u{200F}", "\u{061C}"]
 
 	private static func categoryPath(_ id: UUID?, in ledger: Ledger) -> String {
 		guard let id, var c = ledger.category(id) else { return ledger.defaultCategory?.name ?? "" }

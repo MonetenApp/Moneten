@@ -189,10 +189,11 @@ public enum AmountParser {
 	/// other character may only separate groups of three digits. The text reads without doubt when
 	/// only one reading fits or when both give the same value. "1,234" fits both with different values,
 	/// so it returns nil. A caller that knows the decimal mark, for example from the other amounts of
-	/// a file, passes it, and only that reading counts.
+	/// a file, passes it, and only that reading counts. A text with the Arabic decimal separator "٫" has only
+	/// the reading that the separator names, whatever the caller passes.
 	public static func decimal(from text: String, decimalMark: DecimalMark? = nil) -> Decimal? {
-		guard let (negative, digits) = split(text) else { return nil }
-		let values = (decimalMark.map { [$0] } ?? DecimalMark.allCases).compactMap { read(digits, $0) }
+		guard let (negative, digits, arabic) = split(text) else { return nil }
+		let values = (arabic.map { [$0] } ?? decimalMark.map { [$0] } ?? DecimalMark.allCases).compactMap { read(digits, $0) }
 		guard let value = values.first, values.allSatisfy({ $0 == value }) else { return nil }
 		return negative ? -value : value
 	}
@@ -200,8 +201,8 @@ public enum AmountParser {
 	/// The decimal mark that the text shows without doubt: the comma for "-89,00" and "1.250.000",
 	/// the point for "4.50", and nil for "89" and "1,234".
 	public static func decimalMark(of text: String) -> DecimalMark? {
-		guard let (_, digits) = split(text) else { return nil }
-		let fitting = DecimalMark.allCases.filter { read(digits, $0) != nil }
+		guard let (_, digits, arabic) = split(text) else { return nil }
+		let fitting = (arabic.map { [$0] } ?? DecimalMark.allCases).filter { read(digits, $0) != nil }
 		return fitting.count == 1 ? fitting[0] : nil
 	}
 
@@ -219,14 +220,27 @@ public enum AmountParser {
 	}
 
 	/// The sign and the digits with their separators, without spaces and the euro sign.
-	private static func split(_ text: String) -> (negative: Bool, digits: Substring)? {
+	///
+	/// The Arabic decimal separator "٫", which the CSV export writes for an Arabic region, is a decimal mark only. It
+	/// occurs once and has no comma or point after it, so "1٫234٫567" and "1٫234.56" have no reading. A comma or a
+	/// point before it separates groups of thousands, and the separator takes the place of the other character, so
+	/// "1.234٫5" reads as "1.234,5". `arabic` is the decimal mark that it names.
+	private static func split(_ text: String) -> (negative: Bool, digits: Substring, arabic: DecimalMark?)? {
 		var s = Substring(String(String.UnicodeScalarView(text.unicodeScalars.filter { !CharacterSet.whitespaces.contains($0) }))
 			.replacingOccurrences(of: "\u{2212}", with: "-")
 			.replacingOccurrences(of: "€", with: ""))
+		var arabic: DecimalMark?
+		let parts = s.split(separator: "\u{066B}", omittingEmptySubsequences: false)
+		if parts.count > 1 {
+			guard parts.count == 2, !parts[1].contains(where: { $0 == "," || $0 == "." }), !(parts[0].contains(",") && parts[0].contains(".")) else { return nil }
+			let mark: DecimalMark = parts[0].contains(",") ? .point : .comma
+			arabic = mark
+			s = parts[0] + String(mark.rawValue) + parts[1]
+		}
 		let negative = s.first == "-"
 		if negative || s.first == "+" { s.removeFirst() }
 		guard s.allSatisfy({ "0123456789,.".contains($0) }), s.contains(where: \.isNumber) else { return nil }
-		return (negative, s)
+		return (negative, s, arabic)
 	}
 
 	/// The value of the digits with `mark` as the decimal mark, or nil when they do not fit.
