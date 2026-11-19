@@ -1087,7 +1087,11 @@ final class DebugHarness {
 				model.sheet = .migration
 			case "exportAllData": model.sheet = .exportAllData
 			case "newAccount": model.addAccount()
-			case "newGroup": model.sheet = .newGroup
+			#if DEBUG || PERF_HARNESS
+			// "Add Account Group" as the menus run it, since the sheet that asked for the name is gone (#480): a new empty
+			// group, selected, with its sidebar row in edit mode. "naming" and "namekey" go on from there.
+			case "newGroup": Task { await model.addGroup() }
+			#endif
 			case "setPassword": model.sheet = .setPassword
 			case "changePassword": model.sheet = .changePassword
 			case "categorySettings": if case let .category(id) = model.selection { model.sheet = .categorySettings(id) }
