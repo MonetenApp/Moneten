@@ -624,6 +624,19 @@ public struct Ledger: Sendable {
 		return TransactionSearchResult(rows: rows, gaveUp: query.gaveUp)
 	}
 
+	/// Whether saving `changes` takes the last shown rows out of `scope` with `filter`. The table of such a view goes
+	/// in the update that changes its rows, so the app replaces it instead of changing its rows in place (issue #223).
+	/// It copies the ledger only when every shown row is among the changed ones.
+	public func leavesNoRows(in scope: LedgerScope, filter: TransactionFilter = TransactionFilter(),
+		saving changes: (transactions: [Transaction], parts: [SplitPart])) -> Bool {
+		let changed = Set(changes.transactions.map(\.id)).union(changes.parts.map(\.id))
+		let shown = rows(in: scope, filter: filter).rows
+		guard !shown.isEmpty, shown.allSatisfy({ changed.contains($0.id) }) else { return false }
+		var after = self
+		after.update(changes.transactions, parts: changes.parts)
+		return after.rows(in: scope, filter: filter).rows.isEmpty
+	}
+
 	// MARK: Changes
 
 	public mutating func replace(groups: [AccountGroup]? = nil, accounts: [Account]? = nil, categories: [Category]? = nil, transactions: [Transaction]? = nil) {
