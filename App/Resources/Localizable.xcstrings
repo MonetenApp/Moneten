@@ -156,12 +156,12 @@
       },
       "extractionState" : "manual"
     },
-    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank." : {
+    "%@ does not provide a FinTS/HBCI server. An extension can add support for the bank, or you can import a file of its transactions into an offline account." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen."
+            "value" : "%@ bietet keinen FinTS/HBCI-Server an. Eine Erweiterung kann die Bank unterstützen, oder Sie importieren eine Datei mit ihren Umsätzen in ein Offline-Konto."
           }
         }
       },
@@ -1804,22 +1804,22 @@
         }
       }
     },
-    "All transactions and the recorded value history of this portfolio will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions and the recorded value history of this portfolio will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze und der aufgezeichnete Wertverlauf dieses Depots werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
     },
-    "All transactions of this account will be removed as well. You could alternatively mark the account as closed in the account settings." : {
+    "All transactions of this account will be removed as well and cannot be restored. You could alternatively mark the account as closed in the account settings." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
+            "value" : "Alle Umsätze dieses Kontos werden ebenfalls entfernt und können nicht wiederhergestellt werden. Alternativ können Sie das Konto in den Kontoeinstellungen als aufgelöst markieren."
           }
         }
       }
@@ -6118,6 +6118,16 @@
         }
       }
     },
+    "macOS names no home folder for your user account, so Moneten does not know where its data folder is. Moneten quits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "macOS nennt für Ihr Benutzerkonto keinen Benutzerordner, daher weiß Moneten nicht, wo sein Datenordner liegt. Moneten wird beendet."
+          }
+        }
+      }
+    },
     "Main Window" : {
       "localizations" : {
         "de" : {
@@ -6297,6 +6307,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moneten %1$@ benötigt macOS %2$@ oder neuer."
+          }
+        }
+      }
+    },
+    "Moneten cannot find your home folder" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten findet Ihren Benutzerordner nicht"
           }
         }
       }
