@@ -17,6 +17,12 @@ struct ExtensionDialogTests {
 	var broker: SessionBroker { coordinator.broker }
 	/// Records what the script prints.
 	let session = TestSession()
+	/// How many runs of each access ended, which `SyncCoordinator.ended` reports after the state of the run is set.
+	let endedRuns = EndedRuns()
+
+	init() {
+		coordinator.ended = { [endedRuns] access, _, _ in endedRuns.add(access) }
+	}
 
 	static let card = Access(source: .extension(id: "Demo"), bankName: "Musterbank", loginName: "erika")
 	static let bank = Access(source: .fints(bankCode: "12030000", url: URL(string: "https://fints.example.com/")!), bankName: "Musterbank", loginName: "erika77")
@@ -75,12 +81,20 @@ struct ExtensionDialogTests {
 	}
 
 	/// Waits until the condition holds, for at most ten seconds, because each refresh starts a host process.
+	/// Waits until the condition holds. Each refresh starts a host process, which a loaded runner launches slowly, so the
+	/// deadline allows 30 seconds for the launch, the login, and the end of the session.
 	func until(_ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async {
-		let deadline = ContinuousClock.now + budget(.seconds(10))
+		let deadline = ContinuousClock.now + budget(.seconds(30))
 		while !condition(), ContinuousClock.now < deadline {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
 		#expect(condition(), sourceLocation: sourceLocation)
+	}
+
+	/// Waits until `runs` runs of `access` ended in all, whatever their end, and the coordinator runs nothing, so that the
+	/// next refresh starts on its own and is not dropped beside the one that ends.
+	func untilEnded(_ access: Access, runs: Int, sourceLocation: SourceLocation = #_sourceLocation) async {
+		await until({ endedRuns.count(access.id) >= runs && !coordinator.isRefreshing }, sourceLocation: sourceLocation)
 	}
 
 	/// A refresh of the card that the user answers with the login data and the code, which leaves the login data in memory.
@@ -192,7 +206,8 @@ struct ExtensionDialogTests {
 		refreshCard(script: Self.passwordScript)
 		await until { broker.current?.request.kind == .login }
 		answer(saving)
-		await until { finished(Self.card) }
+		await untilEnded(Self.card, runs: 1)
+		#expect(finished(Self.card))
 		#expect(store.logins.withLock { $0 }[Self.card.id]?.values == [Secret("erika"), Secret("Geheim-7319")])
 		#expect(broker.savedPINs == [Self.card.id])
 
@@ -200,9 +215,9 @@ struct ExtensionDialogTests {
 		try broker.open(store)
 		var opened = false
 		refreshCard(attended: false, script: Self.passwordScript)
-		while coordinator.isRefreshing {
+		await until {
 			opened = opened || broker.current != nil
-			try? await Task.sleep(for: .milliseconds(5))
+			return endedRuns.count(Self.card.id) >= 2 && !coordinator.isRefreshing
 		}
 		#expect(!opened)
 		#expect(finished(Self.card))
@@ -216,7 +231,7 @@ struct ExtensionDialogTests {
 		await until { broker.current != nil }
 		#expect(broker.current?.request == .login(LoginRequest(service: "Musterbank")))
 		broker.cancel(try #require(broker.current).id)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(Self.card, runs: 3)
 		#expect(session.printed == ["login erika", "login erika"])
 	}
 
@@ -226,31 +241,34 @@ struct ExtensionDialogTests {
 		try store.saveLogin(SavedLogin(answering: LoginRequest(service: "Musterbank"), with: [Secret("erika"), Secret("Alt-1234")]), for: Self.card.id)
 		try broker.open(store)
 		refreshCard(attended: false, script: Self.passwordScript)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(Self.card, runs: 1)
 		#expect(state(Self.card) == .failed(.loginRejected))
 		#expect(store.logins.withLock { $0 }.isEmpty)
 		#expect(broker.savedPINs.isEmpty)
 		#expect(!logText([]).contains("Alt-1234"))
 
 		refreshCard(attended: false, script: Self.passwordScript)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(Self.card, runs: 2)
+		#expect(state(Self.card) == .failed(.needsUser(.login)))
 		#expect(session.printed.isEmpty)
 		refreshCard(script: Self.passwordScript)
 		await until { broker.current != nil }
 		#expect(broker.current?.request.kind == .login)
 		broker.cancel(try #require(broker.current).id)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(Self.card, runs: 3)
 	}
 
 	/// The setup of a new login that joins the access `known`, as the app runs it: the job calls `add`, which stores the
 	/// accounts, hands the login data to `known`, and then stores the rows of the accounts, which may fail.
-	func setUpJoining(_ known: Access, storeRows: @escaping @MainActor () throws -> Void) {
+	@discardableResult
+	func setUpJoining(_ known: Access, storeRows: @escaping @MainActor () throws -> Void) -> Access {
 		let setup = Access(source: .extension(id: "Demo"), bankName: "Musterbank", loginName: "")
 		let job = ExtensionSetupJob(connector: { [session] in session.connector(demo(Self.passwordScript)) }, states: KeptSetupStates()) { [broker] _ in
 			broker.adoptLogin(of: setup.id, into: known.id)
 			try storeRows()
 		}
 		coordinator.refresh(RefreshRequest(access: setup, accounts: []), with: job, attended: true)
+		return setup
 	}
 
 	struct RowsNotStored: Error {}
@@ -261,20 +279,34 @@ struct ExtensionDialogTests {
 		try broker.open(store)
 		let saving = UserAnswer.login([Secret("erika"), Secret("Geheim-7319")], save: true)
 
-		setUpJoining(Self.card) { throw RowsNotStored() }
+		let failing = setUpJoining(Self.card) { throw RowsNotStored() }
 		await until { broker.current?.request.kind == .login }
 		answer(saving)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(failing, runs: 1)
+		guard case .failed? = state(failing) else {
+			Issue.record("The setup did not fail: \(String(describing: state(failing)))")
+			return
+		}
 		#expect(store.logins.withLock { $0 }.isEmpty)
 		#expect(broker.savedPINs.isEmpty)
 
-		setUpJoining(Self.card) {}
+		let joining = setUpJoining(Self.card) {}
 		await until { broker.current?.request.kind == .login }
 		answer(saving)
-		await until { !coordinator.isRefreshing }
+		await untilEnded(joining, runs: 1)
+		#expect(finished(joining))
 		#expect(store.logins.withLock { $0 } == [Self.card.id: SavedLogin(answering: LoginRequest(service: "Musterbank"), with: [Secret("erika"), Secret("Geheim-7319")])])
 		#expect(broker.savedPINs == [Self.card.id])
 	}
+}
+
+/// The runs of each access that ended.
+@MainActor
+final class EndedRuns {
+	private var counts: [UUID: Int] = [:]
+
+	func add(_ access: UUID) { counts[access, default: 0] += 1 }
+	func count(_ access: UUID) -> Int { counts[access] ?? 0 }
 }
 
 /// The saved PINs and login data of a database, in memory.
