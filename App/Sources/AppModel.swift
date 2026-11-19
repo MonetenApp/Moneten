@@ -328,6 +328,10 @@ final class AppModel {
 	var selectedTransactions = Set<UUID>() {
 		didSet { noteUndrawn(rows: true) }
 	}
+	/// The row that "Go to" selected, which the table of its view scrolls to. The number tells two requests for the
+	/// same row apart.
+	private(set) var revealedRow: RevealedRow?
+	@ObservationIgnored private var revealCount = 0
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 
@@ -867,12 +871,43 @@ final class AppModel {
 		if shows(key) { selectedTransactions = ids }
 	}
 
+	/// "Go to": opens `target` with the row `id` selected and visible. The view change clears the selected rows, and
+	/// a table must not see a change of its selection in the drawing that brings it (issue #135), so the row is
+	/// selected once the table of `target` is drawn.
+	func go(to target: SidebarSelection, selecting id: UUID) {
+		navigate(to: target)
+		select(id, whenDrawn: target, tries: 4)
+	}
+
+	/// The table of a view can wait for a drawing of a change of the ledger (issue #151), so this tries again after
+	/// each drawing until the table of `target` is drawn. It gives up when the user chose another view meanwhile.
+	private func select(_ id: UUID, whenDrawn target: SidebarSelection, tries: Int) {
+		afterDraw { [weak self] in
+			Task { @MainActor in
+				guard let self, self._selection == target else { return }
+				guard self._tableKey.selection == target, !self.tableUndrawn, self._tableHolds == 0 else {
+					if tries > 0 { self.select(id, whenDrawn: target, tries: tries - 1) }
+					return
+				}
+				// A portfolio shows positions, and a filter can hide the row.
+				guard self._tableKey.portfolios == nil, self.visibleTransactions.contains(where: { $0.id == id }) else { return }
+				self.selectedTransactions = [id]
+				self.revealCount += 1
+				self.revealedRow = RevealedRow(id: id, key: self._tableKey, request: self.revealCount)
+			}
+		}
+	}
+
 	/// The rows of the transaction table, for the view and the filters of `tableKey`.
 	var visibleTransactions: [Transaction] { rows(for: tableKey).rows }
 
 	/// The selected rows that the table shows. A search keeps the selection of the rows that it hides.
 	/// It filters the rows, so a menu reads it in its action and not in its `disabled` check.
-	var visibleSelection: Set<UUID> { selectedTransactions.intersection(visibleTransactions.map(\.id)) }
+	var visibleSelection: Set<UUID> { shown(selectedTransactions) }
+
+	/// The rows of `ids` that the table shows. A command acts only on these, so that it never changes a row that a
+	/// search hides, such as the row that "Go to" selected before the user typed a search.
+	func shown(_ ids: Set<UUID>) -> Set<UUID> { ids.intersection(visibleTransactions.map(\.id)) }
 
 	/// The rows of a transaction table with the view and the filters of `key`.
 	func rows(for key: TableKey) -> TransactionSearchResult {
@@ -966,6 +1001,12 @@ final class AppModel {
 	func openCategoryPicker() {
 		let ids = visibleSelection
 		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
+	}
+
+	/// What ⌘⇧K does: the comment of the selected rows on screen.
+	func openCommentSheet() {
+		let ids = visibleSelection
+		if !ids.isEmpty { sheet = .comment(ids) }
 	}
 
 	/// What "Create Rule" in the context menu of a transaction does: the settings of the category, with
@@ -1930,6 +1971,13 @@ struct TableKey: Hashable {
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
 	var portfolios: [UUID]?
+}
+
+/// A row that the table of `key` scrolls to.
+struct RevealedRow {
+	let id: UUID
+	let key: TableKey
+	let request: Int
 }
 
 struct AlertMessage: Identifiable {
