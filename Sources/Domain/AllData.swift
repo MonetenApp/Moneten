@@ -488,6 +488,8 @@ private struct TransactionEntry: Codable {
 	var review: ReviewReason?
 	var isFetched: Bool
 	var sourceID: String?
+	/// Written only for a row whose `sourceID` belongs to a bank or an extension and that a migration linked.
+	var migrationID: String?
 	var fileIdentity: String?
 	var createdAt: Date
 	/// Written only for a manual row. A missing key means a row that a source delivered.
@@ -523,6 +525,7 @@ private struct TransactionEntry: Codable {
 		review = t.review
 		isFetched = t.isFetched
 		sourceID = t.sourceID
+		migrationID = t.migrationID
 		fileIdentity = t.fileIdentity
 		createdAt = t.createdAt
 		isManual = t.isManual ? true : nil
@@ -540,6 +543,7 @@ private struct TransactionEntry: Codable {
 			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
 		t.deviatingParty = deviatingParty
+		t.migrationID = migrationID
 		switch (originalAmount, originalCurrency) {
 		case (nil, nil): break
 		case let (amount?, code?):

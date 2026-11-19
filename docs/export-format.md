@@ -166,6 +166,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
 | `isManual` | Optional `true` for a transaction that the user added with "Add Transaction...". Missing means a transaction that a source delivered. |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
+| `migrationID` | Optional `moneymoney:<id>` of the transaction of the source that a transaction with the identifier of a bank or an extension in `sourceID` is, or its form `moneymoney-booked:<id>`. Missing means no such link. |
 | `createdAt` | Time when the app stored the transaction |
 | `original` | Present only for a transaction that the user edited: the values that its source delivered, with the keys `bookingDate`, `valueDate`, `amount`, `name`, and `purpose`, in the currency of the transaction. A refresh finds the transaction by these values and keeps the edited ones. |
 

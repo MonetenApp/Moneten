@@ -189,8 +189,8 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 				if next != live { rules.categorize(&next) }
 				fallthrough
 			case .fingerprint, .relaxedFile:
-				if let id = delivered.sourceID, Identity.remote(next.sourceID) == nil {
-					next.sourceID = Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending)
+				if let id = delivered.sourceID {
+					next.link(Transaction.linkedID(id, pending: live.isPending, sourcePending: delivered.isPending))
 				}
 				// A row that an earlier version stored lacks these, and the source reports them now. The row keeps its other fields.
 				if next.originalAmount == nil { next.originalAmount = delivered.originalAmount }
@@ -211,7 +211,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 				next.isChecked = next.isChecked || delivered.isChecked
 			}
 			if live.isPending && !next.isPending {
-				if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
+				if !delivery.isMigration { next.bookAheadOfSource() }
 				r.booked.append(next)
 			} else {
 				r.skipped += 1
@@ -221,7 +221,7 @@ public func reconcile(_ delivery: Delivery, into account: Account, stored all: [
 			var next = stored[j].takingBankFields(of: delivered)
 			if case .file = delivery, next.fileIdentity == nil { next.fileIdentity = delivered.fileIdentity }
 			// A row of the source that a file or a bank books counts as imported until the source books it too.
-			if !delivery.isMigration, let id = next.sourceID { next.sourceID = Transaction.linkedID(id, pending: false, sourcePending: true) }
+			if !delivery.isMigration { next.bookAheadOfSource() }
 			if delivered.categorizedBy == .manual, next.categorizedBy != .manual {
 				next.categoryID = delivered.categoryID
 				next.categorizedBy = .manual
@@ -937,6 +937,25 @@ extension Transaction {
 			originalAmount: delivered.originalAmount, deviatingParty: delivered.deviatingParty)
 	}
 
+	/// Takes the source ID `id` of a delivered row that matched this row by its fingerprint. A row with the ID of a bank or
+	/// an extension keeps it, so a migration ID goes to `migrationID`. A row with a migration ID or none takes `id`, and the
+	/// migration ID that the ID of a bank or an extension replaces stays in `migrationID`, so the row stays a row of the source.
+	mutating func link(_ id: String) {
+		if Identity.remote(sourceID) != nil {
+			if Identity.remote(id) == nil { migrationID = id }
+			return
+		}
+		if Identity.remote(id) != nil, let old = sourceID { migrationID = old }
+		sourceID = id
+	}
+
+	/// A row of the source that a file or a bank books counts as imported until the source books it too, so both of its
+	/// migration IDs take the booked form.
+	mutating func bookAheadOfSource() {
+		sourceID = sourceID.map { Transaction.linkedID($0, pending: false, sourcePending: true) }
+		migrationID = migrationID.map { Transaction.linkedID($0, pending: false, sourcePending: true) }
+	}
+
 	func takingBankFields(of delivered: Transaction) -> Transaction {
 		var t = self
 		t.bookingDate = delivered.bookingDate
@@ -958,9 +977,10 @@ extension Transaction {
 		t.isPending = delivered.isPending
 		// The booked version settles which row the pending one was, so its review ends.
 		if isPending && !delivered.isPending { t.review = nil }
-		// A migration ID never replaces the ID of a source that took the row over.
-		if Identity.remote(delivered.sourceID) != nil || Identity.remote(sourceID) == nil {
-			t.sourceID = delivered.sourceID ?? sourceID
+		// A migration ID never replaces the ID of a source that took the row over. The ID of a bank or an extension replaces
+		// another one.
+		if let id = delivered.sourceID {
+			if Identity.remote(id) != nil, Identity.remote(sourceID) != nil { t.sourceID = id } else { t.link(id) }
 		}
 		// An edited field keeps what the user wrote, and `original` follows the source.
 		if let original {

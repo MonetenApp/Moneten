@@ -434,7 +434,7 @@ The app SHALL show the current step, the current account when known, and complet
 
 ### Requirement: Repeated runs add only what is new
 
-The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay. The report keeps notes for earlier migrated rules whose text is unchanged in both apps.
+The app SHALL recognize accounts, categories, and transactions from an earlier run. A later run adds only new objects and creates no duplicate. Changes that the user made in the app since the earlier run stay. A transaction that a refresh stored with its own identifier counts as a transaction of the source once the source has it. The report keeps notes for earlier migrated rules whose text is unchanged in both apps.
 
 #### Scenario: Second run a week later
 
@@ -448,6 +448,22 @@ The app SHALL recognize accounts, categories, and transactions from an earlier r
 - **AND** the source corrected its balance to 1.254,56 € without a new transaction
 - **WHEN** the migration runs again
 - **THEN** the account shows 1.249,76 €
+
+#### Scenario: Transaction that a refresh stored first
+
+- **GIVEN** a first run migrated the account "GiroA" with a balance of 100,00 € and one transaction of -5,00 €
+- **AND** a refresh then stored a transaction of 1,00 € from "Laden A" on 12 November 2026 with its own identifier
+- **AND** the source now shows 101,00 € with the transactions of -5,00 € and 1,00 €
+- **WHEN** the migration runs again, and then a third time with the same export
+- **THEN** the import adds no transaction, and "GiroA" shows 101,00 € after each run
+- **AND** the report shows 2 of 2 transactions and 101,00 € for "GiroA" as a match
+
+#### Scenario: Transaction that only a refresh stored
+
+- **GIVEN** a first run migrated the account "GiroA" with a balance of 100,00 € and one transaction of -5,00 €
+- **AND** a refresh then stored a transaction of 1,00 € from "Laden A" with its own identifier, which the source does not have
+- **WHEN** the migration runs again with the source still at 100,00 €
+- **THEN** "GiroA" shows 101,00 €, because the transaction counts on top of the balance of the source
 
 #### Scenario: Category changed in the app
 

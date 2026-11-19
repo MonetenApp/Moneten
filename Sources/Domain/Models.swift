@@ -379,6 +379,11 @@ public struct Transaction: Identifiable, Hashable, Sendable, Codable {
 	/// A refresh delivered this row. Once the user deletes it, a file import does not add it again.
 	public var isFetched: Bool
 	public var sourceID: String?
+	/// The migration ID of the row of the source that this row is, while `sourceID` holds the ID of a bank or an
+	/// extension. A migration that matches the row by its fingerprint sets it, and a refresh that takes over a migration
+	/// ID keeps that ID here. The initial balance of a migrated account counts the row as a row of the source by it,
+	/// so it needs the link on every later run, not only on the run that found it.
+	public var migrationID: String?
 	public var fileIdentity: String?
 	public var createdAt: Date
 	/// The user added the row with "Add Transaction...". It keeps the mark when a file or a migration matches it.
