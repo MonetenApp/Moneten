@@ -333,28 +333,17 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	/// The balance before the booked rows of the source in the account currency. A row of the source carries a
-	/// migration ID, as its source ID or, when a bank or an extension gave it an ID, as its `migrationID`. A row that the
-	/// user imported carries none, and a row that a file or a bank booked while the source has it pending carries the
-	/// booked form of the ID, so both count on top. `v13` in `Schema` repaired stored values by the same rule before
-	/// `migrationID` existed, so this filter is spelled out here and in its SQL.
+	/// migration ID. A row that the user imported carries none, and a row that a file or a bank booked while the
+	/// source has it pending carries the booked form of the ID, so both count on top. `v13` in `Schema` repairs stored
+	/// values by the same rule, so this filter is spelled out here and in its SQL.
 	private static func initialBalance(_ balance: Int64, of account: Account, rows: [Transaction]) -> Int128 {
 		rows.reduce(Int128(balance)) { sum, t in
-			!t.isPending && t.currency == account.currency && isOfSource(t) ? sum - Int128(t.amountMinor) : sum
+			!t.isPending && t.currency == account.currency && isOfSource(t.sourceID) ? sum - Int128(t.amountMinor) : sum
 		}
 	}
 
 	static func isOfSource(_ sourceID: String?) -> Bool {
 		sourceID?.hasPrefix(Transaction.migrationIDPrefix) == true
-	}
-
-	static func isOfSource(_ t: Transaction) -> Bool {
-		sourceLink(of: t) != nil
-	}
-
-	/// The plain migration ID of a row of the source, from its source ID or its `migrationID`.
-	static func sourceLink(of t: Transaction) -> String? {
-		if isOfSource(t.sourceID) { return t.sourceID }
-		return isOfSource(t.migrationID) ? t.migrationID : nil
 	}
 
 	private static func isCounted(_ deleted: DeletedTransaction) -> Bool {

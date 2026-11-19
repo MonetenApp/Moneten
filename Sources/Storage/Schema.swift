@@ -448,11 +448,6 @@ enum Schema {
 					arguments: [columns.iban, columns.accountNumber, row["id"]])
 			}
 		}
-		// The migration ID of a row whose source ID belongs to a bank or an extension (issue #516). Rows stored before have
-		// none, so a migration links them again when it matches them. It comes after v31.
-		m.registerMigration("v32") { db in
-			try db.alter(table: "bankTransaction") { t in t.add(column: "migrationID", .text) }
-		}
 		return m
 	}
 

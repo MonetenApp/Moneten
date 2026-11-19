@@ -647,9 +647,7 @@ struct MoneyMoneyMigrationTests {
 		let first = try plan()
 		var migrated = first.transactions
 		let rewe = try #require(migrated.firstIndex { $0.name == "REWE Markt" })
-		// The extension keeps the migration ID as the link to the source.
 		migrated[rewe].sourceID = "bank-4711"
-		migrated[rewe].migrationID = "moneymoney:1"
 		let ledger = Ledger(groups: first.groups, accounts: first.accounts, categories: first.categories, transactions: migrated)
 		let second = try plan(into: ledger)
 		#expect(second.transactions.isEmpty && second.updatedTransactions.isEmpty)

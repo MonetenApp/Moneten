@@ -96,7 +96,7 @@ extension MoneyMoneyMigration.Plan {
 			let stored = byAccount[account.id] ?? []
 			missingRows.formUnion(reconcile(.migration(delivered), into: account, stored: stored, deleted: [], rules: rules, now: Date()).added.map(\.id))
 			let exported = Set(delivered.compactMap(\.sourceID))
-			let gone = stored.filter { MoneyMoneyMigration.sourceLink(of: $0).map { !exported.contains($0) } ?? false }.count
+			let gone = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) && !exported.contains($0.sourceID!) }.count
 			goneByTarget[account.id] = gone
 			if merged.count > 1 {
 				let names = merged.map { "\"\($0.name)\"" }.joined(separator: ", ")
@@ -121,15 +121,12 @@ extension MoneyMoneyMigration.Plan {
 			var balance = account.reportedBalance ?? Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(stored)), currency: account.currency)
 			if migrated && account.kind != .portfolio {
 				// A row without the ID of the source that matches a booked row of the export by its fingerprint is a row
-				// of the source whose ID a bank took over before a stored row kept its migration ID in `migrationID`. Rows
-				// that a stored row of the source holds are no match, and
+				// of the source whose ID a bank took over. Rows that a stored row of the source holds are no match, and
 				// neither is a pending row, which the balance of the source leaves out. A booked form of an ID
 				// (`moneymoney-booked:`) counts neither here nor in the initial balance.
-				let ofSource = stored.filter(MoneyMoneyMigration.isOfSource)
-				let others = stored.filter { t in
-					!MoneyMoneyMigration.isOfSource(t) && ![t.sourceID, t.migrationID].contains { $0?.hasPrefix(Transaction.bookedMigrationIDPrefix) == true }
-				}
-				let claimed = Set(ofSource.compactMap(MoneyMoneyMigration.sourceLink))
+				let ofSource = stored.filter { MoneyMoneyMigration.isOfSource($0.sourceID) }
+				let others = stored.filter { !MoneyMoneyMigration.isOfSource($0.sourceID) && $0.sourceID?.hasPrefix(Transaction.bookedMigrationIDPrefix) != true }
+				let claimed = Set(ofSource.compactMap(\.sourceID))
 				let open = source.rows.filter { !$0.isPending && !claimed.contains($0.sourceID ?? "") }
 				let added = reconcile(.file(others), into: account, stored: open, deleted: [], rules: rules, now: Date()).added
 				balance = Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(ofSource) + sum(others) - sum(added)), currency: account.currency)

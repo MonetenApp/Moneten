@@ -265,7 +265,6 @@ struct AllDataTests {
 			{
 				var t = Transaction(accountID: bank.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "USD", name: "Diner New York",
 					isFetched: true, sourceID: "bank-4711", originalAmount: Money(minorUnits: -2_468, currency: "KWD"), deviatingParty: "Diner Beispiel")
-				t.migrationID = "moneymoney:3"
 				t.edit(OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 6), amountMinor: -2_050,
 					name: "Diner", purpose: "Dinner with a client"))
 				return t
@@ -315,8 +314,6 @@ struct AllDataTests {
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.returnReason == "AC04")
 		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.originalAmount == Money(minorUnits: -2_468, currency: "KWD"))
 		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.deviatingParty == "Diner Beispiel")
-		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.migrationID == "moneymoney:3")
-		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.migrationID == nil)
 		#expect(after.transactions.first { $0.sourceID == "moneymoney:1" }?.originalAmount == nil)
 		#expect(after.transactions.first { $0.sourceID == "bank-4711" }?.original == OriginalValues(bookingDate: Day(year: 2026, month: 11, day: 5),
 			valueDate: nil, amountMinor: -2_000, name: "Diner New York", purpose: ""))
