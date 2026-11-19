@@ -137,7 +137,7 @@ public struct UpdateState: Sendable, Equatable {
 public enum Standing: Sendable, Equatable {
 	case runs(note: String?)
 	case stopped(String)
-	/// The index lists another version than the installed one. The installed version does not run until
+	/// The index lists a newer version than the installed one, or one it cannot order. The installed version does not run until
 	/// the update is installed (ADR 0015, decision 24, with the index of one version per package).
 	case outdated(String)
 
@@ -147,6 +147,12 @@ public enum Standing: Sendable, Equatable {
 			return
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
+		// A catalog that went back to an older version has no update for the installed one (issue #186).
+		if entry.status == .active || entry.status == .unmaintained, let listed = entry.version,
+			UpdatePlan.isNewer(installed.version, than: listed) {
+			self = .stopped(String(localized: "The catalog lists version \(listed) of \(installed.name), which is older than the installed version \(installed.version). There is no update to install."))
+			return
+		}
 		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
 			self = .outdated(String(localized: "Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update."))
 			return
