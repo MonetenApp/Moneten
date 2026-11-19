@@ -18,7 +18,7 @@ The app SHALL show a section "Categories" in the sidebar with all categories and
 
 ### Requirement: Add a category
 
-The app SHALL create a category with "Add Category". The new category appears in the selected category group, or at the top level when no group is selected, and its name is ready for typing.
+The app SHALL create a category with "Add Category". The new category appears in the selected category group, or at the top level when no group is selected, and its name is ready for typing. The name follows the requirement "Name of a category".
 
 #### Scenario: Add inside a group
 
@@ -32,14 +32,36 @@ The app SHALL create a category with "Add Category". The new category appears in
 - **WHEN** the user names a second category in "Living" "Electricity"
 - **THEN** the app keeps the name field open and says that the name is taken in this group
 
+### Requirement: Name of a category
+
+The app SHALL accept a name for a new or renamed category or category group only when it has a character that is not white space and no other category or category group in the same group has it. At the top level, the other top level entries count, the default category included. The comparison ignores upper and lower case and the white space around a name. The app stores the name without the white space around it.
+
+#### Scenario: Other case
+
+- **GIVEN** the group "Living" contains the category "Electricity"
+- **WHEN** the user names a new category in "Living" " electricity "
+- **THEN** the app keeps the name field open and says that the name is taken in this group
+
+#### Scenario: Same name in another group
+
+- **GIVEN** the group "Living" contains the category "Electricity"
+- **WHEN** the user adds the category "Electricity" at the top level
+- **THEN** the sidebar shows "Electricity" at the top level and in "Living"
+
 ### Requirement: Add a category group
 
-The app SHALL create a category group with "Add Category Group". A group holds no transactions of its own.
+The app SHALL create a category group with "Add Category Group". A group holds no transactions of its own. Its name follows the requirement "Name of a category".
 
 #### Scenario: New group
 
 - **WHEN** the user chooses "Add Category Group" and types "Mobility"
 - **THEN** the sidebar shows the empty group "Mobility"
+
+#### Scenario: Name taken by a category
+
+- **GIVEN** the category "Fuel" at the top level
+- **WHEN** the user names a new category group at the top level "Fuel"
+- **THEN** the app keeps the name field open and says that the name is taken at the top level
 
 ### Requirement: Move categories by drag and drop
 
@@ -89,7 +111,7 @@ The app SHALL keep one default category named "Uncategorized" as the last entry 
 
 ### Requirement: Category settings
 
-The app SHALL open the settings of the selected category with "Category Settings..." or ⌘I. The settings hold "Name", "Currency", a color, an icon, "Show in diagrams", "Display in sidebar", and "Restrict to". A change takes effect when the user closes the settings.
+The app SHALL open the settings of the selected category with "Category Settings..." or ⌘I. The settings hold "Name", "Currency", a color, an icon, "Show in diagrams", "Display in sidebar", and "Restrict to". A change takes effect when the user closes the settings. A changed name follows the requirement "Name of a category". A name that the user did not change stays as it is stored.
 
 #### Scenario: Open with the keyboard
 
@@ -101,6 +123,18 @@ The app SHALL open the settings of the selected category with "Category Settings
 
 - **WHEN** the user changes "Name" from "Groceries" to "Food" and closes the settings
 - **THEN** the sidebar, the transaction rows, and the category menus show "Food"
+
+#### Scenario: Taken name
+
+- **GIVEN** the group "Living" contains the categories "Electricity" and "Gas"
+- **WHEN** the user changes "Name" of "Gas" to "Electricity" and clicks "OK"
+- **THEN** the app keeps the settings open and says that the name is taken in this group
+- **AND** "Gas" keeps its name
+
+#### Scenario: Empty name
+
+- **WHEN** the user clears "Name" of "Groceries" and clicks "OK"
+- **THEN** the app keeps the settings open and asks for a name
 
 ### Requirement: Category color
 

@@ -376,6 +376,7 @@ final class DebugHarness {
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
+		#if DEBUG || PERF_HARNESS
 		// "<name>": shows the question of "Remove Account..." for the account as a sheet of the main window, which `key escape`
 		// cancels, and writes its picture as removequestion.png. The menu command runs it modally, where no command of the harness
 		// arrives. An answer only logs, so not even "Remove" removes the account.
@@ -388,25 +389,27 @@ final class DebugHarness {
 				self?.log("removequestion answer", ("cancel", .flag(response == .alertSecondButtonReturn)))
 			}
 			DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-				guard let self, let frame = question.window.contentView?.superview, let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds),
-					let picture = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return }
-				// The glass behind the alert draws plain white into a cache, also in the dark mode, so the picture leaves it out and
-				// draws the alert on the window background of the appearance.
-				let glass = frame.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") }
-				glass.forEach { $0.isHidden = true }
-				frame.cacheDisplay(in: frame.bounds, to: rep)
-				glass.forEach { $0.isHidden = false }
-				NSGraphicsContext.saveGraphicsState()
-				NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: picture)
-				question.window.effectiveAppearance.performAsCurrentDrawingAppearance {
-					NSColor.windowBackgroundColor.setFill()
-					NSRect(origin: .zero, size: picture.size).fill()
-				}
-				rep.draw(in: NSRect(origin: .zero, size: picture.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
-				NSGraphicsContext.restoreGraphicsState()
-				try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent("removequestion.png"))
-				log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")), ("glass", .count(glass.count)))
+				guard let self else { return }
+				let glass = writePicture(of: question, to: "removequestion.png")
+				log("removequestion", ("kind", .word(a.kind == .portfolio ? "portfolio" : "other")), ("glass", .count(glass)))
 			}
+		// "<name>": shows the question of "Remove Account Group..." for the group as a sheet of the main window, which `key escape`
+		// cancels, and writes its picture as removegroupquestion.png. The menu command runs it modally, where no command of the
+		// harness arrives. An answer only logs, so not even "Remove" removes the group.
+		case "removegroupquestion":
+			guard let g = model.ledger.groups.first(where: { $0.name == argument }), let question = model.removeQuestion(.group(g.id)),
+				let main = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else {
+				return log("removegroupquestion", ("", .presence(false)))
+			}
+			question.beginSheetModal(for: main) { [weak self] response in
+				self?.log("removegroupquestion answer", ("cancel", .flag(response == .alertSecondButtonReturn)))
+			}
+			DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+				guard let self else { return }
+				let glass = writePicture(of: question, to: "removegroupquestion.png")
+				log("removegroupquestion", ("nested", .flag(g.parentID != nil)), ("glass", .count(glass)))
+			}
+		#endif
 		// "<name>": what "Remove" in the context menu of a category does.
 		case "removecategory":
 			if let c = model.ledger.categories.first(where: { $0.name == argument }) { Task { await model.remove(category: c.id) } }
@@ -2493,6 +2496,30 @@ final class DebugHarness {
 			("automatic", .flag(on.contains(.automaticUnlock))), ("touchID", .flag(on.contains(.touchID))), ("watch", .flag(on.contains(.appleWatch))),
 			("keychainAutomatic", stored(.automaticUnlock)), ("keychainTouchID", stored(.touchID)), ("keychainWatch", stored(.appleWatch)))
 	}
+
+	#if DEBUG || PERF_HARNESS
+	/// Writes the picture of an alert that runs as a sheet, and returns how many glass views it left out. The glass behind
+	/// the alert draws plain white into a cache, also in the dark mode, so the picture leaves it out and draws the alert on the
+	/// window background of the appearance.
+	private func writePicture(of question: NSAlert, to file: String) -> Int {
+		guard let frame = question.window.contentView?.superview, let rep = frame.bitmapImageRepForCachingDisplay(in: frame.bounds),
+			let picture = frame.bitmapImageRepForCachingDisplay(in: frame.bounds) else { return 0 }
+		let glass = frame.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") }
+		glass.forEach { $0.isHidden = true }
+		frame.cacheDisplay(in: frame.bounds, to: rep)
+		glass.forEach { $0.isHidden = false }
+		NSGraphicsContext.saveGraphicsState()
+		NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: picture)
+		question.window.effectiveAppearance.performAsCurrentDrawingAppearance {
+			NSColor.windowBackgroundColor.setFill()
+			NSRect(origin: .zero, size: picture.size).fill()
+		}
+		rep.draw(in: NSRect(origin: .zero, size: picture.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+		NSGraphicsContext.restoreGraphicsState()
+		try? picture.representation(using: .png, properties: [:])?.write(to: folder.appendingPathComponent(file))
+		return glass.count
+	}
+	#endif
 
 	/// A web view draws in another process, so the window image gets its picture from WebKit first.
 	private func snapshot(_ name: String) {
