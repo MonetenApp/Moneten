@@ -28,7 +28,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision), the refresh scenarios with a scripted bank delivery or the made-up bank of a Debug build: 48 passed, 0 failed, 12 not checkable. Not checkable in the harness: the statement settings (no statement download yet), choosing a suggestion of the name field (a click in the suggestion list), the balance on a single day of the chart for "Delete the deposit", and the scenarios that need a bank delivery of chosen rows or a refresh on a later day: "Deleted manual transaction that a file matched", "Manual transaction that a file matched, then a refresh", "Manual transaction that a file matched" of the bank balance, "Entered initial balance", "Before the first refresh", the three scenarios of a planned manual transaction, and "Manual transaction" of an account with bank access. Open: these twelve scenarios and the owner's walk-through in a Release build.
 
 ## 3. Balance and signed amount
 
