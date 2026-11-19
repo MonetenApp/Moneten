@@ -526,7 +526,13 @@ final class DebugHarness {
 			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet.phase)),
 				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)), ("alert", .state(model.alertGate.alert)),
 				("gate", .state(model.alertGate.bankDialog)), ("asked", .state(model.askedSheetAlert)),
-				("shown", .flag(model.shownSheetAlert.map { model.alertGate.shows($0.token) } ?? false)))
+				("shown", .flag(model.presentsSheetAlert)))
+		// "<name>" puts a file name into the save panel on screen, as typing does, and logs whether a save panel shows and the
+		// hash of its file name. Without an argument it only logs. It saves nothing: only "modal Cancel" closes the panel.
+		case "savepanel":
+			let panel = NSApp.windows.first { $0 is NSSavePanel && $0.isVisible } as? NSSavePanel
+			if let panel, !argument.isEmpty { panel.nameFieldStringValue = argument }
+			log("savepanel", ("shown", .flag(panel != nil)), ("name", panel.map { .hash($0.nameFieldStringValue) } ?? .presence(false)))
 		// "<alert>" asks for an alert or question of the open sheet, as its button does: "removeSavedPIN" in the account settings, "applyRule"
 		// in the category settings, and "saveReport" or "reportNotSaved" in the MoneyMoney migration. So a check can ask while a dialog of
 		// the bank covers the button. Only the alert of the sheet on screen, so that no alert waits without a view. It clicks nothing.
@@ -2670,7 +2676,9 @@ final class DebugHarness {
 	}
 
 	private func modal(_ argument: String) {
-		guard let window = NSApp.modalWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
+		// A save panel of its own window, such as that of the migration report, is not modal, and comes before an alert.
+		let modeless = NSApp.windows.first { $0 is NSSavePanel && $0.isVisible }
+		guard let window = NSApp.modalWindow ?? modeless ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
 		func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
 		let all = window.contentView.map(views) ?? []
 		let buttons = all.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
@@ -3198,7 +3206,22 @@ final class DebugHarness {
 			for (j, w) in sheets.enumerated() {
 				guard let view = w.contentView?.superview ?? w.contentView,
 					let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+				// The glass of an alert draws nothing into the picture and hides the alert, so it goes for the picture, and
+				// the background of the window stands in for it, as in the pictures of the remove questions.
+				let glass = w.className.contains("Alert") ? view.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") } : []
+				glass.forEach { $0.isHidden = true }
 				view.cacheDisplay(in: view.bounds, to: rep)
+				glass.forEach { $0.isHidden = false }
+				if !glass.isEmpty, let cached = rep.copy() as? NSBitmapImageRep {
+					NSGraphicsContext.saveGraphicsState()
+					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+					w.effectiveAppearance.performAsCurrentDrawingAppearance {
+						NSColor.windowBackgroundColor.setFill()
+						NSRect(origin: .zero, size: rep.size).fill()
+					}
+					cached.draw(in: NSRect(origin: .zero, size: rep.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+					NSGraphicsContext.restoreGraphicsState()
+				}
 				if let web, web.view.window === w {
 					NSGraphicsContext.saveGraphicsState()
 					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)

@@ -398,6 +398,7 @@ final class AppModel {
 			alertGate.sheetChanged()
 			askedSheetAlert = nil
 			shownSheetAlert = nil
+			presentsSheetAlert = false
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
@@ -418,8 +419,13 @@ final class AppModel {
 	var askedSheetAlert: SheetAlert?
 	/// The alert or question on the open sheet, from its opening until it has slid out.
 	var shownSheetAlert: (alert: SheetAlert, token: AlertGate.Token)?
+	/// Whether SwiftUI presents `shownSheetAlert`, from its opening until AppKit has closed it.
+	var presentsSheetAlert = false
 	/// The alert of `alerts` on the main window, from its opening until it has slid out.
 	@ObservationIgnored var windowAlert: AlertGate.Token?
+	/// When the last alert opened and the last dialog of the bank ended, for `alertSettle`.
+	@ObservationIgnored var alertOpenedAt: ContinuousClock.Instant?
+	@ObservationIgnored var bankDialogEndedAt: ContinuousClock.Instant?
 	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
 	@ObservationIgnored private(set) var tableGeneration = 0

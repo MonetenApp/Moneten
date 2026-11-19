@@ -184,6 +184,8 @@ struct AlertGateTests {
 
 	func closes(_ gate: inout AlertGate) -> AlertGate.Token? { gate.bankDialogCloses() }
 
+	func giveWay(_ token: AlertGate.Token, in gate: inout AlertGate) -> Bool { gate.giveWay(token) }
+
 	@Test("An alert opens while no dialog of the bank shows, slides out after its answer, and lets the next one open after")
 	func openAndAnswer() throws {
 		var gate = AlertGate()
@@ -205,11 +207,17 @@ struct AlertGateTests {
 	func tanOverQuestion() throws {
 		var gate = AlertGate()
 		let question = try #require(open(onSheet: true, &gate))
-		// The refresh of "Musterbank" asks for a TAN: the question gives way and slides out.
+		// The refresh of "Musterbank" asks for a TAN: the gate names the question in its way, which stays until the app
+		// lets it give way, and the TAN dialog waits for it.
 		#expect(shows(&gate) == question)
-		#expect(gate.alert == .closing)
+		#expect(gate.alert == .open)
 		#expect(gate.bankDialog == .open)
+		#expect(BankDialogPlace(sheet: true, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
+		// The question gives way and slides out.
+		#expect(giveWay(question, in: &gate))
+		#expect(gate.alert == .closing)
 		#expect(!gate.shows(question))
+		#expect(!giveWay(question, in: &gate))
 		// The close of the question that SwiftUI reports now is no answer, so the question stays asked.
 		#expect(!closing(question, in: &gate))
 		// The TAN dialog waits for the slide out of the question, which is short.
@@ -221,7 +229,7 @@ struct AlertGateTests {
 		#expect(closes(&gate) != nil)
 		#expect(gate.bankDialog == .closing)
 		#expect(open(onSheet: true, &gate) == nil)
-		gate.bankDialogDismissed()
+		gate.bankDialogDismissed(brokerShows: false)
 		#expect(gate.bankDialog == .none)
 		#expect(open(onSheet: true, &gate) != nil)
 	}
@@ -236,7 +244,7 @@ struct AlertGateTests {
 		#expect(shows(&gate) == nil)
 		#expect(gate.bankDialog == .open)
 		// The dismissal of the first dialog, which SwiftUI reports now, does not let the alert in front of the second.
-		gate.bankDialogDismissed()
+		gate.bankDialogDismissed(brokerShows: true)
 		#expect(gate.bankDialog == .open)
 		#expect(open(onSheet: true, &gate) == nil)
 		let second = try #require(closes(&gate))
@@ -251,6 +259,43 @@ struct AlertGateTests {
 		#expect(closes(&gate) == nil)
 		gate.bankDialogTimedOut(second)
 		#expect(gate.bankDialog == .none)
+	}
+
+	@Test("The slide out of the TAN dialog that SwiftUI reports before the app learns that the broker closed it ends the wait at once")
+	func earlyDismissal() throws {
+		var gate = AlertGate()
+		#expect(shows(&gate) == nil)
+		// AppKit holds the main thread for the slide out, so the report comes before the change of the broker reaches the gate.
+		gate.bankDialogDismissed(brokerShows: false)
+		#expect(gate.bankDialog == .none)
+		#expect(gate.isFree)
+		// The change of the broker that arrives now finds no dialog to close, so no time limit starts.
+		#expect(closes(&gate) == nil)
+		#expect(gate.bankDialog == .none)
+	}
+
+	@Test("A question that the user answers, or whose TAN dialog closes, before it gives way is no longer closed for the dialog")
+	func noGiveWay() throws {
+		var gate = AlertGate()
+		let answered = try #require(open(onSheet: true, &gate))
+		#expect(shows(&gate) == answered)
+		// The user answers the question while it still finishes its slide in.
+		#expect(closing(answered, in: &gate))
+		#expect(!giveWay(answered, in: &gate))
+		gate.dismissed(answered)
+		_ = closes(&gate)
+		gate.bankDialogDismissed(brokerShows: false)
+		// A TAN dialog that closes before the question gave way leaves the question on screen.
+		let question = try #require(open(onSheet: true, &gate))
+		#expect(shows(&gate) == question)
+		_ = closes(&gate)
+		#expect(!giveWay(question, in: &gate))
+		#expect(gate.shows(question))
+		// Without an alert on screen the dialog of the bank names none.
+		gate.bankDialogDismissed(brokerShows: false)
+		#expect(closing(question, in: &gate))
+		gate.dismissed(question)
+		#expect(shows(&gate) == nil)
 	}
 
 	@Test("A late report of an alert that gave way or closed earlier never ends the alert on screen")

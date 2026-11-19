@@ -45,12 +45,14 @@ struct MigrationSheet: View {
 	@State private var storing: MigrationCancel?
 	/// Shown on this sheet: an alert of the main window would wait until the sheet closes.
 	@State private var saveError: String?
+	/// Whether the save panel of the report is open, so that "Save Report..." opens no second one.
+	@State private var savePanelOpen = false
 
 	var body: some View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
 			onCancel: { model.migrationTask?.cancel() }, closesOnCancel: cancelCloses, onConfirm: confirm) {
 			if case .done = step {
-				Button("Save Report...") { model.ask(.saveReport) }.keyboardShortcut("s")
+				Button("Save Report...") { model.ask(.saveReport) }.keyboardShortcut("s").disabled(savePanelOpen)
 			}
 			if case .failed(_, offersFileImport: true) = step {
 				Button("Import File...") {
@@ -151,24 +153,31 @@ struct MigrationSheet: View {
 		}
 	}
 
-	/// Saves the report through a save panel of its own window, not a sheet: a dialog of the bank that comes while the
-	/// panel is open then shows on this sheet at once, and the panel keeps what the user typed. AppKit would hold a
-	/// sheet back until a save panel on the same window closes. The panel opens after the warning has slid out, and
-	/// while no dialog of the bank shows.
+	/// Saves the report through a save panel in a window of its own, not a sheet and not modal: a dialog of the bank
+	/// that comes while the panel is open shows on this sheet at once and takes its answer, and the panel keeps what the
+	/// user typed. AppKit would hold a sheet back until a save panel on the same window closes, and a modal panel would
+	/// block the dialog. The panel opens after the warning has slid out, and while no dialog of the bank shows.
 	private func save(_ text: String) async {
 		while !model.alertGate.isFree || model.sync.broker.sheet != nil {
 			try? await Task.sleep(for: .milliseconds(50))
 		}
-		guard model.sheet == .migration else { return }
+		guard model.sheet == .migration, !savePanelOpen else { return }
 		let panel = NSSavePanel()
 		panel.allowedContentTypes = [.plainText]
 		panel.nameFieldStringValue = String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")
-		guard panel.runModal() == .OK, let url = panel.url else { return }
-		do {
-			try text.write(to: url, atomically: true, encoding: .utf8)
-		} catch {
-			saveError = error.localizedDescription
-			model.ask(.reportNotSaved)
+		savePanelOpen = true
+		panel.begin { response in
+			MainActor.assumeIsolated {
+				savePanelOpen = false
+				guard response == .OK, let url = panel.url else { return }
+				do {
+					try text.write(to: url, atomically: true, encoding: .utf8)
+				} catch {
+					saveError = error.localizedDescription
+					// The alert shows on this sheet only, so it stays away when the sheet closed meanwhile.
+					if model.sheet == .migration { model.ask(.reportNotSaved) }
+				}
+			}
 		}
 	}
 

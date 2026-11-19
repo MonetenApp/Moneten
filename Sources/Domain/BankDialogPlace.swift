@@ -153,14 +153,23 @@ public struct AlertGate: Sendable {
 		alert = .none
 	}
 
-	/// The broker shows a dialog. Returns the token of the alert on screen, which gives way to the dialog: it starts to
-	/// slide out now, and the app closes it. Nil when no alert shows.
+	/// The broker shows a dialog. Returns the token of the alert on screen, which must give way to the dialog with
+	/// `giveWay(_:)`, nil when no alert shows. Until then the alert stays and the dialog waits, so that the app can let an
+	/// alert that has just opened finish its slide in: AppKit does not survive an alert that closes while it slides in.
 	public mutating func bankDialogShows() -> Token? {
 		bankDialog = .open
 		dialogClosing = nil
 		guard let current, alert == .open else { return nil }
-		alert = .closing
 		return current
+	}
+
+	/// The alert of `token` gives way to the dialog of the bank: it starts to slide out, stays asked, and the app closes
+	/// it. False, and nothing changes, when the alert no longer shows, for example because the user answered it, or when
+	/// the dialog closed meanwhile.
+	public mutating func giveWay(_ token: Token) -> Bool {
+		guard shows(token), bankDialog == .open else { return false }
+		alert = .closing
+		return true
 	}
 
 	/// The broker closed its dialog, which starts to slide out. Returns the token of this closing for the time limit
@@ -174,19 +183,25 @@ public struct AlertGate: Sendable {
 		return token
 	}
 
-	/// The dialog of the bank has slid out. While the broker shows the next dialog, the report of the one before
-	/// changes nothing.
-	public mutating func bankDialogDismissed() {
-		guard bankDialog == .closing else { return }
-		dialogClosing = nil
-		bankDialog = .none
+	/// The dialog of the bank has slid out, and `brokerShows` tells whether the broker shows a dialog now. AppKit holds
+	/// the main thread for the slide out, so this report can come before the closing of the broker reaches the gate:
+	/// without a dialog of the broker it ends the wait at once. While the broker shows the next dialog, the report of
+	/// the one before changes nothing.
+	public mutating func bankDialogDismissed(brokerShows: Bool) {
+		guard bankDialog == .closing || !brokerShows else { return }
+		endBankDialog()
 	}
 
 	/// The time to slide out is over for the dialog of the closing `token`, for a dialog that never reports it, such as
 	/// one that never showed. The time limit of an earlier closing changes nothing.
 	public mutating func bankDialogTimedOut(_ token: Token) {
 		guard token == dialogClosing else { return }
-		bankDialogDismissed()
+		endBankDialog()
+	}
+
+	private mutating func endBankDialog() {
+		dialogClosing = nil
+		bankDialog = .none
 	}
 
 	/// The sheet changed or closed, for example at the lock. An alert on it goes with it, and an alert on the window
