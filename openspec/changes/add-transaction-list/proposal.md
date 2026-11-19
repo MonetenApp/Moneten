@@ -63,4 +63,5 @@ None.
 - "Edit Transaction..." changes the booking date, the value date, the counterparty name, the purpose, and the amount. An edited transaction keeps the user's values after later refreshes. MoneyMoney offers the command for fetched transactions, but its fields were not observed.
 - The option "Group transactions by account" sits in the settings of the account group. Its place in MoneyMoney was not observed.
 - The list must stay fluid with 50,000 transactions. This target comes from issue #5.
+- Every amount in the list shows its currency, also the currency of the view, because every amount of the app shows its currency (requirement "Every amount shows its currency" of add-localization-and-formatting, issue #464). The window of MoneyMoney 2.5.3 left out the currency of the view.
 - The balance at the end of a day stands below the amount of the top row of that day, so every row keeps its height and the table needs no rows of another kind. How MoneyMoney draws the daily balance inside the list was not observed.

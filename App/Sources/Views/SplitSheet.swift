@@ -57,7 +57,7 @@ struct SplitSheet: View {
 					Text("Enter a nonzero amount that leaves a nonzero remainder.")
 						.font(.callout).foregroundStyle(Palette.red)
 				}
-				LabeledContent("Remainder", value: amounts?.last.map(Format.money) ?? Format.money(remaining))
+				LabeledContent("Remainder", value: Format.money(amounts?.last ?? remaining))
 				if !kept.isEmpty { LabeledContent("Kept splits", value: "\(kept.count)") }
 				switch notice {
 				case .changed:

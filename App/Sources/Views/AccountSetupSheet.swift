@@ -220,11 +220,11 @@ final class AccountSetup {
 			loginError = problem
 			return
 		}
-		let access = Access(source: .fints(bankCode: chosenBank.code, url: url), bankName: bank.name, loginName: name)
+		let access = Access(source: .fints(bankCode: chosenBank.code, url: url), bankName: chosenBank.accessBankName, loginName: name)
 		let knownAccess = model.accesses.values.first { $0.isSameLogin(as: access) }
 		let known = knownAccess?.id ?? access.id
 		// A refresh of the access that the app has names its notices with the bank name of that access.
-		let bankName = knownAccess?.bankName ?? bank.name
+		let bankName = knownAccess?.bankName ?? access.bankName
 		let session = SetupSession(broker: model.sync.broker, access: access, pin: Secret(pin), replacing: known)
 		loginError = nil
 		notices = []

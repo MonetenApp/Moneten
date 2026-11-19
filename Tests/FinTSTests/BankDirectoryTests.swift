@@ -70,7 +70,7 @@ struct BankDirectoryTests {
 	func fintsFirst() {
 		#expect(codes("aareal") == ["10010424"])
 		// The fintech banks that join every directory have no FinTS address either (`Fintechs`).
-		#expect(codes("bank") == ["76030080", "12030000", "70120400", "72140052", "30020900", "20220800", "10010424", "12070088", "37021500", "37021548", "50034200"])
+		#expect(codes("bank") == ["76030080", "12030000", "72140052", "70120400", "30020900", "20220800", "10010424", "12070088", "37021500", "37021548", "50034200"])
 	}
 
 	@Test("Finds banks by the start of the Bankleitzahl, and a bank by its full Bankleitzahl")

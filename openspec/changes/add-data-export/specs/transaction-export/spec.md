@@ -80,7 +80,7 @@ The app SHALL write a CSV file with a header row and these columns in this order
 
 ### Requirement: CSV format rules
 
-The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicolon between fields. Dates and decimal marks use the system locale. Dates and amounts use ASCII digits. Amounts have the decimal places of their currency, with at least two, and no thousands separator. A field that contains a semicolon, a quotation mark, or a line break is put in quotation marks, and a quotation mark inside it is doubled.
+The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicolon between fields. Dates are Gregorian, in the order of day, month, and year of the system locale, and decimal marks use the system locale. Dates and amounts use ASCII digits. Amounts have the decimal places of their currency, with at least two, and no thousands separator. A field that contains a semicolon, a quotation mark, or a line break is put in quotation marks, and a quotation mark inside it is doubled.
 
 #### Scenario: Purpose with a semicolon
 
@@ -92,6 +92,12 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 - **WHEN** a purpose has two lines
 - **THEN** the field is in quotation marks and a spreadsheet program reads it as one cell
 
+#### Scenario: Arabic dates without direction marks
+
+- **WHEN** the user exports 3 November 2026 with ar_EG formats
+- **THEN** Date is "03/11/2026" without the direction marks U+200E, U+200F, and U+061C of the Arabic date format
+- **AND** the import of the app reads the exported file back with the same days and amounts
+
 #### Scenario: Currency with three decimal places
 
 - **WHEN** the user exports -12345 minor units in KWD with German formats
@@ -102,10 +108,12 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 - **WHEN** the user exports -8900 minor units in EUR on 3 November 2026 with ar_EG formats
 - **THEN** Date and Amount use only ASCII digits, with the local date order and decimal mark
 
-#### Scenario: Calendar is preserved with ASCII digits
+#### Scenario: Gregorian dates in a region with another calendar
 
 - **WHEN** the user exports 3 November 2026 with th_TH formats
-- **THEN** Date is "03/11/2569" in the local calendar with ASCII digits
+- **THEN** Date is "03/11/2026" with ASCII digits and without an era
+- **AND** with en_TH formats, which macOS gives this app for English and the region Thailand, Date is "03/11/2026"
+- **AND** with ja_JP formats and the Japanese calendar, Date is "2026/11/03"
 
 ### Requirement: Spreadsheet formula protection
 

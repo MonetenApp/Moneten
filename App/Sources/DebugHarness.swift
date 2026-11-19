@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import ExtensionCatalog
 import ExtensionHost
 import FinTS
 import Import
@@ -505,8 +506,7 @@ final class DebugHarness {
 				else { nil }
 			guard let scope else { return }
 			#if DEBUG || PERF_HARNESS
-			let recipients = model.ledger.refreshAccounts(scope).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) }
-			guard recipients.allSatisfy({ HarnessRun.mayReach($0, fakeBank: usesFakeBank) }) else { return log("refresh refused") }
+			guard mayRefresh(model.ledger.refreshAccounts(scope)) else { return log("refresh refused") }
 			#endif
 			model.refresh(scope, enforced: enforced)
 		case "status":
@@ -622,6 +622,14 @@ final class DebugHarness {
 		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		#if DEBUG || PERF_HARNESS
+		// "<n>" shows the made-up index of the performance check with n packages, without a signature and without the
+		// catalog, so that a check sees a catalog name ("package-0") and the harness treats it as one (issue #498).
+		case "extcatalogshow":
+			guard let count = Int(argument), count > 0, let index = try? CatalogIndex.parse(PerfScenario.catalog(entries: count)) else { return log("extcatalogshow refused") }
+			model.extensions.show(index)
+			log("extcatalogshow", ("entries", .count(count)), ("catalogName", .flag(model.extensions.isCatalogName("package-0"))))
+		#endif
 		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
 		case "supportedbanks": openMenuItem("Supported Banks...")
 		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it,
@@ -762,8 +770,9 @@ final class DebugHarness {
 		case "usd": Task { await DemoData.usdAccount(model, currency: argument.isEmpty ? "USD" : argument); log("usd done") }
 		case "review": Task { await DemoData.review(model); log("review done") }
 		case "fetch": DemoData.fetch(model, argument)
-		// "<name>|<comment>" gives the newest row with that name the comment, as "Add Comment..." saves it.
-		case "comment":
+		// "<name>|<comment>" gives the newest row with that name the comment, as "Add Comment..." saves it. "comment menu"
+		// and "comment row" have no "|" and go on to the case of "Add Comment..." below.
+		case "comment" where argument.contains("|"):
 			let parts = argument.components(separatedBy: "|")
 			guard parts.count == 2, let t = model.ledger.transactions.filter({ $0.name == parts[0] }).max(by: { $0.bookingDate < $1.bookingDate }) else {
 				return log("comment refused", ("needs", .word("name|comment")))
@@ -1127,6 +1136,10 @@ final class DebugHarness {
 			case "assignCategory": model.openCategoryPicker()
 			// The real sheet, as a click on "Add category" in "Assign Category" opens it. "newcategory" skips the sheet.
 			case "newCategory": model.sheet = .newCategory(isGroup: false, assigning: model.visibleSelection)
+			#if DEBUG || PERF_HARNESS
+			// What "Add Comment..." and ⇧⌘K do with the selected rows.
+			case "comment": model.sheet = .comment(model.visibleSelection)
+			#endif
 			default: model.sheet = nil
 			}
 		#if DEBUG || PERF_HARNESS
@@ -1324,6 +1337,38 @@ final class DebugHarness {
 		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
 		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
 		case "savedsearch": savedSearch(argument)
+		#if DEBUG || PERF_HARNESS
+		// "<account>|<day>|<minor units>|<name>|<purpose>|<flags>" adds a made-up transaction, as a delivery would store it.
+		// The day is yyyymmdd or a number of days from today, such as -3. The flags, separated by commas, are pending,
+		// review, new, checked, manual, and key=value for currency, comment, iban, bic, booking, e2e, mandate, creditor,
+		// return, category, and original (minor units and a currency, such as -2000USD).
+		case "row": addRow(argument)
+		// "<row>|<count>" opens the context menu of table row <row> as a right click does, after it selects the first <count>
+		// rows, or with "-" the selection as it is. "<row>|<count>|<item>" also chooses that item by its English title, and
+		// "<row>|<count>|<item>|<n>" the item number n of its submenu. It logs each item and submenu item by its hash and
+		// whether it is enabled.
+		case "rowmenu": rowMenu(argument)
+		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
+		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
+		// it clicks only "Cancel".
+		case "modal": modal(argument)
+		// Opens a save panel of macOS in a modal session, as an export does, for the check that "modal" clicks only "Cancel"
+		// in it. Nothing reads the answer of the panel, so no button writes a file. It logs "filepanel done" when the panel closes.
+		case "filepanel":
+			RunLoop.main.perform(inModes: [.common]) {
+				MainActor.assumeIsolated {
+					let panel = NSSavePanel()
+					panel.nameFieldStringValue = "harness.csv"
+					let response = panel.runModal()
+					self.log("filepanel done", ("ok", .flag(response == .OK)))
+				}
+			}
+		// "<menu>|<item>" chooses the item of the menu bar by their English titles, as a click does, also while the app in the
+		// background shows the item disabled. It logs whether the item is enabled after an update of the menu. Only the
+		// local items of `HarnessRun.menuActions` are allowed, and a refresh or a bank setup only when HarnessRun.mayReach lets
+		// it reach each recipient.
+		case "menuitem": menuItem(argument)
+		#endif
 		case "state":
 			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
@@ -1458,12 +1503,12 @@ final class DebugHarness {
 			}
 		}
 		if let setup = model.setup {
-			switch setup.service {
-			case nil: return .bankDialog(.fints)
-			case let .extensionService(id, _)?: return .bankDialog(recipient(of: .extension(id: id)))
-			// An offline account reaches no service.
-			case .offline?: return .other
+			let service: HarnessRun.SetupService = switch setup.service {
+			case nil: .fints
+			case let .extensionService(id, _)?: .extensionService(recipient(of: .extension(id: id)))
+			case .offline?: .offline
 			}
+			return HarnessRun.setupSurface(atLogin: setup.step == .login, service: service)
 		}
 		if model.phase != .unlocked { return window.isSheet ? .startAlert : .startWindow }
 		switch model.sheet {
@@ -1480,9 +1525,23 @@ final class DebugHarness {
 	private func recipient(of source: AccessSource) -> HarnessRun.Recipient {
 		switch source {
 		case .fints: .fints
-		case let .extension(id): fileExtensions.contains(id) || model?.extensions.fixtures[id] != nil ? .local : .realService
+		case let .extension(id): extensionRecipient(id, fixture: model?.extensions.fixtures[id] != nil)
 		case .finAPI: .realService
 		}
+	}
+
+	/// Who receives what the harness sends to the extension `id`, with or without a fixture of the run (HarnessRun.extensionRecipient).
+	private func extensionRecipient(_ id: String, fixture: Bool, loadedFromFile: Bool? = nil) -> HarnessRun.Recipient {
+		HarnessRun.extensionRecipient(hasFixture: fixture, loadedFromFile: loadedFromFile ?? fileExtensions.contains(id),
+			catalogName: model?.extensions.isCatalogName(id) ?? true)
+	}
+
+	/// Whether a refresh of `plan` reaches only the made-up bank or a local service. The commands "refresh",
+	/// "menuitem", and "extrefresh" ask before they start one, and `AppModel.refresh` asks for every other refresh of a
+	/// harness run, such as "Refresh All Accounts" in the popover of the menu bar icon and the automatic refresh.
+	func mayRefresh(_ plan: [UUID: [AccountRequest]]) -> Bool {
+		guard let model else { return false }
+		return plan.keys.compactMap { model.accesses[$0] }.allSatisfy { HarnessRun.mayReach(recipient(of: $0), fakeBank: usesFakeBank) }
 	}
 
 	/// Whether "answer", "method", "medium", and the answers of "ext..." may answer `prompt`.
@@ -1550,6 +1609,10 @@ final class DebugHarness {
 			"return": ("\r", 36), "escape": ("\u{1b}", 53), "cmd+k": ("k", 40)]
 		let names: [StaticString] = ["table", "down", "up", "return", "escape", "cmd+k"]
 		guard names.contains(where: { "\($0)" == name }) else { return log("mainkey rejected") }
+		#if DEBUG || PERF_HARNESS
+		// The rule of "key": Return in the setup of an access logs in at the bank (issue #498).
+		if name != "table", !HarnessRun.mayKey(name, on: surface(of: target), fakeBank: usesFakeBank) { return log("mainkey refused") }
+		#endif
 		var handledBy: StaticString = "-"
 		if name == "table" {
 			// Only the active app has a key window. macOS grants this only when the app in front gives up the focus, which "key=" shows.
@@ -1982,6 +2045,9 @@ final class DebugHarness {
 			let fixture = try parts.count > 2 && !parts[2].isEmpty ? JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[2]))) : nil
 			let access = Access(source: .extension(id: package.name), bankName: package.name, loginName: "")
 			#if DEBUG || PERF_HARNESS
+			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
+				return log("extrun refused")
+			}
 			fileExtensions.insert(package.name)
 			#endif
 			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] line in self?.log(line) }
@@ -1998,6 +2064,13 @@ final class DebugHarness {
 			let fixture = parts[1].isEmpty ? nil : try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: URL(filePath: parts[1])))
 			// An id without a slash names an installed extension, which runs only after its check.
 			if !parts[0].contains("/") {
+				#if DEBUG || PERF_HARNESS
+				// Before the fixture of the run changes: without a fixture, only the run's own file extension under a name
+				// outside the catalog may start (issue #498).
+				guard HarnessRun.mayReach(extensionRecipient(parts[0], fixture: fixture != nil), fakeBank: usesFakeBank) else {
+					return log("", ("", .choice(command, of: ["extaccess", "extrefresh"])), ("", .word("refused")))
+				}
+				#endif
 				model.extensions.fixtures[parts[0]] = fixture
 				if command == "extaccess" {
 					model.addExtensionAccess(package: try model.extensions.verifiedPackage(parts[0]), service: parts.count > 2 ? parts[2] : parts[0], fixture: fixture)
@@ -2009,6 +2082,9 @@ final class DebugHarness {
 			}
 			let package = try ExtensionPackage.load(from: URL(filePath: parts[0]))
 			#if DEBUG || PERF_HARNESS
+			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
+				return log("", ("", .choice(command, of: ["extaccess", "extrefresh"])), ("", .word("refused")))
+			}
 			fileExtensions.insert(package.name)
 			#endif
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
@@ -2238,6 +2314,135 @@ final class DebugHarness {
 	}
 
 	#if DEBUG || PERF_HARNESS
+	private func addRow(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 5, let account = model.ledger.accounts.first(where: { $0.name == parts[0] }),
+			let day = HarnessRun.day(parts[1], today: .today()), let minor = Int64(parts[2]) else { return log("row refused") }
+		var t = Transaction(accountID: account.id, bookingDate: day, amountMinor: minor, currency: account.currency, name: parts[3], purpose: parts[4].replacingOccurrences(of: "\\n", with: "\n"))
+		for flag in (parts.count > 5 ? parts[5] : "").split(separator: ",").map(String.init) {
+			let pair = flag.split(separator: "=", maxSplits: 1).map(String.init)
+			let value = pair.count == 2 ? pair[1] : ""
+			switch pair[0] {
+			case "pending": t.isPending = true
+			case "review": t.review = .unclearBooking
+			case "new": t.isNew = true
+			case "checked": t.isChecked = true
+			case "manual": t.isManual = true
+			case "currency": t.currency = value
+			case "comment": t.comment = value
+			case "iban": t.counterpartyIBAN = value
+			case "bic": t.counterpartyBIC = value
+			case "booking": t.bookingText = value
+			case "e2e": t.endToEndReference = value
+			case "mandate": t.mandateReference = value
+			case "creditor": t.creditorID = value
+			case "return": t.returnReason = value
+			case "valuedate":
+				guard let valueDate = HarnessRun.day(value, today: .today()) else { return log("row refused") }
+				t.valueDate = valueDate
+			case "category":
+				t.categoryID = model.ledger.categories.first { $0.name == value }?.id
+				t.categorizedBy = .manual
+			case "original":
+				t.originalAmountMinor = Int64(value.prefix { $0 == "-" || $0.isNumber })
+				t.originalCurrency = String(value.drop { $0 == "-" || $0.isNumber })
+			default: return log("row refused")
+			}
+		}
+		model.save(transaction: t, adding: true)
+		log("row added", ("day", .day(day)))
+	}
+
+	private func rowMenu(_ argument: String) {
+		guard let model, let table = transactionTables().first else { return log("rowmenu no table") }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 2, let row = Int(parts[0]) else { return log("rowmenu refused") }
+		if let count = Int(parts[1]) { table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false) }
+		guard let menu = contextMenu(row: row, sidebar: false) else { return log("rowmenu no menu") }
+		menu.update()
+		let items = menu.items.filter { !$0.isSeparatorItem }
+		log("rowmenu", ("items", .list(items.map { .hash($0.title) })), ("enabled", .list(items.map { .flag($0.isEnabled) })),
+			("selected", .count(model.visibleSelection.count)))
+		for (n, item) in items.enumerated() {
+			guard let submenu = item.submenu else { continue }
+			submenu.update()
+			log("rowmenu submenu", ("item", .position(n)), ("items", .list(submenu.items.map { .hash($0.title) })), ("enabled", .list(submenu.items.map { .flag($0.isEnabled) })))
+		}
+		guard parts.count >= 3 else { return }
+		guard HarnessRun.mayChooseRowMenuItem(parts[2]) else { return log("rowmenu refused", ("title", .hash(parts[2]))) }
+		guard let item = menu.items.first(where: { $0.title == String(localized: String.LocalizationValue(parts[2])) }), let owner = item.menu else { return log("rowmenu no item") }
+		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
+		nonisolated(unsafe) let choose: () -> Void
+		if parts.count == 4, let n = Int(parts[3]), let submenu = item.submenu {
+			guard submenu.items.indices.contains(n), submenu.items[n].isEnabled else { return log("rowmenu refused") }
+			log("rowmenu chosen", ("subitem", .position(n)))
+			choose = { submenu.performActionForItem(at: n) }
+		} else {
+			guard item.isEnabled else { return log("rowmenu refused") }
+			log("rowmenu chosen")
+			choose = { owner.performActionForItem(at: owner.index(of: item)) }
+		}
+		// After this command returns: an alert of the item runs a modal session, which takes the next commands, such as
+		// "modal", only outside the block of the main queue that delivers this one.
+		RunLoop.main.perform(inModes: [.common]) {
+			MainActor.assumeIsolated {
+				choose()
+				self.log("rowmenu done", ("sheet", .state(model.sheet)), ("selection", .state(model.selection)), ("visible", .count(model.visibleTransactions.count)))
+			}
+		}
+	}
+
+	private func menuItem(_ argument: String) {
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count == 2 else { return log("menuitem refused") }
+		guard let model else { return }
+		let action = HarnessRun.menuAction(menu: parts[0], item: parts[1])
+		let recipients: [HarnessRun.Recipient] = switch action {
+		case .refresh?:
+			parts[1] == "Refresh All Accounts" ? model.ledger.refreshAccounts(.all).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) }
+				: model.refreshScopeOfSelection.map { model.ledger.refreshAccounts($0).keys.compactMap { model.accesses[$0] }.map { recipient(of: $0) } } ?? []
+		case .bankSetup?: [.fints]
+		case .local?, nil: []
+		}
+		guard HarnessRun.mayChoose(action, reaching: recipients, fakeBank: usesFakeBank) else {
+			return log("menuitem refused", ("title", .hash(parts[0] + "|" + parts[1])))
+		}
+		let localized = { (text: String) in String(localized: String.LocalizationValue(text)) }
+		guard let menu = NSApp.mainMenu?.items.first(where: { $0.title == localized(parts[0]) })?.submenu else { return log("menuitem no menu") }
+		menu.delegate?.menuNeedsUpdate?(menu)
+		menu.update()
+		guard let index = menu.items.firstIndex(where: { $0.title == localized(parts[1]) }) else { return log("menuitem no item") }
+		log("menuitem", ("enabled", .flag(menu.items[index].isEnabled)))
+		// After this command returns, so that an alert of the item runs its modal session outside the block that delivers this one.
+		nonisolated(unsafe) let owner = menu
+		RunLoop.main.perform(inModes: [.common]) {
+			owner.performActionForItem(at: index)
+			MainActor.assumeIsolated { self.log("menuitem done") }
+		}
+	}
+
+	private func modal(_ argument: String) {
+		guard let window = NSApp.modalWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
+		func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
+		let all = window.contentView.map(views) ?? []
+		let buttons = all.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
+		let texts = all.compactMap { $0 as? NSTextField }.map(\.stringValue).filter { !$0.isEmpty }
+		log("modal", ("texts", .list(texts.map { .hash($0) })), ("buttons", .list(buttons.map { .hash($0.title) })))
+		guard !argument.isEmpty else { return }
+		// The app has no sandbox, so "Save" in the panel of "Backup Database..." or of an export would write into a folder
+		// of the developer, such as Documents.
+		let filePanel = window is NSSavePanel || window.className.contains("SavePanel") || window.className.contains("OpenPanel")
+		guard HarnessRun.mayClickModal(argument, inFilePanel: filePanel) else { return log("modal refused", ("panel", .flag(true))) }
+		// The buttons of a save or open panel are no NSButton in its content view, so "Cancel" there cancels the panel itself.
+		if filePanel {
+			if let panel = window as? NSSavePanel { panel.cancel(nil) } else { NSApp.stopModal(withCode: .cancel) }
+			return log("modal cancelled", ("panel", .flag(true)))
+		}
+		guard let button = buttons.first(where: { $0.title == String(localized: String.LocalizationValue(argument)) }) else { return log("modal no button") }
+		button.performClick(nil)
+	}
+
 	/// The debug folder and the throwaway data folder of the run, the only places that "fetchfile" and "importall" read.
 	private var readableFolders: [String] { [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? []) }
 
@@ -2248,11 +2453,12 @@ final class DebugHarness {
 	/// (`HarnessRun.readTarget` says what this guards against). The command then reads this path and not the path it was given.
 	private func readTarget(_ path: String) -> URL? { HarnessRun.readTarget(path, in: readableFolders).map { URL(filePath: $0) } }
 
-	/// The file <name>.<ext> in the debug folder, or nil for a name with other characters than letters, digits, "-", and "_",
-	/// so that no name reaches outside the folder.
+	/// The canonical path of the file <name>.<ext> in the debug folder, or nil for a name that `HarnessRun.ownFileName`
+	/// refuses or a path that `HarnessRun.writeTarget` refuses, such as a symlink that leads out. The command writes at
+	/// once after this check, to the path it returns.
 	private func ownFile(_ name: String, _ ext: String) -> URL? {
-		guard (1...64).contains(name.count), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
-		return folder.appending(path: "\(name).\(ext)")
+		guard let file = HarnessRun.ownFileName(name, ext: ext) else { return nil }
+		return HarnessRun.writeTarget(folder.appending(path: file).path, inside: [folder.path]).map { URL(filePath: $0) }
 	}
 
 	private func dumpRows(_ argument: String) {
@@ -2463,6 +2669,9 @@ final class DebugHarness {
 
 	private func comment(_ argument: String) {
 		guard let model else { return }
+		// The items of the allow-lists of "menuitem" and "rowmenu" (HarnessRun), each local.
+		guard argument == "menu" ? HarnessRun.mayChoose(HarnessRun.menuAction(menu: "Account", item: "Add Comment..."), reaching: [], fakeBank: false)
+			: ["Add Comment...", "Edit Comment..."].allSatisfy(HarnessRun.mayChooseRowMenuItem) else { return log("comment refused") }
 		let titles = [String(localized: "Add Comment..."), String(localized: "Edit Comment...")]
 		let menu: NSMenu? = switch argument {
 		// The Account menu holds "Assign Category...", the only item with Command-K. Its title follows the language.
@@ -2532,7 +2741,8 @@ final class DebugHarness {
 			if let menu = v.menu(for: event) { return menu }
 			view = v.superview
 		}
-		return nil
+		// A view over the table, such as the glass of the toolbar, can take the hit, so the table builds the menu of the row itself.
+		return list.menu(for: event)
 	}
 
 	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
