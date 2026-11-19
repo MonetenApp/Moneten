@@ -19,7 +19,8 @@ public struct BankDirectory: Sendable {
 
 		/// The entry under the name of its brand, such as "VR-Bank Altenburger Land / Skatbank".
 		var branded: Entry {
-			guard let name = CooperativeBanks.brandNames[code] ?? DeutscheBankGroup.brandNames[code] ?? FlatexDegiro.brandNames[code] ?? Consorsbank.brandNames[code] ?? Fintechs.names[code] else { return self }
+			guard let name = CooperativeBanks.brandNames[code] ?? DeutscheBankGroup.brandNames[code] ?? FlatexDegiro.brandNames[code]
+				?? Fintechs.names[code] ?? Consorsbank.brandNames[code] ?? PayCenter.brandNames[code] else { return self }
 			return Entry(code: code, city: city, bank: FinTSBank(name: name, bic: bank.bic, url: bank.url))
 		}
 

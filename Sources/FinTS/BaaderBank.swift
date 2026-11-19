@@ -1,3 +1,4 @@
+import Domain
 import Foundation
 
 /// The rules of Baader Bank and the brokers whose securities accounts it keeps (#226). The brokers share the FinTS
@@ -7,9 +8,7 @@ enum BaaderBank {
 	/// The FinTS server of Baader Bank: the host `fints.baaderbank.de`, in lower case and without one trailing dot, as
 	/// the hosts of the other bank groups count.
 	static func isBaaderBank(_ server: URL?) -> Bool {
-		guard var host = server?.host()?.lowercased() else { return false }
-		if host.hasSuffix(".") { host.removeLast() }
-		return host == "fints.baaderbank.de"
+		FinTSServer.host(server) == "fints.baaderbank.de"
 	}
 
 	// The customer portal of Baader Bank, whose login also leads to the FinTS access. The help line also goes into the

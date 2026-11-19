@@ -305,9 +305,19 @@ struct TwoFactorSheet: View {
 		}
 	}
 
-	private var tanField: some View {
-		TextField(request.field.label, text: Binding(get: { input }, set: { input = request.field.accept($0) }), prompt: Text("Required"))
+	/// The field, and while the TAN is too short for the field, the length that it needs, because "Continue" stays disabled.
+	/// The text changes in `onChange` and not in the setter of a binding: a setter that drops a typed character leaves the
+	/// state as it was, so the field would go on showing the character that the app does not send.
+	@ViewBuilder private var tanField: some View {
+		TextField(request.field.label, text: $input, prompt: Text("Required"))
 			.textContentType(nil)
+			.onChange(of: input) { _, typed in
+				let accepted = request.field.accept(typed)
+				if accepted != typed { input = accepted }
+			}
+		if let note = request.field.lengthNote(input) {
+			Text(note).foregroundStyle(.secondary)
+		}
 	}
 
 	/// The answer that "Continue" sends, or nil while it is incomplete.

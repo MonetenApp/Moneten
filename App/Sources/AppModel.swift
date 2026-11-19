@@ -199,6 +199,14 @@ final class AppModel {
 	/// that opening an account without new transactions redraws no row.
 	@ObservationIgnored private var visitedAccount: UUID?
 
+	/// The sidebar row of a new group whose name the user types, until Return, Escape, or a move of the focus away
+	/// from the row ends edit mode.
+	var namingRow: SidebarSelection?
+	/// Whether the sections "Accounts" and "Categories" of the sidebar show their rows. A new group opens its section,
+	/// so that its row in edit mode is on screen.
+	var showsAccountsSection = true
+	var showsCategoriesSection = true
+
 	var selection: SidebarSelection? {
 		didSet {
 			guard selection != oldValue else { return }
@@ -776,6 +784,8 @@ final class AppModel {
 			dropHeldSheet()
 		}
 		sheet = nil
+		// A name half typed into a new group is lost, and the group keeps the name it has in the database.
+		namingRow = nil
 		phase = next
 		// The lock removes the transaction table in this drawing and empties its rows after it, so that the
 		// table never goes in the drawing that changes its rows (issue #151).
@@ -1430,17 +1440,28 @@ final class AppModel {
 		}
 	}
 
-	func addGroup(name: String) async {
-		guard let store else { return }
-		let g = AccountGroup(name: name, position: ledger.nextTreePosition(in: nil))
-		do {
-			try store.save(g)
-			await replacingTable {
-				ledger.upsert(g)
-				selection = .group(g.id)
+	/// "Add Account Group" stores a new group at the end of the section "Accounts" and puts its row in edit mode for
+	/// the name. A `name` gives the group that name and no edit mode, for the seeded data of the debug builds.
+	func addGroup(name: String? = nil) async {
+		// The name and the place come from the ledger after the wait for the table, without a suspension up to the
+		// upsert, so that a second "Add Account Group" during the wait sees the first group and takes "New group 2".
+		let added: AccountGroup? = await replacingTable {
+			guard let store else { return nil }
+			var g = ledger.newAccountGroup()
+			if let name { g.name = name }
+			do {
+				try store.save(g)
+			} catch {
+				alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+				return nil
 			}
-		} catch {
-			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
+			ledger.upsert(g)
+			selection = .group(g.id)
+			return g
+		}
+		if let added, name == nil {
+			showsAccountsSection = true
+			namingRow = .group(added.id)
 		}
 	}
 
@@ -1452,6 +1473,14 @@ final class AppModel {
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the account group."), message: String(describing: error))
 		}
+	}
+
+	/// The disclosure triangle of a group row. The row can call it with the group of an earlier drawing, so the group
+	/// comes from the ledger: a copy from the drawing before a rename in the sidebar would store the old name again.
+	func setExpanded(group id: UUID, _ expanded: Bool) {
+		guard var g = ledger.group(id), g.isExpanded != expanded else { return }
+		g.isExpanded = expanded
+		save(group: g)
 	}
 
 	/// "Move to Group" and a drop on a group row put the account at the end of the group.
@@ -1722,14 +1751,71 @@ final class AppModel {
 	// MARK: Categories
 
 	/// `name` is the accepted name of `Ledger.checkCategoryName(_:in:renaming:)`, which the sheet checks before it calls this.
-	func addCategory(name: String, isGroup: Bool, parentID: UUID?, assigning ids: Set<UUID> = []) async {
+	func addCategory(name: String, parentID: UUID?, assigning ids: Set<UUID> = []) async {
 		let position = (ledger.childCategories(of: parentID).map(\.position).max() ?? -1) + 1
-		let c = Domain.Category(parentID: parentID, position: position, name: name, isGroup: isGroup)
+		let c = Domain.Category(parentID: parentID, position: position, name: name)
 		await replacingTable {
 			save(category: c)
 			if !ids.isEmpty, ledger.category(c.id) != nil { assign(category: c.id, to: ids) }
 			selection = .category(c.id)
 		}
+	}
+
+	/// The disclosure triangle of a category group, with the category from the ledger, as in `setExpanded(group:_:)`.
+	func setExpanded(category id: UUID, _ expanded: Bool) {
+		guard var c = ledger.category(id), c.isExpanded != expanded else { return }
+		c.isExpanded = expanded
+		save(category: c)
+	}
+
+	/// "Add Category Group" stores a new group beside the selection and puts its row in edit mode for the name.
+	/// A collapsed group that gets it expands, so that the row is on screen.
+	func addCategoryGroup() async {
+		// The selection of the command, read before the wait, in which an earlier "Add Category Group" selects its group.
+		let selected: UUID? = if case let .category(id) = selection { id } else { nil }
+		// The name and the place come from the ledger after the wait, as in `addGroup(name:)`.
+		let added: Domain.Category? = await replacingTable {
+			let c = ledger.newCategoryGroup(selected: selected)
+			save(category: c)
+			guard ledger.category(c.id) != nil else { return nil }
+			if let parentID = c.parentID, var parent = ledger.category(parentID), !parent.isExpanded {
+				parent.isExpanded = true
+				save(category: parent)
+			}
+			selection = .category(c.id)
+			return c
+		}
+		if let added {
+			showsCategoriesSection = true
+			namingRow = .category(added.id)
+		}
+	}
+
+	/// Ends edit mode of the row and stores the typed name. A nil `typed`, from Escape, keeps the name the row had,
+	/// and so do a name that is empty or only spaces and the same name again.
+	func endNaming(_ row: SidebarSelection, typed: String?) {
+		if namingRow == row { namingRow = nil }
+		guard let typed else { return }
+		switch row {
+		case let .group(id):
+			guard var g = ledger.group(id), let name = GroupName.edited(typed, keeping: g.name) else { return }
+			g.name = name
+			save(group: g)
+		case let .category(id):
+			// A name that another entry of the group has keeps the old name, also when the focus leaves the row with it.
+			guard var c = ledger.category(id), let name = GroupName.edited(typed, keeping: c.name),
+				ledger.checkCategoryName(name, in: c.parentID, renaming: id) != .taken else { return }
+			c.name = name
+			save(category: c)
+		default: break
+		}
+	}
+
+	/// Whether Return keeps the row in edit mode: the typed name of a category group that another entry of its group has
+	/// ("Name of a category"). The parent of the group, for the note under the field, or nil for the top level.
+	func takenName(_ row: SidebarSelection, typed: String) -> (taken: Bool, parentID: UUID?) {
+		guard case let .category(id) = row, let c = ledger.category(id) else { return (false, nil) }
+		return (ledger.checkCategoryName(typed, in: c.parentID, renaming: id) == .taken, c.parentID)
 	}
 
 	func save(category: Domain.Category) {
@@ -2054,9 +2140,8 @@ struct AlertMessage: Identifiable {
 
 enum SheetKind: Identifiable, Equatable {
 	case newAccount
-	case newGroup
 	/// `assigning` are the transactions that "Add category" in "Assign Category" moves into it.
-	case newCategory(isGroup: Bool, assigning: Set<UUID> = [])
+	case newCategory(assigning: Set<UUID> = [])
 	/// The category picker of ⌘K for these transactions.
 	/// `accounts` are those of the transactions, looked up once when the picker opens.
 	case assignCategory(Set<UUID>, accounts: Set<UUID>)
