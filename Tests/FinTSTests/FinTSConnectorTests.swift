@@ -358,6 +358,13 @@ struct FinTSConnectorTests {
 		#expect(session.events == shown.map { [.rejected($0)] } ?? [])
 	}
 
+	@Test("An account without a balance, transactions, and errors fails with the reason that the bank sent nothing, not with a sentence")
+	func nothingSent() async throws {
+		let report = try await refresh(#"read cmd; echo '{"type":"result","account":"DE02120300000000202051","errors":[]}'"#, session: Session())
+		guard case let .failed(failure) = report.outcomes[Self.giro.accountID] else { Issue.record("not failed"); return }
+		#expect(failure == .nothingSent)
+	}
+
 	@Test("A canceled refresh sends cancel, and the helper ends")
 	func cancel() async throws {
 		let session = Session()

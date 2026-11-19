@@ -15,6 +15,8 @@ struct RefreshErrorTests {
 		.tanRejected(BankMessage(text: "TAN falsch")), .approvalDeclined(bank), .approvalDeclined(nil), .challengeExpired, .invalidChallenge,
 		.notRegistered, .noTANMethod(bank), .noTANMethod(nil), .noTANMethodOfBank(bank, nextStep: .dkbApp), .noTANMethodOfBank(nil, nextStep: .dkbApp),
 		.notFetched, .bank(bank), .offline, .network("Connection reset by peer"), .unsupported("noJobs"), .notSaved("SQLite error 19"),
+		.nothingSent, .invalidLogin(extensionName: "Beispielbank"), .noAccountList(extensionName: "Beispielbank"),
+		.accountListedTwice(extensionName: "Beispielbank", accountNumber: "123", currency: "EUR"), .hostNotAllowed("evil.example"),
 	])
 	func roundTrip(failure: SyncFailure) throws {
 		let error = RefreshError(failure: failure, date: Self.date, notices: ["Wartung am 14.11.2026"], waitsForUser: failure.waitsForUser,
@@ -53,6 +55,35 @@ struct RefreshErrorTests {
 		#expect(error.code == "9931")
 		#expect(error.notices == ["Wartung"])
 		#expect(error.waitsForUser)
+	}
+
+	@Test("A sentence of a connector is stored as its reason and its values, and shows in the language of the app", arguments: [
+		(SyncFailure.nothingSent, "The bank sent nothing for this account.", #""reason":"nothingSent""#),
+		(.invalidLogin(extensionName: "Beispielbank"), "The login of Beispielbank returned a value that is not valid.", #""extensionName":"Beispielbank""#),
+		(.noAccountList(extensionName: "Beispielbank"), "ListAccounts of Beispielbank returned no list of accounts.", #""reason":"noAccountList""#),
+		(.accountListedTwice(extensionName: "Beispielbank", accountNumber: "123", currency: "EUR"),
+			"Beispielbank lists the account 123 in EUR twice, so Moneten cannot tell the two apart.", #""accountNumber":"123""#),
+		(.hostNotAllowed("evil.example"), "The login page evil.example is not a host that the extension may contact.", #""host":"evil.example""#),
+	])
+	func sentenceOfAConnector(failure: SyncFailure, english: String, value: String) throws {
+		#expect(failure.message == english)
+		let json = try #require(String(data: JSONEncoder().encode(RefreshError(failure: failure, date: Self.date)), encoding: .utf8))
+		#expect(json.contains(value))
+		#expect(!json.contains(#""text""#))
+		#expect(!json.contains("not valid") && !json.contains("twice") && !json.contains("may contact") && !json.contains("sent nothing"))
+		// The answers that the same sentence gave as an answer of the bank.
+		#expect(failure.mayAskForNewSetup)
+		#expect(!failure.waitsForUser && !failure.dialogResolves && !failure.rejectsPIN)
+		#expect(failure.bankMessage == nil)
+	}
+
+	@Test("A sentence of a connector stored before #462 as an answer of the bank still shows its stored text")
+	func sentenceStoredAsAnswer() throws {
+		let old = #"{"failure":{"reason":"bank","text":"ListAccounts of Beispielbank returned no list of accounts."},"date":0,"notices":[]}"#
+		let error = try JSONDecoder().decode(RefreshError.self, from: Data(old.utf8))
+		#expect(error.failure == .bank(BankMessage(text: "ListAccounts of Beispielbank returned no list of accounts.")))
+		#expect(error.message == "ListAccounts of Beispielbank returned no list of accounts.")
+		#expect(error.code == nil)
 	}
 
 	@Test("A stored failure that lacks the answer of the bank fails to read")

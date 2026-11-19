@@ -56,6 +56,16 @@ public enum SyncFailure: Error, Sendable, Hashable {
 	case notFetched
 	/// Any other answer of the bank.
 	case bank(BankMessage)
+	/// The FinTS answer for the account held no balance, no transactions, and no error.
+	case nothingSent
+	/// The login of an extension returned neither nothing, a message, nor a challenge.
+	case invalidLogin(extensionName: String)
+	/// ListAccounts of an extension returned something other than a list or a message.
+	case noAccountList(extensionName: String)
+	/// An extension listed two accounts with the same number and currency, so the app cannot tell them apart.
+	case accountListedTwice(extensionName: String, accountNumber: String, currency: String)
+	/// The user denied the login page of an extension, or denied its host earlier.
+	case hostNotAllowed(String)
 	/// No Internet connection. Shown only for a manual refresh.
 	case offline
 	case network(String)
@@ -106,6 +116,8 @@ public enum SyncFailure: Error, Sendable, Hashable {
 	public var mayAskForNewSetup: Bool {
 		switch self {
 		case .bank, .approvalDeclined, .challengeExpired, .invalidChallenge, .loginReplaced: true
+		// The connectors stored these sentences as answers of the bank before #462, so they keep the answer of `bank`.
+		case .nothingSent, .invalidLogin, .noAccountList, .accountListedTwice, .hostNotAllowed: true
 		default: false
 		}
 	}
@@ -132,6 +144,7 @@ public enum SyncFailure: Error, Sendable, Hashable {
 		case let .approvalDeclined(m), let .noTANMethod(m): m
 		case let .noTANMethodOfBank(m, _): m
 		case .needsUser, .loginRejected, .challengeExpired, .invalidChallenge, .notRegistered, .notFetched, .offline, .network, .unsupported, .notSaved: nil
+		case .nothingSent, .invalidLogin, .noAccountList, .accountListedTwice, .hostNotAllowed: nil
 		}
 	}
 
@@ -185,6 +198,16 @@ public enum SyncFailure: Error, Sendable, Hashable {
 			String(localized: "Canceled because of the previous error.")
 		case let .bank(m):
 			m.text
+		case .nothingSent:
+			String(localized: "The bank sent nothing for this account.")
+		case let .invalidLogin(name):
+			String(localized: "The login of \(name) returned a value that is not valid.")
+		case let .noAccountList(name):
+			String(localized: "ListAccounts of \(name) returned no list of accounts.")
+		case let .accountListedTwice(name, number, currency):
+			String(localized: "\(name) lists the account \(number) in \(currency) twice, so Moneten cannot tell the two apart.")
+		case let .hostNotAllowed(host):
+			String(localized: "The login page \(host) is not a host that the extension may contact.")
 		case .offline:
 			String(localized: "There is no Internet connection.")
 		case let .network(text):
@@ -207,13 +230,14 @@ public enum SyncFailure: Error, Sendable, Hashable {
 /// sent it. Renaming a case changes the stored form.
 extension SyncFailure: Codable {
 	private enum CodingKeys: String, CodingKey {
-		case reason, code, text, accountName, request, detail, nextStep
+		case reason, code, text, accountName, request, detail, nextStep, extensionName, accountNumber, currency, host
 	}
 
 	private enum Reason: String, Codable {
 		case needsUser, pinRejected, loginRejected, accessBlocked, appBlocked, loginReplaced, websiteLoginNeeded, tanRejected
 		case approvalDeclined, challengeExpired, invalidChallenge, notRegistered, noTANMethod, noTANMethodOfBank, notFetched, bank
 		case offline, network, unsupported, notSaved
+		case nothingSent, invalidLogin, noAccountList, accountListedTwice, hostNotAllowed
 	}
 
 	private var reason: Reason {
@@ -238,6 +262,11 @@ extension SyncFailure: Codable {
 		case .network: .network
 		case .unsupported: .unsupported
 		case .notSaved: .notSaved
+		case .nothingSent: .nothingSent
+		case .invalidLogin: .invalidLogin
+		case .noAccountList: .noAccountList
+		case .accountListedTwice: .accountListedTwice
+		case .hostNotAllowed: .hostNotAllowed
 		}
 	}
 
@@ -253,6 +282,12 @@ extension SyncFailure: Codable {
 		case let .needsUser(kind): try c.encode(kind, forKey: .request)
 		case let .network(text), let .unsupported(text), let .notSaved(text): try c.encode(text, forKey: .detail)
 		case let .noTANMethodOfBank(_, nextStep): try c.encode(nextStep, forKey: .nextStep)
+		case let .invalidLogin(name), let .noAccountList(name): try c.encode(name, forKey: .extensionName)
+		case let .accountListedTwice(name, number, currency):
+			try c.encode(name, forKey: .extensionName)
+			try c.encode(number, forKey: .accountNumber)
+			try c.encode(currency, forKey: .currency)
+		case let .hostNotAllowed(host): try c.encode(host, forKey: .host)
 		default: break
 		}
 	}
@@ -268,6 +303,7 @@ extension SyncFailure: Codable {
 			return message
 		}
 		func detail() throws -> String { try c.decode(String.self, forKey: .detail) }
+		func extensionName() throws -> String { try c.decode(String.self, forKey: .extensionName) }
 		self = switch try c.decode(Reason.self, forKey: .reason) {
 		case .needsUser: .needsUser(try c.decode(UserRequest.Kind.self, forKey: .request))
 		case .pinRejected: .pinRejected(try answer())
@@ -289,6 +325,12 @@ extension SyncFailure: Codable {
 		case .network: .network(try detail())
 		case .unsupported: .unsupported(try detail())
 		case .notSaved: .notSaved(try detail())
+		case .nothingSent: .nothingSent
+		case .invalidLogin: .invalidLogin(extensionName: try extensionName())
+		case .noAccountList: .noAccountList(extensionName: try extensionName())
+		case .accountListedTwice: .accountListedTwice(extensionName: try extensionName(), accountNumber: try c.decode(String.self, forKey: .accountNumber),
+			currency: try c.decode(String.self, forKey: .currency))
+		case .hostNotAllowed: .hostNotAllowed(try c.decode(String.self, forKey: .host))
 		}
 	}
 }

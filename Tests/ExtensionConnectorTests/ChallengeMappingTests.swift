@@ -228,7 +228,7 @@ import Testing
 	}
 
 	@Test func hostNotAllowed() {
-		#expect(throws: MappingError("The login page evil.example is not a host that the extension may contact.")) {
+		#expect(throws: MappingError(.hostNotAllowed("evil.example"))) {
 			try interaction(["challenge": .string("https://evil.example/authorize")])
 		}
 	}

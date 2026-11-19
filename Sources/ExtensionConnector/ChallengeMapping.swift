@@ -171,7 +171,7 @@ struct ChallengeMapping {
 			let host = url.host()?.lowercased()
 			guard let host, hosts.contains(host) else {
 				if asksForHosts, let host, !deniedHosts.contains(host), url.scheme == "https", url.port == nil, HostName(exactly: host) != nil { return .allowHost(host) }
-				throw MappingError(String(localized: "The login page \(url.host() ?? url.absoluteString) is not a host that the extension may contact."))
+				throw MappingError(.hostNotAllowed(url.host() ?? url.absoluteString))
 			}
 			return .answer(request(.openBrowser(browserApproval(url, state: table.state)), table), stepIncrement: increment)
 		case let .image(data):

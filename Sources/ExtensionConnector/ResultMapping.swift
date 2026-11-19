@@ -6,9 +6,18 @@ import Foundation
 /// the account shows it.
 struct MappingError: Error, Equatable {
 	let message: String
+	/// The reason that a refresh error stores in place of `message`, so the app words it in its language when it shows
+	/// it (#462). Nil for a message that stays as stored.
+	let failure: SyncFailure?
 
 	init(_ message: String) {
 		self.message = message
+		failure = nil
+	}
+
+	init(_ failure: SyncFailure) {
+		message = failure.message
+		self.failure = failure
 	}
 }
 

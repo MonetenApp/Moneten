@@ -30,6 +30,13 @@ The app SHALL offer its whole interface in German and in English. That includes 
 - **THEN** the error of "Girokonto" reads "The bank did not accept the PIN: PIN falsch" in English
 - **AND** the error shows the code 9931
 
+#### Scenario: Error of an extension after a switch of the language
+
+- **GIVEN** the interface language is German
+- **AND** a refresh of the account "Kreditkarte" failed, because the extension "Beispielbank" returned no list of accounts
+- **WHEN** the user sets "Language" to English and restarts the app
+- **THEN** the error of "Kreditkarte" reads "ListAccounts of Beispielbank returned no list of accounts." in English
+
 ### Requirement: Follow the language of macOS
 
 The app SHALL use German when German is the preferred language of macOS and English in every other case, unless the user has set a language in the app.

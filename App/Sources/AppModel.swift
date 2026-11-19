@@ -1712,7 +1712,7 @@ final class AppModel {
 	/// `offeringConnect` false it counts only accounts to refresh, for a place that shows no alert.
 	func canRefresh(_ scope: RefreshScope, offeringConnect: Bool = true) -> Bool {
 		phase == .unlocked && !isStoringMigration
-			&& (!ledger.refreshAccounts(scope).isEmpty || offeringConnect && ledger.connectOffer(scope, selected: nil) != nil)
+			&& (ledger.canRefresh(scope) || offeringConnect && ledger.connectOffer(scope, selected: nil) != nil)
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the

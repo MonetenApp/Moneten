@@ -551,6 +551,36 @@ The app SHALL remove a pending transaction when a successful refresh of its acco
 - **THEN** the pending transaction is marked for review and has no checkmark, and the computed balance of "Giro" is 493,60 €
 - **AND** the refresh of 14.11.2026, which delivers the two booked transactions and no pending transaction, keeps the pending transaction in the list
 
+### Requirement: Ask from the oldest pending transaction that a refresh can remove
+
+The app SHALL ask the source in a normal refresh from the day that the source sent for the oldest pending transaction that the refresh can remove, when it is earlier than the 14 days of overlap, and from no more than 90 days before the last successful refresh. A pending transaction under review without a checkmark does not count, because a refresh keeps it.
+
+#### Scenario: Hold that stays pending for more than 90 days
+
+- **GIVEN** the last successful refresh of the account "Kreditkarte" of an extension was on 22.11.2026, and "Kreditkarte" has a pending hold of -400,00 € on 03.07.2026
+- **WHEN** a refresh runs and its answer no longer delivers the hold
+- **THEN** the app asked the extension for the transactions from 24.08.2026 on
+- **AND** the hold stays in the list
+- **AND** after "Refresh Account (enforced)", whose answer no longer delivers the hold, the hold is gone
+
+#### Scenario: Pending transaction whose day the user moved
+
+- **GIVEN** the last successful refresh of "Giro" was on 22.11.2026, and "Giro" has a pending transaction of -500,00 € that the bank sent for 01.11.2026 and that the user moved to 10.11.2026
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 01.11.2026 on
+
+#### Scenario: Pending transaction under review without a checkmark
+
+- **GIVEN** the last successful refresh of "Giro" was on 22.11.2026, and "Giro" has a pending transaction of -3,20 € on 01.11.2026 that is marked for review and has no checkmark
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 08.11.2026 on
+
+#### Scenario: Checked pending transaction under review
+
+- **GIVEN** the pending transaction of the scenario "Pending transaction under review without a checkmark", which the user checked
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 01.11.2026 on
+
 ### Requirement: Deleted transactions stay deleted
 
 The app SHALL not add a transaction again that the user deleted, when a later refresh delivers it again.

@@ -81,7 +81,18 @@ extension ExtensionConnectorTests {
 				function ListAccounts() return {{accountNumber = "123", name = "A"}, {accountNumber = "123", name = "B"}} end
 				""")).setUp(Self.access, session)
 		}
-		#expect(failure?.failure as? SyncFailure == .bank(BankMessage(text: "Demo lists the account 123 in EUR twice, so Moneten cannot tell the two apart.")))
+		#expect(failure?.failure as? SyncFailure == .accountListedTwice(extensionName: "Demo", accountNumber: "123", currency: "EUR"))
+	}
+
+	/// The reason and the name of the extension, so the app words the error in its language when it shows it (#462).
+	@Test func answerThatIsNoListOfAccountsIsRefused() async throws {
+		let session = TestSession()
+		let failure = await #expect(throws: FailureWithState.self) {
+			_ = try await session.connector(demo(Self.calls + """
+				function ListAccounts() return 42 end
+				""")).setUp(Self.access, session)
+		}
+		#expect(failure?.failure as? SyncFailure == .noAccountList(extensionName: "Demo"))
 	}
 
 	@Test func secondMediumOfOneMethodIsSent() async throws {
@@ -181,7 +192,7 @@ extension ExtensionConnectorTests {
 
 	@Test func hostNotAllowedNamesTheHost() async throws {
 		let session = TestSession([.login([Secret("erika"), Secret("geheim")]), .host(.denied)])
-		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login page evil.example is not a host that the extension may contact."))) {
+		await #expect(throws: SyncFailure.hostNotAllowed("evil.example")) {
 			_ = try await Self.refresh(session.connector(demo(Self.calls + """
 				function InitializeSession2() return {challenge = "https://evil.example/login"} end
 				""")), session)
@@ -192,7 +203,7 @@ extension ExtensionConnectorTests {
 	/// A stored "Deny" stays the answer: the app does not ask again and opens no window.
 	@Test func deniedLoginPageIsNotAskedAgain() async throws {
 		let session = TestSession([.login([Secret("erika"), Secret("geheim")])])
-		await #expect(throws: SyncFailure.bank(BankMessage(text: "The login page auth.bank.example is not a host that the extension may contact."))) {
+		await #expect(throws: SyncFailure.hostNotAllowed("auth.bank.example")) {
 			_ = try await Self.refresh(session.connector(demo(Self.calls + """
 				function InitializeSession2() return {challenge = "https://auth.bank.example/authorize"} end
 				"""), decisions: ["auth.bank.example": .denied]), session)
