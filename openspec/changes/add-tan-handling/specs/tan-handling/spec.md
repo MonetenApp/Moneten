@@ -542,7 +542,7 @@ The app SHALL show only one dialog for two-factor authentication at a time. A fu
 
 ### Requirement: The dialog opens over an open window
 
-The app SHALL show the dialog on top of the open windows of the main window, such as the account settings and the calibration window over them, and keep what the user typed in them. An alert or a question there closes for the dialog and shows again after it, and one that comes while the dialog shows waits for it. The dialog waits only while a window slides out. The calibration window does not open while the dialog shows or another calibration window slides out.
+The app SHALL show the dialog on top of the open windows of the main window, such as the account settings and the calibration window over them, and keep what was typed in them. An alert of the main window closes for the dialog and shows again after it. A question, an alert, or a save panel on a sheet holds the dialog until the user answers it. One that comes while the dialog shows waits for it. The calibration window does not open while the dialog shows or another calibration window slides out.
 
 #### Scenario: TAN while the calibration window is open
 
@@ -567,34 +567,34 @@ The app SHALL show the dialog on top of the open windows of the main window, suc
 
 - **GIVEN** the account settings of "Girokonto" are open with the typed name "Girokonto Alltag", and the question "Remove the saved PIN of “Beispielbank”?" shows on them
 - **WHEN** a refresh of "Musterbank" asks for a TAN
-- **THEN** the question closes, and the dialog opens on top of the account settings
-- **AND** after the user entered the TAN, the question shows again, and the settings show "Girokonto Alltag"
+- **THEN** the question stays, and the dialog waits
+- **AND** after the user chose "Cancel", the dialog opens on top of the account settings, the saved PIN stays, and the settings show "Girokonto Alltag"
 
 #### Scenario: TAN while the question about a changed rule shows
 
 - **GIVEN** the category settings of "Lebensmittel" saved the rule "REWE", and the question "Should this categorization rule be applied to the existing transactions now?" shows
 - **WHEN** a refresh of "Musterbank" asks for a TAN
-- **THEN** the question closes, and the dialog opens on top of the category settings
-- **AND** after the user entered the TAN, the question shows again, and "Apply to all transactions." applies the rule "REWE"
-
-#### Scenario: TAN while the warning about the migration report shows
-
-- **GIVEN** the migration sheet shows the report of a migration with 3 accounts, and the warning "The report contains account names, balances, and account numbers and IBANs from rules." shows on it
-- **WHEN** a refresh of "Musterbank" asks for a TAN
-- **THEN** the warning closes, and the dialog opens on top of the sheet
-- **AND** after the user entered the TAN, the warning shows again
+- **THEN** the question stays, and the dialog waits
+- **AND** after the user chose "Apply to all transactions.", the rule "REWE" applies, the category settings close, and the dialog opens on the main window
 
 #### Scenario: TAN while the save panel of the migration report is open
 
-- **GIVEN** the save panel of the migration report is open with the typed name "Bericht.txt"
+- **GIVEN** the save panel of the migration report is open over the migration sheet
 - **WHEN** a refresh of "Musterbank" asks for a TAN
-- **THEN** the dialog opens on top of the migration sheet at once, and the save panel stays open with "Bericht.txt"
+- **THEN** the save panel stays, and the dialog waits
+- **AND** after the user chose "Cancel" in the save panel, the dialog opens on top of the migration sheet
 
-#### Scenario: An alert that comes while the dialog shows
+#### Scenario: A question asked while the dialog shows
 
-- **GIVEN** the dialog for "Musterbank" shows on top of the migration sheet, and the save panel of the report is still open
-- **WHEN** the user chooses "Save" in the panel, and the report cannot be saved to the folder that the user chose
-- **THEN** the alert "Could not save the report." shows after the user entered the TAN and the dialog has closed
+- **GIVEN** the dialog for "Musterbank" shows on top of the account settings of "Girokonto"
+- **WHEN** the question "Remove the saved PIN of “Beispielbank”?" is asked
+- **THEN** the question shows after the user entered the TAN and the dialog has closed
+
+#### Scenario: The lock while the save panel of the migration report is open
+
+- **GIVEN** the save panel of the migration report is open over the migration sheet
+- **WHEN** the app locks
+- **THEN** the save panel closes with the migration sheet, and nothing is saved
 
 #### Scenario: TAN while an alert shows on the window
 

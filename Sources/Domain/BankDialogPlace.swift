@@ -91,10 +91,11 @@ public struct OverSheetState: Sendable {
 
 /// An alert or a question in the main window, on the window or on its sheet, and the dialog of the bank, which never
 /// show at the same time. A window shows one sheet at a time, and AppKit keeps a second one waiting unseen until the
-/// first closes. The time limit of a TAN starts when the broker opens the dialog, so the dialog never waits behind an
-/// alert: the alert on screen gives way, closes, stays asked, and shows again after the dialog has slid out. An alert
-/// asked while the dialog shows or slides out waits the same way. Each opening of an alert gets a token, so that a late
-/// report of an alert that is gone never ends the alert on screen (issue #543).
+/// first closes. An alert of the main window gives way to the dialog: it closes, stays in line, and shows again after
+/// the dialog has slid out. A question, an alert, or a save panel on a sheet holds the dialog until the user answers
+/// it, because the user answers first what they just opened, and a TAN stays valid for minutes. An alert asked while
+/// the dialog shows or slides out waits for it. Each opening of an alert gets a token, so that a late report of an
+/// alert that is gone never ends the alert on screen (issue #543).
 public struct AlertGate: Sendable {
 	/// One opening of an alert.
 	public struct Token: Sendable, Equatable {
@@ -153,21 +154,22 @@ public struct AlertGate: Sendable {
 		alert = .none
 	}
 
-	/// The broker shows a dialog. Returns the token of the alert on screen, which must give way to the dialog with
-	/// `giveWay(_:)`, nil when no alert shows. Until then the alert stays and the dialog waits, so that the app can let an
-	/// alert that has just opened finish its slide in: AppKit does not survive an alert that closes while it slides in.
+	/// The broker shows a dialog. Returns the token of the alert of the main window on screen, which must give way to
+	/// the dialog with `giveWay(_:)`, nil when none shows. Until then the alert stays and the dialog waits, so that the
+	/// app can let an alert that has just opened finish its slide in: AppKit does not survive an alert that closes while
+	/// it slides in. An alert on the sheet never gives way, and the dialog waits until the user has answered it.
 	public mutating func bankDialogShows() -> Token? {
 		bankDialog = .open
 		dialogClosing = nil
-		guard let current, alert == .open else { return nil }
+		guard let current, !current.onSheet, alert == .open else { return nil }
 		return current
 	}
 
-	/// The alert of `token` gives way to the dialog of the bank: it starts to slide out, stays asked, and the app closes
-	/// it. False, and nothing changes, when the alert no longer shows, for example because the user answered it, or when
-	/// the dialog closed meanwhile.
+	/// The alert of the main window of `token` gives way to the dialog of the bank: it starts to slide out, stays in
+	/// line, and the app closes it. False, and nothing changes, for an alert on the sheet, when the alert no longer shows,
+	/// for example because the user answered it, or when the dialog closed meanwhile.
 	public mutating func giveWay(_ token: Token) -> Bool {
-		guard shows(token), bankDialog == .open else { return false }
+		guard !token.onSheet, shows(token), bankDialog == .open else { return false }
 		alert = .closing
 		return true
 	}

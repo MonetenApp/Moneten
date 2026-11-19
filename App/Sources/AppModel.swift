@@ -396,9 +396,7 @@ final class AppModel {
 			overSheet.sheetChanged()
 			// So does an alert or a question on the sheet, also one that waits for the dialog of the bank.
 			alertGate.sheetChanged()
-			askedSheetAlert = nil
-			shownSheetAlert = nil
-			presentsSheetAlert = false
+			sheetAlert = nil
 			// A menu command can open another sheet over the question or preview of an import, which then would wait
 			// for an answer that never comes.
 			if case let .fileImport(run) = oldValue, (run.question != nil || run.preview != nil) { run.cancel() }
@@ -414,18 +412,16 @@ final class AppModel {
 	/// The alerts and questions of the main window, on the window and on its sheet, and the dialog of the bank, which
 	/// never show at the same time (`AlertGate`).
 	var alertGate = AlertGate()
-	/// The alert or question that the open sheet asked for and the user has not answered: on screen, or held back
-	/// while a dialog of the bank or another alert is in the way.
-	var askedSheetAlert: SheetAlert?
-	/// The alert or question on the open sheet, from its opening until it has slid out.
-	var shownSheetAlert: (alert: SheetAlert, token: AlertGate.Token)?
-	/// Whether SwiftUI presents `shownSheetAlert`, from its opening until AppKit has closed it.
-	var presentsSheetAlert = false
+	/// The alert, question, or save panel of the open sheet until the user answers it: asked while a dialog of the bank
+	/// or another alert is in the way, without a token, and on screen with the token of its opening.
+	var sheetAlert: (alert: SheetAlert, token: AlertGate.Token?)?
 	/// The alert of `alerts` on the main window, from its opening until it has slid out.
 	@ObservationIgnored var windowAlert: AlertGate.Token?
 	/// When the last alert opened and the last dialog of the bank ended, for `alertSettle`.
 	@ObservationIgnored var alertOpenedAt: ContinuousClock.Instant?
 	@ObservationIgnored var bankDialogEndedAt: ContinuousClock.Instant?
+	/// The end of the wait of a dialog of the bank for the alert of the main window that gives way to it.
+	@ObservationIgnored var giveWayDeadline: ContinuousClock.Instant?
 	var settingsTab = SettingsTab.general
 	/// The number of transaction tables that `replacingTable` started, for the trail.
 	@ObservationIgnored private(set) var tableGeneration = 0

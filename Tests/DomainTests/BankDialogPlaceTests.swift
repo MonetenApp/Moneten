@@ -203,28 +203,23 @@ struct AlertGateTests {
 		#expect(open(onSheet: false, &gate) != nil)
 	}
 
-	@Test("A TAN that comes while the question about the saved PIN shows closes it, and the question shows again after the TAN dialog has slid out")
-	func tanOverQuestion() throws {
+	@Test("A TAN that comes while the question about the saved PIN shows waits until the user answered the question and it has slid out")
+	func tanBehindQuestion() throws {
 		var gate = AlertGate()
 		let question = try #require(open(onSheet: true, &gate))
-		// The refresh of "Musterbank" asks for a TAN: the gate names the question in its way, which stays until the app
-		// lets it give way, and the TAN dialog waits for it.
-		#expect(shows(&gate) == question)
-		#expect(gate.alert == .open)
+		// The refresh of "Musterbank" asks for a TAN. The question on the account settings stays, and no alert gives way.
+		#expect(shows(&gate) == nil)
 		#expect(gate.bankDialog == .open)
-		#expect(BankDialogPlace(sheet: true, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
-		// The question gives way and slides out.
-		#expect(giveWay(question, in: &gate))
-		#expect(gate.alert == .closing)
-		#expect(!gate.shows(question))
+		#expect(gate.shows(question))
 		#expect(!giveWay(question, in: &gate))
-		// The close of the question that SwiftUI reports now is no answer, so the question stays asked.
-		#expect(!closing(question, in: &gate))
-		// The TAN dialog waits for the slide out of the question, which is short.
+		#expect(gate.alert == .open)
+		#expect(BankDialogPlace(sheet: true, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
+		// The user chooses Cancel. The TAN dialog waits for the slide out, and then shows on the settings.
+		#expect(closing(question, in: &gate))
 		#expect(BankDialogPlace(sheet: true, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
 		gate.dismissed(question)
 		#expect(BankDialogPlace(sheet: true, crashReport: false, overSheet: .none, alert: gate.alert) == .sheet)
-		// The question stays closed while the TAN dialog shows and while it slides out.
+		// No question opens while the TAN dialog shows and while it slides out.
 		#expect(open(onSheet: true, &gate) == nil)
 		#expect(closes(&gate) != nil)
 		#expect(gate.bankDialog == .closing)
@@ -232,6 +227,34 @@ struct AlertGateTests {
 		gate.bankDialogDismissed(brokerShows: false)
 		#expect(gate.bankDialog == .none)
 		#expect(open(onSheet: true, &gate) != nil)
+	}
+
+	@Test("A TAN that comes while an alert shows on the main window closes it, and the alert can show again after the TAN dialog has slid out")
+	func tanOverWindowAlert() throws {
+		var gate = AlertGate()
+		let alert = try #require(open(onSheet: false, &gate))
+		// The refresh of "Musterbank" asks for a TAN: the gate names the alert in its way, which stays until the app lets
+		// it give way, and the TAN dialog waits for it.
+		#expect(shows(&gate) == alert)
+		#expect(gate.alert == .open)
+		#expect(gate.bankDialog == .open)
+		#expect(BankDialogPlace(sheet: false, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
+		// The alert gives way and slides out, once.
+		#expect(giveWay(alert, in: &gate))
+		#expect(gate.alert == .closing)
+		#expect(!gate.shows(alert))
+		#expect(!giveWay(alert, in: &gate))
+		// The close that the alert reports now is no answer.
+		#expect(!closing(alert, in: &gate))
+		#expect(BankDialogPlace(sheet: false, crashReport: false, overSheet: .none, alert: gate.alert) == nil)
+		gate.dismissed(alert)
+		#expect(BankDialogPlace(sheet: false, crashReport: false, overSheet: .none, alert: gate.alert) == .window)
+		// The alert waits while the TAN dialog shows and slides out, and shows again after it.
+		#expect(open(onSheet: false, &gate) == nil)
+		#expect(closes(&gate) != nil)
+		#expect(open(onSheet: false, &gate) == nil)
+		gate.bankDialogDismissed(brokerShows: false)
+		#expect(open(onSheet: false, &gate) != nil)
 	}
 
 	@Test("An alert asked while the TAN dialog shows waits until the dialog has slid out, and a next dialog before that keeps it waiting")
@@ -274,27 +297,27 @@ struct AlertGateTests {
 		#expect(gate.bankDialog == .none)
 	}
 
-	@Test("A question that the user answers, or whose TAN dialog closes, before it gives way is no longer closed for the dialog")
+	@Test("An alert of the main window that the user answers, or whose TAN dialog closes, before it gives way is no longer closed for the dialog")
 	func noGiveWay() throws {
 		var gate = AlertGate()
-		let answered = try #require(open(onSheet: true, &gate))
+		let answered = try #require(open(onSheet: false, &gate))
 		#expect(shows(&gate) == answered)
-		// The user answers the question while it still finishes its slide in.
+		// The user answers the alert while it still finishes its slide in.
 		#expect(closing(answered, in: &gate))
 		#expect(!giveWay(answered, in: &gate))
 		gate.dismissed(answered)
 		_ = closes(&gate)
 		gate.bankDialogDismissed(brokerShows: false)
-		// A TAN dialog that closes before the question gave way leaves the question on screen.
-		let question = try #require(open(onSheet: true, &gate))
-		#expect(shows(&gate) == question)
+		// A TAN dialog that closes before the alert gave way leaves the alert on screen.
+		let alert = try #require(open(onSheet: false, &gate))
+		#expect(shows(&gate) == alert)
 		_ = closes(&gate)
-		#expect(!giveWay(question, in: &gate))
-		#expect(gate.shows(question))
+		#expect(!giveWay(alert, in: &gate))
+		#expect(gate.shows(alert))
 		// Without an alert on screen the dialog of the bank names none.
 		gate.bankDialogDismissed(brokerShows: false)
-		#expect(closing(question, in: &gate))
-		gate.dismissed(question)
+		#expect(closing(alert, in: &gate))
+		gate.dismissed(alert)
 		#expect(shows(&gate) == nil)
 	}
 
