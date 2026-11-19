@@ -499,7 +499,10 @@ poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^topsheet shown=false$" topsheet
 once "^undosplit sheet=undoSplit$" undosplit
 poll "^topsheet shown=true$" topsheet
-send key return
+# Return never confirms an action that cannot be undone: the sheet and both parts stay, and only the click confirms.
+once "^key return handled=false$" key return
+poll "^splitstate parts=2 .*sheet=undoSplit$" splitstate
+send button "Undo Split Transaction"
 poll "^splitstate parts=0 .*sheet=none$" splitstate
 for value in 0,00 89,00 abc; do
 	send sheet split
@@ -534,7 +537,7 @@ for entry in 5,00 +5,00 -5,00; do
 	poll "^topsheet shown=false$" topsheet
 	once "^undosplit sheet=undoSplit$" undosplit
 	poll "^topsheet shown=true$" topsheet
-	send key return
+	send button "Undo Split Transaction"
 	poll "^splitstate parts=0 .*sheet=none$" splitstate
 done
 send split 7%
@@ -542,7 +545,7 @@ poll "^splitstate parts=2 .*sheet=none$" splitstate
 poll "^topsheet shown=false$" topsheet
 once "^undosplit sheet=undoSplit$" undosplit
 poll "^topsheet shown=true$" topsheet
-send key return
+send button "Undo Split Transaction"
 poll "^splitstate parts=0 .*sheet=none$" splitstate
 send split 19%
 poll "^splitstate parts=2 .*sheet=none$" splitstate

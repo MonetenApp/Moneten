@@ -113,13 +113,19 @@ The app SHALL keep a PIN that is not saved in memory after a successful login an
 
 ### Requirement: Remove a saved PIN
 
-The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved. For an extension access the button uses the word of the extension for its secret, for example "Remove saved Password".
+The app SHALL offer the button "Remove saved PIN" in the account settings of an account whose access has a saved PIN. The button deletes the saved PIN of the access, which affects all accounts of that access. The button is disabled when no PIN is saved. For an extension access the button uses the word of the extension for its secret, for example "Remove saved Password". The question before the deletion has no default button: Return deletes nothing, and Escape cancels.
 
 #### Scenario: Remove
 
 - **GIVEN** the access of "Giro" and "Savings" has a saved PIN
 - **WHEN** the user clicks "Remove saved PIN" in the settings of "Giro" and clicks "OK"
 - **THEN** the next refresh of "Savings" after a restart asks for the PIN
+
+#### Scenario: Return and Escape keep the PIN
+
+- **GIVEN** the access of "Giro" has a saved PIN, and the question "Remove the saved PIN of “Musterbank”?" shows
+- **WHEN** the user presses Return, and then Escape
+- **THEN** Return leaves the question open, Escape closes it, and the PIN stays saved
 
 #### Scenario: Nothing saved
 

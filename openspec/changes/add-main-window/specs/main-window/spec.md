@@ -419,6 +419,36 @@ The app SHALL make every control of the main window reachable with the keyboard,
 - **WHEN** a VoiceOver user moves to a transaction row
 - **THEN** VoiceOver reads the date, the amount, the counterparty, the purpose, and the category of that row
 
+### Requirement: Return never confirms an action that cannot be undone
+
+The app SHALL ask before an action that cannot be undone with a question whose action button has no key: Return presses nothing, Escape cancels, and only a click carries the action out. This holds for removing an account, an account group, a category, or a category group, deleting transactions, undoing a split, removing an extension, and removing a saved PIN.
+
+#### Scenario: Return in the question before removing an account
+
+- **GIVEN** the question "Are you sure you want to remove the account Girokonto?" shows
+- **WHEN** the user presses Return
+- **THEN** the question stays open, and "Girokonto" stays
+- **AND** Escape closes the question, and "Girokonto" stays
+
+#### Scenario: Return in the question before deleting transactions
+
+- **GIVEN** the question "Delete 2 selected transactions?" shows
+- **WHEN** the user presses Return
+- **THEN** the question stays open, and both transactions stay
+
+#### Scenario: Return in the sheet that undoes a split
+
+- **GIVEN** the sheet "Replace the split transactions with the original transaction?" shows for a split of -80,00 € into two parts
+- **WHEN** the user presses Return
+- **THEN** the sheet stays open, and both parts stay
+- **AND** a click on "Undo Split Transaction" brings back one transaction of -80,00 €
+
+#### Scenario: Return in the question before removing an extension
+
+- **GIVEN** the question "Remove Example Bank?" shows in the Extensions window
+- **WHEN** the user presses Return
+- **THEN** the question stays open, and the extension stays installed
+
 ### Requirement: About and help commands
 
 The app SHALL offer "About Moneten" in the application menu, with the version, the license, and a link to the source code. The Help menu offers "Help and FAQ..." (⌘?) and "Supported Banks...", and each opens the matching page of the project in the browser.

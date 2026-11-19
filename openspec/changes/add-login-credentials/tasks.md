@@ -27,6 +27,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 - [x] 2.3 `App`: "Save PIN" in the PIN sheet and in the login step of "Add Account", the check of the rules, and "Remove saved PIN" in the account settings.
 - [x] 2.4 `FinTS`: the helper sends the PIN rules of the bank parameters.
 - [x] 2.5 Extensions (issue #536): `UserAnswer.login(_:save:)`, the table `savedLogin` (migration `v32`), `Store.savedLogins()` and `saveLogin(_:for:)`, `SavedLogin` with the fields that the values answered, `SessionBroker.adoptLogin(of:into:)`, "Save Password" in the login dialog of an extension, and "Remove saved Password" in the account settings of an extension access.
+- [x] 2.6 The question of "Remove saved PIN" has no default button (#543): "OK" has the destructive role, and "Cancel" the cancel role, so Return deletes nothing and Escape cancels. Before, "OK" was the default button, and Return deleted the saved PIN. Checked in the Debug build through the key equivalents of the alert buttons (before: "Cancel" Escape, "OK" Return; after: "Cancel" Escape, "OK" none): Return left the question open, Escape and "Cancel" kept the PIN, and only a click on "OK" removed it.
 
 ## Workflow follow-up
 
