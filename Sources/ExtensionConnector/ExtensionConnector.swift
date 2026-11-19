@@ -333,7 +333,7 @@ private final class ScriptRun {
 			await session.rejected(.loginRejected)
 			throw SyncFailure.loginRejected
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: String(localized: "The login of \(connector.package.name) returned a value that is not valid.")))
+		default: throw SyncFailure.invalidLogin(extensionName: connector.package.name)
 		}
 	}
 
@@ -349,11 +349,11 @@ private final class ScriptRun {
 			let accounts = items.compactMap(ListedAccount.init)
 			var seen: Set<String> = []
 			if let twice = accounts.first(where: { !seen.insert($0.remoteID).inserted }) {
-				throw SyncFailure.bank(BankMessage(text: String(localized: "\(connector.package.name) lists the account \(twice.number) in \(twice.currency) twice, so Moneten cannot tell the two apart.")))
+				throw SyncFailure.accountListedTwice(extensionName: connector.package.name, accountNumber: twice.number, currency: twice.currency)
 			}
 			return accounts
 		case let .string(message): throw SyncFailure.bank(BankMessage(text: message))
-		default: throw SyncFailure.bank(BankMessage(text: String(localized: "ListAccounts of \(connector.package.name) returned no list of accounts.")))
+		default: throw SyncFailure.noAccountList(extensionName: connector.package.name)
 		}
 	}
 
@@ -410,7 +410,7 @@ private final class ScriptRun {
 			do {
 				interaction = try mapping(purpose).interaction(for: table)
 			} catch {
-				throw SyncFailure.bank(BankMessage(text: error.message))
+				throw error.failure ?? SyncFailure.bank(BankMessage(text: error.message))
 			}
 			switch interaction {
 			case let .allowHost(host):
@@ -420,7 +420,7 @@ private final class ScriptRun {
 				try await connector.services.saveDecision(decision, host)
 				guard decision == .allowed else {
 					hosts.deny(host)
-					throw SyncFailure.bank(BankMessage(text: String(localized: "The login page \(host) is not a host that the extension may contact.")))
+					throw SyncFailure.hostNotAllowed(host)
 				}
 				hosts.insert(host)
 				// The same table, now with the host allowed, opens the browser window.
