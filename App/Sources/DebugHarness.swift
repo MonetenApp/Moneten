@@ -349,12 +349,14 @@ final class DebugHarness {
 			#endif
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
 			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
+		#if DEBUG || PERF_HARNESS
 		// "<account name>": "Connect..." in the header of the migrated account, which "setup" then drives.
 		case "connectmigrated":
 			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.source == .migrated }) else { return log("connectmigrated", ("", .word("no account"))) }
 			model.navigate(to: .account(account.id))
 			model.addAccount(group: account.groupID, connecting: account)
 			log("connectmigrated", ("setup", .flag(model.setup != nil)), ("entry", .flag(model.setup?.entry == account.setupEntry)))
+		#endif
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -2060,7 +2062,8 @@ final class DebugHarness {
 		for index in 0..<list.numberOfRows {
 			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
-			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
+			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })),
+				("enabled", .list((menu?.items ?? []).map { .flag($0.isEnabled) })))
 			if choice.count == 2, choice[0] == index,
 				// "Move to Group" is the only submenu of a row, and its title follows the language.
 				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {
