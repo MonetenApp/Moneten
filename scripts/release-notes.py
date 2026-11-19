@@ -196,13 +196,14 @@ def sparkle(tag):
 	return "{%s}%s" % (SPARKLE, tag)
 
 
-def read_feed(path):
+def read_feed(path, role="current feed"):
 	"""Returns the items of a feed as dicts and the revision of the feed, None for a feed without
-	items. The notes are not read, they come from CHANGELOG.md."""
+	items. The notes are not read, they come from CHANGELOG.md. role names the feed in the message
+	of a file that cannot be read."""
 	try:
 		root = ET.parse(path).getroot()
 	except (OSError, ET.ParseError) as error:
-		raise Failure("cannot read the current feed %s: %s" % (path, error))
+		raise Failure("cannot read the %s %s: %s" % (role, path, error))
 	items = []
 	revisions = set()
 	for item in root.iter("item"):
@@ -272,7 +273,7 @@ def current_feed(args):
 			return [], 1
 		# Every installed copy keeps the highest revision that it read, so the new feed of a key change
 		# takes the revision of the old feed, never a number typed by hand that could be below it.
-		revision = read_feed(above)[1]
+		revision = read_feed(above, "old feed")[1]
 		if revision is None:
 			raise Failure("the old feed %s has no items, so its revision is unknown." % above)
 		return [], revision + 1

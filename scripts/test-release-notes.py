@@ -219,7 +219,7 @@ class ReleaseNotesTests(unittest.TestCase):
 		result = self.key_change(later, "--first-release", "--above-feed", str(empty))
 		self.assertIn("the old feed %s has no items, so its revision is unknown" % empty, result.stderr)
 		result = self.key_change(later, "--first-release", "--above-feed", str(self.dir / "missing.xml"))
-		self.assertIn("cannot read the current feed", result.stderr)
+		self.assertIn("cannot read the old feed %s" % (self.dir / "missing.xml"), result.stderr)
 		self.assertFalse(later.exists())
 		result = self.key_change(later, "--first-release", "--revision", "5")
 		self.assertIn("unrecognized arguments: --revision 5", result.stderr)
