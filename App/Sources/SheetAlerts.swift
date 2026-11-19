@@ -67,6 +67,11 @@ final class SheetAlerts {
 	private func present() {
 		guard message != nil, isViewOnScreen, panel == nil, wait == nil else { return }
 		wait = Task { [weak self] in
+			// A message that comes with the end of a sheet, such as the result of an import, starts this task before the
+			// sheet slides out, and AppKit blocks the main thread for the slide. Without a turn of the main queue, the
+			// alert slid in right after it, before the work that waited, and the app did not answer for the two slides
+			// together, about 700 ms after "Cancel" of a large import (issue #519).
+			await Task.yield()
 			// The time that a closed sheet has had to call `onDismiss`. A sheet that never calls it, for example
 			// because its window went away, holds the alert back for 3 seconds, far longer than a slide out takes.
 			var closing = Duration.zero
