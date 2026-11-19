@@ -10849,6 +10849,17 @@
         }
       }
     },
+    "The catalog lists version %@ of %@, which is older than the installed version %@. There is no update to install." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Katalog führt Version %1$@ von %2$@, die älter ist als die installierte Version %3$@. Es gibt kein Update zu installieren."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The category \"%@\" was not created, because a level of it is a category and not a group." : {
       "localizations" : {
         "de" : {
