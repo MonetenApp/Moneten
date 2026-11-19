@@ -555,10 +555,12 @@ public struct CSVFile: Sendable {
 		var layout = layout
 		let (orders, ambiguous) = try dateEvidence(layout)
 		if detectingDateOrder, !orders.contains(layout.dateOrder) { layout.dateOrder = orders[0] }
+		// Every dated row gives one transaction, so the first ten cells belong to the first ten rows of the preview.
+		let rawDates = ambiguous == nil ? [] : try dataRows(layout).prefix(10).compactMap { Self.cell($0.cells, layout.columns[.bookingDate]) }
 		do {
-			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, ambiguousDate: ambiguous)
+			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, ambiguousDate: ambiguous, rawDates: rawDates)
 		} catch let failure as TransactionFileImporter.Failure {
-			return CSVPreview(layout: layout, parsed: TransactionFileImporter.Parsed(transactions: []), problem: failure, ambiguousDate: ambiguous)
+			return CSVPreview(layout: layout, parsed: TransactionFileImporter.Parsed(transactions: []), problem: failure, ambiguousDate: ambiguous, rawDates: rawDates)
 		}
 	}
 
@@ -699,6 +701,9 @@ public struct CSVPreview: Sendable {
 	/// A date of the file that reads as two different days, when every date fits both orders. The
 	/// preview then asks the user for the order and imports nothing before the answer.
 	public var ambiguousDate: AmbiguousDate?
+	/// The booking dates of the first ten rows as the file writes them, while `ambiguousDate` is set, so that
+	/// the preview shows no day that the app guessed. Empty when the file decides the order.
+	public var rawDates: [String]
 
 	public var transactions: [Transaction] { parsed.transactions }
 }

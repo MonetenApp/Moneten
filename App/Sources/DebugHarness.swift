@@ -2446,7 +2446,9 @@ final class DebugHarness {
 		// A row of the file holds a name, a purpose, and an amount, so the log holds only the count and the days of the first rows.
 		case "rows":
 			let rows = preview.preview?.transactions.prefix(10) ?? []
-			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })))
+			// "raw" counts the rows that show their date as the file writes it, while the preview asks for the date order.
+			log("csv rows", ("count", .count(rows.count)), ("days", .list(rows.map { .day($0.bookingDate) })),
+				("raw", .count(preview.asksDateOrder ? preview.preview?.rawDates.count ?? 0 : 0)))
 		default:
 			// The field of each column from 0, or "-" for a column without one.
 			let fields = Dictionary(preview.layout.columns.map { ($1, $0) }, uniquingKeysWith: { first, _ in first })

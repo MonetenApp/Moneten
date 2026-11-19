@@ -7,13 +7,22 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 	public var header: [String]
 	public var layout: CSVLayout
 	public var delimiter: String?
+	/// The date order that the user chose in the question for a file whose dates fit both orders. It is nil
+	/// for a profile whose order came from the dates or from the date format control, and for every profile
+	/// that a version without the question saved.
+	public var answeredDateOrder: DateOrder?
 
-	public init(name: String, header: [String], layout: CSVLayout, delimiter: String? = nil) {
+	public init(name: String, header: [String], layout: CSVLayout, delimiter: String? = nil, answeredDateOrder: DateOrder? = nil) {
 		self.name = name
 		self.header = header
 		self.layout = layout
 		self.delimiter = delimiter
+		self.answeredDateOrder = answeredDateOrder
 	}
+
+	/// Whether the order of the layout is the one that the user chose in the question. An older version
+	/// that changes the order keeps the stored answer as an unknown field, and the answer then no longer counts.
+	public var answersDateOrder: Bool { answeredDateOrder == layout.dateOrder }
 
 	public enum Match: Hashable, Sendable {
 		/// The header, delimiter and detected date order match, so the file imports without the preview.
@@ -22,15 +31,36 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		/// of the title that the profile had for it.
 		case changed(CSVProfile, CSVLayout)
 		case none
+
+		/// The date order that the user chose in the question, when the profile answers it with the order that
+		/// the start of the preview uses.
+		public var answeredDateOrder: DateOrder? {
+			switch self {
+			case let .same(profile): profile.answersDateOrder ? profile.layout.dateOrder : nil
+			case let .changed(profile, layout): profile.answersDateOrder && layout.dateOrder == profile.layout.dateOrder ? layout.dateOrder : nil
+			case .none: nil
+			}
+		}
 	}
 
 	/// The profile with the header row of the file, or else the one whose titles the file keeps for most of
 	/// its fields. A profile that keeps fewer than half of its columns belongs to another bank, and one that
 	/// misses a required field gives a worse start than `detected`. Columns that only `detected` assigns,
 	/// such as a new "Kategorie", keep their field.
+	/// A profile fits the dates of the file with the detected order, or with the order that the user chose in the
+	/// question when the dates fit both orders. A date that the chosen order cannot read, such as "13/11/2026" for
+	/// month first, makes the file fit only the other order, so the profile does not apply.
 	public static func match(for file: CSVFile, in profiles: [CSVProfile], detected: CSVLayout) -> Match {
+		// The orders of the file are read only for a profile with an answer, because a large file takes a while.
+		var orders: [DateOrder]?
+		func fits(_ profile: CSVProfile) -> Bool {
+			if profile.layout.dateOrder == detected.dateOrder { return true }
+			guard profile.answersDateOrder else { return false }
+			if orders == nil { orders = (try? file.dateOrders(detected)) ?? [detected.dateOrder] }
+			return orders!.contains(profile.layout.dateOrder)
+		}
 		// The newest profile of a header row wins, because the user saved it last.
-		if let same = profiles.last(where: { $0.header == file.header && $0.delimiter == file.delimiter && $0.layout.dateOrder == detected.dateOrder }) { return .same(same) }
+		if let same = profiles.last(where: { $0.header == file.header && $0.delimiter == file.delimiter && fits($0) }) { return .same(same) }
 		let moved = profiles.compactMap { profile -> (profile: CSVProfile, layout: CSVLayout, kept: Int)? in
 			let previous = Dictionary(grouping: profile.header.indices, by: { profile.header[$0] })
 			let positions = Dictionary(grouping: file.header.indices, by: { file.header[$0] })
@@ -39,7 +69,7 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 				return title.isEmpty || count == columns.count || max(count, columns.count) <= 1
 			}) else { return nil }
 			var layout = profile.previewLayout(for: file)
-			if profile.delimiter != file.delimiter || profile.layout.dateOrder != detected.dateOrder { layout.dateOrder = detected.dateOrder }
+			if profile.delimiter != file.delimiter || !fits(profile) { layout.dateOrder = detected.dateOrder }
 			layout.columns = profile.layout.columns.compactMapValues { column in
 				guard profile.header.indices.contains(column), !profile.header[column].isEmpty,
 					let occurrence = previous[profile.header[column]]?.firstIndex(of: column),
@@ -66,7 +96,7 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 
 	/// The transactions of a file with the header row of the profile, or nil when the file does not read in
 	/// the profile, such as a month with an umlaut for a profile saved on a file in plain ASCII, or when every
-	/// date fits day first and month first, so that the preview opens.
+	/// date fits day first and month first and the profile holds no order that the user chose, so that the preview opens.
 	/// A file in another encoding than the profile, such as UTF-8 after a profile in Windows-1252, would read
 	/// with wrong letters, so it opens the preview too, unless both encodings give the same text, as for a
 	/// file in ASCII or for "ä" in ISO-8859-1 and Windows-1252.
@@ -75,8 +105,8 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		let reread: CSVFile
 		do { reread = try file.with(layout.encoding) } catch is TransactionFileImporter.Failure { return nil }
 		let preview = try reread.preview(layout, currency: currency)
-		// A file whose dates fit both orders needs the answer of the user, which the profile does not give.
-		return preview.problem == nil && preview.ambiguousDate == nil && !preview.transactions.isEmpty ? preview.parsed : nil
+		// A file whose dates fit both orders needs the answer of the user, which only a profile with a chosen order gives.
+		return preview.problem == nil && (preview.ambiguousDate == nil || answersDateOrder) && !preview.transactions.isEmpty ? preview.parsed : nil
 	}
 
 }

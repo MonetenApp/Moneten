@@ -20,7 +20,7 @@ final class CSVPreviewModel {
 			let dates: [CSVField] = [.bookingDate, .valueDate]
 			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) {
 				detectsDateOrder = true
-				answeredDateOrder = false
+				answeredOrder = nil
 			}
 			refresh()
 		}
@@ -30,9 +30,9 @@ final class CSVPreviewModel {
 	/// The date of the last preview that fits both orders. It stays while the app reads the file again, so
 	/// that the question for the date order does not flicker.
 	private(set) var ambiguousDate: AmbiguousDate?
-	/// Whether the user chose the date order of a file whose dates fit both orders. Neither the detected
-	/// order nor a profile answers it, and another date column asks again.
-	private(set) var answeredDateOrder = false
+	/// The date order that the user chose in the question for a file whose dates fit both orders, or that a
+	/// profile with such a choice gives. The detected order never answers it, and another date column asks again.
+	private var answeredOrder: Import.DateOrder?
 	/// Why the file cannot be read with the encoding of `layout`.
 	private(set) var problem: String?
 	/// The saved profiles, and the name under which "Import" saves the settings. An empty name saves none.
@@ -55,8 +55,11 @@ final class CSVPreviewModel {
 
 	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
 	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
-	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?, store: Store) {
+	/// `answeredOrder` is the order that the user chose in the question when the profile of the start saved one.
+	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?,
+		answeredOrder: Import.DateOrder?, store: Store) {
 		self.name = name
+		self.answeredOrder = answeredOrder
 		self.file = file
 		self.layout = layout
 		self.currency = currency
@@ -86,7 +89,8 @@ final class CSVPreviewModel {
 		profileName = name == matched ? name ?? "" : ""
 		guard let saved = profiles.first(where: { $0.name == name }) else { return }
 		var next = saved.previewLayout(for: file)
-		switch CSVProfile.match(for: file, in: [saved], detected: layout) {
+		let match = CSVProfile.match(for: file, in: [saved], detected: layout)
+		switch match {
 		case .same: break
 		case let .changed(_, moved): next = moved
 		case .none: next.columns = layout.columns
@@ -95,14 +99,18 @@ final class CSVPreviewModel {
 		layout = next
 		isAdopting = false
 		detectsDateOrder = false
-		answeredDateOrder = false
+		answeredOrder = match.answeredDateOrder
 		refresh()
 	}
 
 	func chooseDateOrder(_ order: Import.DateOrder) {
-		answeredDateOrder = true
+		answeredOrder = order
 		layout.dateOrder = order
 	}
+
+	/// Whether the order of the layout is the answer to the question. A change in the date format control
+	/// of a file that decides the order is no answer.
+	var answeredDateOrder: Bool { answeredOrder == layout.dateOrder }
 
 	/// Whether the preview waits for the user to choose the date order.
 	var asksDateOrder: Bool { ambiguousDate != nil && !answeredDateOrder }
@@ -119,7 +127,8 @@ final class CSVPreviewModel {
 
 	func saveProfile() -> Bool {
 		guard let savedProfile else { return true }
-		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter)
+		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter,
+			answeredDateOrder: answeredDateOrder ? answeredOrder : nil)
 		do {
 			try store.saveCSVProfile(saved, replacing: profile == matched ? matched : nil)
 			profiles.save(saved, matched: matched, applied: profile)
@@ -318,9 +327,11 @@ struct CSVPreviewView: View {
 					Text("Amount").gridColumnAlignment(.trailing)
 				}
 				.foregroundStyle(.secondary)
-				ForEach(preview.transactions.prefix(10)) { t in
+				// Until the user chooses the date order, each row shows its date as the file writes it, never a guessed day.
+				let raw = model.asksDateOrder ? preview.rawDates : []
+				ForEach(Array(preview.transactions.prefix(10).enumerated()), id: \.element.id) { i, t in
 					GridRow {
-						Text(Format.day(t.bookingDate)).monospacedDigit()
+						Text(raw.indices.contains(i) ? raw[i] : Format.day(t.bookingDate)).monospacedDigit()
 						Text(t.name).lineLimit(1)
 						Text(t.purpose).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
 						AmountText(money: Money(minorUnits: t.amountMinor, currency: t.currency))

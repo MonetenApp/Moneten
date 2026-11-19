@@ -26,6 +26,20 @@ struct CSVProfileStoreTests {
 		#expect(try store.exportAllData().csvProfiles.map(\.payload) == [payload])
 	}
 
+	@Test("A chosen date order is stored with the profile, and saving the profile without one removes it")
+	func answeredDateOrder() throws {
+		let store = try SchemaTests.emptyStore()
+		defer { try? store.close() }
+		var saved = try profile()
+		saved.answeredDateOrder = saved.layout.dateOrder
+		try store.saveCSVProfile(saved, replacing: nil)
+		#expect(try store.csvProfiles() == [saved])
+		saved.answeredDateOrder = nil
+		try store.saveCSVProfile(saved, replacing: saved.name)
+		#expect(try store.csvProfiles() == [saved])
+		#expect(try store.csvProfiles().first?.answersDateOrder == false)
+	}
+
 	@Test("Saving and renaming a readable profile keeps unknown fields", arguments: [false, true])
 	func unknownFields(rename: Bool) throws {
 		let store = try SchemaTests.emptyStore()

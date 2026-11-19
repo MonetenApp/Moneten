@@ -43,6 +43,60 @@ struct CSVProfileTests {
 		#expect(try profile.read(decided, currency: "EUR")?.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 13)])
 	}
 
+	/// "Card CSV" for "Date,Name,Amount", with month first chosen in the question for the date order.
+	static func answered() throws -> CSVProfile {
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.dateOrder = .monthDayYear
+		return CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter, answeredDateOrder: .monthDayYear)
+	}
+
+	@Test("A profile with month first chosen in the question imports 11/03/2026 as 3 November without the preview")
+	func answeredProfile() throws {
+		let profile = try Self.answered()
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n".utf8))
+		let match = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout())
+		#expect(match == .same(profile))
+		#expect(match.answeredDateOrder == .monthDayYear)
+		#expect(try profile.read(file, currency: "EUR")?.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3)])
+	}
+
+	@Test("A date that the chosen order cannot read keeps the profile from applying, and the preview reads it day first")
+	func contradictedProfile() throws {
+		let profile = try Self.answered()
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n13/11/2026,Bakery,-2.00\n".utf8))
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		let match = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout())
+		guard case let .changed(_, start) = match else {
+			Issue.record("A contradicting date must open the preview")
+			return
+		}
+		#expect(match.answeredDateOrder == nil)
+		#expect(start.dateOrder == .dayMonthYear)
+		let preview = try file.preview(start, currency: "EUR")
+		#expect(preview.ambiguousDate == nil)
+		#expect(preview.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 11), Day(year: 2026, month: 11, day: 13)])
+	}
+
+	@Test("A profile answers only while its chosen order is the order of its layout, and an older profile answers nothing")
+	func answerFollowsTheLayout() throws {
+		var profile = try Self.answered()
+		#expect(profile.answersDateOrder)
+		profile.layout.dateOrder = .dayMonthYear
+		#expect(!profile.answersDateOrder)
+		let older = Data("""
+		{"name":"Card CSV","header":["Date","Name","Amount"],"delimiter":",",
+		"layout":{"encoding":"utf8","columns":{"bookingDate":0,"name":1,"amount":2},"dateOrder":"monthDayYear","createsCategories":false}}
+		""".utf8)
+		let decoded = try JSONDecoder().decode(CSVProfile.self, from: older)
+		#expect(decoded.answeredDateOrder == nil)
+		#expect(!decoded.answersDateOrder)
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n11/04/2026,Bakery,-2.00\n".utf8))
+		#expect(try decoded.read(file, currency: "EUR") == nil)
+		#expect(CSVProfile.match(for: file, in: [decoded], detected: try file.detectedLayout()).answeredDateOrder == nil)
+		#expect(try JSONDecoder().decode(CSVProfile.self, from: JSONEncoder().encode(try Self.answered())) == (try Self.answered()))
+	}
+
 	@Test("An added empty title still suggests the saved column mapping")
 	func emptyTitles() throws {
 		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))

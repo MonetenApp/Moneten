@@ -379,6 +379,16 @@ struct CSVPreviewTests {
 		#expect(try clear.preview(clear.detectedLayout(), currency: "EUR").ambiguousDate == nil)
 	}
 
+	@Test("A file whose dates fit both orders gives the booking dates as the file writes them, and one that decides gives none")
+	func rawDates() throws {
+		let file = try CSVFile(data: Data("Date,Payee,Amount\n11/03/2026,Kiosk,-1.50\n11/04/2026,Bakery,-2.00\n".utf8))
+		#expect(try file.preview(file.detectedLayout(), currency: "EUR").rawDates == ["11/03/2026", "11/04/2026"])
+		let decided = try CSVFile(data: Data("Date,Payee,Amount\n11/03/2026,Kiosk,-1.50\n11/13/2026,Bakery,-2.00\n".utf8))
+		#expect(try decided.preview(decided.detectedLayout(), currency: "EUR").rawDates.isEmpty)
+		let many = try CSVFile(data: Data(("Date,Payee,Amount\n" + (1...12).map { "11/\(String(format: "%02d", $0))/2026,Kiosk,-1.00\n" }.joined()).utf8))
+		#expect(try many.preview(many.detectedLayout(), currency: "EUR").rawDates == (1...10).map { "11/\(String(format: "%02d", $0))/2026" })
+	}
+
 	@Test("A date that reads as the same day in both orders is no example, and the first one that differs is")
 	func ambiguousDateExample() throws {
 		let file = try CSVFile(data: Data("Date,Value date,Payee,Amount\n2026-11-03,01/01/2026,Kiosk,-1.50\n11/03/2026,11/04/2026,Bakery,-2.00\n".utf8))
