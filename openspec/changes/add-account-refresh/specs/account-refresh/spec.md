@@ -551,6 +551,29 @@ The app SHALL remove a pending transaction when a successful refresh of its acco
 - **THEN** the pending transaction is marked for review and has no checkmark, and the computed balance of "Giro" is 493,60 €
 - **AND** the refresh of 14.11.2026, which delivers the two booked transactions and no pending transaction, keeps the pending transaction in the list
 
+### Requirement: Ask from the oldest pending transaction that a refresh can remove
+
+The app SHALL ask the source in a normal refresh from the oldest pending transaction of the account that the refresh can remove, when it is earlier than the 14 days of overlap with the last successful refresh, and from no more than 90 days before the last successful refresh. A pending transaction that is marked for review and has no checkmark does not count, because a refresh keeps it. The same limit holds for a bank and for an extension.
+
+#### Scenario: Old pending transaction from the migration
+
+- **GIVEN** the last successful refresh of the account "Kreditkarte" of an extension was on 22.11.2026, and "Kreditkarte" has a pending transaction of -40,00 € on 03.01.2014 from the migration
+- **WHEN** a refresh runs
+- **THEN** the app asks the extension for the transactions from 24.08.2026 on
+- **AND** the pending transaction stays in the list
+
+#### Scenario: Pending transaction under review without a checkmark
+
+- **GIVEN** the last successful refresh of "Giro" was on 22.11.2026, and "Giro" has a pending transaction of -3,20 € on 01.11.2026 that is marked for review and has no checkmark
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 08.11.2026 on
+
+#### Scenario: Checked pending transaction under review
+
+- **GIVEN** the pending transaction of the scenario "Pending transaction under review without a checkmark", which the user checked
+- **WHEN** a refresh runs
+- **THEN** the app asks for the transactions from 01.11.2026 on
+
 ### Requirement: Deleted transactions stay deleted
 
 The app SHALL not add a transaction again that the user deleted, when a later refresh delivers it again.

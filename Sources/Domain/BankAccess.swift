@@ -241,25 +241,48 @@ extension Ledger {
 	/// and closed accounts are left out, and so is an account with the interval "never", unless the command
 	/// names that account.
 	public func refreshAccounts(_ scope: RefreshScope, calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
+		requests(for: fetched(by: scope), calendar: calendar)
+	}
+
+	/// Whether a refresh command has an account to fetch. The commands and the views ask it several times per update,
+	/// so it reads only the accounts and never the transactions (#196).
+	public func canRefresh(_ scope: RefreshScope) -> Bool {
+		!fetched(by: scope).isEmpty
+	}
+
+	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
+	/// holds the time at which the user canceled the refresh of an account.
+	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
+		let due = fetched(by: .all).filter { $0.isDue(at: now, canceledAt: canceled[$0.id]) && $0.accessID.map(pausesAutomaticRefresh) == false }
+		return requests(for: due, calendar: calendar)
+	}
+
+	/// The accounts of `refreshAccounts`, in the order of the ledger, without their requests.
+	private func fetched(by scope: RefreshScope) -> [Account] {
 		let chosen: Set<UUID>? = switch scope {
 		case .all: nil
 		case let .account(id): [id]
 		case let .group(id): accountIDs(inGroupTree: id)
 		}
-		var oldestPending: [UUID: Day] = [:]
-		for t in transactions where t.isPending {
-			oldestPending[t.accountID] = min(oldestPending[t.accountID] ?? t.bookingDate, t.bookingDate)
+		return accounts.filter { a in
+			!a.isClosed && chosen?.contains(a.id) != false && a.accessID != nil && a.remoteID != nil && (a.refreshInterval != .never || scope == .account(a.id))
 		}
+	}
+
+	private func requests(for chosen: [Account], calendar: Calendar) -> [UUID: [AccountRequest]] {
+		guard !chosen.isEmpty else { return [:] }
+		let oldestPending = oldestRemovablePending(of: Set(chosen.filter { $0.refreshedAt != nil }.map(\.id)))
 		var plan: [UUID: [AccountRequest]] = [:]
-		for a in accounts where !a.isClosed && chosen?.contains(a.id) != false {
+		for a in chosen {
 			guard let accessID = a.accessID, let remoteID = a.remoteID else { continue }
-			if a.refreshInterval == .never, scope != .account(a.id) { continue }
-			// 14 days of overlap with the last success, and back to the oldest pending row, because a refresh
-			// removes a pending row that the bank dropped only within the days it asked for. The connector asks
-			// for no more than 90 days.
+			// 14 days of overlap with the last success, and back to the oldest pending row that a refresh can remove,
+			// because it removes a pending row that the bank dropped only within the days it asked for. A pending row
+			// counts for no more than 90 days before the last success, so an old row, such as one from the migration,
+			// cannot make every refresh of an extension ask for years (#196). FinTS asks for no more than 90 days anyway.
 			let since = a.refreshedAt.map { refreshed in
-				let overlap = Day(refreshed, calendar: calendar).adding(days: -14, calendar: calendar)
-				return oldestPending[a.id].map { min($0, overlap) } ?? overlap
+				let last = Day(refreshed, calendar: calendar)
+				let overlap = last.adding(days: -14, calendar: calendar)
+				return oldestPending[a.id].map { min(max($0, last.adding(days: -90, calendar: calendar)), overlap) } ?? overlap
 			}
 			plan[accessID, default: []].append(AccountRequest(accountID: a.id, name: a.name, remoteID: remoteID, since: since,
 				lastFetched: a.refreshedAt.map { Day($0, calendar: calendar) }, currency: a.currency,
@@ -268,13 +291,15 @@ extension Ledger {
 		return plan
 	}
 
-	/// The accounts that the automatic refresh fetches at `now`, by the ID of their access. `canceled`
-	/// holds the time at which the user canceled the refresh of an account.
-	public func dueAccounts(at now: Date, canceled: [UUID: Date] = [:], calendar: Calendar = .current) -> [UUID: [AccountRequest]] {
-		refreshAccounts(.all, calendar: calendar)
-			.filter { !pausesAutomaticRefresh(of: $0.key) }
-			.mapValues { $0.filter { account($0.accountID)?.isDue(at: now, canceledAt: canceled[$0.accountID]) == true } }
-			.filter { !$0.value.isEmpty }
+	/// The day of the oldest pending row of each account in `ids` that a refresh can remove. A row that is marked for
+	/// review and has no checkmark stays at every refresh (`reconcile`), so it does not count.
+	private func oldestRemovablePending(of ids: Set<UUID>) -> [UUID: Day] {
+		guard !ids.isEmpty else { return [:] }
+		var oldest: [UUID: Day] = [:]
+		for t in transactions where t.isPending && (t.review == nil || t.isChecked) && ids.contains(t.accountID) {
+			oldest[t.accountID] = min(oldest[t.accountID] ?? t.bookingDate, t.bookingDate)
+		}
+		return oldest
 	}
 }
 

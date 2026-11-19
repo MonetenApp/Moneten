@@ -1677,7 +1677,7 @@ final class AppModel {
 	}
 
 	func canRefresh(_ scope: RefreshScope) -> Bool {
-		phase == .unlocked && !isStoringMigration && !ledger.refreshAccounts(scope).isEmpty
+		phase == .unlocked && !isStoringMigration && ledger.canRefresh(scope)
 	}
 
 	/// Starts one refresh per access, with the state its connector returned last. Only a refresh that the

@@ -403,6 +403,49 @@ struct BankAccessTests {
 		#expect(ledger.balanceBars(accountIDs: [giro.id], range: firstDays, calendar: Self.utc).map(\.minorUnits) == Array(repeating: 100_000, count: 10))
 	}
 
+	@Test("A pending row under review without a checkmark does not move the start of a refresh, because the refresh keeps it")
+	func sincePendingUnderReview() {
+		let giro = Self.bankAccount("Giro", refreshedAt: Self.noon.addingTimeInterval(21 * 86_400))
+		var coffee = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -320, name: "Café Beispiel", isPending: true)
+		coffee.review = .unclearBooking
+		let since = { (row: Transaction) in Ledger(accounts: [giro], transactions: [row]).refreshAccounts(.all, calendar: Self.utc)[Self.accessID]?.first?.since }
+		#expect(since(coffee) == Day(year: 2026, month: 11, day: 8))
+		coffee.isChecked = true
+		#expect(since(coffee) == Day(year: 2026, month: 11, day: 1))
+	}
+
+	/// A migrated pending row from 2014 would otherwise make every refresh of an extension ask for 12 years (#196).
+	@Test("A refresh asks from an old pending row at most 90 days before the last success, for an extension as for a bank")
+	func sincePendingCapped() {
+		let card = Self.bankAccount("Kreditkarte", refreshedAt: Self.noon.addingTimeInterval(21 * 86_400))
+		let since = { (day: Day) in
+			Ledger(accounts: [card], transactions: [Transaction(accountID: card.id, bookingDate: day, amountMinor: -4_000, name: "Hotel Beispiel", isPending: true)])
+				.refreshAccounts(.all, calendar: Self.utc)[Self.accessID]?.first?.since
+		}
+		#expect(since(Day(year: 2014, month: 1, day: 3)) == Day(year: 2026, month: 8, day: 24))
+		#expect(since(Day(year: 2026, month: 9, day: 1)) == Day(year: 2026, month: 9, day: 1))
+		// A long pause still asks from 14 days before the last success, so the source fills the gap.
+		let paused = Self.bankAccount("Giro", refreshedAt: Self.noon.addingTimeInterval(-200 * 86_400))
+		#expect(Ledger(accounts: [paused]).refreshAccounts(.all, calendar: Self.utc)[Self.accessID]?.first?.since == Day(year: 2026, month: 4, day: 1))
+	}
+
+	@Test("A command can refresh exactly when it has accounts to fetch")
+	func canRefresh() {
+		let privat = AccountGroup(name: "Private", position: 0)
+		let empty = AccountGroup(name: "Cash", position: 1)
+		let giro = Self.bankAccount("Giro", group: privat.id)
+		var never = Self.bankAccount("Old card", group: privat.id)
+		never.refreshInterval = .never
+		let cash = Account(groupID: empty.id, position: 0, name: "Cash", kind: .cash, source: .offline)
+		let closed = Self.bankAccount("Closed", closed: true)
+		let ledger = Ledger(groups: [privat, empty], accounts: [giro, never, cash, closed],
+			transactions: [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -320, name: "Café Beispiel", isPending: true)])
+		let scopes: [RefreshScope] = [.all, .account(giro.id), .account(never.id), .account(cash.id), .account(closed.id), .group(privat.id), .group(empty.id)]
+		#expect(scopes.map(ledger.canRefresh) == [true, true, true, false, false, true, false])
+		#expect(scopes.map(ledger.canRefresh) == scopes.map { !ledger.refreshAccounts($0).isEmpty })
+		#expect(!Ledger(accounts: [never]).canRefresh(.all))
+	}
+
 	// MARK: Status of an account
 
 	@Test("A refresh records its time and clears the error, a failure keeps the last time and shows the error")

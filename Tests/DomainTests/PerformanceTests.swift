@@ -528,6 +528,42 @@ struct PerformanceTests {
 		#endif
 	}
 
+	/// The commands, the sidebar, the menu bar, and the refresh status ask several times per update of a view whether a
+	/// refresh can run (#196). Neither that question nor an automatic refresh with nothing due reads the transactions.
+	@Test("Whether a refresh can run, and which accounts are due, is answered 100 times without reading 50,000 transactions")
+	func canRefreshWithoutTheTransactions() {
+		let group = AccountGroup(name: "Banks", position: 0)
+		let refreshed = Date(timeIntervalSince1970: 1_793_534_400)
+		let accounts = (0..<20).map { (n: Int) -> Account in
+			Account(groupID: group.id, position: n, name: "Account \(n)", kind: .giro, source: .bank, accessID: UUID(), remoteID: "R-\(n)", refreshedAt: refreshed)
+		}
+		let rows = (0..<50_000).map { (i: Int) -> Transaction in
+			let year: Int = 2014 + i % 12
+			let month: Int = 1 + i % 12
+			let day: Int = 1 + i % 28
+			return Transaction(accountID: accounts[i % 20].id, bookingDate: Day(year: year, month: month, day: day), amountMinor: -Int64(i), name: "Shop \(i)",
+				isPending: i % 50 == 0)
+		}
+		let ledger = Ledger(groups: [group], accounts: accounts, transactions: rows)
+		var answers = 0
+		var due = 0
+		let time = fastest {
+			for _ in 0..<100 {
+				if ledger.canRefresh(.all) { answers += 1 }
+				if ledger.canRefresh(.account(accounts[7].id)) { answers += 1 }
+				if ledger.canRefresh(.group(group.id)) { answers += 1 }
+				due += ledger.dueAccounts(at: refreshed.addingTimeInterval(3_600)).count
+			}
+		}
+		print("100 times canRefresh of three scopes and dueAccounts with 50,000 rows \(time), budget \(budget(.milliseconds(10)))")
+		#expect(answers == 900)
+		#expect(due == 0)
+		// When each call read the transactions, the 100 rounds took 186 ms in release (#196).
+		#if !DEBUG
+		#expect(time < budget(.milliseconds(10)))
+		#endif
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!
