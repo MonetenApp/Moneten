@@ -715,9 +715,16 @@ final class DebugHarness {
 		// extension accesses have saved login data, and "extforget" does for each of them what "OK" after "Remove saved PIN" does.
 		case "extsavelogin": answer { .login(argument.components(separatedBy: "|").map(Secret.init), save: true) }
 		case "extsaved", "extforget":
-			let saved = model.accesses.values.filter { if case .extension = $0.source { model.sync.broker.savedPINs.contains($0.id) } else { false } }
-			if command == "extforget" { for access in saved { model.removeSavedPIN(of: access.id) } }
-			log(LogLine(command, values: [("count", .count(saved.count))]))
+			let saved = model.accesses.values.filter { access in
+				guard case .extension = access.source else { return false }
+				return model.sync.broker.savedPINs.contains(access.id)
+			}
+			if command == "extforget" {
+				for access in saved { model.removeSavedPIN(of: access.id) }
+				log("ext forget", ("count", .count(saved.count)))
+			} else {
+				log("ext saved", ("count", .count(saved.count)))
+			}
 		#endif
 		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
 		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
