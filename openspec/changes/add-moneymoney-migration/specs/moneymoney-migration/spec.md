@@ -488,7 +488,7 @@ The app SHALL match an account of the source with an existing account of the app
 
 ### Requirement: Connect a migrated account to its bank
 
-The app SHALL attach a bank access to a migrated account when the add account assistant finds an account with the same IBAN, or the same bank code and account number, and the same currency. A portfolio and an account of another type never match. The account keeps its transactions, categories, comments, and checkmarks, and the first refresh adds no duplicates. The assistant prefers an open account to a closed one.
+The app SHALL attach a bank access to a migrated account when the add account assistant finds an account with the same IBAN, or the same bank code and account number, and the same currency. A portfolio and an account of another type never match, unless the account has a bank access already. The account keeps its transactions, categories, comments, and checkmarks, and the first refresh adds no duplicates. The assistant prefers an open account to a closed one.
 
 #### Scenario: Add the bank after the migration
 
@@ -509,6 +509,12 @@ The app SHALL attach a bank access to a migrated account when the add account as
 - **WHEN** the bank reports the giro account 202051 in EUR and no portfolio
 - **THEN** the assistant adds the giro account as a new account and leaves "Depot" without an access
 - **AND** "Connect..." in "Depot" chooses nothing, and the row of the giro account does not offer "Depot"
+
+#### Scenario: A connected account that a refresh made a portfolio
+
+- **GIVEN** the account "Girokonto" with the IBAN DE02120300000000202051 has a bank access, and a refresh made it a portfolio
+- **WHEN** the user chooses "Look for New Accounts..." and the bank still lists that IBAN as a giro account
+- **THEN** the assistant counts "Girokonto" as present and adds no second account
 
 #### Scenario: Another currency
 

@@ -227,6 +227,41 @@ struct BankAccessTests {
 		#expect(Ledger(accounts: [ibanDepot]).setupMatch(for: listedIBAN, listed: [listedIBAN]) == .new)
 	}
 
+	/// The account after a refresh that reports the value of a securities account, as `Reconcile` makes it.
+	static func refreshedAsPortfolio(_ account: Account) throws -> Account {
+		let result = RefreshResult(balance: Money(minorUnits: 2_451_837, currency: "EUR"), transactions: nil, isPortfolio: true)
+		let merged = reconcile(.refresh(result), into: account, stored: [], deleted: [], rules: Categorizer(ledger: Ledger(accounts: [account])), now: noon)
+		return try #require(merged.account)
+	}
+
+	@Test("A FinTS account that a refresh made a portfolio stays present for Look for New Accounts while the bank lists it as a giro account")
+	func refreshedPortfolioFinTS() throws {
+		let giro = Account(position: 0, name: "Girokonto", kind: .giro, source: .bank, iban: "DE02120300000000202051", accountNumber: "202051",
+			bankCode: "12030000", accessID: Self.accessID, remoteID: "DE02120300000000202051")
+		let refreshed = try Self.refreshedAsPortfolio(giro)
+		#expect(refreshed.kind == .portfolio)
+		let ledger = Ledger(accounts: [refreshed])
+		let listed = Self.candidate("Girokonto", iban: "DE02120300000000202051", number: "202051")
+		#expect(listed.kind == .giro)
+		#expect(ledger.setupMatch(for: listed, listed: [listed]) == .present(refreshed))
+		#expect(SetupListing([listed], in: ledger, onlyNew: true).candidates.isEmpty)
+		#expect(ledger.accountsToAdd([listed], listed: [listed]).isEmpty)
+	}
+
+	@Test("An extension account that a refresh made a portfolio stays present for its access and for a new setup of the same login")
+	func refreshedPortfolioExtension() throws {
+		let shares = Account(position: 0, name: "Aktien", kind: .giro, source: .bank, accountNumber: "4711", accessID: Self.accessID, remoteID: "acc-4711")
+		let refreshed = try Self.refreshedAsPortfolio(shares)
+		#expect(refreshed.kind == .portfolio)
+		let ledger = Ledger(accounts: [refreshed])
+		for access in [Self.accessID, Self.otherAccessID] {
+			var listed = Account(position: 0, name: "Aktien", kind: .giro, source: .bank, accountNumber: "4711", remoteID: "acc-4711")
+			listed.accessID = access
+			#expect(ledger.setupMatch(for: listed, listed: [listed]) == .present(refreshed))
+			#expect(ledger.accountsToAdd([listed], listed: [listed]).isEmpty)
+		}
+	}
+
 	@Test("Look for New Accounts shows only the new subaccount, and matches it against every subaccount that the bank listed")
 	func newSubaccountBesideMigrated() {
 		let linked = Account(position: 0, name: "Sparkonto 01", kind: .savings, source: .bank, accountNumber: "9", bankCode: "12030000",
