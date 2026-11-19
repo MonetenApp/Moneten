@@ -15,6 +15,9 @@ struct SheetFrame<Content: View, Leading: View>: View {
 	/// Decides whether "Cancel" closes the sheet. A cancel that comes too late to stop the work keeps it open.
 	var closesOnCancel: () -> Bool
 	var onConfirm: () -> Bool
+	/// Whether the confirm button does what cannot be undone, such as "Undo Split Transaction". Then Return never
+	/// presses it, and only Escape has a key, which cancels.
+	var destructive = false
 	var leading: Leading
 	var content: Content
 
@@ -52,8 +55,8 @@ struct SheetFrame<Content: View, Leading: View>: View {
 					}.keyboardShortcut(.cancelAction).disabled(!canCancel)
 				}
 				if let confirmTitle {
-					Button(confirmTitle) { if onConfirm() { dismiss() } }
-						.keyboardShortcut(.defaultAction)
+					Button(confirmTitle, role: destructive ? .destructive : nil) { if onConfirm() { dismiss() } }
+						.keyboardShortcut(destructive ? nil : .defaultAction)
 						.disabled(!canConfirm)
 				}
 			}
@@ -64,9 +67,10 @@ struct SheetFrame<Content: View, Leading: View>: View {
 
 extension SheetFrame where Leading == EmptyView {
 	init(title: LocalizedStringKey, confirmTitle: LocalizedStringKey? = "OK", cancelTitle: LocalizedStringKey? = "Cancel", canConfirm: Bool = true, width: CGFloat = 460,
-		onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool, @ViewBuilder content: () -> Content) {
+		destructive: Bool = false, onCancel: @escaping () -> Void = {}, onConfirm: @escaping () -> Bool, @ViewBuilder content: () -> Content) {
 		self.init(title: title, confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: width,
 			onCancel: onCancel, onConfirm: onConfirm, leading: { EmptyView() }, content: content)
+		self.destructive = destructive
 	}
 }
 

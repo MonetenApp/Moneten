@@ -55,6 +55,17 @@ struct HarnessClickTests {
 		#expect(!HarnessRun.mayClick("Remove", allowed: HarnessRun.ruleQuestionTitles, on: .other))
 	}
 
+	@Test("button also clicks \"Undo Split Transaction\", which Return no longer presses, and still no other button")
+	func buttonTitles() {
+		for title in ["Apply only to not yet categorized transactions.", "Apply to all transactions.", "Not now", "Undo Split Transaction"] {
+			#expect(HarnessRun.mayClick(title, allowed: HarnessRun.buttonTitles, on: .other), "\(title)")
+		}
+		for title in ["Remove", "Delete", "OK", "Undo Split Transaction..."] {
+			#expect(!HarnessRun.mayClick(title, allowed: HarnessRun.buttonTitles, on: .other), "\(title)")
+		}
+		#expect(!HarnessRun.mayClick("Undo Split Transaction", allowed: HarnessRun.buttonTitles, on: .filePanel))
+	}
+
 	@Test("rowmenu chooses the local items of the context menu of a row, no export, and the search for a name of the selection")
 	func rowMenuTitles() {
 		let allowed = HarnessRun.rowMenuTitles(searching: ["Stadtwerke Musterstadt", ""])

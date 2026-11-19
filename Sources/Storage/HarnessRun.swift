@@ -391,6 +391,10 @@ public enum HarnessRun {
 	/// The answers of the question whether to apply a changed rule, for "button".
 	public static let ruleQuestionTitles: Set<String> = ["Apply only to not yet categorized transactions.", "Apply to all transactions.", "Not now"]
 
+	/// The buttons that "button" may click: the answers of the question whether to apply a changed rule, and "Undo Split
+	/// Transaction", which Return no longer presses because it cannot be undone.
+	public static let buttonTitles: Set<String> = ruleQuestionTitles.union(["Undo Split Transaction"])
+
 	/// The items of the menu bar that "menuitem" may choose, as "<menu>|<item>".
 	public static var menuTitles: Set<String> { Set(menuActions.keys) }
 

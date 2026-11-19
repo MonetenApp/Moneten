@@ -1344,7 +1344,10 @@ struct TransactionMenu: View {
 		alert.messageText = ids.count == 1 ? String(localized: "Delete selected transaction?") : String(localized: "Delete \(ids.count) selected transactions?")
 		alert.informativeText = String(localized: "Deleted transactions CANNOT be restored!")
 		alert.alertStyle = .warning
-		alert.addButton(withTitle: String(localized: "Delete"))
+		// Deleted transactions cannot be restored, so Return presses nothing, and Escape keeps "Cancel" (see `removeQuestion`).
+		let delete = alert.addButton(withTitle: String(localized: "Delete"))
+		delete.hasDestructiveAction = true
+		delete.keyEquivalent = ""
 		alert.addButton(withTitle: String(localized: "Cancel"))
 		if alert.runModal() == .alertFirstButtonReturn { model.delete(transactions: ids) }
 	}

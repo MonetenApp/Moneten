@@ -1402,7 +1402,8 @@ final class DebugHarness {
 		// "<category>": the rows of the category view, by the hash of each name and each purpose in the order of the list.
 		case "categoryrows": categoryRows(argument)
 		// "<title>" clicks the button with that title in the sheet or the alert on top, from the allow-list of the question
-		// whether to apply a changed rule. "" only logs the buttons and the texts by the hash of each.
+		// whether to apply a changed rule and "Undo Split Transaction" (HarnessRun.buttonTitles). "" only logs the buttons
+		// and the texts by the hash of each.
 		case "button": clickButton(argument)
 		// "<menu>" logs a menu of the menu bar with the checkmark of each item, such as the active view mode in "View".
 		case "menustate": menuState(argument)
@@ -3452,11 +3453,19 @@ extension DebugHarness {
 		log("button", ("titles", .list(all.map { .hash($0.title) })), ("enabled", .list(all.map { .flag($0.isEnabled) })),
 			("texts", .list(Self.texts(in: content).filter { !$0.isEmpty }.map { .hash($0) })))
 		guard !title.isEmpty else { return }
-		guard HarnessRun.mayClick(title, allowed: HarnessRun.ruleQuestionTitles, on: surface(of: window)),
-			let button = all.first(where: { $0.title == Self.localized(title) }) else {
-			return log("button refused")
+		guard HarnessRun.mayClick(title, allowed: HarnessRun.buttonTitles, on: surface(of: window)) else { return log("button refused") }
+		if let button = all.first(where: { $0.title == Self.localized(title) }) {
+			button.performClick(nil)
+			return log("button clicked")
 		}
-		button.performClick(nil)
+		// A SwiftUI button of a sheet, such as "Undo Split Transaction", is no NSButton, so its accessibility element takes
+		// the press, as in "controls".
+		let element = accessibility(in: window).first { element in
+			let control = element as AnyObject
+			return control.accessibilityRole?() == .button && (control.accessibilityLabel?() ?? control.accessibilityTitle?() ?? "") == Self.localized(title)
+		}
+		guard let element else { return log("button refused") }
+		_ = (element as AnyObject).accessibilityPerformPress?()
 		log("button clicked")
 	}
 
