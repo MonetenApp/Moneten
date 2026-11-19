@@ -94,6 +94,19 @@ struct PortfolioHoldingsTests {
 		#expect(ledger.portfolioAccounts(in: .accountGroup(mixed.id)) == nil)
 	}
 
+	@Test("A sum of zero in a group of USD portfolios without positions shows the dollar, and a shown position decides first")
+	func emptySumCurrency() {
+		let usa = AccountGroup(name: "USA", position: 0)
+		let broker = Account(groupID: usa.id, position: 0, name: "Broker", kind: .portfolio, source: .bank, currency: "USD")
+		let fund = Account(groupID: usa.id, position: 1, name: "Fund", kind: .portfolio, source: .bank, currency: "USD")
+		let ledger = Ledger(groups: [usa], accounts: [broker, fund, depot])
+		let portfolios = ledger.portfolioAccounts(in: .accountGroup(usa.id)) ?? []
+		let currency = ledger.sumCurrency(of: [], portfolios: portfolios)
+		#expect(MoneySums().shownAmounts(viewCurrency: nil, firstRowCurrency: currency) == [Money(minorUnits: 0, currency: "USD")])
+		#expect(ledger.sumCurrency(of: [position("Gold")], portfolios: portfolios) == "EUR")
+		#expect(ledger.sumCurrency(of: [], portfolios: []) == nil)
+	}
+
 	@Test("A portfolio with transactions, such as one taken over with its rows, keeps its transaction list")
 	func portfolioWithTransactions() {
 		let ledger = Ledger(accounts: [depot, fonds], transactions: [Transaction(accountID: depot.id, bookingDate: Day(year: 2026, month: 11, day: 2),

@@ -189,6 +189,13 @@ public struct Ledger: Sendable {
 		return found.map(\.id)
 	}
 
+	/// The currency of a sum of positions without an amount: that of the portfolio of the first shown position, or
+	/// else that of the first of `portfolios`, so that a group of USD portfolios without positions shows 0 USD and
+	/// not the euro (issue #334).
+	public func sumCurrency(of shown: [Holding], portfolios: [UUID]) -> String? {
+		shown.first.flatMap { account($0.accountID)?.currency } ?? portfolios.lazy.compactMap { self.account($0)?.currency }.first
+	}
+
 	/// The profit or loss of all positions of the accounts with a purchase price, in the currency of each value.
 	public func totalGain(of accountIDs: [UUID]) -> MoneySums {
 		var sums = MoneySums()
