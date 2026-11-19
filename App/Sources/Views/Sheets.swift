@@ -197,7 +197,10 @@ struct AccountSettingsSheet: View {
 		if let original = model.ledger.account(accountID) {
 			// An initial balance above the limit, which an older version may have stored, keeps OK disabled even when the
 			// user changes another field: saving would store the text of the field, and that amount must not pass again.
-			SheetFrame(title: "Settings for \(original.name)", canConfirm: initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil, width: 500, onConfirm: {
+			// An empty name keeps OK disabled too, and the field asks for a name ("Account name").
+			let canConfirm = account.flatMap { Account.acceptedName($0.name) } != nil
+				&& (initialBalance.isEmpty || typedInitialBalance(in: original.currency) != nil)
+			SheetFrame(title: "Settings for \(original.name)", canConfirm: canConfirm, width: 500, onConfirm: {
 				guard var edited = account, let opened, var a = model.ledger.account(accountID) else { return true }
 				if let typed = typedInitialBalance(in: a.currency) { edited.initialBalanceMinor = typed.minorUnits }
 				// A refresh that ended while the settings were open may have set a new initial balance.
@@ -212,7 +215,7 @@ struct AccountSettingsSheet: View {
 			}) {
 				if let binding = Binding($account) {
 					Section {
-						TextField("Name", text: binding.name)
+						TextField("Name", text: binding.name, prompt: Text("Required"))
 						if let choices = original.kind.choices {
 							Picker("Account type", selection: binding.kind) {
 								ForEach(choices, id: \.self) { Text($0.title).tag($0) }

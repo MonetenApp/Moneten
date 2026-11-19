@@ -353,6 +353,45 @@ struct BankAccessTests {
 		#expect(current.refreshError == nil)
 	}
 
+	@Test("An account name of only white space is empty, and a name keeps no white space around it", arguments: [
+		("", nil), ("   ", nil), ("\t\n", nil), ("  Haushalt ", "Haushalt"), ("Giro Direkt", "Giro Direkt"),
+	] as [(String, String?)])
+	func acceptedName(typed: String, accepted: String?) {
+		#expect(Account.acceptedName(typed) == accepted)
+	}
+
+	@Test("Saving the account settings with an empty name keeps the old name")
+	func settingsKeepNameWhenEmpty() {
+		let opened = Self.bankAccount("Giro")
+		for typed in ["", "   "] {
+			var edited = opened
+			edited.name = typed
+			edited.isClosed = true
+			var current = opened
+			current.takeSettings(from: edited, opened: opened)
+			#expect(current.name == "Giro")
+			#expect(current.isClosed)
+		}
+		var edited = opened
+		edited.name = " Haushalt  "
+		var current = opened
+		current.takeSettings(from: edited, opened: opened)
+		#expect(current.name == "Haushalt")
+	}
+
+	@Test("Saving the account settings keeps a name that the user did not change exactly as stored", arguments: [
+		" Giro ", "\u{00A0}Giro\u{00A0}", "\u{2003}Giro", "\nGiro\n",
+	])
+	func settingsKeepUnchangedName(stored: String) {
+		let opened = Self.bankAccount(stored)
+		var edited = opened
+		edited.color = "#FF3B30"
+		var current = opened
+		current.takeSettings(from: edited, opened: opened)
+		#expect(current.name == stored)
+		#expect(current.color == "#FF3B30")
+	}
+
 	@Test("An initial balance that the user enters in the account settings ends the derived value, so no manual row moves it")
 	func enteredInitialBalanceIsNotDerived() {
 		var opened = Self.bankAccount("Giro")
