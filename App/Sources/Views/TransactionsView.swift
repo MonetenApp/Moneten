@@ -454,6 +454,7 @@ struct TransactionTable: View {
 				Spacer()
 				Text(emptyText)
 					.foregroundStyle(.secondary)
+				FilterHintLines(hints: key.filter.hints).fixedSize()
 				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
 					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
 						.foregroundStyle(.secondary)
@@ -481,6 +482,8 @@ struct TransactionTable: View {
 			}
 			.tableStyle(.bordered(alternatesRowBackgrounds: false))
 			.tableColumnHeaders(.hidden)
+			// One line for each active filter below the last row, on the table and not on its rows.
+			.background(FilterHintsFooter(hints: key.filter.hints, rowCount: rows.count))
 			// Copy of selected rows, on the table and not on its rows. Selected text in a row has the focus and copies
 			// only that text, so this runs only without selected text.
 			.onCopyCommand { copiedRows() }
@@ -1299,7 +1302,7 @@ struct StatusLine: View {
 		let selected = rows.filter { model.selectedTransactions.contains($0.id) }
 		let shown = selected.count > 1 ? selected : rows
 		let sums = MoneySums(of: shown)
-		// As in MoneyMoney, the count is centered in 11 points. The filter note takes the leading third
+		// As in MoneyMoney, the count is centered in 11 points. The refresh note takes the leading third
 		// and truncates before it reaches the count.
 		HStack(spacing: 12) {
 			if gaveUp {
@@ -1315,11 +1318,6 @@ struct StatusLine: View {
 						.foregroundStyle(.secondary)
 					} else if let problem = model.backgroundProblem {
 						BackgroundProblemButton(problem: problem)
-					} else if model.filter.isActive {
-						Label("A filter is active; some entries might be hidden.", systemImage: "line.3.horizontal.decrease.circle")
-							.foregroundStyle(.secondary)
-							.lineLimit(1)
-							.help("A filter is active; some entries might be hidden.")
 					}
 				}
 				.frame(maxWidth: .infinity, alignment: .leading)

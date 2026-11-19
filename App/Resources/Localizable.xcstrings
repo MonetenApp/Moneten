@@ -1106,6 +1106,17 @@
       },
       "extractionState" : "manual"
     },
+    "A category filter is active; some entries might be hidden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Kategoriefilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      }
+    },
     "A closing parenthesis is missing at the end of the rule." : {
       "localizations" : {
         "de" : {
@@ -1180,22 +1191,23 @@
       },
       "extractionState" : "manual"
     },
+    "A date filter is active; some entries might be hidden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Datumsfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      }
+    },
     "A file without a header row cannot be saved as a profile." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Eine Datei ohne Kopfzeile kann nicht als Profil gespeichert werden."
-          }
-        }
-      }
-    },
-    "A filter is active; some entries might be hidden." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ein Filter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
           }
         }
       }
@@ -1357,6 +1369,17 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "A status filter is active; some entries might be hidden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Statusfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      }
     },
     "A TAN method has no name." : {
       "localizations" : {
@@ -2021,6 +2044,28 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Beträge in %@"
+          }
+        }
+      }
+    },
+    "An account filter is active; some entries might be hidden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Kontofilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      }
+    },
+    "An amount filter is active; some entries might be hidden." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Betragsfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
           }
         }
       }
