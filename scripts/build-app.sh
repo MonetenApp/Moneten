@@ -5,6 +5,9 @@
 #   scripts/build-app.sh developer-id    release build, archived and signed with the Developer ID
 #                                        Application certificate in the Keychain, with the hardened
 #                                        runtime and a secure timestamp, for notarization (ADR 0016)
+#   scripts/build-app.sh compile         release build that only compiles and links the app, without
+#                                        signing, dSYMs, dist/Moneten.app, or the FinTS helper, so that
+#                                        CI finds code that builds only in Debug and Perf (issue #527)
 # A Release build also writes dist/Moneten.dSYMs with the dSYMs of the binaries in the app, which
 # scripts/release.sh zips and checks against the app.
 # Without a team in App/Local.xcconfig, Xcode signs to run locally. App/Signing.xcconfig explains it.
@@ -25,7 +28,8 @@ case "$1" in
 	"") ;;
 	debug) CONFIG=Debug ;;
 	developer-id) ARCHIVE=.build/xcode/Moneten.xcarchive ;;
-	*) echo "usage: scripts/build-app.sh [debug | developer-id]" >&2; exit 2 ;;
+	compile) COMPILE_ONLY=yes ;;
+	*) echo "usage: scripts/build-app.sh [debug | developer-id | compile]" >&2; exit 2 ;;
 esac
 BUILD="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 VERSION_SETTINGS=""
@@ -189,6 +193,14 @@ copy_symbols() {
 scripts/generate-project.sh
 # SWIFT_EMIT_LOC_STRINGS also for the libraries, so that scripts/check-localization.py can read their texts.
 XCODEBUILD="xcodebuild -project App/Moneten.xcodeproj -scheme Moneten -configuration $CONFIG -derivedDataPath .build/xcode -disableAutomaticPackageResolution -quiet SWIFT_EMIT_LOC_STRINGS=YES"
+# The same compiler flags as a release, so the code inside #if DEBUG || PERF_HARNESS stays out. It shares the
+# packages that a Debug build fetched into .build/xcode. Only the processor of this Mac, which saves a quarter of
+# the time on a Mac and more on a runner of CI with three cores: the slices differ only in #if arch.
+if [ -n "$COMPILE_ONLY" ]; then
+	$XCODEBUILD CODE_SIGNING_ALLOWED=NO DEBUG_INFORMATION_FORMAT=dwarf ONLY_ACTIVE_ARCH=YES build
+	echo "Compiled and linked the app in Release, without signing."
+	exit 0
+fi
 if [ -z "$ARCHIVE" ]; then
 	$XCODEBUILD CURRENT_PROJECT_VERSION="$BUILD" $VERSION_SETTINGS build
 	PRODUCT=".build/xcode/Build/Products/$CONFIG/Moneten.app"

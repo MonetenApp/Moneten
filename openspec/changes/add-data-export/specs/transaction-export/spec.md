@@ -96,7 +96,7 @@ The app SHALL write CSV files in UTF-8 with a byte order mark and with a semicol
 
 - **WHEN** the user exports 3 November 2026 with ar_EG formats
 - **THEN** Date is "03/11/2026" without the direction marks U+200E, U+200F, and U+061C of the Arabic date format
-- **AND** the import of the app reads the exported file back with the same days and amounts
+- **AND** the import of the app reads the exported file back with the same days and amounts, after the user chooses day first, because "03/11/2026" fits both orders
 
 #### Scenario: Currency with three decimal places
 

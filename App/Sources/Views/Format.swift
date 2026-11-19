@@ -31,6 +31,14 @@ extension Format {
 		return d.noon.formatted(style)
 	}
 
+	/// A day with the name of its month, "3. November 2026" in Germany, so that day and month cannot be swapped.
+	static func longDay(_ d: Day) -> String {
+		var style = Date.FormatStyle.dateTime.day().month(.wide).year()
+		style.calendar = Day.calendar(like: .current)
+		style.timeZone = style.calendar.timeZone
+		return d.noon.formatted(style)
+	}
+
 	/// A month on a chart, as MoneyMoney writes it: "Oct 26". Read from noon GMT as `day` reads it.
 	static func shortMonth(_ d: Day) -> String { shortMonthFormatter.string(from: d.noon) }
 

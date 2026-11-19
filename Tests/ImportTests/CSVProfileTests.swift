@@ -32,6 +32,134 @@ struct CSVProfileTests {
 		}
 	}
 
+	@Test("A file whose dates fit both orders opens the preview with the question, even with a matching profile", arguments: [Import.DateOrder.dayMonthYear, .monthDayYear])
+	func ambiguousFileOpensPreview(order: Import.DateOrder) throws {
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n11/04/2026,Bakery,-2.00\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.dateOrder = order
+		let profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		let decided = try CSVFile(data: Data("Date,Name,Amount\n\(order == .monthDayYear ? "11/13/2026" : "13/11/2026"),Kiosk,-4.20\n".utf8))
+		#expect(try profile.read(decided, currency: "EUR")?.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 13)])
+	}
+
+	/// "Card CSV" for "Date,Name,Amount", with month first chosen in the question for the date order.
+	static func answered() throws -> CSVProfile {
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.dateOrder = .monthDayYear
+		return CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter,
+			dateOrderAnswer: DateOrderAnswer(order: .monthDayYear, layout: layout, header: file.header))
+	}
+
+	@Test("A profile with month first chosen in the question imports 11/03/2026 as 3 November without the preview")
+	func answeredProfile() throws {
+		let profile = try Self.answered()
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n".utf8))
+		let match = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout())
+		#expect(match == .same(profile))
+		#expect(match.answeredDateOrder(in: file) == .monthDayYear)
+		#expect(try profile.read(file, currency: "EUR")?.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3)])
+	}
+
+	@Test("A date that the chosen order cannot read keeps the profile from applying, and the preview reads it day first")
+	func contradictedProfile() throws {
+		let profile = try Self.answered()
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n13/11/2026,Bakery,-2.00\n".utf8))
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		let match = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout())
+		guard case let .changed(_, start) = match else {
+			Issue.record("A contradicting date must open the preview")
+			return
+		}
+		#expect(match.answeredDateOrder(in: file) == nil)
+		#expect(start.dateOrder == .dayMonthYear)
+		let preview = try file.preview(start, currency: "EUR")
+		#expect(preview.ambiguousDate == nil)
+		#expect(preview.transactions.map(\.bookingDate) == [Day(year: 2026, month: 3, day: 11), Day(year: 2026, month: 11, day: 13)])
+	}
+
+	@Test("A profile answers only while its chosen order and date column are those of its layout, and an older profile answers nothing")
+	func answerFollowsTheLayout() throws {
+		var profile = try Self.answered()
+		#expect(profile.dateOrderAnswer == DateOrderAnswer(order: .monthDayYear, bookingDate: "Date", valueDate: nil))
+		#expect(profile.answersDateOrder)
+		profile.layout.dateOrder = .dayMonthYear
+		#expect(!profile.answersDateOrder)
+		profile.layout.dateOrder = .monthDayYear
+		profile.layout.assign(1, to: .bookingDate)
+		#expect(!profile.answersDateOrder)
+		let older = Data("""
+		{"name":"Card CSV","header":["Date","Name","Amount"],"delimiter":",",
+		"layout":{"encoding":"utf8","columns":{"bookingDate":0,"name":1,"amount":2},"dateOrder":"monthDayYear","createsCategories":false}}
+		""".utf8)
+		let decoded = try JSONDecoder().decode(CSVProfile.self, from: older)
+		#expect(decoded.dateOrderAnswer == nil)
+		#expect(!decoded.answersDateOrder)
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n11/04/2026,Bakery,-2.00\n".utf8))
+		#expect(try decoded.read(file, currency: "EUR") == nil)
+		#expect(CSVProfile.match(for: file, in: [decoded], detected: try file.detectedLayout()).answeredDateOrder(in: file) == nil)
+		#expect(try JSONDecoder().decode(CSVProfile.self, from: JSONEncoder().encode(try Self.answered())) == (try Self.answered()))
+	}
+
+	@Test("An answer for the column \"Date\" does not answer for a booking date in the column \"Booking date\"", .bug("https://github.com/MonetenApp/Moneten/pull/525"))
+	func answerBelongsToItsColumn() throws {
+		let original = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n".utf8))
+		let layout = try original.detectedLayout()
+		#expect(layout.dateOrder == .dayMonthYear)
+		let profile = CSVProfile(name: "Card CSV", header: original.header, layout: layout, delimiter: original.delimiter,
+			dateOrderAnswer: DateOrderAnswer(order: .dayMonthYear, layout: layout, header: original.header))
+		#expect(profile.answersDateOrder)
+		let file = try CSVFile(data: Data("Name,Amount,Booking date\nKiosk,-1.00,11/03/2026\n".utf8))
+		let match = CSVProfile.match(for: file, in: [profile], detected: try file.detectedLayout())
+		guard case let .changed(_, start) = match else {
+			Issue.record("A moved header must open the preview from the profile")
+			return
+		}
+		#expect(start.columns[.bookingDate] == 2)
+		#expect(match.answeredDateOrder(in: file) == nil)
+		var question = DateOrderQuestion(answer: match.answeredDateOrder(in: file))
+		let preview = try file.preview(start, currency: "EUR")
+		question.read(preview)
+		#expect(question.asks(start))
+		#expect(!question.allowsImport(preview))
+	}
+
+	@Test("A repeated booking date or value date title, also with spaces around it, keeps no answer, so the file asks", .bug("https://github.com/MonetenApp/Moneten/pull/525"), arguments: [
+		("Date,Date,Name,Amount\n11/03/2026,05/06/2026,Kiosk,-1.00\n", CSVField.bookingDate, 1),
+		("Date, Date ,Name,Amount\n11/03/2026,05/06/2026,Kiosk,-1.00\n", CSVField.bookingDate, 1),
+		("Date,Value date,Value date,Name,Amount\n11/03/2026,11/04/2026,05/06/2026,Kiosk,-1.00\n", CSVField.valueDate, 2),
+		("Date,Value date, Value date,Name,Amount\n11/03/2026,11/04/2026,05/06/2026,Kiosk,-1.00\n", CSVField.valueDate, 2),
+	])
+	func repeatedTitle(text: String, field: CSVField, moved: Int) throws {
+		let file = try CSVFile(data: Data(text.utf8))
+		let hasValueDate = field == .valueDate
+		var layout = CSVLayout(encoding: file.encoding, columns: [.bookingDate: 0, .name: hasValueDate ? 3 : 2, .amount: hasValueDate ? 4 : 3],
+			dateOrder: .dayMonthYear, decimalMark: nil)
+		if hasValueDate { layout.columns[.valueDate] = 1 }
+		let answer = try #require(DateOrderAnswer(order: .dayMonthYear, layout: layout, header: file.header))
+		var profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter, dateOrderAnswer: answer)
+		#expect(!profile.answersDateOrder)
+		// An older version that keeps the unknown answer points the field at the other column of the same title.
+		profile.layout.columns[field] = moved
+		#expect(!profile.answersDateOrder)
+		let match = CSVProfile.match(for: file, in: [profile], detected: profile.layout)
+		#expect(match == .same(profile))
+		#expect(match.answeredDateOrder(in: file) == nil)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+	}
+
+	@Test("An answer stops counting when only the title of the value date column changes")
+	func valueDateTitle() throws {
+		let answer = DateOrderAnswer(order: .dayMonthYear, bookingDate: "Date", valueDate: "Value date")
+		let layout = CSVLayout(encoding: .utf8, columns: [.bookingDate: 0, .valueDate: 1, .name: 2, .amount: 3], dateOrder: .dayMonthYear, decimalMark: nil)
+		#expect(answer.answers(layout, header: ["Date", "Value date", "Name", "Amount"]))
+		#expect(!answer.answers(layout, header: ["Date", "Valuta", "Name", "Amount"]))
+		var without = layout
+		without.columns[.valueDate] = nil
+		#expect(!answer.answers(without, header: ["Date", "Value date", "Name", "Amount"]))
+	}
+
 	@Test("An added empty title still suggests the saved column mapping")
 	func emptyTitles() throws {
 		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))
