@@ -18,21 +18,16 @@ final class CSVPreviewModel {
 			old.createsCategories = layout.createsCategories
 			guard layout != old, !isAdopting else { return }
 			let dates: [CSVField] = [.bookingDate, .valueDate]
-			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) {
-				detectsDateOrder = true
-				answeredOrder = nil
-			}
+			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) { detectsDateOrder = true }
+			question.change(from: oldValue, to: layout)
 			refresh()
 		}
 	}
 	/// The preview of `layout`, or nil while the app reads the file again.
 	private(set) var preview: CSVPreview?
-	/// The date of the last preview that fits both orders. It stays while the app reads the file again, so
-	/// that the question for the date order does not flicker.
-	private(set) var ambiguousDate: AmbiguousDate?
-	/// The date order that the user chose in the question for a file whose dates fit both orders, or that a
-	/// profile with such a choice gives. The detected order never answers it, and another date column asks again.
-	private var answeredOrder: Import.DateOrder?
+	/// The question for the date order, with the answer of the user or of a profile that answered it for
+	/// these date columns. The detected order never answers it.
+	private var question: DateOrderQuestion
 	/// Why the file cannot be read with the encoding of `layout`.
 	private(set) var problem: String?
 	/// The saved profiles, and the name under which "Import" saves the settings. An empty name saves none.
@@ -55,11 +50,12 @@ final class CSVPreviewModel {
 
 	/// `profile` is the starting point, and `matched` the profile with the header row of the file. A near
 	/// match starts from its profile with an empty name, so that "Import" never moves it to another bank.
-	/// `answeredOrder` is the order that the user chose in the question when the profile of the start saved one.
+	/// `answeredOrder` is the order that the user chose in the question when the profile of the start saved one
+	/// for these date columns.
 	init(name: String, file: CSVFile, layout: CSVLayout, currency: String, profiles: [CSVProfile], unreadable: Set<String>, profile: String?, matched: String?,
 		answeredOrder: Import.DateOrder?, store: Store) {
 		self.name = name
-		self.answeredOrder = answeredOrder
+		question = DateOrderQuestion(answer: answeredOrder)
 		self.file = file
 		self.layout = layout
 		self.currency = currency
@@ -99,21 +95,22 @@ final class CSVPreviewModel {
 		layout = next
 		isAdopting = false
 		detectsDateOrder = false
-		answeredOrder = match.answeredDateOrder
+		question.answer = match.answeredDateOrder(in: file)
 		refresh()
 	}
 
 	func chooseDateOrder(_ order: Import.DateOrder) {
-		answeredOrder = order
+		question.answer = order
 		layout.dateOrder = order
 	}
 
-	/// Whether the order of the layout is the answer to the question. A change in the date format control
-	/// of a file that decides the order is no answer.
-	var answeredDateOrder: Bool { answeredOrder == layout.dateOrder }
+	/// The date of the last preview that fits both orders, which the question shows.
+	var ambiguousDate: AmbiguousDate? { question.ambiguousDate }
+
+	var answeredDateOrder: Bool { question.isAnswered(layout) }
 
 	/// Whether the preview waits for the user to choose the date order.
-	var asksDateOrder: Bool { ambiguousDate != nil && !answeredDateOrder }
+	var asksDateOrder: Bool { question.asks(layout) }
 
 	func deleteProfile() {
 		guard let profile else { return }
@@ -128,7 +125,7 @@ final class CSVPreviewModel {
 	func saveProfile() -> Bool {
 		guard let savedProfile else { return true }
 		let saved = CSVProfile(name: savedProfile, header: file.header, layout: layout, delimiter: file.delimiter,
-			answeredDateOrder: answeredDateOrder ? answeredOrder : nil)
+			dateOrderAnswer: question.profileAnswer(layout, header: file.header))
 		do {
 			try store.saveCSVProfile(saved, replacing: profile == matched ? matched : nil)
 			profiles.save(saved, matched: matched, applied: profile)
@@ -142,7 +139,7 @@ final class CSVPreviewModel {
 	/// The transactions to import, once every row of the file reads in `layout`.
 	var chosen: TransactionFileImporter.Parsed? {
 		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty,
-			preview.ambiguousDate == nil || answeredDateOrder else { return nil }
+			question.allowsImport(preview) else { return nil }
 		return preview.parsed
 	}
 
@@ -190,7 +187,7 @@ final class CSVPreviewModel {
 					self.layout = read
 					self.isAdopting = false
 					self.detectsDateOrder = false
-					self.ambiguousDate = preview.ambiguousDate
+					self.question.read(preview)
 					self.preview = preview
 				} catch let failure as TransactionFileImporter.Failure {
 					guard !Task.isCancelled, let self else { return }
@@ -252,7 +249,7 @@ struct CSVPreviewView: View {
 					}
 					.pickerStyle(.radioGroup)
 					if !model.answeredDateOrder {
-						Label("Every date fits both orders. Choose the order that the file uses.", systemImage: "questionmark.circle")
+						Label("Every booking date fits both orders. Choose the order that the file uses.", systemImage: "questionmark.circle")
 							.foregroundStyle(.orange)
 					}
 				} else {

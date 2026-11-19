@@ -366,36 +366,54 @@ public struct CSVFile: Sendable {
 	/// orders mean that the file does not decide, and the preview asks the user for the order. A value that
 	/// fits no order, such as "pending" as a value date, decides nothing, and neither does one that reads
 	/// as the same day in both, such as "2026-10-31" or "01.01.2026". When the dates fit no single order,
-	/// the order that most of them fit comes alone.
+	/// the order that most of them fit comes alone, unless every booking date fits both orders: then the
+	/// booking dates decide, and both orders come.
 	public func dateOrders(_ layout: CSVLayout) throws -> [DateOrder] {
 		try dateEvidence(layout).orders
 	}
 
-	/// The date orders of `dateOrders`, and the first date that reads as two different days when the
-	/// orders are two, which the preview shows when it asks the user for the order.
-	private func dateEvidence(_ layout: CSVLayout) throws -> (orders: [DateOrder], ambiguous: AmbiguousDate?) {
-		let dateColumns = [layout.columns[.bookingDate], layout.columns[.valueDate]]
-		let values = try dataRows(layout).flatMap { row in
-			try Task.checkCancellation()
-			return dateColumns.compactMap { Self.cell(row.cells, $0) }
+	/// The date orders of `dateOrders`, the first date that reads as two different days when the orders are
+	/// two, which the preview shows when it asks the user for the order, and then the booking dates of the
+	/// first ten rows as the file writes them. One pass over the rows gives all three, because a large file
+	/// takes a while.
+	private func dateEvidence(_ layout: CSVLayout) throws -> (orders: [DateOrder], ambiguous: AmbiguousDate?, rawDates: [String]) {
+		func ambiguous(_ value: String) -> AmbiguousDate? {
+			guard let dayFirst = DateOrder.dayMonthYear.day(value), let monthFirst = DateOrder.monthDayYear.day(value), dayFirst != monthFirst else { return nil }
+			return AmbiguousDate(text: value, dayFirst: dayFirst, monthFirst: monthFirst)
 		}
 		var counts = Dictionary(uniqueKeysWithValues: DateOrder.allCases.map { ($0, 0) })
 		var deciding = 0
 		var example: AmbiguousDate?
-		for value in values {
+		// Whether no booking date fits only one order, and the first that reads as two different days.
+		var bookingFitsBoth = true
+		var bookingExample: AmbiguousDate?
+		var rawDates: [String] = []
+		for row in try dataRows(layout) {
 			try Task.checkCancellation()
-			let days = DateOrder.allCases.map { $0.day(value) }
-			guard days.contains(where: { $0 != nil }), Set(days).count > 1 else { continue }
-			for (order, day) in zip(DateOrder.allCases, days) where day != nil { counts[order]! += 1 }
-			deciding += 1
-			if example == nil, let dayFirst = DateOrder.dayMonthYear.day(value), let monthFirst = DateOrder.monthDayYear.day(value) {
-				example = AmbiguousDate(text: value, dayFirst: dayFirst, monthFirst: monthFirst)
+			let booking = Self.cell(row.cells, layout.columns[.bookingDate])
+			if let booking {
+				if rawDates.count < 10 { rawDates.append(booking) }
+				let days = DateOrder.allCases.map { $0.day(booking) }
+				if days.contains(where: { $0 != nil }), days.contains(nil) { bookingFitsBoth = false }
+				if bookingExample == nil { bookingExample = ambiguous(booking) }
+			}
+			for value in [booking, Self.cell(row.cells, layout.columns[.valueDate])].compactMap({ $0 }) {
+				let days = DateOrder.allCases.map { $0.day(value) }
+				guard days.contains(where: { $0 != nil }), Set(days).count > 1 else { continue }
+				for (order, day) in zip(DateOrder.allCases, days) where day != nil { counts[order]! += 1 }
+				deciding += 1
+				if example == nil { example = ambiguous(value) }
 			}
 		}
-		guard deciding > 0 else { return ([.dayMonthYear], nil) }
+		guard deciding > 0 else { return ([.dayMonthYear], nil, []) }
 		let fitting = DateOrder.allCases.filter { counts[$0] == deciding }
-		if fitting.isEmpty { return ([DateOrder.allCases.max { counts[$0]! < counts[$1]! }!], nil) }
-		return (fitting, fitting.count > 1 ? example : nil)
+		if fitting.isEmpty {
+			// The value dates contradict each other. When every booking date fits both orders, the booking dates
+			// decide, so the user chooses, and each value date that the answer cannot read warns.
+			if bookingFitsBoth, let bookingExample { return (DateOrder.allCases, bookingExample, rawDates) }
+			return ([DateOrder.allCases.max { counts[$0]! < counts[$1]! }!], nil, [])
+		}
+		return fitting.count > 1 ? (fitting, example, rawDates) : (fitting, nil, [])
 	}
 
 	/// The dated rows in the mapped columns. An amount cell that is present must reach validation,
@@ -553,10 +571,9 @@ public struct CSVFile: Sendable {
 	/// order that its values fit, unless they fit the order of the layout.
 	public func preview(_ layout: CSVLayout, currency: String, detectingDateOrder: Bool = false) throws -> CSVPreview {
 		var layout = layout
-		let (orders, ambiguous) = try dateEvidence(layout)
+		// Every dated row gives one transaction, so the first ten raw dates belong to the first ten rows of the preview.
+		let (orders, ambiguous, rawDates) = try dateEvidence(layout)
 		if detectingDateOrder, !orders.contains(layout.dateOrder) { layout.dateOrder = orders[0] }
-		// Every dated row gives one transaction, so the first ten cells belong to the first ten rows of the preview.
-		let rawDates = ambiguous == nil ? [] : try dataRows(layout).prefix(10).compactMap { Self.cell($0.cells, layout.columns[.bookingDate]) }
 		do {
 			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, ambiguousDate: ambiguous, rawDates: rawDates)
 		} catch let failure as TransactionFileImporter.Failure {

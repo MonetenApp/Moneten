@@ -1,6 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Every booking date fits both orders. Choose the order that the file uses." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jedes Buchungsdatum passt zu beiden Reihenfolgen. Wählen Sie die Reihenfolge, die die Datei verwendet."
+          }
+        }
+      }
+    },
     "\"Apply to all transactions\" also replaces categories that you assigned by hand, and transactions that no longer match leave this category." : {
       "localizations" : {
         "de" : {
@@ -4631,16 +4641,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Euro"
-          }
-        }
-      }
-    },
-    "Every date fits both orders. Choose the order that the file uses." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jedes Datum passt zu beiden Reihenfolgen. Wählen Sie die Reihenfolge, die die Datei verwendet."
           }
         }
       }

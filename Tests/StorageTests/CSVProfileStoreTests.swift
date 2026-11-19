@@ -27,14 +27,15 @@ struct CSVProfileStoreTests {
 	}
 
 	@Test("A chosen date order is stored with the profile, and saving the profile without one removes it")
-	func answeredDateOrder() throws {
+	func dateOrderAnswer() throws {
 		let store = try SchemaTests.emptyStore()
 		defer { try? store.close() }
 		var saved = try profile()
-		saved.answeredDateOrder = saved.layout.dateOrder
+		saved.dateOrderAnswer = DateOrderAnswer(order: saved.layout.dateOrder, layout: saved.layout, header: saved.header)
+		#expect(saved.dateOrderAnswer?.bookingDate == "Datum")
 		try store.saveCSVProfile(saved, replacing: nil)
 		#expect(try store.csvProfiles() == [saved])
-		saved.answeredDateOrder = nil
+		saved.dateOrderAnswer = nil
 		try store.saveCSVProfile(saved, replacing: saved.name)
 		#expect(try store.csvProfiles() == [saved])
 		#expect(try store.csvProfiles().first?.answersDateOrder == false)

@@ -62,7 +62,7 @@ extension Store {
 		layout["columns"] = columns
 		saved.removeValue(forKey: "delimiter")
 		// A profile saved without a chosen date order must not keep the answer of the record that it replaces.
-		saved.removeValue(forKey: "answeredDateOrder")
+		saved.removeValue(forKey: "dateOrderAnswer")
 		saved.merge(current) { _, new in new }
 		saved["layout"] = layout
 		return try JSONSerialization.data(withJSONObject: saved, options: .sortedKeys)

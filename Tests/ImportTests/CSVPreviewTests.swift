@@ -379,6 +379,26 @@ struct CSVPreviewTests {
 		#expect(try clear.preview(clear.detectedLayout(), currency: "EUR").ambiguousDate == nil)
 	}
 
+	@Test("Booking dates that fit both orders decide when the value dates contradict each other, and the value date that the answer cannot read warns", .bug("https://github.com/MonetenApp/Moneten/pull/525"))
+	func contradictingValueDates() throws {
+		let data = Data("Date,Value date,Name,Amount\n11/03/2026,11/13/2026,Kiosk,-4.20\n11/04/2026,13/11/2026,Bakery,-2.00\n".utf8)
+		let file = try CSVFile(data: data)
+		var layout = try file.detectedLayout()
+		#expect(try file.dateOrders(layout) == [.dayMonthYear, .monthDayYear])
+		let asked = try file.preview(layout, currency: "EUR")
+		#expect(asked.ambiguousDate == AmbiguousDate(text: "11/03/2026", dayFirst: Day(year: 2026, month: 3, day: 11), monthFirst: Day(year: 2026, month: 11, day: 3)))
+		let profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		layout.dateOrder = .monthDayYear
+		let chosen = try file.preview(layout, currency: "EUR")
+		#expect(chosen.problem == nil)
+		#expect(chosen.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 3), Day(year: 2026, month: 11, day: 4)])
+		#expect(chosen.transactions.map(\.valueDate) == [Day(year: 2026, month: 11, day: 13), nil])
+		#expect(chosen.parsed.warnings == [.unreadableValueDate(line: 3, cell: "13/11/2026")])
+		let decided = try CSVFile(data: Data("Date,Value date,Name,Amount\n11/13/2026,11/13/2026,Kiosk,-4.20\n11/04/2026,13/11/2026,Bakery,-2.00\n".utf8))
+		#expect(try decided.preview(decided.detectedLayout(), currency: "EUR").ambiguousDate == nil)
+	}
+
 	@Test("A file whose dates fit both orders gives the booking dates as the file writes them, and one that decides gives none")
 	func rawDates() throws {
 		let file = try CSVFile(data: Data("Date,Payee,Amount\n11/03/2026,Kiosk,-1.50\n11/04/2026,Bakery,-2.00\n".utf8))
