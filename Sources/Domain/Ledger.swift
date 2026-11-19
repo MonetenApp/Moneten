@@ -898,6 +898,32 @@ public struct TransactionFilter: Hashable, Sendable {
 		period != .all || status != .all || amount != .all || categoryID != nil || account != nil
 	}
 
+	/// A kind of filter that hides rows. The list shows one line for each active kind.
+	public enum Hint: Hashable, Sendable {
+		case period, status, amount, category, account
+
+		public var text: String {
+			switch self {
+			case .period: String(localized: "A date filter is active; some entries might be hidden.")
+			case .status: String(localized: "A status filter is active; some entries might be hidden.")
+			case .amount: String(localized: "An amount filter is active; some entries might be hidden.")
+			case .category: String(localized: "A category filter is active; some entries might be hidden.")
+			case .account: String(localized: "An account filter is active; some entries might be hidden.")
+			}
+		}
+	}
+
+	/// The active filters in the order of the filter bar. The search text gets no line, because the search field shows it.
+	public var hints: [Hint] {
+		var hints: [Hint] = []
+		if period != .all { hints.append(.period) }
+		if status != .all { hints.append(.status) }
+		if amount != .all { hints.append(.amount) }
+		if categoryID != nil { hints.append(.category) }
+		if account != nil { hints.append(.account) }
+		return hints
+	}
+
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
 	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
 	/// kept filter without its menu would hide rows with no control to clear it. A saved search shows both menus.
