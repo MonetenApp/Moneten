@@ -14,6 +14,31 @@ struct AmountParserTests {
 		#expect(AmountParser.decimal(from: text) == Decimal(string: value))
 	}
 
+	@Test("The Arabic decimal separator is a decimal mark only: once, with no comma or point after it", arguments: [
+		("-89\u{066B}00", "-89"), ("1250\u{066B}5", "1250.5"), ("1\u{066B}234", "1.234"), ("1.234\u{066B}5", "1234.5"),
+		("1,234\u{066B}5", "1234.5"), ("\u{066B}5", "0.5"),
+	])
+	func arabicDecimal(text: String, value: String) {
+		#expect(AmountParser.decimal(from: text) == Decimal(string: value))
+		// The separator names the decimal mark itself, so a mark that the caller knows from other amounts does not change it.
+		for mark in DecimalMark.allCases { #expect(AmountParser.decimal(from: text, decimalMark: mark) == Decimal(string: value)) }
+	}
+
+	@Test("Refuses an Arabic decimal separator that occurs twice, has a separator after it, or stands with the Arabic thousands separator", arguments: [
+		"1\u{066B}234\u{066B}567", "1\u{066B}234.56", "1\u{066B}234,56", "1.234,5\u{066B}6", "1,234.5\u{066B}6", "1\u{066C}234\u{066B}56", "1\u{066C}234",
+	])
+	func arabicRefused(text: String) {
+		#expect(AmountParser.decimal(from: text) == nil)
+		#expect(AmountParser.decimalMark(of: text) == nil)
+	}
+
+	@Test("An Arabic amount names the decimal mark that its other separators leave")
+	func arabicMark() {
+		#expect(AmountParser.decimalMark(of: "-89\u{066B}00") == .comma)
+		#expect(AmountParser.decimalMark(of: "1.234\u{066B}5") == .comma)
+		#expect(AmountParser.decimalMark(of: "1,234\u{066B}5") == .point)
+	}
+
 	@Test("Refuses an amount that has two readings or none", arguments: [
 		"1,234", "1.234", "-1.234", "999,000", "12,3,4", "12.3.4", "1.23,45", "1,23.45", "1.2345.678",
 		"1.250,00,5", "1,2,3.4.5", "-", "", "abc",

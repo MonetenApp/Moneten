@@ -1643,6 +1643,13 @@ final class AppModel {
 	/// user started shows an alert.
 	func refresh(_ plan: [UUID: [AccountRequest]], attended: Bool = true, enforced: Bool = false) {
 		guard !isStoringMigration, let store else { return }
+		#if DEBUG || PERF_HARNESS
+		// A run of the debug harness reaches only the made-up bank and local services, also from a button that no command
+		// checks, such as "Refresh All Accounts" in the popover of the menu bar icon (issue #498).
+		if let harness = DebugHarness.shared, !harness.mayRefresh(plan) {
+			return harness.log("refresh refused", ("attended", .flag(attended)))
+		}
+		#endif
 		let requests = plan.compactMap { id, accounts in accesses[id].map { ($0, accounts) } }.sorted { $0.0.bankName < $1.0.bankName }
 		for (access, accounts) in requests {
 			guard let connector = connector(for: access.source) else {

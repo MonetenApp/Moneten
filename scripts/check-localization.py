@@ -8,7 +8,7 @@ build and compares their keys with App/Resources/Localizable.xcstrings. It fails
 catalog lacks, for an entry without a German value, for an entry that no code uses, for a value
 whose placeholders differ from those of its key, and for a plural without a text in "one" and "other".
 It also checks that App/Resources/InfoPlist.xcstrings gives each key of the Info.plist an English and a
-German value.
+German value, and that every title of the menu bar is a text that the catalog translates (see menu_title_problems).
 
     python3 scripts/check-localization.py .build/periphery           check
     python3 scripts/check-localization.py .build/periphery --update  add missing entries, remove unused ones
@@ -179,6 +179,225 @@ def plurals(node):
 		yield from plurals(substitution)
 
 
+# A view of the menu bar whose first argument, unless it has a label such as action:, is its title.
+MENU_VIEW = re.compile(r"\b(?:Button|Toggle|Menu|CommandMenu|Picker|Text)\(")
+STRING_LITERAL = re.compile(r'"(?:[^"\\\n]|\\.)*"')
+# A title of a property: `removeTitle`, `self.removeTitle`, `model.removeTitle`, or `$0.title` in a ForEach.
+PROPERTY = re.compile(r"^(?:(?P<receiver>\$?\w+)\.)?(?P<name>[a-z]\w*)$")
+TYPE = re.compile(r"\b(?:struct|class|enum|extension|actor)\s+(?P<name>[A-Z][\w.]*)[^{};]*\{")
+
+
+def without_comments(text):
+	"""The text with each // comment removed, but not a // inside a string literal such as a URL."""
+	out, i, in_string = [], 0, False
+	while i < len(text):
+		c = text[i]
+		if in_string:
+			if c == "\\":
+				out.append(text[i:i + 2])
+				i += 2
+				continue
+			in_string = c != '"' and c != "\n"
+		elif c == '"':
+			in_string = True
+		elif text.startswith("//", i):
+			i = text.find("\n", i)
+			if i < 0:
+				break
+			continue
+		out.append(c)
+		i += 1
+	return "".join(out)
+
+
+def call_end(text, start):
+	"""The index of the comma or closing bracket that ends the argument starting at `start`, outside string literals."""
+	depth, i, in_string = 0, start, False
+	while i < len(text):
+		c = text[i]
+		if in_string:
+			if c == "\\":
+				i += 1
+			elif c == '"':
+				in_string = False
+		elif c == '"':
+			in_string = True
+		elif c in "([{":
+			depth += 1
+		elif c in ")]}" and depth:
+			depth -= 1
+		elif c in "),]}" and not depth:
+			break
+		i += 1
+	return i
+
+
+def first_argument(text, start):
+	"""The first argument of the call whose parenthesis ends just before `start`."""
+	return text[start:call_end(text, start)].strip()
+
+
+def without_localized(text):
+	"""The text without each call String(localized: ...), also one with more arguments such as comment:."""
+	key = "String(localized:"
+	out, i = [], 0
+	while (found := text.find(key, i)) >= 0:
+		out.append(text[i:found])
+		# Every argument up to the closing parenthesis of the call.
+		end = call_end(text, found + len(key))
+		while end < len(text) and text[end] == ",":
+			end = call_end(text, end + 1)
+		i = end + 1
+	out.append(text[i:])
+	return "".join(out)
+
+
+def block_end(text, start):
+	"""The index after the brace that closes the block whose body starts at `start`."""
+	depth, i = 1, start
+	while i < len(text) and depth:
+		depth += {"{": 1, "}": -1}.get(text[i], 0)
+		i += 1
+	return i
+
+
+def types_at(text, position):
+	"""The names of the types whose body holds `position`, innermost last."""
+	return [m.group("name").split(".")[-1] for m in TYPE.finditer(text) if m.end() <= position < block_end(text, m.end())]
+
+
+def properties(sources, name):
+	"""Each computed property `name` of type String or String? in `sources` as (path, innermost type, body)."""
+	declaration = re.compile(r"\bvar\s+" + re.escape(name) + r"\s*:\s*String\??\s*\{")
+	found = []
+	for path, text in sorted(sources.items()):
+		for match in declaration.finditer(text):
+			owners = types_at(text, match.start())
+			found.append((path, owners[-1] if owners else None, text[match.end():block_end(text, match.end()) - 1]))
+	return found
+
+
+# A word before "(" that opens a group, not a call: `return ("Open")` returns the literal.
+KEYWORDS = {"return", "if", "guard", "case", "in", "else", "where", "while", "switch", "throw", "try", "await", "let", "var"}
+
+
+def in_call(before):
+	"""Whether the end of `before`, code with masked literals, lies inside the arguments of a call."""
+	openers = []
+	for i, c in enumerate(before):
+		if c in "([{":
+			word = re.search(r"([\w)\]?!>]*)\s*$", before[:i]).group(1)
+			openers.append(c == "(" and bool(word) and word not in KEYWORDS)
+		elif c in ")]}" and openers:
+			openers.pop()
+	return any(openers)
+
+
+def returned_literals(body):
+	"""The literals that a property body gives as its value, such as `case .account: "Remove Account..."`.
+
+	A literal among the arguments of a call, such as `of: "-"` of replacingOccurrences, and one after ==, !=, or
+	case, or before {, is no title. One in parentheses that only group it, such as `return ("Open")`, and one whose
+	method gives a String, such as `"Open".uppercased()`, is.
+	"""
+	code = without_localized(without_comments(body))
+	masked = STRING_LITERAL.sub(lambda m: '"' + "x" * (len(m.group(0)) - 2) + '"', code)
+	literals = []
+	for match in STRING_LITERAL.finditer(code):
+		before, after = masked[:match.start()], code[match.end():]
+		if in_call(before) or re.search(r"(?:==|!=|~=|\bcase|,)\s*$", before) or re.match(r"\s*(?:\{|==|!=)", after):
+			continue
+		literals.append(match.group(0))
+	return literals
+
+
+def collection_type(code, position):
+	"""The type of the innermost ForEach around `position` when it runs over `Type.allCases`, else None."""
+	found = None
+	for match in re.finditer(r"\bForEach\(", code[:position]):
+		end = call_end(code, match.end())
+		# The arguments of the call end at its closing parenthesis.
+		while end < len(code) and code[end] == ",":
+			end = call_end(code, end + 1)
+		block = code.find("{", end)
+		if block < 0 or block > position or block_end(code, block + 1) <= position:
+			continue
+		of = re.match(r"\s*([A-Z]\w*)\.allCases\b", code[match.end():])
+		found = of.group(1) if of else None
+	return found
+
+
+def menu_title_problems(sources):
+	"""Lists each title of the menu bar that the catalog cannot translate.
+
+	`sources` maps the path of each Swift file of the app and the libraries to its text. The menus are the files of
+	the app that declare a Commands type. SwiftUI looks up a literal title, such as Button("Add Category"), also both
+	literals of a ternary, in the catalog, and the compiler extracts its key. A title of type String shows verbatim,
+	so it comes from String(localized:). A literal after ?? next to such a title is a String too. A title that names
+	a property, such as Button(model.removeTitle), passes when every literal that the property returns is the key of
+	a String(localized:). The property of `model.` is one of AppModel, a bare name one of the type that holds the
+	menu, and `$0.title` one of the type of `Type.allCases` in the ForEach around it. When no ForEach names the
+	type, every type that declares the property counts, and the title fails only when all of them return a plain
+	literal. "Remove Account Group..." stayed English for both reasons (issue #463).
+	"""
+	problems = []
+	for path, text in sorted(sources.items()):
+		if not path.startswith("App/") or not re.search(r":\s*Commands\s*\{", text):
+			continue
+		code = without_comments(text)
+		for match in MENU_VIEW.finditer(code):
+			argument = first_argument(code, match.end())
+			if not argument or re.match(r"\w+\s*:", argument):
+				continue
+			where = f"{path}:{code.count(chr(10), 0, match.start()) + 1}"
+			value, *fallbacks = [part.strip() for part in without_localized(argument).split("??")]
+			if any(STRING_LITERAL.search(part) for part in fallbacks):
+				problems.append(f"{where}: the literal after ?? in the menu title {argument!r} is a String and shows verbatim. "
+					"Write String(localized: ...).")
+			if STRING_LITERAL.search(value):
+				if "+" in STRING_LITERAL.sub("", value):
+					problems.append(f"{where}: the menu title {argument!r} joins a literal to a String, so it shows verbatim. "
+						"Write String(localized: ...) with the whole text.")
+				continue
+			if not value:
+				continue
+			title = PROPERTY.match(value)
+			candidates = properties(sources, title.group("name")) if title else []
+			receiver = title.group("receiver") if title else None
+			if receiver == "model":
+				candidates = [c for c in candidates if c[1] == "AppModel"]
+			elif receiver in (None, "self"):
+				candidates = [c for c in candidates if c[1] in types_at(code, match.start())]
+			elif element := collection_type(code, match.start()):
+				candidates = [c for c in candidates if c[1] == element]
+			if not candidates:
+				problems.append(f"{where}: the menu title {argument!r} is neither a literal nor a String property of the app, "
+					"so this check cannot see its text. Use a literal or a property that returns String(localized: ...).")
+				continue
+			plain = [(source, body) for source, _, body in candidates if returned_literals(body)]
+			# The type of an element that no ForEach names stays open: then the title shows verbatim only when every type
+			# that has a property of its name returns a plain literal.
+			if len(candidates) > 1 and len(plain) < len(candidates):
+				continue
+			for source, body in plain:
+				for literal in returned_literals(body):
+					problems.append(f"{source}: {title.group('name')} returns the literal {literal} for the menu title at {where}, "
+						f"which shows verbatim. Write String(localized: {literal}).")
+	return problems
+
+
+def swift_sources():
+	"""The Swift files of the app and of the libraries, which hold the properties that a menu title may name."""
+	sources = {}
+	for folder in (("App", "Sources"), ("Sources",)):
+		for path in sorted(glob.glob(os.path.join(ROOT, *folder, "**", "*.swift"), recursive=True)):
+			relative = os.path.relpath(path, ROOT)
+			if relative not in IGNORED:
+				with open(path, encoding="utf-8") as f:
+					sources[relative] = f.read()
+	return sources
+
+
 def info_plist_problems():
 	"""Lists each key of InfoPlist.xcstrings without a translated English and German value.
 
@@ -243,13 +462,14 @@ def main():
 	untranslated = sorted(k for k in keys if k in strings and not is_translated(strings[k]))
 	formats = [p for k in sorted(keys) if k in strings for p in format_problems(k, strings[k])]
 	info = info_plist_problems()
+	menus = menu_title_problems(swift_sources())
 	for key in missing:
 		print(f"Missing in the catalog: {key!r}")
 	for key in unused:
 		print(f"Not used by any code: {key!r}")
 	for key in untranslated:
 		print(f"No German translation: {key!r}")
-	for problem in formats + info:
+	for problem in formats + info + menus:
 		print(problem)
 	if missing or unused or untranslated:
 		print("Run scripts/check-localization.py with --update, then write the German values. CONTRIBUTING.md explains it.")
@@ -257,9 +477,10 @@ def main():
 		print("Give each value the placeholders of its key, and each plural the forms \"one\" and \"other\".")
 	if info:
 		print("Give each key of App/Resources/InfoPlist.xcstrings the English text of App/Info.plist and a German value.")
-	if missing or unused or untranslated or formats or info:
+	if missing or unused or untranslated or formats or info or menus:
 		sys.exit(1)
 	print(f"All {len(keys)} texts of the interface have a German translation.")
 
 
-main()
+if __name__ == "__main__":
+	main()

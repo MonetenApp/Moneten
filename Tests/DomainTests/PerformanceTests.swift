@@ -459,6 +459,19 @@ struct PerformanceTests {
 		#expect(sorted == 0)
 	}
 
+	@Test("The amounts of 500 rows, many screens of the list, take their currency and the format of the region within a frame")
+	func amountFormatting() {
+		let germany = Locale(identifier: "de_DE")
+		let amounts = (0..<500).map { Money(minorUnits: Int64($0) * 1_337 - 300_000, currency: $0 % 7 == 0 ? "USD" : "EUR") }
+		var characters = 0
+		let time = fastest { characters = amounts.reduce(0) { $0 + Format.money($1, locale: germany).count } }
+		print("500 amounts with their currency: \(time)")
+		#expect(characters > 0)
+		#if !DEBUG
+		#expect(time < budget(.milliseconds(16)))
+		#endif
+	}
+
 	@Test("Leaving an account counts 50,000 imported rows as seen within a frame, and the next visit finds nothing new")
 	func leaveAfterLargeImport() {
 		let imported = Account(position: 0, name: "Account 7", kind: .giro, source: .offline)

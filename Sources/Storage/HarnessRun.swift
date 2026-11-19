@@ -1,3 +1,4 @@
+import Domain
 import Foundation
 
 /// A run of the debug harness, which only Debug and Perf builds of the app start (issues #327 and #421). Its commands
@@ -90,10 +91,12 @@ public enum HarnessRun {
 		/// The FinTS connector. It reaches the made-up bank of `scripts/fake-fints-helper.sh` in a run with that helper,
 		/// and a real bank otherwise.
 		case fints
-		/// A made-up service that the run started itself, so that nothing leaves the Mac: an extension that the run
-		/// loaded from a file or that replays the recorded answers of a fixture, or the scripted bank of "syncdemo".
-		/// The checks of the harness need the made-up extension `Check.lua` of `scripts/check-debug-log.sh`, which asks
-		/// for a login and reaches no service, the extension checks with a fixture, and the dialogs of "syncdemo".
+		/// A service that the run brought itself: an extension that replays the recorded answers of a fixture of the run,
+		/// one that the run loaded from a file under a name outside the catalog (`extensionRecipient`), or the scripted
+		/// bank of "syncdemo". A file extension without a fixture can still use the network, as its file says: the
+		/// developer of the run wrote or chose that file. The checks of the harness need the made-up extension `Check.lua`
+		/// of `scripts/check-debug-log.sh`, which asks for a login and reaches no service, the extension checks with a
+		/// fixture, and the dialogs of "syncdemo".
 		case local
 		/// Any other extension, such as one from the catalog, or another service: it talks to its real service.
 		case realService
@@ -108,6 +111,15 @@ public enum HarnessRun {
 		case .local: true
 		case .realService: false
 		}
+	}
+
+	/// Who receives what the harness sends to an extension. A fixture of the run replaces the network. Without one, an
+	/// extension that the run loaded from a file counts as local only under a name outside the catalog: for a catalog
+	/// name, a refresh and the session of an access run the installed package of the catalog in place of the file, so
+	/// the name alone gives no trust (issue #498). `catalogName` is true for a name that is installed from the catalog
+	/// or listed in its index.
+	public static func extensionRecipient(hasFixture: Bool, loadedFromFile: Bool, catalogName: Bool) -> Recipient {
+		hasFixture || loadedFromFile && !catalogName ? .local : .realService
 	}
 
 	/// Where a key or a press of the harness lands. The app has no sandbox, so a save panel can write anywhere, and a
@@ -163,6 +175,123 @@ public enum HarnessRun {
 		case let .bankDialog(recipient): mayReach(recipient, fakeBank: fakeBank)
 		case .startWindow, .passwordSheet, .other: true
 		}
+	}
+
+	/// The service that the "Add Account" assistant has chosen, for `setupSurface`.
+	public enum SetupService: Sendable, Hashable {
+		/// No other service: the assistant sets up a FinTS access.
+		case fints
+		/// An offline account, which reaches no service.
+		case offline
+		/// The service of an extension, with the recipient of what its session receives.
+		case extensionService(Recipient)
+	}
+
+	/// Where a key to the "Add Account" assistant lands. The login step always logs in at the bank through FinTS,
+	/// because the sheet acts by its step, so a service that "setup other" chose afterwards does not change it (issue #498).
+	public static func setupSurface(atLogin: Bool, service: SetupService) -> Surface {
+		if atLogin { return .bankDialog(.fints) }
+		switch service {
+		case .fints: return .bankDialog(.fints)
+		case .offline: return .other
+		case let .extensionService(recipient): return .bankDialog(recipient)
+		}
+	}
+
+	/// What an item of the menu bar does, for "menuitem".
+	public enum MenuAction: Sendable, Equatable {
+		/// It acts only inside the app and on the database of the run.
+		case local
+		/// It refreshes accounts, so it reaches the recipient of each access of the refresh.
+		case refresh
+		/// It sets up a bank access or logs in to one, so it reaches FinTS.
+		case bankSetup
+	}
+
+	/// The items of the menu bar that "menuitem" may choose, as "<menu>|<item>" by their English titles. Left out are
+	/// the items that open a file panel, read or write a file outside the data folder, open a page in the browser or a
+	/// Finder window, look for an update, or change the database key.
+	static let menuActions: [String: MenuAction] = [
+		"Moneten|About Moneten": .local,
+		"File|Mark All Transactions as Checked": .local,
+		"File|Cancel Refresh": .local,
+		"View|Back": .local,
+		"View|Forward": .local,
+		"View|List": .local,
+		"View|Bar Chart": .local,
+		"View|Pie Chart": .local,
+		"View|Daily Balance": .local,
+		"View|Checkmarks": .local,
+		"Account|Add Account Group": .local,
+		"Account|Add Category": .local,
+		"Account|Add Category Group": .local,
+		"Account|Add Transaction...": .local,
+		"Account|Assign Category...": .local,
+		"Account|Add Comment...": .local,
+		"Account|Remove Account...": .local,
+		"Account|Remove Account Group...": .local,
+		"Account|Remove Category...": .local,
+		"Account|Account Settings...": .local,
+		"Account|Account Group Settings...": .local,
+		"Account|Category Settings...": .local,
+		"Account|Rename Search...": .local,
+		"Window|Main Window": .local,
+		"File|Refresh All Accounts": .refresh,
+		"Account|Refresh Account": .refresh,
+		"Account|Refresh Accounts": .refresh,
+		"Account|Add Account...": .bankSetup,
+		"Account|Edit Login Data...": .bankSetup,
+		"Account|Look for New Accounts...": .bankSetup,
+	]
+
+	/// What the item `menu`|`item` does, or nil when "menuitem" may not choose it.
+	public static func menuAction(menu: String, item: String) -> MenuAction? {
+		menuActions[menu + "|" + item]
+	}
+
+	/// Whether "menuitem" may choose an item that does `action` and reaches `recipients`: each access of a refresh, or
+	/// FinTS for a bank setup. A local item reaches nobody. One recipient that `mayReach` refuses stops the item, so
+	/// the fake helper never lets a refresh reach an extension of the catalog.
+	public static func mayChoose(_ action: MenuAction?, reaching recipients: [Recipient], fakeBank: Bool) -> Bool {
+		guard let action else { return false }
+		return action == .local || recipients.allSatisfy { mayReach($0, fakeBank: fakeBank) }
+	}
+
+	/// The items of the context menu of a transaction that "rowmenu" may choose, by their English titles. Each acts on
+	/// the database of the run. "Export Transaction..." is missing, because it opens a save panel.
+	static let rowMenuItems: Set<String> = [
+		"Go to", "Assign Category", "Remove Transaction from Category", "Create Offsetting Entry", "Add Comment...", "Edit Comment...",
+		"Mark as Checked", "Mark as Unchecked", "Edit Transaction...", "Split Transaction", "Delete Transaction...", "Delete Transactions...",
+	]
+
+	/// Whether "rowmenu" may choose the item `title`. "Search for “<name>”" names the counterparty of the row.
+	public static func mayChooseRowMenuItem(_ title: String) -> Bool {
+		rowMenuItems.contains(title) || title.hasPrefix("Search for “") && title.hasSuffix("”") && title.count > "Search for “”".count
+	}
+
+	/// Whether "modal" may click the button `title` of the window of a modal session. A save or open panel takes only
+	/// the buttons of `pressable`, "Cancel", because any other button would read or write a file in a folder of the
+	/// developer, such as a copy of the database in Documents. An alert of the app takes any of its buttons.
+	public static func mayClickModal(_ title: String, inFilePanel: Bool) -> Bool {
+		!inFilePanel || pressable[.filePanel, default: []].contains(title)
+	}
+
+	/// The name of a file that "dumprows" or "alerttext" writes into the debug folder: `<name>.<ext>` for a name of 1 to
+	/// 64 ASCII letters, digits, "-", and "_", or nil. So no name leads out of the folder. The command then writes to the
+	/// `writeTarget` of that file, which also refuses a symlink that leads out.
+	public static func ownFileName(_ name: String, ext: String) -> String? {
+		guard (1...64).contains(name.count), name.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) else { return nil }
+		return name + "." + ext
+	}
+
+	/// The day of "row": eight digits yyyymmdd of a day the calendar has, or a number of days from `today`, such as -3.
+	/// Nil for anything else, such as 20261332.
+	public static func day(_ text: String, today: Day) -> Day? {
+		if text.count == 8, text.allSatisfy({ $0.isASCII && $0.isNumber }), let raw = Int(text) {
+			return Day.valid(year: raw / 10_000, month: raw / 100 % 100, day: raw % 100)
+		}
+		guard text.count < 8, let offset = Int(text) else { return nil }
+		return today.adding(days: offset)
 	}
 
 	/// Whether the FinTS connector of the run talks to the made-up bank of `scripts/fake-fints-helper.sh`, given the

@@ -460,7 +460,7 @@ struct TransactionSheet: View {
 						.textInputSuggestions(suggestions) { t in
 							Text(t.name).textInputCompletion(t.name)
 						}
-					TextField("Amount", text: $draft.amount, prompt: Text("-0,00"))
+					TextField("Amount", text: $draft.amount, prompt: Text(verbatim: "-" + Format.emptyAmount(account?.currency ?? "EUR")))
 						.multilineTextAlignment(.trailing)
 						.marksUnreadableAmount(draft.amount)
 						.monospacedDigit()
@@ -508,10 +508,10 @@ struct TransactionSheet: View {
 			date = t.bookingDate
 			hasValueDate = t.valueDate != nil
 			valueDate = t.valueDate
-			draft = TransactionDraft(template: t)
+			draft = TransactionDraft(template: t, locale: .autoupdatingCurrent)
 			comment = t.comment ?? ""
 		} else if let account {
-			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection)
+			draft = model.ledger.newTransactionDraft(in: account, selection: model.visibleSelection, locale: .autoupdatingCurrent)
 		}
 	}
 

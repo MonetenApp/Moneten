@@ -37,7 +37,7 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 ## 2. Integration
 
-- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request.
+- [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision), the bank scenarios with the made-up bank of a Debug build: 41 passed, 3 failed, 44 not checkable. Failed: "Empty name" (#477), "Name corrected by hand" of the owner (#478), and "Empty group selected" (#476). Requirement texts that the scenarios do not cover: the removal question does not say that the transactions cannot be restored (#479), and a new group is asked for in a sheet (#480). Not checkable in the harness: the type menu and the switches of the settings sheets ("Correct a wrong type", "Turned on and off before OK", "Hide the sum"), dragging into and out of groups, a refresh that reports another type or a securities value, the twelve scenarios of a derived type (need an extension that reports such accounts), the IBAN and counterparty account scenarios that need text from a bank, an extension, a file, or a migration, the identity of accounts that an earlier version stored, bonus points and several balances from a source, the initial balance of the first refreshes, a refresh during the close, the bar chart values of a closed account, the reopened bank account with an edited entry, the statement files of a removed account, and the saved PIN of the last account of an access. Open: the owner's walk-through in a Release build.
 
 ## Workflow follow-up
 
