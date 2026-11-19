@@ -83,6 +83,13 @@ public struct LoginRequest: Sendable, Equatable {
 		self.fields = fields
 		self.rejected = rejected
 	}
+
+	/// The values that the dialog starts with. The first field gets the user ID of the access when it is not
+	/// secret, because that field gave the user ID at the setup, so the dialog of a refresh names the access.
+	/// Every other field starts empty.
+	public func startValues(userID: String) -> [String] {
+		fields.indices.map { $0 == 0 && !fields[0].isSecret ? userID : "" }
+	}
 }
 
 public struct HostPermissionRequest: Sendable, Equatable {
