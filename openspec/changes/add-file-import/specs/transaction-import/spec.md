@@ -80,7 +80,7 @@ The app SHALL detect the delimiter of a CSV file among semicolon, comma, and tab
 
 ### Requirement: CSV date detection
 
-The app SHALL detect the date format of the date columns from all their values, including day first and month first orders, two-digit and four-digit years, and ISO dates. The booking date and the value date share one format. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates.
+The app SHALL detect the date format of the date columns from all their values, including day first and month first orders, two-digit and four-digit years, and ISO dates. The booking date and the value date share one format. A date with dots always reads day first. The app warns when the file mixes month-first dates with dotted dates. When no order fits every date, a booking date that fits only one order decides it over the value dates.
 
 #### Scenario: Clear European dates
 
@@ -105,6 +105,13 @@ The app SHALL detect the date format of the date columns from all their values, 
 - **WHEN** their value dates are "11.13.2026" and "03.11.2026"
 - **THEN** the app reads the booking dates as 1 November and 2 November 2026, the second value date as 3 November 2026, and warns that the value date in line 2 cannot be read
 
+#### Scenario: Booking dates outvote value dates
+
+- **GIVEN** a CSV file with the columns "Date,Value date,Name,Amount" and the rows "11/13/2026,13/11/2026,Kiosk,-4.20" and "11/03/2026,13/11/2026,Bakery,-2.00"
+- **WHEN** the preview opens
+- **THEN** the app reads month first, the booking dates as 13 November and 3 November 2026, without the question
+- **AND** warns that the value dates in lines 2 and 3 cannot be read
+
 #### Scenario: Month-first and dotted dates in one file
 
 - **WHEN** a row has the booking date "12/31/2026" and the value date "01.05.2027"
@@ -113,12 +120,13 @@ The app SHALL detect the date format of the date columns from all their values, 
 
 ### Requirement: CSV date order question
 
-The app SHALL ask the user for the date order when every booking date of a CSV file fits day first and month first with different days, unless all dates fit one order. The preview shows one date read in both orders and the booking dates as the file writes them, and imports nothing until the user chooses. The answer holds until the user assigns another date column. When the value dates contradict each other, the booking dates decide.
+The app SHALL ask the user for the date order when the dates of a CSV file do not decide it: every date fits day first and month first and one reads as two different days, or every booking date does and the value dates contradict each other. The preview says that the file does not show the order, shows one date read in both orders and the booking dates as the file writes them, and imports nothing until the user chooses. The answer holds until the user assigns another date column.
 
 #### Scenario: Ambiguous dates
 
 - **WHEN** every value of a column is like "03/04/2026" and "05/06/2026"
 - **THEN** the preview asks whether the file uses day first or month first, with "03/04/2026" as 3 April 2026 day first and as 4 March 2026 month first
+- **AND** the preview says "The file does not show whether the day or the month comes first. Choose the order that the file uses."
 - **AND** "Import" stays disabled until the user chooses an order
 
 #### Scenario: The user chooses month first
@@ -561,7 +569,7 @@ The app SHALL let the user save the settings of the preview as a named profile. 
 
 ### Requirement: CSV profile and the date order question
 
-The app SHALL let a profile answer the question for the date order only with an order that the user chose in that question, stored with the titles of the date columns that it answered. The answer counts only while the date columns of the file have those titles. Without such an answer, which every older profile lacks, a file whose dates fit both orders opens the preview with the question. A profile does not apply to a file with a date that its order cannot read.
+The app SHALL let a profile answer the question for the date order only with an order that the user chose in it, stored with the titles of the answered date columns. The answer counts only while the date columns of the file have those titles, each once in the header, ignoring spaces around it. Without such an answer, as in every older profile, a file whose dates fit both orders opens the preview with the question. A profile does not apply to a file with a date that its order cannot read.
 
 #### Scenario: A profile with a chosen order answers
 
@@ -582,6 +590,13 @@ The app SHALL let a profile answer the question for the date order only with an 
 - **WHEN** the user imports a file with the header row "Name,Amount,Booking date" and the row "Kiosk,-1.00,11/03/2026"
 - **THEN** the app opens the preview with "Card CSV" as the starting point and the booking date in the column "Booking date"
 - **AND** the preview asks for the date order, and "Import" stays disabled until the user chooses
+
+#### Scenario: A repeated column title does not keep an answer
+
+- **GIVEN** the user chose day first in the question for the first column of the header row "Date,Date,Name,Amount" with the row "11/03/2026,05/06/2026,Kiosk,-1.00" and saved the profile "Card CSV"
+- **WHEN** the booking date of "Card CSV" points to the second column "Date", as an older version of the app could save it
+- **THEN** the app opens the preview with the question for that file instead of importing 5 June 2026
+- **AND** the same holds for a repeated value date title and for the titles "Date" and " Date " with spaces
 
 #### Scenario: A profile without a chosen order asks
 
