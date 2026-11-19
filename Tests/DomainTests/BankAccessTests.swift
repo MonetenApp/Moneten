@@ -471,7 +471,20 @@ struct BankAccessTests {
 		#expect(since(coffee) == Day(year: 2026, month: 11, day: 1))
 	}
 
-	/// A migrated pending row from 2014 would otherwise make every refresh of an extension ask for 12 years (#196).
+	/// `reconcile` removes a pending row only when the answer covers the day that the bank sent, so a day that the user
+	/// moved later must not move the start of the refresh past it.
+	@Test("A pending row whose day the user moved starts the refresh at the day that the bank sent")
+	func sincePendingMoved() {
+		let giro = Self.bankAccount("Giro", refreshedAt: Self.noon.addingTimeInterval(21 * 86_400))
+		var deposit = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 1), amountMinor: -50_000, name: "Autovermietung Beispiel",
+			isPending: true)
+		deposit.original = OriginalValues(deposit)
+		deposit.bookingDate = Day(year: 2026, month: 11, day: 10)
+		let since = Ledger(accounts: [giro], transactions: [deposit]).refreshAccounts(.all, calendar: Self.utc)[Self.accessID]?.first?.since
+		#expect(since == Day(year: 2026, month: 11, day: 1))
+	}
+
+	/// A row that the source keeps pending for longer than 90 days does not make every refresh ask for its day (#196).
 	@Test("A refresh asks from an old pending row at most 90 days before the last success, for an extension as for a bank")
 	func sincePendingCapped() {
 		let card = Self.bankAccount("Kreditkarte", refreshedAt: Self.noon.addingTimeInterval(21 * 86_400))

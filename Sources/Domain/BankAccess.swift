@@ -298,8 +298,8 @@ extension Ledger {
 		for (a, accessID, remoteID) in chosen {
 			// 14 days of overlap with the last success, and back to the oldest pending row that a refresh can remove,
 			// because it removes a pending row that the bank dropped only within the days it asked for. A pending row
-			// counts for no more than 90 days before the last success, so an old row, such as one from the migration,
-			// cannot make every refresh of an extension ask for years (#196). FinTS asks for no more than 90 days anyway.
+			// counts for no more than 90 days before the last success, so a hold that the source keeps pending for longer
+			// does not make every refresh ask for its day (#196). FinTS asks for no more than 90 days anyway.
 			let since = a.refreshedAt.map { refreshed in
 				let last = Day(refreshed, calendar: calendar)
 				let overlap = last.adding(days: -14, calendar: calendar)
@@ -313,12 +313,14 @@ extension Ledger {
 	}
 
 	/// The day of the oldest pending row of each account in `ids` that a refresh can remove. A row that is marked for
-	/// review and has no checkmark stays at every refresh (`reconcile`), so it does not count.
+	/// review and has no checkmark stays at every refresh (`reconcile`), so it does not count. The day is the one that
+	/// the source sent, because `reconcile` removes a row only when the answer covers that day, also after the user
+	/// moved the row to another day.
 	private func oldestRemovablePending(of ids: Set<UUID>) -> [UUID: Day] {
 		guard !ids.isEmpty else { return [:] }
 		var oldest: [UUID: Day] = [:]
 		for t in transactions where t.isPending && (t.review == nil || t.isChecked) && ids.contains(t.accountID) {
-			oldest[t.accountID] = min(oldest[t.accountID] ?? t.bookingDate, t.bookingDate)
+			oldest[t.accountID] = min(oldest[t.accountID] ?? t.sourceBookingDate, t.sourceBookingDate)
 		}
 		return oldest
 	}
