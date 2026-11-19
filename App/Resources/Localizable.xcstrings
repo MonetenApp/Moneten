@@ -618,6 +618,16 @@
         }
       }
     },
+    "%@: The portfolio \"%@\" takes no transactions from a file." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: Das Depot „%2$@“ übernimmt keine Umsätze aus einer Datei."
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -3245,6 +3255,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verbinden mit"
+          }
+        }
+      }
+    },
+    "Connect..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinden..."
           }
         }
       }

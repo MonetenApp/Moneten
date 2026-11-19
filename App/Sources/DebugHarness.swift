@@ -349,6 +349,16 @@ final class DebugHarness {
 			#endif
 			if command == "lookfornew" { model.lookForNewAccounts(account: account.id) } else { model.editLoginData(account: account.id) }
 			log("", ("", .choice(command, of: ["lookfornew", "editlogin"])), ("setup", .flag(model.setup != nil)))
+		#if DEBUG || PERF_HARNESS
+		// "<account name>": "Connect..." in the header of the migrated account, which "setup" then drives.
+		case "connectmigrated":
+			// It starts a bank setup, so it runs only against the made-up bank.
+			guard HarnessRun.mayReach(.fints, fakeBank: usesFakeBank) else { return log("connectmigrated refused") }
+			guard let account = model.ledger.accounts.first(where: { $0.name == argument && $0.source == .migrated }) else { return log("connectmigrated", ("", .word("no account"))) }
+			model.navigate(to: .account(account.id))
+			model.addAccount(group: account.groupID, connecting: account)
+			log("connectmigrated", ("setup", .flag(model.setup != nil)), ("entry", .flag(model.setup?.entry == account.setupEntry)))
+		#endif
 		// "<name>": a migrated giro account without an access, with the test IBAN of the made-up bank.
 		case "migrated":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .giro, source: .migrated,
@@ -357,6 +367,12 @@ final class DebugHarness {
 		case "migratednumber":
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .savings, source: .migrated,
 				accountNumber: "9", bankCode: "12030000"))
+		#if DEBUG || PERF_HARNESS
+		// "<name>": a migrated portfolio without an access, with the test IBAN and the account number of "Girokonto" of the made-up bank.
+		case "migratedportfolio":
+			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .portfolio, source: .migrated,
+				iban: IBAN("DE02120300000000202051"), accountNumber: "202051", bankCode: "12030000"))
+		#endif
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
@@ -1354,7 +1370,12 @@ final class DebugHarness {
 			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
 			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
 			("kinds", .list(setup.candidates.map { .state($0.account.kind) })), ("matches", .list(setup.candidates.map { .state($0.match) })),
-			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) }))]))
+			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) })),
+			// For each row, the position in its choice of the account that it connects, or "-" for a new account.
+			("connecting", .list(setup.candidates.map { row in
+				guard case let .choice(accounts) = row.match else { return .position(nil) }
+				return .position(accounts.firstIndex { $0.id == setup.connecting[row.account.id] })
+			}))]))
 	}
 
 	/// The sheet on top of all others, where the dialogs of a refresh appear.
@@ -2196,7 +2217,8 @@ final class DebugHarness {
 		for index in 0..<list.numberOfRows {
 			let menu = contextMenu(row: index, sidebar: true, modifiers: .option)
 			// Each item by the hash of its title, because an item can name an account, a group, or a category.
-			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })))
+			log("contextmenu row", ("", .position(index)), ("items", .list((menu?.items ?? []).map { .hash(($0.isAlternate ? "alt:" : "") + $0.title) })),
+				("enabled", .list((menu?.items ?? []).map { .flag($0.isEnabled) })))
 			if choice.count == 2, choice[0] == index,
 				// "Move to Group" is the only submenu of a row, and its title follows the language.
 				let submenu = menu?.items.first(where: \.hasSubmenu)?.submenu {

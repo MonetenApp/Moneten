@@ -1298,9 +1298,10 @@ final class AppModel {
 
 	/// Opens the "Add Account" assistant, or with `purpose` "Look for New Accounts..." or "Edit Login
 	/// Data...". The new accounts go into `group`.
-	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add) {
+	/// `connecting` is the migrated account whose "Connect..." opened the assistant.
+	func addAccount(group: UUID? = nil, purpose: AccountSetup.Purpose = .add, connecting: Account? = nil) {
 		setup?.cancel()
-		setup = AccountSetup(model: self, groupID: group, purpose: purpose)
+		setup = AccountSetup(model: self, groupID: group, purpose: purpose, connecting: connecting)
 		sheet = .newAccount
 	}
 

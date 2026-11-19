@@ -156,6 +156,18 @@ public struct Account: Identifiable, Hashable, Sendable, Codable {
 	/// In an account with bank access, a manual row covers what the bank does not deliver.
 	public var takesManualTransactions: Bool { kind != .portfolio }
 
+	/// "Import Transactions..." works in the same accounts. A file holds transactions, and a portfolio has positions.
+	public var takesImportedTransactions: Bool { kind != .portfolio }
+
+	/// The bank entry with which "Connect..." of a migrated account starts the assistant: the IBAN, else the
+	/// Bankleitzahl, else nothing, so that the user types the bank. A migrated account can hold the BIC of the
+	/// source as its bank code, which the bank step does not take.
+	public var setupEntry: String {
+		if let iban { return iban.electronic }
+		guard let bankCode, bankCode.count == 8, bankCode.allSatisfy({ $0.isASCII && $0.isNumber }) else { return "" }
+		return bankCode
+	}
+
 	/// The balance that a portfolio or an open account of a bank access shows. A portfolio gets its value from the
 	/// bank, not from transactions. Every other account computes its balance, also a migrated one that keeps
 	/// the balance of the source, and a closed one, whose clearing entry brings the computed balance to zero.

@@ -226,7 +226,7 @@ struct AccountRow: View {
 				model.navigate(to: .account(account.id))
 				Task { await model.importFile(into: account.id) }
 			}
-			.disabled(model.isTransferringTransactions)
+			.disabled(!account.takesImportedTransactions || model.isTransferringTransactions)
 			Button("Export Transactions...") { model.exportTransactions(of: .account(account.id)) }
 				.disabled(model.isTransferringTransactions)
 			Divider()

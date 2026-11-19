@@ -40,7 +40,7 @@ struct MigrationSheet: View {
 			}
 			if case .failed(_, offersFileImport: true) = step {
 				Button("Import File...") {
-					fileAccountID = model.selectedAccount?.id ?? model.ledger.accounts.first?.id
+					fileAccountID = model.selectedAccount.flatMap { $0.takesImportedTransactions ? $0.id : nil } ?? importTargets.first?.id
 					step = .fileAccount
 				}.keyboardShortcut("i")
 			}
@@ -54,12 +54,12 @@ struct MigrationSheet: View {
 				}
 			case .fileAccount:
 				Section {
-					if model.ledger.accounts.isEmpty {
+					if importTargets.isEmpty {
 						Text("Add an account before importing transactions.")
 						Button("Add Account...") { model.addAccount() }
 					} else {
 						Picker("Account", selection: $fileAccountID) {
-							ForEach(model.ledger.accounts) { account in
+							ForEach(importTargets) { account in
 								Text(account.name).tag(Optional(account.id))
 							}
 						}
@@ -164,6 +164,11 @@ struct MigrationSheet: View {
 		case .failed: "Check again"
 		case .working: nil
 		}
+	}
+
+	/// The accounts that "Import File..." offers. A portfolio takes no file.
+	private var importTargets: [Account] {
+		model.ledger.accounts.filter(\.takesImportedTransactions)
 	}
 
 	private var canConfirm: Bool {
