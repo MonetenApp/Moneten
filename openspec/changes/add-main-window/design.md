@@ -10,6 +10,8 @@ The app keeps all accounts, categories, and transactions of the open database in
 
 The first build follows the spec where the task list marks a task as checked. Open tasks keep the behavior of the spec as the target.
 
+A new group is stored when its row appears, so "Name a new group in the sidebar" changes only the name. `AppModel.namingRow` names the row in edit mode, and the typed text stays in the row view until Return, Escape, or a move of the focus ends edit mode. A lock while the user types drops the typed text: the group keeps the name it has in the database, and the row is not in edit mode after the unlock. The sheets that come back after an unlock (#503) do not include this edit mode.
+
 ## Risks / Trade-offs
 
 Tasks marked as built in part may differ from the spec in the way their note says.

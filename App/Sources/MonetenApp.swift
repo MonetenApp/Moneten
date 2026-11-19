@@ -184,10 +184,10 @@ struct AppCommands: Commands {
 		}
 		CommandMenu("Account") {
 			Button("Add Account...") { model.addAccount() }.disabled(!unlocked)
-			Button("Add Account Group") { model.sheet = .newGroup }.disabled(!unlocked)
+			Button("Add Account Group") { Task { await model.addGroup() } }.disabled(!unlocked)
 			Divider()
-			Button("Add Category") { model.sheet = .newCategory(isGroup: false) }.disabled(!unlocked)
-			Button("Add Category Group") { model.sheet = .newCategory(isGroup: true) }.disabled(!unlocked)
+			Button("Add Category") { model.sheet = .newCategory() }.disabled(!unlocked)
+			Button("Add Category Group") { Task { await model.addCategoryGroup() } }.disabled(!unlocked)
 			Divider()
 			Button("Add Transaction...") { model.sheet = .transaction(nil) }
 				.keyboardShortcut("+")
