@@ -579,6 +579,7 @@ final class DebugHarness {
 			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
 			log("namefocus", ("moved", .flag(window.makeFirstResponder(list))))
 		#endif
+		#if DEBUG || PERF_HARNESS
 		// "return" or "escape" goes to the field that has the focus in the main window, as the keyboard sends it.
 		case "namekey":
 			let keys: [StaticString] = ["return", "escape"]
@@ -589,6 +590,7 @@ final class DebugHarness {
 			guard HarnessRun.mayKey(argument, on: surface(of: window), fakeBank: usesFakeBank) else { return log("namekey refused") }
 			window.sendEvent(event)
 			log("namekey", ("", .choice(argument, of: keys)))
+		#endif
 		// "all", or the name of an account or a group. "refreshenforced" is the command with the Option key.
 		// Logs "refresh refused" when an access of the refresh is not the made-up bank or a local service (HarnessRun.mayReach).
 		case "refresh", "refreshenforced":
