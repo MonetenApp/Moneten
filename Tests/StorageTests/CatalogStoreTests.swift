@@ -4,6 +4,7 @@ import Testing
 import Synchronization
 @testable import Storage
 import StorageTestSupport
+import TestSupport
 
 /// extension-catalog "Catalog extensions and file installs": the origin of each extension, the accepted
 /// index, and the key floors live in the encrypted database, outside the "Extensions" folder.
@@ -31,15 +32,19 @@ struct CatalogStoreTests {
 		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
 		defer { try? store.close() }
 		let entered = DispatchSemaphore(value: 0), release = DispatchSemaphore(value: 0)
-		let writer = Task.detached {
-			try store.queue.write { _ in
-				entered.signal()
-				release.wait()
-			}
+		// The writer and the wait for it block on threads of their own. On a thread of Swift concurrency or of the global
+		// queue they kept those few threads of a runner of CI from every other test until the release (issue #541).
+		let writer = Task {
+			try await onOwnThread {
+				Result {
+					try store.queue.write { _ in
+						entered.signal()
+						release.wait()
+					}
+				}
+			}.get()
 		}
-		await withCheckedContinuation { continuation in
-			DispatchQueue.global().async { entered.wait(); continuation.resume() }
-		}
+		await onOwnThread { entered.wait() }
 		let timedOut = Mutex(false)
 		let watchdog = Task.detached {
 			do { try await Task.sleep(for: .seconds(2)) } catch { return }
