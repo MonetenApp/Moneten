@@ -1,5 +1,6 @@
 import AppKit
 import Domain
+import ExtensionCatalog
 import ExtensionHost
 import FinTS
 import Import
@@ -565,6 +566,14 @@ final class DebugHarness {
 		case "extstate": logExtensionState(expecting: argument)
 		// The Extensions window and the catalog (ADR 0015). "extcatalog <url>" points the catalog at a test index and checks it.
 		case "extensions": openExtensionsWindow()
+		#if DEBUG || PERF_HARNESS
+		// "<n>" shows the made-up index of the performance check with n packages, without a signature and without the
+		// catalog, so that a check sees a catalog name ("package-0") and the harness treats it as one (issue #498).
+		case "extcatalogshow":
+			guard let count = Int(argument), count > 0, let index = try? CatalogIndex.parse(PerfScenario.catalog(entries: count)) else { return log("extcatalogshow refused") }
+			model.extensions.show(index)
+			log("extcatalogshow", ("entries", .count(count)), ("catalogName", .flag(model.extensions.isCatalogName("package-0"))))
+		#endif
 		// Opens "Supported Banks..." of the Help menu. "type" then types into its search field.
 		case "supportedbanks": openMenuItem("Supported Banks...")
 		// "down", "up", "pagedown", "pageup", "home", "end", or "tab" to the window "Supported Banks", as the keyboard sends it,
@@ -1169,6 +1178,17 @@ final class DebugHarness {
 		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
 		// it clicks only "Cancel".
 		case "modal": modal(argument)
+		// Opens a save panel of macOS in a modal session, as an export does, for the check that "modal" clicks only "Cancel"
+		// in it. Nothing reads the answer of the panel, so no button writes a file. It logs "filepanel done" when the panel closes.
+		case "filepanel":
+			RunLoop.main.perform(inModes: [.common]) {
+				MainActor.assumeIsolated {
+					let panel = NSSavePanel()
+					panel.nameFieldStringValue = "harness.csv"
+					let response = panel.runModal()
+					self.log("filepanel done", ("ok", .flag(response == .OK)))
+				}
+			}
 		// "<menu>|<item>" chooses the item of the menu bar by their English titles, as a click does, also while the app in the
 		// background shows the item disabled. It logs whether the item is enabled after an update of the menu. Only the
 		// local items of `HarnessRun.menuActions` are allowed, and a refresh or a bank setup only when HarnessRun.mayReach lets
@@ -2133,6 +2153,11 @@ final class DebugHarness {
 		// of the developer, such as Documents.
 		let filePanel = window is NSSavePanel || window.className.contains("SavePanel") || window.className.contains("OpenPanel")
 		guard HarnessRun.mayClickModal(argument, inFilePanel: filePanel) else { return log("modal refused", ("panel", .flag(true))) }
+		// The buttons of a save or open panel are no NSButton in its content view, so "Cancel" there cancels the panel itself.
+		if filePanel {
+			if let panel = window as? NSSavePanel { panel.cancel(nil) } else { NSApp.stopModal(withCode: .cancel) }
+			return log("modal cancelled", ("panel", .flag(true)))
+		}
 		guard let button = buttons.first(where: { $0.title == String(localized: String.LocalizationValue(argument)) }) else { return log("modal no button") }
 		button.performClick(nil)
 	}
@@ -2344,7 +2369,8 @@ final class DebugHarness {
 			if let menu = v.menu(for: event) { return menu }
 			view = v.superview
 		}
-		return nil
+		// A view over the table, such as the glass of the toolbar, can take the hit, so the table builds the menu of the row itself.
+		return list.menu(for: event)
 	}
 
 	/// A category by its position in sidebar order from 0, or "default", because the user types category names.
