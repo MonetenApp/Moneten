@@ -18,12 +18,21 @@ final class CSVPreviewModel {
 			old.createsCategories = layout.createsCategories
 			guard layout != old, !isAdopting else { return }
 			let dates: [CSVField] = [.bookingDate, .valueDate]
-			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) { detectsDateOrder = true }
+			if dates.contains(where: { layout.columns[$0] != oldValue.columns[$0] }) {
+				detectsDateOrder = true
+				answeredDateOrder = false
+			}
 			refresh()
 		}
 	}
 	/// The preview of `layout`, or nil while the app reads the file again.
 	private(set) var preview: CSVPreview?
+	/// The date of the last preview that fits both orders. It stays while the app reads the file again, so
+	/// that the question for the date order does not flicker.
+	private(set) var ambiguousDate: AmbiguousDate?
+	/// Whether the user chose the date order of a file whose dates fit both orders. Neither the detected
+	/// order nor a profile answers it, and another date column asks again.
+	private(set) var answeredDateOrder = false
 	/// Why the file cannot be read with the encoding of `layout`.
 	private(set) var problem: String?
 	/// The saved profiles, and the name under which "Import" saves the settings. An empty name saves none.
@@ -86,8 +95,17 @@ final class CSVPreviewModel {
 		layout = next
 		isAdopting = false
 		detectsDateOrder = false
+		answeredDateOrder = false
 		refresh()
 	}
+
+	func chooseDateOrder(_ order: Import.DateOrder) {
+		answeredDateOrder = true
+		layout.dateOrder = order
+	}
+
+	/// Whether the preview waits for the user to choose the date order.
+	var asksDateOrder: Bool { ambiguousDate != nil && !answeredDateOrder }
 
 	func deleteProfile() {
 		guard let profile else { return }
@@ -114,7 +132,8 @@ final class CSVPreviewModel {
 
 	/// The transactions to import, once every row of the file reads in `layout`.
 	var chosen: TransactionFileImporter.Parsed? {
-		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty else { return nil }
+		guard let preview, problem == nil, nameProblem == nil, preview.problem == nil, layout.missing.isEmpty, !preview.transactions.isEmpty,
+			preview.ambiguousDate == nil || answeredDateOrder else { return nil }
 		return preview.parsed
 	}
 
@@ -125,6 +144,7 @@ final class CSVPreviewModel {
 		if let failure = preview?.problem { return failure.description }
 		if !layout.missing.isEmpty { return String(localized: "No column is assigned to \(missingFields).") }
 		if preview?.transactions.isEmpty == true { return TransactionFileImporter.Failure.empty.description }
+		if asksDateOrder { return String(localized: "No date order was chosen.") }
 		return String(localized: "The file was skipped.")
 	}
 
@@ -132,9 +152,6 @@ final class CSVPreviewModel {
 	var missingFields: String {
 		layout.missing.map { String(localized: "“\($0.title)”") }.formatted(.list(type: .and))
 	}
-
-	/// Whether the dates fit day first and month first, so that the user must check the date format.
-	var isDateOrderUncertain: Bool { (preview?.dateOrders.count ?? 0) > 1 }
 
 	func stop() {
 		reading?.cancel()
@@ -164,6 +181,7 @@ final class CSVPreviewModel {
 					self.layout = read
 					self.isAdopting = false
 					self.detectsDateOrder = false
+					self.ambiguousDate = preview.ambiguousDate
 					self.preview = preview
 				} catch let failure as TransactionFileImporter.Failure {
 					guard !Task.isCancelled, let self else { return }
@@ -215,12 +233,23 @@ struct CSVPreviewView: View {
 				Picker("Encoding", selection: $model.layout.encoding) {
 					ForEach(CSVEncoding.allCases, id: \.self) { Text($0.title) }
 				}
-				Picker("Date format", selection: $model.layout.dateOrder) {
-					ForEach(DateOrder.allCases, id: \.self) { Text($0.title) }
-				}
-				if model.isDateOrderUncertain {
-					Label("Every date fits both orders. Check that the dates below are right.", systemImage: "exclamationmark.triangle")
-						.foregroundStyle(.orange)
+				if let date = model.ambiguousDate {
+					// Every date fits both orders, so no order is selected until the user chooses one, and each
+					// choice shows what it makes of one date of the file.
+					Picker("Date format", selection: Binding { model.answeredDateOrder ? model.layout.dateOrder : nil } set: { $0.map(model.chooseDateOrder) }) {
+						ForEach(DateOrder.allCases, id: \.self) { order in
+							Text("\(order.title): \(date.text) is \(Format.longDay(date.day(order)))").tag(Optional(order))
+						}
+					}
+					.pickerStyle(.radioGroup)
+					if !model.answeredDateOrder {
+						Label("Every date fits both orders. Choose the order that the file uses.", systemImage: "questionmark.circle")
+							.foregroundStyle(.orange)
+					}
+				} else {
+					Picker("Date format", selection: $model.layout.dateOrder) {
+						ForEach(DateOrder.allCases, id: \.self) { Text($0.title) }
+					}
 				}
 				Picker("Decimal separator", selection: $model.layout.decimalMark) {
 					Text("Detect").tag(DecimalMark?.none)
@@ -271,6 +300,7 @@ struct CSVPreviewView: View {
 	private var status: String {
 		if model.layout.missing.count > 1 { return String(localized: "Assign columns to \(model.missingFields).") }
 		if !model.layout.missing.isEmpty { return String(localized: "Assign a column to \(model.missingFields).") }
+		if model.asksDateOrder { return String(localized: "Choose the date order.") }
 		guard let preview = model.preview else { return model.problem == nil ? String(localized: "Reading the file...") : "" }
 		let count = preview.transactions.count
 		return count == 0 ? "" : count == 1 ? String(localized: "One transaction") : String(localized: "\(count) transactions")

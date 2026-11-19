@@ -32,6 +32,17 @@ struct CSVProfileTests {
 		}
 	}
 
+	@Test("A file whose dates fit both orders opens the preview with the question, even with a matching profile", arguments: [Import.DateOrder.dayMonthYear, .monthDayYear])
+	func ambiguousFileOpensPreview(order: Import.DateOrder) throws {
+		let file = try CSVFile(data: Data("Date,Name,Amount\n11/03/2026,Kiosk,-4.20\n11/04/2026,Bakery,-2.00\n".utf8))
+		var layout = try file.detectedLayout()
+		layout.dateOrder = order
+		let profile = CSVProfile(name: "Card CSV", header: file.header, layout: layout, delimiter: file.delimiter)
+		#expect(try profile.read(file, currency: "EUR") == nil)
+		let decided = try CSVFile(data: Data("Date,Name,Amount\n\(order == .monthDayYear ? "11/13/2026" : "13/11/2026"),Kiosk,-4.20\n".utf8))
+		#expect(try profile.read(decided, currency: "EUR")?.transactions.map(\.bookingDate) == [Day(year: 2026, month: 11, day: 13)])
+	}
+
 	@Test("An added empty title still suggests the saved column mapping")
 	func emptyTitles() throws {
 		let original = try CSVFile(data: Data("Datum;Name;Betrag;\n".utf8))

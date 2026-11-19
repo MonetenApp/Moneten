@@ -363,11 +363,17 @@ public struct CSVFile: Sendable {
 	private static let countries = Set(Locale.Region.isoRegions.map(\.identifier).filter { $0.count == 2 && $0.allSatisfy(\.isLetter) })
 
 	/// The date orders that every booking date and value date of the layout fits, day first first. Two
-	/// orders mean that the file does not decide, and the preview asks the user to check. A value that
+	/// orders mean that the file does not decide, and the preview asks the user for the order. A value that
 	/// fits no order, such as "pending" as a value date, decides nothing, and neither does one that reads
 	/// as the same day in both, such as "2026-10-31" or "01.01.2026". When the dates fit no single order,
 	/// the order that most of them fit comes alone.
 	public func dateOrders(_ layout: CSVLayout) throws -> [DateOrder] {
+		try dateEvidence(layout).orders
+	}
+
+	/// The date orders of `dateOrders`, and the first date that reads as two different days when the
+	/// orders are two, which the preview shows when it asks the user for the order.
+	private func dateEvidence(_ layout: CSVLayout) throws -> (orders: [DateOrder], ambiguous: AmbiguousDate?) {
 		let dateColumns = [layout.columns[.bookingDate], layout.columns[.valueDate]]
 		let values = try dataRows(layout).flatMap { row in
 			try Task.checkCancellation()
@@ -375,16 +381,21 @@ public struct CSVFile: Sendable {
 		}
 		var counts = Dictionary(uniqueKeysWithValues: DateOrder.allCases.map { ($0, 0) })
 		var deciding = 0
+		var example: AmbiguousDate?
 		for value in values {
 			try Task.checkCancellation()
 			let days = DateOrder.allCases.map { $0.day(value) }
 			guard days.contains(where: { $0 != nil }), Set(days).count > 1 else { continue }
 			for (order, day) in zip(DateOrder.allCases, days) where day != nil { counts[order]! += 1 }
 			deciding += 1
+			if example == nil, let dayFirst = DateOrder.dayMonthYear.day(value), let monthFirst = DateOrder.monthDayYear.day(value) {
+				example = AmbiguousDate(text: value, dayFirst: dayFirst, monthFirst: monthFirst)
+			}
 		}
-		guard deciding > 0 else { return [.dayMonthYear] }
+		guard deciding > 0 else { return ([.dayMonthYear], nil) }
 		let fitting = DateOrder.allCases.filter { counts[$0] == deciding }
-		return fitting.isEmpty ? [DateOrder.allCases.max { counts[$0]! < counts[$1]! }!] : fitting
+		if fitting.isEmpty { return ([DateOrder.allCases.max { counts[$0]! < counts[$1]! }!], nil) }
+		return (fitting, fitting.count > 1 ? example : nil)
 	}
 
 	/// The dated rows in the mapped columns. An amount cell that is present must reach validation,
@@ -542,12 +553,12 @@ public struct CSVFile: Sendable {
 	/// order that its values fit, unless they fit the order of the layout.
 	public func preview(_ layout: CSVLayout, currency: String, detectingDateOrder: Bool = false) throws -> CSVPreview {
 		var layout = layout
-		let orders = try dateOrders(layout)
+		let (orders, ambiguous) = try dateEvidence(layout)
 		if detectingDateOrder, !orders.contains(layout.dateOrder) { layout.dateOrder = orders[0] }
 		do {
-			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, dateOrders: orders)
+			return CSVPreview(layout: layout, parsed: try read(layout, currency: currency), problem: nil, ambiguousDate: ambiguous)
 		} catch let failure as TransactionFileImporter.Failure {
-			return CSVPreview(layout: layout, parsed: TransactionFileImporter.Parsed(transactions: []), problem: failure, dateOrders: orders)
+			return CSVPreview(layout: layout, parsed: TransactionFileImporter.Parsed(transactions: []), problem: failure, ambiguousDate: ambiguous)
 		}
 	}
 
@@ -685,10 +696,26 @@ public struct CSVPreview: Sendable {
 	public var parsed: TransactionFileImporter.Parsed
 	/// The row that cannot be read, which would stop the import of the file.
 	public var problem: TransactionFileImporter.Failure?
-	/// The date orders that the dates fit. Two orders mean that the file does not decide.
-	public var dateOrders: [DateOrder]
+	/// A date of the file that reads as two different days, when every date fits both orders. The
+	/// preview then asks the user for the order and imports nothing before the answer.
+	public var ambiguousDate: AmbiguousDate?
 
 	public var transactions: [Transaction] { parsed.transactions }
+}
+
+/// A date such as "11/03/2026", which is 11 March 2026 day first and 3 November 2026 month first.
+public struct AmbiguousDate: Hashable, Sendable {
+	/// The date as the file writes it.
+	public var text: String
+	public var dayFirst: Day
+	public var monthFirst: Day
+
+	public func day(_ order: DateOrder) -> Day {
+		switch order {
+		case .dayMonthYear: dayFirst
+		case .monthDayYear: monthFirst
+		}
+	}
 }
 
 /// The order of day and month in the dates of a CSV column. An ISO date such as "2026-10-31" reads the

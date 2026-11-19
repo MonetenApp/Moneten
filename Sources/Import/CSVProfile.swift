@@ -65,8 +65,8 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 	}
 
 	/// The transactions of a file with the header row of the profile, or nil when the file does not read in
-	/// the profile, such as a month with an umlaut for a profile saved on a file in plain ASCII, so that the
-	/// preview opens.
+	/// the profile, such as a month with an umlaut for a profile saved on a file in plain ASCII, or when every
+	/// date fits day first and month first, so that the preview opens.
 	/// A file in another encoding than the profile, such as UTF-8 after a profile in Windows-1252, would read
 	/// with wrong letters, so it opens the preview too, unless both encodings give the same text, as for a
 	/// file in ASCII or for "ä" in ISO-8859-1 and Windows-1252.
@@ -75,7 +75,8 @@ public struct CSVProfile: Hashable, Sendable, Codable {
 		let reread: CSVFile
 		do { reread = try file.with(layout.encoding) } catch is TransactionFileImporter.Failure { return nil }
 		let preview = try reread.preview(layout, currency: currency)
-		return preview.problem == nil && !preview.transactions.isEmpty ? preview.parsed : nil
+		// A file whose dates fit both orders needs the answer of the user, which the profile does not give.
+		return preview.problem == nil && preview.ambiguousDate == nil && !preview.transactions.isEmpty ? preview.parsed : nil
 	}
 
 }

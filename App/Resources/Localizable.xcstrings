@@ -576,6 +576,16 @@
         }
       }
     },
+    "%@: %@ is %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@: %2$@ ist der %3$@"
+          }
+        }
+      }
+    },
     "%@: %@ of %@" : {
       "localizations" : {
         "de" : {
@@ -3065,6 +3075,16 @@
         }
       }
     },
+    "Choose the date order." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählen Sie die Reihenfolge des Datums."
+          }
+        }
+      }
+    },
     "Choose this color" : {
       "localizations" : {
         "de" : {
@@ -4571,12 +4591,12 @@
         }
       }
     },
-    "Every date fits both orders. Check that the dates below are right." : {
+    "Every date fits both orders. Choose the order that the file uses." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jedes Datum passt zu beiden Reihenfolgen. Prüfen Sie, ob die Daten unten stimmen."
+            "value" : "Jedes Datum passt zu beiden Reihenfolgen. Wählen Sie die Reihenfolge, die die Datei verwendet."
           }
         }
       }
@@ -7130,6 +7150,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kein Datenbankpasswort schützt Ihre Daten. Setzen Sie jetzt eines."
+          }
+        }
+      }
+    },
+    "No date order was chosen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wurde keine Reihenfolge des Datums gewählt."
           }
         }
       }

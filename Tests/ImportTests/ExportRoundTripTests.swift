@@ -25,17 +25,42 @@ struct ExportRoundTripTests {
 		#expect(imported.map(\.amountMinor) == rows.map(\.amountMinor))
 	}
 
-	@Test("An American export whose days are all 12 or lower reads back day first", .bug("https://github.com/MonetenApp/Moneten/issues/509"))
+	@Test("An American export whose days are all 12 or lower asks for the date order, and month first brings back the same days", .bug("https://github.com/MonetenApp/Moneten/issues/509"))
 	func ambiguousAmericanDays() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
-		let row = Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), valueDate: Day(year: 2026, month: 11, day: 4), amountMinor: -8_900,
-			name: "Stadtwerke Musterstadt")
-		let data = try TransactionCSV.data([row], ledger: Ledger(accounts: [giro]), locale: Locale(identifier: "en_US"))
-		let imported = try TransactionFileImporter.parse(data, currency: "EUR").transactions
-		// A known limit: "11/03/2026" fits both orders, and the import takes the day first.
-		withKnownIssue("Issue #509: the import reads 11/03/2026 as 11 March") {
-			#expect(imported.map(\.bookingDate) == [row.bookingDate])
-		}
+		let rows = [
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3), valueDate: Day(year: 2026, month: 11, day: 4), amountMinor: -8_900,
+				name: "Stadtwerke Musterstadt"),
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 4), valueDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000,
+				name: "Bäckerei Gutbrot"),
+		]
+		let data = try TransactionCSV.data(rows, ledger: Ledger(accounts: [giro]), locale: Locale(identifier: "en_US"))
+		let file = try #require(try CSVFile.detect(data))
+		var layout = try file.detectedLayout()
+		let asked = try file.preview(layout, currency: "EUR")
+		#expect(asked.ambiguousDate == AmbiguousDate(text: "11/03/2026", dayFirst: Day(year: 2026, month: 3, day: 11), monthFirst: Day(year: 2026, month: 11, day: 3)))
+		layout.dateOrder = .monthDayYear
+		let chosen = try file.preview(layout, currency: "EUR")
+		#expect(chosen.problem == nil)
+		#expect(chosen.transactions.map(\.bookingDate) == rows.map(\.bookingDate))
+		#expect(chosen.transactions.map(\.valueDate) == rows.map(\.valueDate))
+		let imported = try TransactionFileImporter.parse(data, currency: "EUR", csv: (file, layout)).transactions
+		#expect(imported.map(\.bookingDate) == rows.map(\.bookingDate))
+		#expect(imported.map(\.amountMinor) == rows.map(\.amountMinor))
+	}
+
+	@Test("An American export with one day over 12 decides month first without the question")
+	func decidedAmericanDays() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
+		let days = [3, 4, 13].map { Day(year: 2026, month: 11, day: $0) }
+		let rows = days.map { Transaction(accountID: giro.id, bookingDate: $0, amountMinor: -1_000, name: "Kiosk") }
+		let data = try TransactionCSV.data(rows, ledger: Ledger(accounts: [giro]), locale: Locale(identifier: "en_US"))
+		let file = try #require(try CSVFile.detect(data))
+		let layout = try file.detectedLayout()
+		#expect(layout.dateOrder == .monthDayYear)
+		let preview = try file.preview(layout, currency: "EUR")
+		#expect(preview.ambiguousDate == nil)
+		#expect(preview.transactions.map(\.bookingDate) == days)
 	}
 
 	@Test("A file whose Arabic decimal separator occurs twice or has a point after it is refused, never read as a group of thousands", arguments: [
