@@ -502,6 +502,23 @@ struct PerformanceTests {
 		#expect(leave < budget(.milliseconds(50)))
 	}
 
+	@Test("50,000 rows of 10 accounts group by account within budget")
+	func groupedTransactions() {
+		let accounts = (0..<10).map { Account(position: $0, name: "Account \($0)", kind: .giro, source: .offline) }
+		let rows = (0..<50_000).map { i in
+			Transaction(accountID: accounts[i % 10].id, bookingDate: Day(year: 2026, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i), name: "Shop \(i)")
+		}
+		var grouped = GroupedTransactions([], groupedBy: [])
+		let build = fastest { grouped = GroupedTransactions(rows, groupedBy: accounts) }
+		print("group 50,000 rows by account \(build)")
+		#expect(grouped.transactions.count == 50_000)
+		#expect(grouped.headings.count == 10)
+		// About 7 ms in a release build. A debug build takes more than twice as long and varies with the load of the Mac.
+		#if !DEBUG
+		#expect(build < budget(.milliseconds(30)))
+		#endif
+	}
+
 	private func fastest(runs: Int = 3, _ work: () -> Void) -> Duration {
 		let clock = ContinuousClock()
 		return (0..<runs).map { _ in clock.measure(work) }.min()!
