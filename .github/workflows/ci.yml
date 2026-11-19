@@ -109,6 +109,10 @@ jobs:
         run: scripts/build-fints-helper.sh
       # Adds the FinTS helper with a jlink runtime to the app.
       - run: scripts/build-app.sh debug
+      - name: Release compile
+        # Compiles and links the app in Release without signing or the FinTS helper, so code that builds only in Debug
+        # and Perf, outside #if DEBUG || PERF_HARNESS, fails here and not in a release (issue #527).
+        run: scripts/build-app.sh compile
       - name: German translation
         # Every text that the build extracts has a German value in App/Resources/Localizable.xcstrings.
         run: python3 scripts/check-localization.py .build/xcode

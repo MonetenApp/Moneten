@@ -55,6 +55,7 @@ scripts/test.sh                     # run the tests of the libraries
 scripts/generate-project.sh         # write App/Moneten.xcodeproj, then open it in Xcode
 scripts/build-app.sh                # build dist/Moneten.app; add "debug" for a debug build
 scripts/build-app.sh developer-id   # sign it with the Developer ID certificate, see docs/releasing.md
+scripts/build-app.sh compile        # only compile and link the app in Release, as CI does
 open dist/Moneten.app
 scripts/check.sh                    # run the checks before a pull request; needs OpenSpec and Periphery
 ```
