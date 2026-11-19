@@ -966,8 +966,10 @@ final class DebugHarness {
 		// The reason of a refusal can quote the file, so only the alert shows it, as "Import All Data..." does, and "alerttext" reads it.
 		#if DEBUG || PERF_HARNESS
 		case "importall":
-			guard let url = readTarget(argument) else { return log("importall refused", ("path", .word("outside"))) }
+			guard mayRead(argument) else { return log("importall refused", ("path", .word("outside"))) }
 			Task {
+				// The import starts later, so the path is resolved again right before the read, as "backup" does.
+				guard let url = readTarget(argument) else { return log("importall refused", ("path", .word("outside"))) }
 				let outcome = await model.readAllData(from: url)
 				if outcome != "done" { model.alert = AlertMessage(title: String(localized: "Could not import the data."), message: outcome) }
 				log("importall", ("", .word(outcome == "done" ? "done" : "refused")))
@@ -1993,12 +1995,15 @@ final class DebugHarness {
 	}
 
 	#if DEBUG || PERF_HARNESS
-	/// The canonical path of a file that "fetchfile" or "importall" may read, resolved once, or nil when it does not lie
-	/// inside the debug folder or the throwaway data folder of the run (`HarnessRun.readTarget` says what this guards against).
-	/// The command then reads this path and not the path it was given.
-	private func readTarget(_ path: String) -> URL? {
-		HarnessRun.readTarget(path, in: [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? [])).map { URL(filePath: $0) }
-	}
+	/// The debug folder and the throwaway data folder of the run, the only places that "fetchfile" and "importall" read.
+	private var readableFolders: [String] { [folder.path] + (DataFolder.requestedPath.map { [$0] } ?? []) }
+
+	/// Whether "fetchfile" or "importall" may read the file at `path`, checked when the command arrives.
+	private func mayRead(_ path: String) -> Bool { HarnessRun.allowsRead(path, in: readableFolders) }
+
+	/// The canonical path of that file, resolved once right before the read, or nil when it no longer lies inside the folders
+	/// (`HarnessRun.readTarget` says what this guards against). The command then reads this path and not the path it was given.
+	private func readTarget(_ path: String) -> URL? { HarnessRun.readTarget(path, in: readableFolders).map { URL(filePath: $0) } }
 
 	/// The file <name>.<ext> in the debug folder, or nil for a name with other characters than letters, digits, "-", and "_",
 	/// so that no name reaches outside the folder.
@@ -2033,6 +2038,7 @@ final class DebugHarness {
 		guard let model else { return }
 		let parts = argument.components(separatedBy: "|")
 		guard (2...3).contains(parts.count), let account = model.ledger.accounts.first(where: { $0.name == parts[0] }) else { return log("fetchfile refused") }
+		guard parts[1] == "-" || mayRead(parts[1]) else { return log("fetchfile refused", ("path", .word("outside"))) }
 		let url = parts[1] == "-" ? nil : readTarget(parts[1])
 		guard parts[1] == "-" || url != nil else { return log("fetchfile refused", ("path", .word("outside"))) }
 		var rows: [Transaction]
