@@ -41,6 +41,12 @@ final class AppUpdater: NSObject {
 			return updater?.automaticallyChecksForUpdates ?? false
 		}
 		set {
+			// Sparkle keeps the value in the standard defaults of the bundle ID, which a run with settings of its own
+			// leaves alone (AppSettings), so such a run keeps the value and changes nothing.
+			guard AppSettings.suite == nil else {
+				withMutation(keyPath: \.checksAutomatically) {}
+				return UpdateLog.write("update check setting kept: harness")
+			}
 			withMutation(keyPath: \.checksAutomatically) { updater?.automaticallyChecksForUpdates = newValue }
 		}
 	}

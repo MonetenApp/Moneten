@@ -104,6 +104,16 @@ send perf
 wait_for "^perf done" 900
 send quit
 for _ in 1 2 3 4 5 6 7 8 9 10; do alive || break; sleep 0.5; done
+# Issue #220: the settings of the run go into "Settings.plist" in its data folder, and the standard defaults of the
+# bundle ID get none of them, so a run never changes the settings of a real copy of the app.
+defaults read "$WORK/data/Settings" showBannerNotificationOnNewTransactions >/dev/null 2>&1 \
+	|| { echo "The settings of the run hold no showBannerNotificationOnNewTransactions." >&2; exit 1; }
+for key in selectedSidebarRow showBannerNotificationOnNewTransactions categoryViewMode extensionDeviceUuid vatRates; do
+	if defaults read "$BUNDLE_ID" "$key" >/dev/null 2>&1; then
+		echo "The run wrote $key into the standard defaults of its bundle ID." >&2
+		exit 1
+	fi
+done
 if [ -n "$GITHUB_ACTIONS" ]; then
 	awk '/^perf .* result=slow$/ { print "::warning title=Slow UI scenario::" $2 " blocked the main thread for " substr($3, 10) " ms, over the budget of " substr($4, 11) " ms" }' "$LOG"
 fi

@@ -168,9 +168,13 @@ public enum HarnessRun {
 
 	/// Whether "extjs" may run JavaScript in the web login page of an extension. `recipient` belongs to the dialog of
 	/// the broker on screen that shows the page, nil when no such dialog shows. A script can send a token to the
-	/// extension, as the page does at the end of a login, so it passes only when `mayReach` lets the harness reach the recipient.
-	public static func mayRunScript(inLoginOf recipient: Recipient?, fakeBank: Bool) -> Bool {
-		recipient.map { mayReach($0, fakeBank: fakeBank) } ?? false
+	/// extension, as the page does at the end of a login, so it passes only when `mayReach` lets the harness reach the
+	/// recipient. `servedLocally` says that the run made the page itself: a page of the fixture of the run at the address
+	/// that the web view shows now, or the captcha stub. An extension with a fixture counts as local, but a login page
+	/// that the fixture lacks loads from the real service, and a script there could log in at it.
+	public static func mayRunScript(inLoginOf recipient: Recipient?, servedLocally: Bool, fakeBank: Bool) -> Bool {
+		guard servedLocally, let recipient else { return false }
+		return mayReach(recipient, fakeBank: fakeBank)
 	}
 
 	/// What `surface(of:)` needs to know of a window and of the app. The app reads it from AppKit and the model.

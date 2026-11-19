@@ -636,7 +636,7 @@ send quit
 for key in showBannerNotificationOnNewTransactions playSoundOnNewTransactions; do
 	defaults read "$DATA/Settings" "$key" >/dev/null 2>&1 || { echo "The settings of the run hold no $key." >&2; exit 1; }
 done
-for key in selectedSidebarRow showBannerNotificationOnNewTransactions playSoundOnNewTransactions extensionDeviceUuid vatRates; do
+for key in selectedSidebarRow showBannerNotificationOnNewTransactions playSoundOnNewTransactions categoryViewMode extensionDeviceUuid vatRates; do
 	if defaults read "$BUNDLE_ID" "$key" >/dev/null 2>&1; then
 		echo "The run wrote $key into the standard defaults of its bundle ID." >&2
 		exit 1

@@ -8,7 +8,8 @@ import Storage
 ///
 /// Two kinds of keys stay in the standard defaults in every run, because their owners write them there: the keys of
 /// Sparkle, such as `SUEnableAutomaticChecks` of "Show notification about new versions of Moneten" and the times of
-/// its checks, and the keys of AppKit, such as the frames of the windows.
+/// its checks, and the keys of AppKit, such as the frames of the windows. A run with a suite keeps the switch of the
+/// automatic check as it is (`AppUpdater.checksAutomatically`), so it never writes `SUEnableAutomaticChecks`.
 enum AppSettings {
 	/// The suite of this run, or nil when the app uses its standard defaults.
 	static let suite = DataFolder.settingsSuite(override: DataFolder.requestedPath)

@@ -374,10 +374,19 @@ struct HarnessExtensionTests {
 
 	@Test("extjs runs a script only in the web login of a dialog on screen whose recipient the harness may reach")
 	func script() {
-		#expect(!HarnessRun.mayRunScript(inLoginOf: nil, fakeBank: true))
-		#expect(HarnessRun.mayRunScript(inLoginOf: .local, fakeBank: false))
-		#expect(!HarnessRun.mayRunScript(inLoginOf: .realService, fakeBank: true))
-		#expect(!HarnessRun.mayRunScript(inLoginOf: .fints, fakeBank: false))
+		#expect(!HarnessRun.mayRunScript(inLoginOf: nil, servedLocally: true, fakeBank: true))
+		#expect(HarnessRun.mayRunScript(inLoginOf: .local, servedLocally: true, fakeBank: false))
+		#expect(!HarnessRun.mayRunScript(inLoginOf: .realService, servedLocally: true, fakeBank: true))
+		#expect(!HarnessRun.mayRunScript(inLoginOf: .fints, servedLocally: true, fakeBank: false))
+	}
+
+	/// Review round 1 of #542: an extension with a fixture of the run is local, but its browser login loads the real
+	/// login page when the run served no page for that address.
+	@Test("extjs runs no script in a login page from the network, also for a local recipient")
+	func scriptOnlyInServedPage() {
+		for recipient in [HarnessRun.Recipient.local, .fints, .realService] {
+			#expect(!HarnessRun.mayRunScript(inLoginOf: recipient, servedLocally: false, fakeBank: true), "\(recipient)")
+		}
 	}
 
 	@Test("extfile records nothing: a file extension is the run's own only after its install was confirmed and its files are in place")

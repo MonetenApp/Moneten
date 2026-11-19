@@ -733,18 +733,17 @@ final class DebugHarness {
 		case "exttan": answer { .tan(Secret(argument)) }
 		case "extmethod": answer { .tanMethod(argument) }
 		case "extcancel": if let prompt = model.sync.broker.current { model.sync.broker.cancel(prompt.id) }
+		#if DEBUG || PERF_HARNESS
 		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub. It runs only
-		// in the web login of the dialog on screen whose recipient is the made-up bank or a local service
-		// (HarnessRun.mayRunScript) and logs "extjs refused" otherwise.
+		// in a page that the run served itself, in the web login of the dialog on screen whose recipient is the made-up bank
+		// or a local service (HarnessRun.mayRunScript), and logs "extjs refused" otherwise.
 		case "extjs":
-			#if DEBUG || PERF_HARNESS
-			guard let web = ExtensionWebDebug.current, HarnessRun.mayRunScript(inLoginOf: webLoginRecipient(web), fakeBank: usesFakeBank) else {
+			guard let web = ExtensionWebDebug.current, let login = webLogin(web),
+				HarnessRun.mayRunScript(inLoginOf: login.recipient, servedLocally: login.served, fakeBank: usesFakeBank) else {
 				return log("extjs refused")
 			}
 			web.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
-			#else
-			ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
-			#endif
+		#endif
 		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
 		// The state of each access and account. "extstate <minor units>" logs whether a balance is that amount.
 		case "extstate": logExtensionState(expecting: argument)
@@ -1725,12 +1724,15 @@ final class DebugHarness {
 		recipient(of: Access(source: source, bankName: "", loginName: ""))
 	}
 
-	/// The recipient of the dialog on screen whose web login shows in `web`, or nil when the dialog on screen shows no
-	/// web login or `web` is no longer in its window.
-	private func webLoginRecipient(_ web: WKWebView) -> HarnessRun.Recipient? {
+	/// The web login of the dialog on screen that shows in `web`: the recipient of the dialog, and whether the run served
+	/// the page itself, as a page of `ExtensionWebDebug.pages` at the address that `web` shows now, or as the captcha stub.
+	/// Nil when the dialog on screen shows no web login or `web` is no longer in its window.
+	private func webLogin(_ web: WKWebView) -> (recipient: HarnessRun.Recipient, served: Bool)? {
 		guard web.window != nil, let prompt = model?.sync.broker.current, case let .secondFactor(request) = prompt.request else { return nil }
 		switch request.challenge {
-		case .openBrowser, .captcha: return recipient(of: prompt.access)
+		case .openBrowser:
+			return (recipient(of: prompt.access), web.url.map { ExtensionWebDebug.pages[ExtensionWebDebug.key($0)] != nil } ?? false)
+		case .captcha: return (recipient(of: prompt.access), ExtensionWebDebug.captchaStub)
 		default: return nil
 		}
 	}
