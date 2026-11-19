@@ -39,15 +39,20 @@ struct UpdateConfirmation: View {
 				Spacer()
 				Button("Cancel", role: .cancel) { dismiss() }
 					.keyboardShortcut(.cancelAction)
-				Button(confirmTitle) {
+				// Removing an extension cannot be undone, so Return never confirms it, and Escape cancels.
+				Button(confirmTitle, role: isRemoval ? .destructive : nil) {
 					model.extensions.confirm(question)
 					dismiss()
 				}
-				.keyboardShortcut(.defaultAction)
+				.keyboardShortcut(isRemoval ? nil : .defaultAction)
 			}
 		}
 		.padding(20)
 		.frame(width: 440)
+	}
+
+	private var isRemoval: Bool {
+		if case .remove = question { true } else { false }
 	}
 
 	private var confirmTitle: LocalizedStringKey {

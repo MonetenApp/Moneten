@@ -150,7 +150,11 @@ extension AppModel {
 		case .search:
 			return nil
 		}
-		question.addButton(withTitle: String(localized: "Remove")).hasDestructiveAction = true
+		// AppKit gives the first button Return, also a destructive one. Removing cannot be undone, so Return presses
+		// nothing, and Escape keeps "Cancel". A button holds one key, so "Cancel" cannot take Return too.
+		let remove = question.addButton(withTitle: String(localized: "Remove"))
+		remove.hasDestructiveAction = true
+		remove.keyEquivalent = ""
 		question.addButton(withTitle: String(localized: "Cancel"))
 		return question
 	}

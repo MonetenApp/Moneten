@@ -133,7 +133,8 @@ struct UndoSplitSheet: View {
 	let rowID: UUID
 
 	var body: some View {
-		SheetFrame(title: "Replace the split transactions with the original transaction?", confirmTitle: "Undo Split Transaction", onConfirm: {
+		// The parts cannot be restored, so Return never confirms.
+		SheetFrame(title: "Replace the split transactions with the original transaction?", confirmTitle: "Undo Split Transaction", destructive: true, onConfirm: {
 			if let part = model.ledger.part(rowID) {
 				Task { await model.replaceParts(of: part.transactionID, with: []) }
 			}
