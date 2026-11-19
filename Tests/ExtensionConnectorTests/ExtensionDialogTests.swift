@@ -5,13 +5,12 @@ import Synchronization
 import Sync
 import SyncTesting
 import Testing
-import TestSupport
 
 /// An extension access in the dialog queue of the app, beside a FinTS access. The requests of a real host
 /// process reach the same broker and the same dialogs as those of a FinTS server, and its login data follows
 /// the rules of a PIN, saved or not. The script needs no network.
 @MainActor
-@Suite("Dialogs of an extension in the queue of the app")
+@Suite("Dialogs of an extension in the queue of the app", .timeLimit(.minutes(5)))
 struct ExtensionDialogTests {
 	let coordinator = SyncCoordinator()
 	var broker: SessionBroker { coordinator.broker }
@@ -80,21 +79,21 @@ struct ExtensionDialogTests {
 		if let id = broker.current?.id { broker.answer(answer, to: id) }
 	}
 
-	/// Waits until the condition holds, for at most ten seconds, because each refresh starts a host process.
-	/// Waits until the condition holds. Each refresh starts a host process, which a loaded runner launches slowly, so the
-	/// deadline allows 30 seconds for the launch, the login, and the end of the session.
-	func until(_ condition: () -> Bool, sourceLocation: SourceLocation = #_sourceLocation) async {
-		let deadline = ContinuousClock.now + budget(.seconds(30))
-		while !condition(), ContinuousClock.now < deadline {
+	/// Waits until the condition holds, with no deadline of its own: the time limit of the suite ends a wait that never
+	/// ends. The body of a test runs on the main actor, but the work of a refresh runs on the threads of Swift concurrency.
+	/// Swift Testing starts every test of the process at once, and on a runner with three cores the jobs of the first
+	/// minute wait in the queue of those three threads for about as long. A deadline that started with the body ran out
+	/// before the refresh got its first thread.
+	func until(_ condition: () -> Bool) async {
+		while !condition() {
 			try? await Task.sleep(for: .milliseconds(10))
 		}
-		#expect(condition(), sourceLocation: sourceLocation)
 	}
 
 	/// Waits until `runs` runs of `access` ended in all, whatever their end, and the coordinator runs nothing, so that the
 	/// next refresh starts on its own and is not dropped beside the one that ends.
-	func untilEnded(_ access: Access, runs: Int, sourceLocation: SourceLocation = #_sourceLocation) async {
-		await until({ endedRuns.count(access.id) >= runs && !coordinator.isRefreshing }, sourceLocation: sourceLocation)
+	func untilEnded(_ access: Access, runs: Int) async {
+		await until { endedRuns.count(access.id) >= runs && !coordinator.isRefreshing }
 	}
 
 	/// A refresh of the card that the user answers with the login data and the code, which leaves the login data in memory.
