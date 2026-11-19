@@ -4479,6 +4479,50 @@
         }
       }
     },
+    "Enter %lld characters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie %lld Zeichen ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Enter %lld digits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie %lld Ziffern ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Enter %lld to %lld characters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie %1$lld bis %2$lld Zeichen ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "Enter %lld to %lld digits." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geben Sie %1$lld bis %2$lld Ziffern ein."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Enter a currency code such as EUR." : {
       "localizations" : {
         "de" : {

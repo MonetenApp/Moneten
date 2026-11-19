@@ -114,6 +114,12 @@ HypoVereinsbank runs one FinTS server, `hbci-01.hypovereinsbank.de`, for its 182
 - No page of Oberbank names the login name of its HBCI access, so the field keeps "User ID". The line under it says to ask the customer adviser whether the access with xTAN is switched on, if the login fails. A rejected first login repeats that line, as it does for every hint.
 - The bank test of issue #11 records the answer of the server to a login without an access, with its code and text. The message of that answer can then name the access directly.
 
+### Rules of PayCenter and VIMpay
+
+`Sources/FinTS/PayCenter.swift` holds the rules of PayCenter GmbH (issue #238). The bank directory names the Bankleitzahl 70017000 "PayCenter GmbH" in Freising, with the FinTS address `https://fints.paycenter.de`. VIMpay is the consumer brand of PayCenter on the same Bankleitzahl, so the search shows the entry as "PayCenter / VIMpay" and finds it by both names (`PayCenter.brandNames`), as it does for Postbank and FYRST.
+
+PayCenter and VIMpay log in with different login names: the issue names the email address of a PayCenter account and the mobile phone number of a VIMpay account. No public page of PayCenter or VIMpay confirms these logins or their format, such as a phone number with or without the country code. Only the help page of another finance app names the phone number. A hint without a public page of the bank is left out, as for norisbank, so PayCenter keeps "User ID" and task 1.50 stays open until a page of the bank or the bank test of issue #11 confirms the logins.
+
 ### The steps and the keyboard
 
 The line under the title names the step and its number, so that "Back" visibly leaves the login data. The field of the new step takes the keyboard focus: the login name, or the PIN when the login name is filled in. After "Back" to a chosen bank, no field takes it, so a login name typed by mistake does not replace the bank. The login name stays when the user goes back and forth.

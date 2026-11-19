@@ -50,6 +50,8 @@
 # in the bank parameters, or of method 902.
 # Deutsche Bank (37070060), Postbank (10010010), and norisbank (10077777) have their real FinTS addresses, so the setup
 # shows their hints and the name "Postbank / FYRST", sends the login name without spaces, and asks for a TAN in capitals.
+# PayCenter (70017000) has its real FinTS address, so the search shows it as "PayCenter / VIMpay", and its login asks for a TAN
+# of method 911 with 6 characters.
 # Musterbank 12030000 has the Bankleitzahl of DKB and shows the hint of DKB, the DKB step for "ohnetan", and the DKB
 # message of a card without jobs for "karteohnejobs". Oberbank (70120700) has its real FinTS address on the server of
 # Bank-Verlag, so the setup shows its note, and its login asks for the TAN method from "smsTAN" and "TAN-Generator", with
@@ -91,7 +93,8 @@ case "$cmd" in
 '{"code":"70120400","name":"BNP Paribas S.A. Niederlassung Deutschland-Consorsbank","city":"München","bic":"DABBDEMMXXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"76030080","name":"Bnp Paribas S.A. Niederlassung Deutschland - Consorsbank","city":"Nürnberg, Mittelfr","bic":"CSDBDE71XXX","url":"https://brokerage-hbci.consorsbank.de/hbci"},'\
 '{"code":"50040000","name":"Commerzbank","city":"Frankfurt am Main","bic":"COBADEFFXXX","url":"https://fints.commerzbank.de/fints"},'\
-'{"code":"20041111","name":"comdirect bank AG","city":"Quickborn, Kr Pinneberg","bic":"COBADEHDXXX","url":"https://fints.comdirect.de/fints"}]}'
+'{"code":"20041111","name":"comdirect bank AG","city":"Quickborn, Kr Pinneberg","bic":"COBADEHDXXX","url":"https://fints.comdirect.de/fints"},'\
+'{"code":"70017000","name":"PayCenter GmbH","city":"Freising","bic":"PAGMDEM1","url":"https://fints.paycenter.de"}]}'
 	;;
 *'"type":"accounts"'*)
 	echo "$pin"
@@ -122,6 +125,7 @@ case "$cmd" in
 	case "$cmd" in
 	*'"bankCode":"50040000"'*) echo "$photoTAN"'"900"}' ;;
 	*'"bankCode":"20041111"'*) echo "$photoTAN"'"902"}' ;;
+	*'"bankCode":"70017000"'*) echo '{"type":"ask","id":2,"kind":"tan","purpose":"login","prompt":"Bitte geben Sie die TAN ein.","maxLength":6,"current":"911"}' ;;
 	*'"bankCode":"70120700"'*)
 		echo '{"type":"ask","id":2,"kind":"tanMethod","purpose":"login","methods":[{"id":"921","name":"smsTAN","delivery":"sms"},{"id":"972","name":"TAN-Generator"}]}'
 		answer

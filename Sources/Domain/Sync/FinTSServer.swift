@@ -4,6 +4,14 @@ import Foundation
 /// the FinTS connector, because two accesses are the same login only when their login names agree in the
 /// form that the server sees ("Send the login name in the form that the bank expects").
 public enum FinTSServer {
+	/// The host of `server` in lower case and without one trailing dot, as the helper reads it. The rules of each bank
+	/// group compare this form, so that "FINTS.Bank.de." counts as "fints.bank.de".
+	public static func host(_ server: URL?) -> String? {
+		guard var host = server?.host()?.lowercased() else { return nil }
+		if host.hasSuffix(".") { host.removeLast() }
+		return host
+	}
+
 	/// The FinTS servers of Atruvia for the cooperative banks, such as `fints2.atruvia.de`, and its other domain.
 	public static func isAtruvia(_ server: URL?) -> Bool {
 		guard let host = server?.host()?.lowercased() else { return false }
@@ -19,8 +27,7 @@ public enum FinTSServer {
 	/// one trailing dot, as `SavingsBanks.name` of the helper in Tools/FinTSHelper reads it, and a host with an empty
 	/// label counts as none.
 	public static func isSavingsBank(_ server: URL?) -> Bool {
-		guard var host = server?.host()?.lowercased() else { return false }
-		if host.hasSuffix(".") { host.removeLast() }
+		guard let host = host(server) else { return false }
 		let labels = host.split(separator: ".", omittingEmptySubsequences: false)
 		guard labels.count >= 2, !labels.contains(where: \.isEmpty), labels[labels.count - 1] == "de" else { return false }
 		let label = labels[labels.count - 2]
