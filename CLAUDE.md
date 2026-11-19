@@ -21,6 +21,7 @@ scripts/check.sh                                   # docs, chrome rule, specs, P
 
 scripts/generate-project.sh                        # writes App/Moneten.xcodeproj
 scripts/build-app.sh                               # dist/Moneten.app, Release; "debug" for a Debug build
+scripts/build-app.sh compile                       # compiles and links the app in Release, unsigned, as CI does after the debug build
 scripts/release.sh dry-run                         # the release pipeline without secrets: disk image and signed test feed
 python3 scripts/release-notes.py check             # the format of CHANGELOG.md
 swift run --disable-keychain ext test Extensions/Example Fixtures/example/fixture.json Fixtures/example/expected.json
