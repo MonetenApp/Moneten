@@ -7,7 +7,7 @@ import SwiftUI
 struct MonetenApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
 	@State private var model: AppModel
-	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
+	@AppStorage(Preference.showMenuBarIcon, store: AppSettings.defaults) private var showMenuBarIcon = false
 
 	init() {
 		// Before the model exists, because the model opens the data folder and the keychain.

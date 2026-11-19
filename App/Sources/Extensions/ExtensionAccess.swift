@@ -10,9 +10,9 @@ extension AppModel {
 	/// What scripts read from `MM` about the app and the user.
 	var extensionEnvironment: HostEnvironment {
 		let key = "extensionDeviceUuid"
-		let device = UserDefaults.standard.string(forKey: key) ?? {
+		let device = AppSettings.defaults.string(forKey: key) ?? {
 			let new = UUID().uuidString.lowercased()
-			UserDefaults.standard.set(new, forKey: key)
+			AppSettings.defaults.set(new, forKey: key)
 			return new
 		}()
 		let info = Bundle.main.infoDictionary

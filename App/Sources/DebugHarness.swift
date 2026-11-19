@@ -9,7 +9,7 @@ import Storage
 import Sync
 import SyncTesting
 import SwiftUI
-import Storage
+import WebKit
 
 /// Lets a developer drive the app and capture its windows as images, for checks without a screen.
 ///
@@ -39,9 +39,10 @@ final class DebugHarness {
 	private var noticeAccount: UUID?
 	/// Set by "backup": answers the warning of "Backup Database..." without a database password and logs it.
 	var alertAnswer: ((NSAlert) -> NSApplication.ModalResponse)?
-	/// The extensions that this run loaded itself from a file, with "extfile", "extaccess", "extrefresh", or "extrun".
-	/// Their questions count as local (HarnessRun.Recipient.local), as do those of an extension with a fixture.
-	private var fileExtensions: Set<String> = []
+	/// The extensions that this run loaded itself from a file, with "extaccess", "extrefresh", or "extrun", or installed
+	/// with "extfile" and "extconfirm". Their questions count as local (HarnessRun.Recipient.local), as do those of an
+	/// extension with a fixture.
+	private var ownExtensions = HarnessRun.OwnExtensions()
 	#endif
 
 	/// The debug folder of this run, or nil in a release build and in a run without `MONETEN_DEBUG_DIR`.
@@ -655,8 +656,8 @@ final class DebugHarness {
 				RefreshSettings.playsSoundKey]
 			let parts = argument.split(separator: " ").map(String.init)
 			guard parts.count == 2, let key = keys.firstIndex(of: parts[0]), ["on", "off"].contains(parts[1]) else { return log("setting rejected") }
-			UserDefaults.standard.set(parts[1] == "on", forKey: keys[key])
-			log("setting", ("key", .position(key)), ("value", .flag(UserDefaults.standard.bool(forKey: keys[key]))))
+			AppSettings.defaults.set(parts[1] == "on", forKey: keys[key])
+			log("setting", ("key", .position(key)), ("value", .flag(AppSettings.defaults.bool(forKey: keys[key]))))
 		// Clicks the first notification of the app that the Notification Center lists: the app does what it does when macOS reports a click.
 		case "noticeclick":
 			Task {
@@ -715,8 +716,14 @@ final class DebugHarness {
 		// Logs the same as "alert" and leaves the alert open.
 		case "alertstate": log("alertstate", ("title", model.alert.map { .hash($0.title) } ?? .presence(false)), ("shown", .flag(model.alerts.panel != nil)))
 		case "extanswer":
-			// Clicks "Allow" or "Deny" in the question about a new host.
+			// Clicks "Allow" or "Deny" in the question about a new host. "Allow" reaches only the made-up bank or a local
+			// service (HarnessRun.mayAnswerHost) and logs "extanswer refused" otherwise.
 			guard let prompt = model.sync.broker.current, case .allowHost = prompt.request else { return log("extanswer no host question") }
+			#if DEBUG || PERF_HARNESS
+			guard HarnessRun.mayAnswerHost(allow: argument == "allow", to: recipient(of: prompt.access), fakeBank: usesFakeBank) else {
+				return log("extanswer refused")
+			}
+			#endif
 			model.sync.broker.answer(.host(argument == "allow" ? .allowed : .denied), to: prompt.id)
 		// "<package>|<fixture>|<service>" sets up an access; "<package>|<fixture>|auto" refreshes the accesses of the package.
 		case "extaccess", "extrefresh": extensionAccess(command, argument)
@@ -729,6 +736,8 @@ final class DebugHarness {
 		#if DEBUG || PERF_HARNESS
 		// "extsavelogin <user>|<password>" answers the login dialog with "Save Password" on (issue #536). "extsaved" logs how many
 		// extension accesses have saved login data, and "extforget" does for each of them what "OK" after "Remove saved PIN" does.
+		// It answers through answer(_:), whose HarnessRun check (mayAnswer) is that of "extlogin". "extsaved" and "extforget" reach
+		// nothing outside the open throwaway database.
 		case "extsavelogin": answer { .login(argument.components(separatedBy: "|").map(Secret.init), save: true) }
 		case "extsaved", "extforget":
 			let saved = model.accesses.values.filter { access in
@@ -742,8 +751,17 @@ final class DebugHarness {
 				log("ext saved", ("count", .count(saved.count)))
 			}
 		#endif
-		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub.
-		case "extjs": ExtensionWebDebug.current?.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
+		#if DEBUG || PERF_HARNESS
+		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub. It runs only
+		// in a page that the run served itself, in the web login of the dialog on screen whose recipient is the made-up bank
+		// or a local service (HarnessRun.mayRunScript), and logs "extjs refused" otherwise.
+		case "extjs":
+			guard let web = ExtensionWebDebug.current, let login = webLogin(web),
+				HarnessRun.mayRunScript(inLoginOf: login.recipient, servedLocally: login.served, fakeBank: usesFakeBank) else {
+				return log("extjs refused")
+			}
+			web.evaluateJavaScript(argument) { [weak self] _, error in if let error { self?.log("extjs", ("error", .type(of: error))) } else { self?.log("extjs ok") } }
+		#endif
 		case "extcaptchastub": ExtensionWebDebug.captchaStub = argument != "off"
 		// The state of each access and account. "extstate <minor units>" logs whether a balance is that amount.
 		case "extstate": logExtensionState(expecting: argument)
@@ -795,11 +813,9 @@ final class DebugHarness {
 		case "extupdate": Task { await model.extensions.update(argument, approving: .init(version: model.extensions.items.first { $0.id == argument }?.available ?? "")) }
 		case "extreview": model.extensions.review(argument)
 		case "extremove": model.extensions.askRemove(argument)
-		case "extfile":
-			model.extensions.pickFile(URL(filePath: argument))
-			#if DEBUG || PERF_HARNESS
-			if case let .fileWarning(_, _, name)? = model.extensions.question { fileExtensions.insert(name) }
-			#endif
+		// Shows the warning for files of the extension at the path. The extension counts as the run's own only after
+		// "extconfirm" installed it (HarnessRun.OwnExtensions).
+		case "extfile": model.extensions.pickFile(URL(filePath: argument))
 		case "extallow": model.extensions.askAllow(argument)
 		case "extselect": model.extensions.selection = argument
 		// "<id>|<fixture>": the recorded answers that replace the network for an installed extension.
@@ -815,6 +831,11 @@ final class DebugHarness {
 			guard let question = model.extensions.question else { return log("extconfirm no question") }
 			model.extensions.question = nil
 			model.extensions.confirm(question)
+			#if DEBUG || PERF_HARNESS
+			if case let .fileWarning(_, package, name) = question {
+				ownExtensions.confirmedFile(name, installed: model.extensions.allowedFilePackage(name) == package)
+			}
+			#endif
 		// Logs the title of the failure in the Extensions window by its hash and closes it, as "alert" does in the main window.
 		case "extalert":
 			log("extalert", ("title", model.extensions.failure.map { .hash($0) } ?? .presence(false)), ("shown", .flag(model.extensions.alerts.panel != nil)))
@@ -1566,7 +1587,7 @@ final class DebugHarness {
 		case "menuitem": menuItem(argument)
 		#endif
 		case "state":
-			let savedFilter = UserDefaults.standard.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
+			let savedFilter = AppSettings.defaults.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:))
 			log("", ("phase", .state(model.phase)), ("accounts", .count(model.ledger.accounts.count)), ("transactions", .count(model.ledger.transactions.count)),
 				("visible", .count(model.visibleTransactions.count)), ("selection", .state(model.selection)), ("selected", .state(model.selectedAccount?.kind)))
 			// The case of the amount filter, without the ends of a custom range.
@@ -1686,50 +1707,57 @@ final class DebugHarness {
 		topSheet ?? NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
 	}
 
-	/// What a key or a press of "key" and "controls" in `window` reaches, for the rules of HarnessRun. A dialog of the
-	/// broker counts as a bank dialog while it is on screen: a question, and also the progress after the choice of a TAN
-	/// method or medium, whose Escape cancels the refresh. A sheet over the main window while the database is not open
-	/// is an alert, such as "Forgot your password?".
+	/// What a key or a press of "key" and "controls" in `window` reaches, for the rules of HarnessRun.surface(of:).
 	private func surface(of window: NSWindow) -> HarnessRun.Surface {
-		// A panel of the sandboxed service of macOS is no NSSavePanel in the app, so its class name counts too.
-		guard let model, !(window is NSSavePanel), !window.className.contains("SavePanel"), !window.className.contains("OpenPanel") else { return .filePanel }
-		if let sheet = model.sync.broker.sheet {
-			switch sheet {
-			case let .prompt(prompt): return .bankDialog(recipient(of: prompt.access))
-			case let .requesting(requesting): return .bankDialog(recipient(of: requesting.access))
-			}
-		}
-		if let setup = model.setup {
+		guard let model else { return .filePanel }
+		let setup = model.setup.map { setup in
 			let service: HarnessRun.SetupService = switch setup.service {
 			case nil: .fints
 			case let .extensionService(id, _)?: .extensionService(recipient(of: .extension(id: id)))
 			case .offline?: .offline
 			}
-			return HarnessRun.setupSurface(atLogin: setup.step == .login, service: service)
+			return HarnessRun.Screen.Setup(atLogin: setup.step == .login, service: service)
 		}
-		if model.phase != .unlocked { return window.isSheet ? .startAlert : .startWindow }
-		switch model.sheet {
-		case .setPassword?, .changePassword?: return .passwordSheet
-		default: return .other
+		let bankDialog: HarnessRun.Recipient? = switch model.sync.broker.sheet {
+		case let .prompt(prompt)?: recipient(of: prompt.access)
+		case let .requesting(requesting)?: recipient(of: requesting.access)
+		case nil: nil
 		}
+		let passwordSheet = switch model.sheet {
+		case .setPassword?, .changePassword?: true
+		default: false
+		}
+		return HarnessRun.surface(of: HarnessRun.Screen(isFilePanel: window is NSSavePanel || HarnessRun.isFilePanel(className: window.className),
+			bankDialog: bankDialog, setup: setup, unlocked: model.phase == .unlocked, isSheet: window.isSheet, passwordSheet: passwordSheet))
 	}
 
-	/// Who receives what the harness sends to `access`.
+	/// Who receives what the harness sends to `access` (HarnessRun.recipient(of:)).
 	private func recipient(of access: Access) -> HarnessRun.Recipient {
-		access.id == SyncDemo.access.id ? .local : recipient(of: access.source)
+		HarnessRun.recipient(of: access, syncDemo: SyncDemo.access.id, fixtures: model.map { Set($0.extensions.fixtures.keys) } ?? [], own: ownExtensions,
+			isCatalogName: { model?.extensions.isCatalogName($0) ?? true })
 	}
 
+	/// Who receives what the harness sends to a new access of `source`, such as the one that the assistant sets up.
 	private func recipient(of source: AccessSource) -> HarnessRun.Recipient {
-		switch source {
-		case .fints: .fints
-		case let .extension(id): extensionRecipient(id, fixture: model?.extensions.fixtures[id] != nil)
-		case .finAPI: .realService
+		recipient(of: Access(source: source, bankName: "", loginName: ""))
+	}
+
+	/// The web login of the dialog on screen that shows in `web`: the recipient of the dialog, and whether the run served
+	/// the page itself, as a page of `ExtensionWebDebug.pages` at the address that `web` shows now, or as the captcha stub.
+	/// Nil when the dialog on screen shows no web login or `web` is no longer in its window.
+	private func webLogin(_ web: WKWebView) -> (recipient: HarnessRun.Recipient, served: Bool)? {
+		guard web.window != nil, let prompt = model?.sync.broker.current, case let .secondFactor(request) = prompt.request else { return nil }
+		switch request.challenge {
+		case .openBrowser:
+			return (recipient(of: prompt.access), web.url.map { ExtensionWebDebug.pages[ExtensionWebDebug.key($0)] != nil } ?? false)
+		case .captcha: return (recipient(of: prompt.access), ExtensionWebDebug.captchaStub)
+		default: return nil
 		}
 	}
 
 	/// Who receives what the harness sends to the extension `id`, with or without a fixture of the run (HarnessRun.extensionRecipient).
 	private func extensionRecipient(_ id: String, fixture: Bool, loadedFromFile: Bool? = nil) -> HarnessRun.Recipient {
-		HarnessRun.extensionRecipient(hasFixture: fixture, loadedFromFile: loadedFromFile ?? fileExtensions.contains(id),
+		HarnessRun.extensionRecipient(hasFixture: fixture, loadedFromFile: loadedFromFile ?? ownExtensions.contains(id),
 			catalogName: model?.extensions.isCatalogName(id) ?? true)
 	}
 
@@ -1984,14 +2012,16 @@ final class DebugHarness {
 			let stored = [Preference.showMenuBarIcon, RefreshSettings.automaticRefreshKey, RefreshSettings.showsBannerKey, RefreshSettings.playsSoundKey,
 				// SUEnableAutomaticChecksKey of Sparkle, whose header SUConstants.h is not public.
 				"SUEnableAutomaticChecks", AppUpdater.betaKey]
-			let id = Bundle.main.bundleIdentifier ?? ""
+			// The settings of the run, except the key of Sparkle, which Sparkle keeps in the standard defaults (AppSettings).
+			let domain = AppSettings.domain ?? "", sparkle = Bundle.main.bundleIdentifier ?? ""
 			let on = switches().map { ($0.accessibilityAttributeValue(.value) as? NSNumber)?.boolValue ?? false }
 			// Any window of the settings or of their password prompt that macOS shows, also one left over from a lock.
 			let leftOver = NSApp.windows.contains { $0.isVisible && ($0.identifier?.rawValue == "com_apple_SwiftUI_Settings_window" || $0.sheetParent?.identifier?.rawValue == "com_apple_SwiftUI_Settings_window") }
 			self.log("settings", ("window", .flag(window() != nil)), ("sheet", .flag(window()?.attachedSheet != nil)), ("visible", .flag(leftOver)),
 				("tab", .word(model.settingsTab == .general ? "general" : "security")),
 				("switches", .list(on.map { .flag($0) })), ("stored", .list(stored.map { key in
-					(UserDefaults.standard.persistentDomain(forName: id)?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
+					let stored = key == "SUEnableAutomaticChecks" ? UserDefaults.standard.persistentDomain(forName: sparkle) : AppSettings.defaults.persistentDomain(forName: domain)
+					return (stored?[key] as? Bool).map { .word($0 ? "on" : "off") } ?? .word("-") })),
 				("language", .word(AppLanguage.stored.map { $0 == .german ? "de" : "en" } ?? "system")))
 		}
 	}
@@ -2249,7 +2279,7 @@ final class DebugHarness {
 			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
 				return log("extrun refused")
 			}
-			fileExtensions.insert(package.name)
+			ownExtensions.loaded(package.name)
 			#endif
 			let run = ExtensionRun(package: package, function: parts[1], fixture: fixture, store: store) { [weak self] line in self?.log(line) }
 			model.sync.refresh(RefreshRequest(access: access, accounts: []), with: run, attended: true)
@@ -2286,7 +2316,7 @@ final class DebugHarness {
 			guard HarnessRun.mayReach(extensionRecipient(package.name, fixture: fixture != nil, loadedFromFile: true), fakeBank: usesFakeBank) else {
 				return log("", ("", .choice(command, of: ["extaccess", "extrefresh"])), ("", .word("refused")))
 			}
-			fileExtensions.insert(package.name)
+			ownExtensions.loaded(package.name)
 			#endif
 			for exchange in fixture?.exchanges ?? [] where exchange.request.method == "GET" && exchange.request.url.host()?.hasPrefix("auth.") == true {
 				ExtensionWebDebug.pages[ExtensionWebDebug.key(exchange.request.url)] = exchange.response.body ?? ""

@@ -204,11 +204,11 @@ struct PasswordPromptSheet: View {
 /// The settings of the refresh and the notifications, in the order of MoneyMoney, and the facts about the app.
 struct GeneralSettings: View {
 	@Environment(AppModel.self) private var model
-	@AppStorage(Preference.showMenuBarIcon) private var showMenuBarIcon = false
-	@AppStorage(RefreshSettings.automaticRefreshKey) private var automaticRefresh = true
-	@AppStorage(RefreshSettings.showsBannerKey) private var showsBanner = true
-	@AppStorage(RefreshSettings.playsSoundKey) private var playsSound = false
-	@AppStorage(AppUpdater.betaKey) private var offersPreReleases = false
+	@AppStorage(Preference.showMenuBarIcon, store: AppSettings.defaults) private var showMenuBarIcon = false
+	@AppStorage(RefreshSettings.automaticRefreshKey, store: AppSettings.defaults) private var automaticRefresh = true
+	@AppStorage(RefreshSettings.showsBannerKey, store: AppSettings.defaults) private var showsBanner = true
+	@AppStorage(RefreshSettings.playsSoundKey, store: AppSettings.defaults) private var playsSound = false
+	@AppStorage(AppUpdater.betaKey, store: AppSettings.defaults) private var offersPreReleases = false
 	@State private var notificationsDenied = false
 	/// Nil while the app follows macOS.
 	@State private var language = AppLanguage.stored
@@ -424,7 +424,7 @@ struct VATRateSettings: View {
 	}
 
 	private func persist() {
-		UserDefaults.standard.set(rates.map(\.hundredths), forKey: Preference.vatRates)
+		AppSettings.defaults.set(rates.map(\.hundredths), forKey: Preference.vatRates)
 	}
 
 	private func reset() {

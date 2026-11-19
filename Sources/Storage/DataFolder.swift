@@ -40,6 +40,16 @@ public struct DataFolder: Sendable {
 		}
 	}
 
+	/// The suite of the settings of a run with a data folder of its own: the file "Settings.plist" in the folder at
+	/// `path`, which `UserDefaults(suiteName:)` takes as an absolute path without the extension. Nil without a path: the
+	/// app then keeps its settings in its standard defaults. Every Debug build has the bundle ID of the app, and the
+	/// standard defaults belong to the bundle ID, so a test run would otherwise write the settings of another copy of
+	/// the app on the same Mac (issue #220). As with `standard(override:)`, only Debug and Perf builds pass a path.
+	public static func settingsSuite(override path: String?) -> String? {
+		guard let path, !path.isEmpty else { return nil }
+		return URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL.appendingPathComponent("Settings").path
+	}
+
 	/// The name of the app before ADR 0013. The old folder and the database file had this name.
 	static let legacyName = "MonetenMoneten"
 
