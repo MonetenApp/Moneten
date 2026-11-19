@@ -66,6 +66,14 @@ extension AppModel {
 		Trail.log("refresh start setup=extension")
 	}
 
+	/// The word of an extension access for its secret, as its login dialog shows it in "Save Password": the label of the
+	/// first secret login field in the manifest of the installed extension, else "Password". Nil for another access.
+	func secretName(of access: Access) -> String? {
+		guard case let .extension(id) = access.source else { return nil }
+		let manifest = extensions.items.first { $0.id == id }?.manifest
+		return LoginRequest(service: access.bankName, fields: ExtensionConnector.loginFields(in: manifest, service: access.bankName)).secretName
+	}
+
 	/// Refreshes every account of each access that uses `package`.
 	func refreshExtensionAccesses(package: ExtensionPackage, fixture: Fixture? = nil, attended: Bool = true, log: @escaping @Sendable (HostLog) -> Void = { _ in }) {
 		guard extensionConnector(package, fixture: fixture, log: log) != nil else { return }
@@ -85,10 +93,15 @@ extension AppModel {
 			return account
 		}
 		let accounts = try storeExtensionAccess(new, state: setup.state, accounts: listed)
-		guard let store, !accounts.isEmpty else {
+		guard let store, let joined = accounts.first?.accessID else {
+			// No access was stored, so the login data of the setup has no access to stay with.
+			sync.broker.forgetPIN(of: access.id)
 			alert = AlertMessage(title: String(localized: "\(access.bankName) added no account."), message: String(localized: "Moneten has every account of this login already."))
 			return
 		}
+		// The access that the accounts joined takes the login data, and saves it on request, only when the setup finished,
+		// so a failed merge below saves nothing.
+		sync.broker.adoptLogin(of: access.id, into: joined)
 		// The rows that the setup fetched are stored here, without a suspension after the checks of the job.
 		// A failed merge ends the setup with its error; the stored accounts and rows still reach the ledger.
 		var merged: [Reconciliation] = []

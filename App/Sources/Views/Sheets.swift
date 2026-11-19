@@ -292,9 +292,17 @@ struct AccountSettingsSheet: View {
 							Picker("Refresh", selection: binding.refreshInterval) {
 								ForEach(RefreshInterval.allCases, id: \.self) { Text($0.title).tag($0) }
 							}
-							LabeledContent("PIN") {
-								Button("Remove saved PIN") { model.ask(.removeSavedPIN) }
-									.disabled(!model.sync.broker.savedPINs.contains(access.id))
+							// An extension names its secret as its login dialog does, such as "Remove saved Password".
+							if let secret = model.secretName(of: access) {
+								LabeledContent(secret) {
+									Button("Remove saved \(secret)") { model.ask(.removeSavedPIN) }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
+							} else {
+								LabeledContent("PIN") {
+									Button("Remove saved PIN") { model.ask(.removeSavedPIN) }
+										.disabled(!model.sync.broker.savedPINs.contains(access.id))
+								}
 							}
 						}
 					}
@@ -303,11 +311,16 @@ struct AccountSettingsSheet: View {
 			.keepsInput(input, of: .accountSettings(accountID))
 			// The question gives way to a dialog of the bank that comes while it shows, and shows again after it
 			// (`AlertGate`). It sits on the settings, which stay while it is asked.
-			.alert("Remove the saved PIN of “\(access?.bankName ?? "")”?", isPresented: model.presents(.removeSavedPIN)) {
+			.alert(access.flatMap(model.secretName(of:)) == nil ? Text("Remove the saved PIN of “\(access?.bankName ?? "")”?")
+				: Text("Remove the saved login data of “\(access?.bankName ?? "")”?"), isPresented: model.presents(.removeSavedPIN)) {
 				Button("OK") { if let access { model.removeSavedPIN(of: access.id) } }
 				Button("Cancel", role: .cancel) {}
 			} message: {
-				Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+				if access.flatMap(model.secretName(of:)) == nil {
+					Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+				} else {
+					Text("The login data is removed for every account of this access. The next refresh asks for it.")
+				}
 			}
 			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
 			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the

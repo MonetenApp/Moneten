@@ -68,6 +68,87 @@ struct SavedPINTests {
 		#expect(try queue.read { db in try SavedPINRecord.fetchCount(db) } == 0)
 	}
 
+	static let service = Access(source: .extension(id: "demo-tan"), bankName: "Demo TAN", loginName: "erika")
+	static let demoGiro = Account(position: 0, name: "Demo Giro", kind: .giro, source: .bank, iban: "DE02120300000000202051", accessID: service.id,
+		remoteID: "DE02120300000000202051")
+	static let fields = [SavedLogin.Field(key: "Username", isSecret: false), SavedLogin.Field(key: "Password", isSecret: true),
+		SavedLogin.Field(key: "Customer number", isSecret: false)]
+	static let login = SavedLogin(fields: fields, values: [Secret("erika"), Secret("Geheim-7319"), Secret("4711")])
+
+	@Test("Saved login data of an extension keeps every value and the key and secrecy of every field in order, comes back after the database opens again, and Remove saved PIN deletes it")
+	func loginRoundTrip() throws {
+		let vault = Vault(testing: folder)
+		let store = try vault.create(password: Self.password, starterCategories: [])
+		try store.add(Self.service, state: nil, accounts: [Self.demoGiro])
+		try store.add(Self.access, state: nil, accounts: [Self.giro])
+		#expect(try store.savedLogins().isEmpty)
+		try store.saveLogin(Self.login, for: Self.service.id)
+		try store.savePIN(Secret("48151"), for: Self.access.id)
+		try store.close()
+
+		let reopened = try vault.open(password: Self.password)
+		#expect(try reopened.savedLogins() == [Self.service.id: Self.login])
+		#expect(try reopened.savedPINs() == [Self.access.id: Secret("48151")])
+		let swapped = SavedLogin(fields: [Self.fields[1], Self.fields[0]], values: [Secret("Neu-2468"), Secret("erika")])
+		try reopened.saveLogin(swapped, for: Self.service.id)
+		#expect(try reopened.savedLogins() == [Self.service.id: swapped])
+		#expect(try reopened.removeSavedPIN(of: Self.service.id))
+		#expect(try reopened.savedLogins().isEmpty)
+		#expect(try reopened.savedPINs() == [Self.access.id: Secret("48151")])
+		#expect(try !reopened.removeSavedPIN(of: Self.service.id))
+		try reopened.close()
+
+		#expect(try vault.open(password: Self.password).savedLogins().isEmpty)
+	}
+
+	@Test("Saved login data goes with its access and its last account")
+	func loginGoesWithAccess() throws {
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
+		try store.add(Self.service, state: nil, accounts: [Self.demoGiro])
+		try store.saveLogin(Self.login, for: Self.service.id)
+		try store.deleteAccount(Self.demoGiro.id)
+		#expect(try store.savedLogins().isEmpty)
+	}
+
+	@Test("v32 adds the table of saved login data to a v31 database, and a PIN that the user saved before stays saved")
+	func loginUpgrade() throws {
+		let queue = try DatabaseQueue()
+		try Schema.migrator.migrate(queue, upTo: "v31")
+		try queue.write { db in
+			try AccessRecord(id: Self.access.id, source: Self.access.source, bankName: "Musterbank", loginName: "erika77", state: nil).insertOld(db)
+			try AccessRecord(id: Self.service.id, source: Self.service.source, bankName: "Demo TAN", loginName: "erika", state: nil).insertOld(db)
+			try SavedPINRecord(accessID: Self.access.id, pin: "48151").insertOld(db)
+		}
+		#expect(try queue.read { db in try db.tableExists("savedLogin") } == false)
+		try Schema.migrator.migrate(queue)
+		#expect(try queue.read { db in try Schema.migrator.appliedMigrations(db) }.contains("v32"))
+		let store = Store(queue: queue)
+		#expect(try store.savedPINs() == [Self.access.id: Secret("48151")])
+		#expect(try store.savedLogins().isEmpty)
+		try store.saveLogin(Self.login, for: Self.service.id)
+		#expect(try store.savedLogins() == [Self.service.id: Self.login])
+		#expect(try store.savedPINs() == [Self.access.id: Secret("48151")])
+	}
+
+	@Test("No byte of the database file or of its backup shows saved login data, and the backup opens on another Mac with the database password")
+	func loginEncrypted() throws {
+		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])
+		try store.add(Self.service, state: nil, accounts: [Self.demoGiro])
+		try store.saveLogin(Self.login, for: Self.service.id)
+		let other = DataFolder(root: root.appendingPathComponent("Mac B"))
+		try other.createFolders()
+		try store.backup(to: other.databaseFile)
+		try store.close()
+
+		let files = try FileManager.default.subpathsOfDirectory(atPath: root.path).map { root.appendingPathComponent($0) }
+			.filter { !$0.hasDirectoryPath && (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+		#expect(files.count >= 2)
+		for file in files {
+			#expect(try Data(contentsOf: file).range(of: Data("Geheim-7319".utf8)) == nil, "\(file.lastPathComponent) shows the password")
+		}
+		#expect(try Vault(testing: other).open(password: Self.password).savedLogins() == [Self.service.id: Self.login])
+	}
+
 	@Test("No byte of the database file or of its backup shows the PIN, and the backup opens on another Mac with the database password")
 	func encrypted() throws {
 		let store = try Vault(testing: folder).create(password: Self.password, starterCategories: [])

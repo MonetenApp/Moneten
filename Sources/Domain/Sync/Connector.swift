@@ -37,12 +37,16 @@ public struct AccessState: Hashable, Sendable {
 	}
 }
 
-/// Where the app keeps the PINs that the user asked to save: the encrypted database, and nowhere else
-/// ("Saved PINs live in the encrypted database").
+/// Where the app keeps the PINs and the login data of extensions that the user asked to save: the encrypted
+/// database, and nowhere else ("Saved PINs live in the encrypted database").
 public protocol SavedPINStore: Sendable {
 	func savedPINs() throws -> [UUID: Secret]
 	func savePIN(_ pin: Secret, for access: UUID) throws
-	/// Returns whether a saved PIN was there and is deleted now.
+	/// The saved login data of extension accesses, with the fields that it answered.
+	func savedLogins() throws -> [UUID: SavedLogin]
+	func saveLogin(_ login: SavedLogin, for access: UUID) throws
+	/// Deletes the saved PIN or the saved login data of the access, so that "Remove saved PIN" and a rejection take
+	/// one path for every access kind. Returns whether a saved secret was there and is deleted now.
 	@discardableResult func removeSavedPIN(of access: UUID) throws -> Bool
 }
 

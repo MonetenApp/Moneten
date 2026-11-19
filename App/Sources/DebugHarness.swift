@@ -762,6 +762,24 @@ final class DebugHarness {
 		case "extmethod": answer { .tanMethod(argument) }
 		case "extcancel": if let prompt = model.sync.broker.current { model.sync.broker.cancel(prompt.id) }
 		#if DEBUG || PERF_HARNESS
+		// "extsavelogin <user>|<password>" answers the login dialog with "Save Password" on (issue #536). "extsaved" logs how many
+		// extension accesses have saved login data, and "extforget" does for each of them what "OK" after "Remove saved PIN" does.
+		// It answers through answer(_:), whose HarnessRun check (mayAnswer) is that of "extlogin". "extsaved" and "extforget" reach
+		// nothing outside the open throwaway database.
+		case "extsavelogin": answer { .login(argument.components(separatedBy: "|").map(Secret.init), save: true) }
+		case "extsaved", "extforget":
+			let saved = model.accesses.values.filter { access in
+				guard case .extension = access.source else { return false }
+				return model.sync.broker.savedPINs.contains(access.id)
+			}
+			if command == "extforget" {
+				for access in saved { model.removeSavedPIN(of: access.id) }
+				log("ext forget", ("count", .count(saved.count)))
+			} else {
+				log("ext saved", ("count", .count(saved.count)))
+			}
+		#endif
+		#if DEBUG || PERF_HARNESS
 		// Runs JavaScript in the login window of an extension, such as "solve('stub-token')" on the captcha stub. It runs only
 		// in a page that the run served itself, in the web login of the dialog on screen whose recipient is the made-up bank
 		// or a local service (HarnessRun.mayRunScript), and logs "extjs refused" otherwise.

@@ -70,7 +70,12 @@ public struct ExtensionConnector: BankConnector {
 
 	/// The labels of the login fields: those of the manifest for the service, else "Username" and "Password".
 	func loginFields(for service: String) -> [LoginRequest.Field] {
-		guard let fields = package.manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
+		Self.loginFields(in: package.manifest, service: service)
+	}
+
+	/// The login fields of `service` in `manifest`, also for the account settings, which name the secret as the login dialog does.
+	public static func loginFields(in manifest: Manifest?, service: String) -> [LoginRequest.Field] {
+		guard let fields = manifest?.services?.first(where: { $0.name == service })?.login, !fields.isEmpty else { return LoginRequest.defaultFields }
 		return fields.map { LoginRequest.Field(label: $0.label, isSecret: $0.secret ?? false) }
 	}
 
@@ -252,7 +257,7 @@ private final class ScriptRun {
 	static func start(_ connector: ExtensionConnector, access: Access, state: ExtensionState, session: SyncSession, reason: SessionReason,
 		restore: (@Sendable (String) async -> AccessState?)? = nil) async throws -> ScriptRun {
 		let fields = connector.loginFields(for: access.bankName)
-		guard case let .login(values) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
+		guard case let .login(values, _) = try await session.ask(.login(LoginRequest(service: access.bankName, fields: fields, rejected: state.loginRejected == true)))
 		else { throw CancellationError() }
 		// A secret first field, such as an API key, never becomes the user ID that the app stores and shows.
 		let loginName = fields.first?.isSecret == false ? values.first?.value ?? "" : ""

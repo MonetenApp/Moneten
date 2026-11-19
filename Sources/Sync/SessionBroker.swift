@@ -22,11 +22,12 @@ public struct ChallengeRequest: Identifiable, Equatable, Sendable {
 
 /// Shows the requests of all connectors to the user, one dialog at a time and in the order they came.
 ///
-/// An automatic refresh never reaches the queue: it gets the PIN in memory, and every other request
-/// fails at once with `SyncFailure.needsUser`. A PIN that the user entered is kept in memory for its
+/// An automatic refresh never reaches the queue: it gets the PIN or the login data in memory, and every other
+/// request fails at once with `SyncFailure.needsUser`. A PIN that the user entered is kept in memory for its
 /// access until the app locks or quits, or until a refresh with it ends without success. A PIN that
 /// the user asked to save goes into the `SavedPINStore` when a refresh with it finished, so only a PIN
-/// that the bank accepted is saved. The saved PINs join the memory when the database opens.
+/// that the bank accepted is saved. The saved PINs join the memory when the database opens. The login data
+/// of an extension follows the same rules, with all its fields as one secret.
 ///
 /// A PIN request that carries the rejection of the bank is never answered from memory. The broker
 /// forgets the PIN, deletes the saved one, and shows the sheet again, or fails an automatic refresh with
@@ -45,7 +46,7 @@ public final class SessionBroker {
 	public private(set) var current: Prompt?
 	/// The dialog that shows the progress after a TAN method or medium, while no request is on screen.
 	public private(set) var requesting: ChallengeRequest?
-	/// The accesses whose PIN is saved in the database, for "Remove saved PIN".
+	/// The accesses whose PIN or login data is saved in the database, for "Remove saved PIN".
 	public private(set) var savedPINs: Set<UUID> = []
 	private var queue: [Prompt] = []
 	/// The prompts that waited behind the dialog of another access.
@@ -55,7 +56,7 @@ public final class SessionBroker {
 	nonisolated private let withdrawn = Mutex<Set<UUID>>([])
 	private var expiry: Task<Void, Never>?
 	private var pins: [UUID: Secret] = [:]
-	/// The accesses whose PIN the user asked to save, until a refresh with it finished.
+	/// The accesses whose PIN or login data the user asked to save, until a refresh with it finished.
 	private var toSave: Set<UUID> = []
 	/// The TAN method that the user chose in the running refresh of an access, for the progress after the medium.
 	private var chosenMethods: [UUID: TANMethod] = [:]
@@ -65,16 +66,19 @@ public final class SessionBroker {
 	private let defaults: UserDefaults?
 	/// The key of the marks of this database in `defaults`.
 	private let undeletedKey: String
-	/// The accesses whose rejected PIN the database could not delete. Their saved PIN is never used, also
-	/// after a restart, until a deletion succeeds. The settings keep only the IDs of the accesses.
+	/// The accesses whose saved PIN or login data the broker had to delete and the database could not, after a rejection
+	/// or because it no longer fits the request. It is never used, also after a restart, until a deletion succeeds. The
+	/// settings keep only the IDs of the accesses.
 	private var undeleted: Set<UUID> {
 		didSet { defaults?.set(undeleted.map(\.uuidString).sorted(), forKey: undeletedKey) }
 	}
 	/// The answer of the bank to the PIN of a refresh that failed with `SyncFailure.pinRejected`, such as the
 	/// warning of a block to come, until the PIN sheet of a later refresh of the access shows it.
 	private var rejections: [UUID: BankMessage] = [:]
-	/// The login data of extension accesses. It lives only in memory, like a PIN that is not saved.
-	private var loginData: [UUID: [Secret]] = [:]
+	/// The login data of extension accesses with the fields it answered, saved or not, as `pins` holds the PINs.
+	private var loginData: [UUID: SavedLogin] = [:]
+	/// The access that the login of a setup joined (`adoptLogin(of:into:)`), by the access of the setup, until the setup ends.
+	private var joins: [UUID: UUID] = [:]
 
 	/// Reports each change of the dialogs of an access, for its `SyncState`.
 	var onEvent: (UUID, SyncEvent) -> Void = { _, _ in }
@@ -96,17 +100,20 @@ public final class SessionBroker {
 			if let rejected = pinRequest.rejected {
 				forgetRejectedPIN(of: access.id)
 				guard attended else { throw SyncFailure.pinRejected(rejected) }
-			} else if let pin = pins[access.id], pinRequest.rules.check(pin.value, secretName: pinRequest.secretName) == nil {
+			} else if let pin = pins[access.id] {
+				if pinRequest.rules.check(pin.value, secretName: pinRequest.secretName) == nil { return .pin(pin) }
 				// A PIN that breaks the rules of the bank is never sent: a manual refresh asks for a new one.
-				return .pin(pin)
+				forgetUnfitting(of: access.id)
 			}
 		}
 		if case let .login(loginRequest) = request {
 			if loginRequest.rejected {
-				loginData[access.id] = nil
+				forgetRejectedPIN(of: access.id)
 				guard attended else { throw SyncFailure.loginRejected }
-			} else if let fields = loginData[access.id] {
-				return .login(fields)
+			} else if let login = loginData[access.id] {
+				if login.fits(loginRequest) { return .login(login.values) }
+				// Login data for other fields, as after an update of the extension, is never sent: a manual refresh asks.
+				forgetUnfitting(of: access.id)
 			}
 		}
 		guard attended else { throw SyncFailure.needsUser(request.kind) }
@@ -135,7 +142,10 @@ public final class SessionBroker {
 			pins[access.id] = secret
 			if save { toSave.insert(access.id) } else { toSave.remove(access.id) }
 		}
-		if case let .login(fields) = answer { loginData[access.id] = fields }
+		if case let .login(values, save) = answer, case let .login(loginRequest) = request {
+			loginData[access.id] = SavedLogin(answering: loginRequest, with: values)
+			if save { toSave.insert(access.id) } else { toSave.remove(access.id) }
+		}
 		return answer
 	}
 
@@ -180,7 +190,7 @@ public final class SessionBroker {
 		showNext()
 	}
 
-	/// Takes the saved PINs of the database that opened, so that a refresh after a restart does not ask.
+	/// Takes the saved PINs and login data of the database that opened, so that a refresh after a restart does not ask.
 	/// It first deletes again each rejected PIN whose deletion failed, and never takes one that is still there.
 	public func open(_ store: any SavedPINStore) throws {
 		// Only a row that is deleted now clears the mark: a database without the row says nothing about it.
@@ -188,9 +198,12 @@ public final class SessionBroker {
 			undeleted.remove(access)
 		}
 		let saved = try store.savedPINs()
+		let logins = try store.savedLogins()
 		self.store = store
 		pins.merge(saved.filter { !undeleted.contains($0.key) }) { _, saved in saved }
-		savedPINs = Set(saved.keys)
+		loginData.merge(logins.filter { !undeleted.contains($0.key) }) { _, saved in saved }
+		// A marked access never counts as saved: its row is not loaded, so nothing of it is kept beyond a failed refresh.
+		savedPINs = Set(saved.keys).union(logins.keys).subtracting(undeleted)
 	}
 
 	/// Forgets every PIN in memory, the answers of the bank to rejected PINs, and the store of saved PINs, when the
@@ -210,7 +223,16 @@ public final class SessionBroker {
 	public func remember(_ pin: Secret, for access: UUID, save: Bool) throws {
 		pins[access] = pin
 		rejections[access] = nil
-		if save || savedPINs.contains(access) { try writeSavedPIN(pin, of: access) }
+		if save || savedPINs.contains(access) { try writeSaved(of: access) }
+	}
+
+	/// The setup of an extension access stored its accounts with the access `stored`: one that the app has already, or
+	/// the access of the setup. Nothing is written now. When the setup finished, `stored` takes the login data of the setup,
+	/// as `remember(_:for:save:)` takes a PIN: saved when the user asked to save it, and replacing login data that is saved
+	/// for `stored` already. A setup that fails or is canceled afterwards, for example because the rows of its accounts
+	/// could not be stored, saves nothing.
+	public func adoptLogin(of setup: UUID, into stored: UUID) {
+		joins[setup] = stored
 	}
 
 	/// Keeps the PIN of a login that "Edit Login Data..." just stored, together with the saved PIN of the
@@ -225,13 +247,14 @@ public final class SessionBroker {
 		if saved { savedPINs.insert(access) } else { savedPINs.remove(access) }
 	}
 
-	/// "Remove saved PIN": deletes the saved PIN of an access, for all its accounts, and forgets it, so the
-	/// next refresh asks.
+	/// "Remove saved PIN": deletes the saved PIN or login data of an access, for all its accounts, and forgets it,
+	/// so the next refresh asks.
 	public func removeSavedPIN(of access: UUID) throws {
 		try store?.removeSavedPIN(of: access)
 		savedPINs.remove(access)
 		undeleted.remove(access)
 		pins[access] = nil
+		loginData[access] = nil
 	}
 
 	/// Forgets the PIN of one access, for example when the access goes with its last account. The
@@ -240,14 +263,15 @@ public final class SessionBroker {
 		pins[access] = nil
 		rejections[access] = nil
 		loginData[access] = nil
+		joins[access] = nil
 		toSave.remove(access)
 		savedPINs.remove(access)
 		undeleted.remove(access)
 	}
 
 	/// The refresh of an access ended with `event`. After a finished refresh the bank has accepted the
-	/// PIN, so a PIN that the user asked to save goes into the database now. After any other end, a PIN
-	/// that is not saved is forgotten, so a typing error is never sent again on its own. A saved PIN
+	/// PIN or the login data, so what the user asked to save goes into the database now. After any other end, a PIN
+	/// or login data that is not saved is forgotten, so a typing error is never sent again on its own. A saved one
 	/// stays. A rejection or a block reaches `forgetRejectedPIN(of:)` before, from the session or from
 	/// the coordinator, whatever the end of the refresh. The answer of the bank to a rejected PIN waits for
 	/// the next PIN sheet of the access, so that the user sees it, also when an automatic refresh got it.
@@ -255,15 +279,27 @@ public final class SessionBroker {
 		endRequest(of: access)
 		chosenMethods[access] = nil
 		let save = toSave.remove(access) != nil
+		let joined = joins.removeValue(forKey: access)
 		switch event {
 		case .finish:
 			rejections[access] = nil
-			guard save, let pin = pins[access] else { return }
-			do { try writeSavedPIN(pin, of: access) } catch { onStoreFailure(SavedPINFailure(kind: .notSaved, access: access, reason: String(describing: error))) }
+			var target = access
+			if let joined, joined != access, let login = loginData.removeValue(forKey: access) {
+				loginData[joined] = login
+				target = joined
+			}
+			guard save || joined != nil && savedPINs.contains(target) else { return }
+			do {
+				try writeSaved(of: target)
+			} catch {
+				onStoreFailure(SavedPINFailure(kind: .notSaved, access: target, isLogin: loginData[target] != nil, reason: String(describing: error)))
+			}
 		default:
 			if case let .fail(.pinRejected(message)) = event { rejections[access] = message }
-			if !savedPINs.contains(access) { pins[access] = nil }
-			loginData[access] = nil
+			if !savedPINs.contains(access) || undeleted.contains(access) {
+				pins[access] = nil
+				loginData[access] = nil
+			}
 		}
 	}
 
@@ -280,19 +316,28 @@ public final class SessionBroker {
 		showNext()
 	}
 
-	private func writeSavedPIN(_ pin: Secret, of access: UUID) throws {
+	/// Saves the login data or the PIN of the access in memory.
+	private func writeSaved(of access: UUID) throws {
 		guard let store else { return }
-		try store.savePIN(pin, for: access)
+		if let login = loginData[access] {
+			try store.saveLogin(login, for: access)
+		} else if let pin = pins[access] {
+			try store.savePIN(pin, for: access)
+		} else {
+			return
+		}
 		savedPINs.insert(access)
 		// The PIN that the bank accepted replaced a rejected one that could not be deleted.
 		undeleted.remove(access)
 	}
 
-	/// The bank rejected the PIN or blocked the access: the PIN leaves the memory and the database ("No
-	/// automatic retry after a wrong PIN"). A deletion that fails twice is reported, and the saved PIN is
+	/// The bank rejected the PIN or blocked the access, or the service rejected the login data: the PIN or the
+	/// login data leaves the memory and the database ("No automatic retry after a wrong PIN"). A deletion that fails twice is reported, and the saved PIN is
 	/// not used until a later deletion succeeds. A rejection that arrives after the lock marks the access,
 	/// so the next unlock deletes the row before it loads the saved PINs.
 	func forgetRejectedPIN(of access: UUID) {
+		// Saved login data is in memory from the unlock on, so memory tells a login from a PIN.
+		let isLogin = loginData[access] != nil
 		pins[access] = nil
 		loginData[access] = nil
 		toSave.remove(access)
@@ -301,14 +346,34 @@ public final class SessionBroker {
 			return
 		}
 		guard savedPINs.contains(access) else { return }
+		deleteSaved(of: access, from: store, failure: .rejectedNotRemoved, isLogin: isLogin)
+	}
+
+	/// Deletes the saved PIN or login data that the broker must never send again, with a second try. When both fail, the
+	/// failure is reported once and the access is marked: its row is never loaded again, the next unlock deletes it, and it
+	/// no longer counts as saved, so a failed refresh forgets an unsaved answer of the access.
+	private func deleteSaved(of access: UUID, from store: any SavedPINStore, failure kind: SavedPINFailure.Kind, isLogin: Bool) {
+		savedPINs.remove(access)
 		do {
 			do { try store.removeSavedPIN(of: access) } catch { try store.removeSavedPIN(of: access) }
-			savedPINs.remove(access)
 			undeleted.remove(access)
 		} catch {
-			// Reported once, also when the end of the refresh tries again.
-			if undeleted.insert(access).inserted { onStoreFailure(SavedPINFailure(kind: .rejectedNotRemoved, access: access, reason: String(describing: error))) }
+			if undeleted.insert(access).inserted {
+				onStoreFailure(SavedPINFailure(kind: kind, access: access, isLogin: isLogin, reason: String(describing: error)))
+			}
 		}
+	}
+
+	/// The PIN or the login data in memory does not fit the request: a PIN breaks the rules of the bank, or login data
+	/// answered other fields. It is never sent, so it leaves the memory and the database, as a rejected one does. Otherwise a
+	/// new answer with saving off would stay beside the old row, and the next automatic refresh would send it.
+	private func forgetUnfitting(of access: UUID) {
+		let isLogin = loginData[access] != nil
+		pins[access] = nil
+		loginData[access] = nil
+		toSave.remove(access)
+		guard savedPINs.contains(access), let store else { return }
+		deleteSaved(of: access, from: store, failure: .notRemoved, isLogin: isLogin)
 	}
 
 	/// What the app requests from the bank after `answer`: the list of media for a method that needs a
@@ -367,24 +432,32 @@ public final class SessionBroker {
 public struct SavedPINFailure: Error {
 	public enum Kind: Sendable, Equatable {
 		case notSaved, rejectedNotRemoved
+		/// A saved PIN that breaks the rules of the bank, or saved login data for other fields, could not be deleted.
+		case notRemoved
 	}
 
 	public let kind: Kind
 	/// The access of the PIN, so that the app can tell an automatic refresh from a command.
 	public let access: UUID
+	/// The secret is the login data of an extension, not a PIN.
+	let isLogin: Bool
 	let reason: String
 
 	public var title: String {
-		switch kind {
-		case .notSaved: String(localized: "Could not save the PIN.")
-		case .rejectedNotRemoved: String(localized: "Could not remove the rejected PIN.")
+		switch (kind, isLogin) {
+		case (.notSaved, false): String(localized: "Could not save the PIN.")
+		case (.notSaved, true): String(localized: "Could not save the login data.")
+		case (.rejectedNotRemoved, false): String(localized: "Could not remove the rejected PIN.")
+		case (.rejectedNotRemoved, true): String(localized: "Could not remove the rejected login data.")
+		case (.notRemoved, false): String(localized: "Could not remove the saved PIN.")
+		case (.notRemoved, true): String(localized: "Could not remove the saved login data.")
 		}
 	}
 
 	public var message: String {
 		switch kind {
 		case .notSaved: reason
-		case .rejectedNotRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
+		case .rejectedNotRemoved, .notRemoved: String(localized: "Moneten does not send it again and removes it at the next unlock. \(reason)")
 		}
 	}
 }
