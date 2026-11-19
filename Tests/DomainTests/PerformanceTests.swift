@@ -504,9 +504,13 @@ struct PerformanceTests {
 
 	@Test("50,000 rows of 10 accounts group by account within budget")
 	func groupedTransactions() {
-		let accounts = (0..<10).map { Account(position: $0, name: "Account \($0)", kind: .giro, source: .offline) }
-		let rows = (0..<50_000).map { i in
-			Transaction(accountID: accounts[i % 10].id, bookingDate: Day(year: 2026, month: 1 + i % 12, day: 1 + i % 28), amountMinor: -Int64(i), name: "Shop \(i)")
+		let accounts = (0..<10).map { (n: Int) -> Account in Account(position: n, name: "Account \(n)", kind: .giro, source: .offline) }
+		// Explicit types, so that the compiler of CI type-checks the closure in time (#452).
+		let rows = (0..<50_000).map { (i: Int) -> Transaction in
+			let month: Int = 1 + i % 12
+			let day: Int = 1 + i % 28
+			let amount: Int64 = -Int64(i)
+			return Transaction(accountID: accounts[i % 10].id, bookingDate: Day(year: 2026, month: month, day: day), amountMinor: amount, name: "Shop \(i)")
 		}
 		var grouped = GroupedTransactions([], groupedBy: [])
 		let build = fastest { grouped = GroupedTransactions(rows, groupedBy: accounts) }
