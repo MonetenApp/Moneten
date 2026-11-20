@@ -65,7 +65,7 @@ None.
 - A row cannot be dragged into another section. Dragging in MoneyMoney was not tested, because it changes data.
 - The numbers for speed with 50,000 transactions come from issue #5 and are a target of this project.
 - The application menu has no license key, imprint, or license agreement command. "About Moneten" shows the version, the license, and a link to the source code.
-- "Help and FAQ..." and "Supported Banks..." open pages of the project. The Help menu has one "Supported Banks..." command and no split by country.
+- "Help and FAQ..." opens a page of the project, and "Supported Banks..." opens the list of supported banks in a window of the app. The Help menu has one "Supported Banks..." command and no split by country.
 - The question before an action that cannot be undone, such as removing an account or deleting transactions, has no default button: Return presses nothing, and Escape cancels. Which button of MoneyMoney takes Return was not observed.
 - "Copy Sum" in the context menu of the sum copies the number without its currency and without thousands separators, so that a spreadsheet reads it as a number. Sums in several currencies copy one line each with the currency code.
 - Escape on the row of a new account group or category group keeps the group with the name it had when edit mode began, and drops only the typed name, as "New Folder" in the Finder does. The empty name keeps the group too. MoneyMoney was not tested here, because it changes data.
