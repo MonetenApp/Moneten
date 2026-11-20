@@ -540,9 +540,9 @@ The app SHALL show only one dialog for two-factor authentication at a time. A fu
 - **WHEN** the dialog for "Musterbank" is open
 - **THEN** the dialog for "Beispielbank" appears after the first dialog closed
 
-### Requirement: The dialog opens over the account settings and the calibration window
+### Requirement: The dialog opens over an open window
 
-The app SHALL open the dialog on top of the account settings, or on top of the calibration window when it is open over them, and keep what the user typed in the windows under it. A dialog that comes while the calibration window slides out opens on the account settings once the calibration window has closed. The calibration window does not open while the dialog shows on the account settings, nor while it still slides out.
+The app SHALL show the dialog on top of the open windows of the main window, such as the account settings and the calibration window over them, and keep what was typed in them. An alert of the main window closes for the dialog and shows again after it. A question, an alert, or a save panel on a sheet holds the dialog until the user answers it. One that comes while the dialog shows waits for it. The calibration window does not open while the dialog shows or another calibration window slides out.
 
 #### Scenario: TAN while the calibration window is open
 
@@ -562,6 +562,46 @@ The app SHALL open the dialog on top of the account settings, or on top of the c
 - **GIVEN** the dialog for "Musterbank" shows on top of the account settings of "Girokonto"
 - **WHEN** "Calibrate..." of the settings is chosen
 - **THEN** the calibration window stays closed, and the dialog stays on top of the account settings
+
+#### Scenario: TAN while the question about the saved PIN shows
+
+- **GIVEN** the account settings of "Girokonto" are open with the typed name "Girokonto Alltag", and the question "Remove the saved PIN of “Beispielbank”?" shows on them
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the question stays, and the dialog waits
+- **AND** after the user chose "Cancel", the dialog opens on top of the account settings, the saved PIN stays, and the settings show "Girokonto Alltag"
+
+#### Scenario: TAN while the question about a changed rule shows
+
+- **GIVEN** the category settings of "Lebensmittel" saved the rule "REWE", and the question "Should this categorization rule be applied to the existing transactions now?" shows
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the question stays, and the dialog waits
+- **AND** after the user chose "Apply to all transactions.", the rule "REWE" applies, the category settings close, and the dialog opens on the main window
+
+#### Scenario: TAN while the save panel of the migration report is open
+
+- **GIVEN** the save panel of the migration report is open over the migration sheet
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the save panel stays, and the dialog waits
+- **AND** after the user chose "Cancel" in the save panel, the dialog opens on top of the migration sheet
+
+#### Scenario: A question asked while the dialog shows
+
+- **GIVEN** the dialog for "Musterbank" shows on top of the account settings of "Girokonto"
+- **WHEN** the question "Remove the saved PIN of “Beispielbank”?" is asked
+- **THEN** the question shows after the user entered the TAN and the dialog has closed
+
+#### Scenario: The lock while the save panel of the migration report is open
+
+- **GIVEN** the save panel of the migration report is open over the migration sheet
+- **WHEN** the app locks
+- **THEN** the save panel closes with the migration sheet, and nothing is saved
+
+#### Scenario: TAN while an alert shows on the window
+
+- **GIVEN** no sheet is open, and the alert "Could not refresh Beispielbank." shows on the main window
+- **WHEN** a refresh of "Musterbank" asks for a TAN
+- **THEN** the alert closes, and the dialog opens on the main window
+- **AND** after the user entered the TAN, the alert "Could not refresh Beispielbank." shows again
 
 ### Requirement: Cancel the dialog
 

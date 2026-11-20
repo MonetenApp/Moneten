@@ -518,12 +518,30 @@ final class DebugHarness {
 		case "topsheet": log("topsheet", ("shown", .flag(topSheet != nil)))
 		#if DEBUG || PERF_HARNESS
 		// Where the dialog of the bank shows (`BankDialogPlace`, "-" while it waits), the state of the window on top of the sheet, whether the broker
-		// has a dialog, and how many sheets the main window holds, one on top of the other. It reads only, and reaches nothing.
+		// has a dialog, and how many sheets the main window holds, one on top of the other. Then the alert or question in the main window and the
+		// dialog of the bank as `AlertGate` holds them, the alert that the sheet asked for, and whether it shows. It reads only, and reaches nothing.
 		case "dialogplace":
 			let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
 			let depth = main.map { Array(sequence(first: $0) { $0.attachedSheet }).count - 1 } ?? 0
 			log("dialogplace", ("place", .state(model.bankDialogPlace)), ("over", .state(model.overSheet.phase)),
-				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)))
+				("dialog", .flag(model.sync.broker.sheet != nil)), ("sheets", .count(depth)), ("alert", .state(model.alertGate.alert)),
+				("gate", .state(model.alertGate.bankDialog)), ("asked", .state(model.sheetAlert?.alert)),
+				("shown", .flag(model.sheetAlert?.token.map(model.alertGate.shows) ?? false)))
+		// Whether a save panel shows, such as that of the migration report on its sheet. It reads only.
+		case "savepanel":
+			log("savepanel", ("shown", .flag(NSApp.windows.contains { $0 is NSSavePanel && $0.isVisible })))
+		// "<alert>" asks for an alert or question of the open sheet, as its button does: "removeSavedPIN" in the account settings, "applyRule"
+		// in the category settings, and "saveReport" or "reportNotSaved" in the MoneyMoney migration. So a check can ask while a dialog of
+		// the bank covers the button. Only the alert of the sheet on screen, so that no alert waits without a view. It clicks nothing.
+		case "sheetalert":
+			let alert = SheetAlert(rawValue: argument)
+			let fits = switch (alert, model.sheet) {
+			case (.removeSavedPIN, .accountSettings?), (.applyRule, .categorySettings?), (.saveReport, .migration?), (.reportNotSaved, .migration?): true
+			default: false
+			}
+			guard let alert, fits else { return log("sheetalert refused") }
+			model.ask(alert)
+			log("sheetalert", ("", .state(alert)))
 		// "<n>" puts the focus in editable field n, counted from 0, of the sheet on top, or without a sheet of the main window,
 		// such as the field of the lock screen or of the first launch. Then it logs the count of editable fields, the field
 		// that has the focus, and whether a field editor has it. Without an argument it only logs, so that a check can wait
@@ -2674,7 +2692,9 @@ final class DebugHarness {
 	}
 
 	private func modal(_ argument: String) {
-		guard let window = NSApp.modalWindow ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
+		// A save panel on a sheet, such as that of the migration report, is not modal, and comes before an alert.
+		let panel = NSApp.windows.first { $0 is NSSavePanel && $0.isVisible }
+		guard let window = NSApp.modalWindow ?? panel ?? NSApp.windows.first(where: { $0.isVisible && $0.className.contains("Alert") }) else { return log("modal none") }
 		func views(in view: NSView) -> [NSView] { [view] + view.subviews.flatMap(views) }
 		let all = window.contentView.map(views) ?? []
 		let buttons = all.compactMap { $0 as? NSButton }.filter { !$0.title.isEmpty }
@@ -3202,7 +3222,22 @@ final class DebugHarness {
 			for (j, w) in sheets.enumerated() {
 				guard let view = w.contentView?.superview ?? w.contentView,
 					let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { continue }
+				// The glass of an alert draws nothing into the picture and hides the alert, so it goes for the picture, and
+				// the background of the window stands in for it, as in the pictures of the remove questions.
+				let glass = w.className.contains("Alert") ? view.subviews.filter { !$0.isHidden && String(describing: type(of: $0)).contains("Glass") } : []
+				glass.forEach { $0.isHidden = true }
 				view.cacheDisplay(in: view.bounds, to: rep)
+				glass.forEach { $0.isHidden = false }
+				if !glass.isEmpty, let cached = rep.copy() as? NSBitmapImageRep {
+					NSGraphicsContext.saveGraphicsState()
+					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+					w.effectiveAppearance.performAsCurrentDrawingAppearance {
+						NSColor.windowBackgroundColor.setFill()
+						NSRect(origin: .zero, size: rep.size).fill()
+					}
+					cached.draw(in: NSRect(origin: .zero, size: rep.size), from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: false, hints: nil)
+					NSGraphicsContext.restoreGraphicsState()
+				}
 				if let web, web.view.window === w {
 					NSGraphicsContext.saveGraphicsState()
 					NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)

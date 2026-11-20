@@ -15,6 +15,11 @@ final class SheetAlerts {
 	private let window: String
 	/// Whether the model asks for a sheet, which can be on screen a moment later.
 	@ObservationIgnored var hasSheet: () -> Bool = { false }
+	/// Whether an alert may open now. The main window holds it back while a dialog of the bank shows or slides out, or
+	/// another alert is on screen (`AlertGate`). A window without that dialog lets every alert open.
+	@ObservationIgnored var mayOpen: () -> Bool = { true }
+	/// The alert that `mayOpen` let open has closed and slides out of the window that this passes.
+	@ObservationIgnored var didClose: (NSWindow) -> Void = { _ in }
 	/// The messages in the order they came. The first one shows or waits for the window.
 	private var line: [AlertMessage] = []
 	/// True from the appearance of the window's sheet to its `onDismiss`, which comes after the slide out.
@@ -70,6 +75,12 @@ final class SheetAlerts {
 		if let panel, shown == first.id { end(panel, .stop) } else { present() }
 	}
 
+	/// The alert on screen closes for the dialog of the bank and stays first in line. It shows again once `mayOpen` lets
+	/// it, after the dialog has slid out.
+	func giveWay() {
+		if let panel { end(panel, .abort) }
+	}
+
 	private func end(_ panel: NSAlert, _ code: NSApplication.ModalResponse) {
 		panel.window.sheetParent?.endSheet(panel.window, returnCode: code)
 	}
@@ -87,7 +98,7 @@ final class SheetAlerts {
 			var closing = Duration.zero
 			// The loop ends when the view goes, and `isViewOnScreen` starts it again.
 			while let self, self.isViewOnScreen, let message = self.message {
-				if let window = self.freeWindow(waitedForDismissal: closing >= .seconds(3)) {
+				if let window = self.freeWindow(waitedForDismissal: closing >= .seconds(3)), self.mayOpen() {
 					self.wait = nil
 					return self.show(message, in: window)
 				}
@@ -135,6 +146,7 @@ final class SheetAlerts {
 			self.panel = nil
 			shown = nil
 			closing = panel.window
+			didClose(panel.window)
 			// Only a button removes the message here. `closeFirst` removed it already, and a hidden one stays first.
 			if response == .alertFirstButtonReturn || response == .alertSecondButtonReturn, line.first?.id == message.id {
 				line.removeFirst()

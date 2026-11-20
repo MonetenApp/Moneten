@@ -40,8 +40,6 @@ struct MigrationSheet: View {
 	#endif
 
 	@State private var step = Step.intro
-	@State private var confirmSave = false
-	@State private var savingReport = false
 	@State private var reportText = ""
 	@State private var fileAccountID: UUID?
 	@State private var storing: MigrationCancel?
@@ -52,7 +50,7 @@ struct MigrationSheet: View {
 		SheetFrame(title: "Import from MoneyMoney", confirmTitle: confirmTitle, cancelTitle: cancelTitle, canConfirm: canConfirm, width: 500,
 			onCancel: { model.migrationTask?.cancel() }, closesOnCancel: cancelCloses, onConfirm: confirm) {
 			if case .done = step {
-				Button("Save Report...") { confirmSave = true }.keyboardShortcut("s")
+				Button("Save Report...") { model.ask(.saveReport) }.keyboardShortcut("s")
 			}
 			if case .failed(_, offersFileImport: true) = step {
 				Button("Import File...") {
@@ -137,23 +135,29 @@ struct MigrationSheet: View {
 		#if DEBUG || PERF_HARNESS
 		.onChange(of: stepCase, initial: true) { Self.shownStep = .state(step) }
 		#endif
-		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: $confirmSave) {
+		// The warning, the save panel, and the alert each hold a dialog of the bank that comes while they show, until the
+		// user answers them, and each waits for a dialog that shows (`AlertGate`). The save panel is a sheet of this sheet,
+		// so it closes with it, for example at the lock, and the report goes with it.
+		.alert("The report contains account names, balances, and account numbers and IBANs from rules.", isPresented: model.presents(.saveReport)) {
 			Button("Save Report...") {
 				if case let .done(_, report) = step { reportText = report.text() }
-				savingReport = true
+				model.ask(.savePanel)
 			}
 			Button("Cancel", role: .cancel) {}
 		} message: {
 			Text("Anyone who can open the file can read them.")
 		}
-		.alert("Could not save the report.", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
+		.alert("Could not save the report.", isPresented: model.presents(.reportNotSaved)) {
 			Button("OK") {}
 		} message: {
 			Text(saveError ?? "")
 		}
-		.fileExporter(isPresented: $savingReport, item: reportText, contentTypes: [.plainText],
+		.fileExporter(isPresented: model.presents(.savePanel), item: reportText, contentTypes: [.plainText],
 			defaultFilename: String(localized: "MoneyMoney migration \(String(describing: Day.today())).txt")) { result in
-			if case let .failure(error) = result { saveError = error.localizedDescription }
+			if case let .failure(error) = result {
+				saveError = error.localizedDescription
+				model.ask(.reportNotSaved)
+			}
 		}
 	}
 

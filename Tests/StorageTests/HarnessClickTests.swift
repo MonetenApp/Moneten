@@ -36,9 +36,11 @@ struct HarnessClickTests {
 
 	@Test("modal clicks the buttons of the alerts of the app, and none that sets the database key")
 	func modalTitles() {
-		for title in ["OK", "Cancel", "Remove", "Delete", "Mark as Checked", "Back Up Anyway"] {
+		for title in ["OK", "Cancel", "Remove", "Delete", "Mark as Checked", "Back Up Anyway", "Save Report..."] {
 			#expect(HarnessRun.mayClick(title, allowed: HarnessRun.modalTitles, on: .other), "\(title)")
 		}
+		// The save panel that "Save Report..." opens takes only its "Cancel".
+		#expect(!HarnessRun.mayClick("Save Report...", allowed: HarnessRun.modalTitles, on: .filePanel))
 		for title in ["Set Database Password...", "Show Database in Finder", "Save", ""] {
 			#expect(!HarnessRun.mayClick(title, allowed: HarnessRun.modalTitles, on: .other), "\(title)")
 		}

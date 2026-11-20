@@ -196,7 +196,6 @@ struct AccountSettingsSheet: View {
 	/// The account as the settings opened.
 	@State private var opened: Account?
 	@State private var initialBalance = ""
-	@State private var confirmRemovePIN = false
 	@State private var calibrating = false
 	/// The opening of the calibration window on screen or sliding out, for `OverSheetState`.
 	@State private var calibration: OverSheetState.Token?
@@ -235,6 +234,7 @@ struct AccountSettingsSheet: View {
 
 	var body: some View {
 		if let original = model.ledger.account(accountID) {
+			let access = original.accessID.flatMap { model.accesses[$0] }
 			// An initial balance above the limit, which an older version may have stored, keeps OK disabled even when the
 			// user changes another field: saving would store the text of the field, and that amount must not pass again.
 			// An empty name keeps OK disabled too, and the field asks for a name ("Account name").
@@ -290,7 +290,7 @@ struct AccountSettingsSheet: View {
 						}
 						Toggle("The account has been closed", isOn: binding.isClosed)
 					}
-					if let access = original.accessID.flatMap({ model.accesses[$0] }) {
+					if let access {
 						Section("Online banking") {
 							LabeledContent("User ID", value: access.shownLoginName)
 							Picker("Refresh", selection: binding.refreshInterval) {
@@ -299,32 +299,35 @@ struct AccountSettingsSheet: View {
 							// An extension names its secret as its login dialog does, such as "Remove saved Password".
 							if let secret = model.secretName(of: access) {
 								LabeledContent(secret) {
-									Button("Remove saved \(secret)") { confirmRemovePIN = true }
+									Button("Remove saved \(secret)") { model.ask(.removeSavedPIN) }
 										.disabled(!model.sync.broker.savedPINs.contains(access.id))
 								}
 							} else {
 								LabeledContent("PIN") {
-									Button("Remove saved PIN") { confirmRemovePIN = true }
+									Button("Remove saved PIN") { model.ask(.removeSavedPIN) }
 										.disabled(!model.sync.broker.savedPINs.contains(access.id))
 								}
-							}
-						}
-						.alert(model.secretName(of: access) == nil ? Text("Remove the saved PIN of “\(access.bankName)”?")
-							: Text("Remove the saved login data of “\(access.bankName)”?"), isPresented: $confirmRemovePIN) {
-							// Removing is the destructive answer, so Return never chooses it, and Escape chooses Cancel.
-							Button("OK", role: .destructive) { model.removeSavedPIN(of: access.id) }
-							Button("Cancel", role: .cancel) {}
-						} message: {
-							if model.secretName(of: access) == nil {
-								Text("The PIN is removed for every account of this access. The next refresh asks for it.")
-							} else {
-								Text("The login data is removed for every account of this access. The next refresh asks for it.")
 							}
 						}
 					}
 				}
 			}
 			.keepsInput(input, of: .accountSettings(accountID))
+			// A dialog of the bank that comes while the question shows waits until the user answered it, and a question
+			// asked while a dialog shows waits for the dialog (`AlertGate`). It sits on the settings, which stay while it
+			// is asked.
+			.alert(access.flatMap(model.secretName(of:)) == nil ? Text("Remove the saved PIN of “\(access?.bankName ?? "")”?")
+				: Text("Remove the saved login data of “\(access?.bankName ?? "")”?"), isPresented: model.presents(.removeSavedPIN)) {
+				// Removing is the destructive answer, so Return never chooses it, and Escape chooses Cancel.
+				Button("OK", role: .destructive) { if let access { model.removeSavedPIN(of: access.id) } }
+				Button("Cancel", role: .cancel) {}
+			} message: {
+				if access.flatMap(model.secretName(of:)) == nil {
+					Text("The PIN is removed for every account of this access. The next refresh asks for it.")
+				} else {
+					Text("The login data is removed for every account of this access. The next refresh asks for it.")
+				}
+			}
 			// The calibration window opens on top of the settings, which keep what the user changed so far. An alert
 			// that its save posts waits in `SheetAlerts` until the settings have slid out too. The settings keep the
 			// typed balance of the window in their own input, so that a lock keeps both and the unlock brings both back.
