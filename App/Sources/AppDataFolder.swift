@@ -3,6 +3,12 @@ import Foundation
 import Storage
 
 extension DataFolder {
+	/// What "Show Database in Finder" does: a Finder window that shows the data folder with "Database", "Extensions", and
+	/// "Statements", with "Database" selected. It reads no database, so it works while the app is locked (#557).
+	@MainActor func showInFinder() {
+		NSWorkspace.shared.activateFileViewerSelecting([databaseFolder])
+	}
+
 	/// The data folder of this run. Debug and Perf builds use the folder that `MONETEN_DATA_DIR` names,
 	/// so that the tests, the debug harness, and `scripts/perf-check.sh` never open the real database.
 	/// A release build ignores the variable: another process of the user could set it with

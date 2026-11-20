@@ -230,7 +230,7 @@ struct AppCommands: Commands {
 			Button("Extensions") { openWindow(id: "extensions") }
 		}
 		CommandGroup(replacing: .help) {
-			Button("Show Database in Finder...") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.root]) }
+			Button("Show Database in Finder...") { model.vault.folder.showInFinder() }
 			Button("Help and FAQ...") { NSWorkspace.shared.open(Self.helpPage) }
 				.keyboardShortcut("?")
 			Button("Supported Banks...") { openWindow(id: "supportedBanks") }
