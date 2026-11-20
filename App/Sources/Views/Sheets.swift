@@ -267,7 +267,7 @@ struct AccountSettingsSheet: View {
 					}
 					Section("Bank details") {
 						LabeledContent("Currency", value: original.currency)
-						if let iban = original.iban { LabeledContent("IBAN") { Text(iban.formatted).textSelection(.enabled) } }
+						if let iban = original.iban { LabeledContent("IBAN") { IBANText(iban: iban) } }
 						if let bic = original.bic { LabeledContent("BIC") { Text(bic).textSelection(.enabled) } }
 						if let number = original.accountNumber, number != original.iban?.electronic { LabeledContent("Account number", value: number) }
 						if let owner = original.owner { LabeledContent("Account owner", value: owner) }
@@ -621,7 +621,9 @@ struct TransactionSheet: View {
 			if let details = existing?.details.filter({ if case .valueDate = $0 { false } else { true } }), !details.isEmpty {
 				Section("Details") {
 					ForEach(details, id: \.self) { d in
-						LabeledContent(d.label) { Text(d.shownValue).textSelection(.enabled) }
+						LabeledContent(d.label) {
+							if case let .iban(iban) = d { IBANText(iban: iban) } else { Text(d.shownValue).textSelection(.enabled) }
+						}
 					}
 				}
 			}

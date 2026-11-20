@@ -45,6 +45,13 @@ public struct IBAN: Hashable, Sendable {
 		return String(decoding: bytes, as: UTF8.self)
 	}
 
+	/// What a copy of the selected part of `formatted` puts on the pasteboard: the selected characters without the spaces
+	/// of the groups. A whole IBAN then pastes in its electronic form, which every bank form takes, and a selected part
+	/// pastes as the characters it covers, so that a copy never holds a space that the IBAN does not have.
+	public static func copied(_ selected: some StringProtocol) -> String {
+		String(selected.filter { $0 != " " })
+	}
+
 	/// The Bankleitzahl inside a German IBAN, characters 5 to 12.
 	public var germanBankCode: String? {
 		electronic.hasPrefix("DE") ? String(electronic.dropFirst(4).prefix(8)) : nil

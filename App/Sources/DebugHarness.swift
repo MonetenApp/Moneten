@@ -1573,6 +1573,10 @@ final class DebugHarness {
 		// Adds a made-up direct debit with every detail from the bank to "Girokonto", selects it, and opens its sheet. It logs
 		// whether the help tag of its purpose lists the eight details in order, and the heights of the visible rows.
 		case "details": details()
+		// The copy of the IBAN in the sheet on top, the account settings or the transaction sheet: a triple click on the IBAN,
+		// then ⌘C, Copy in its context menu, the write of a drag, and ⌘C of the two middle groups "1203 0000". It logs
+		// whether each copy is the IBAN, or the part of it, without spaces. It changes the general pasteboard.
+		case "ibancopy": ibanCopy()
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
 		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
 		case "filterbar": filterBar(argument)
@@ -2159,6 +2163,66 @@ final class DebugHarness {
 			}
 		}
 		if let right = event(.rightMouseDown, clicks: 1) { window.sendEvent(right) }
+	}
+
+	private func ibanCopy() {
+		guard let window = topSheet, let field = window.contentView.flatMap(ibanField(in:)) else { return log("ibancopy", ("field", .flag(false))) }
+		field.scrollToVisible(field.bounds)
+		window.displayIfNeeded()
+		let point = field.convert(NSPoint(x: min(20, field.bounds.width / 2), y: field.bounds.midY), to: nil)
+		func event(_ type: NSEvent.EventType, clicks: Int) -> NSEvent? {
+			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+				context: nil, eventNumber: 0, clickCount: clicks, pressure: type == .leftMouseUp ? 0 : 1)
+		}
+		for clicks in 1...3 {
+			guard let down = event(.leftMouseDown, clicks: clicks), let up = event(.leftMouseUp, clicks: clicks) else { return }
+			// The field editor tracks the mouse until the button goes up, so the up event waits in the queue.
+			NSApp.postEvent(up, atStart: false)
+			window.sendEvent(down)
+		}
+		guard let editor = window.firstResponder as? IBANFieldEditor else {
+			return log("ibancopy", ("field", .flag(true)), ("editor", .flag(false)))
+		}
+		let shown = editor.string
+		let selected = (shown as NSString).substring(with: editor.selectedRange())
+		let electronic = IBAN.copied(shown)
+		let pasteboard = NSPasteboard.general
+		func copied(_ copy: () -> Void) -> String? {
+			pasteboard.clearContents()
+			copy()
+			return pasteboard.string(forType: .string)
+		}
+		// A harness run never activates the app, so the window of the sheet is not key, and an action without a target
+		// reaches no responder. The check sends the action of Edit > Copy, the item with ⌘C, to the first responder
+		// of the sheet, as AppKit does when the app is active.
+		let keyItem = copyMenuItem()
+		let key = copied {
+			guard let keyItem, keyItem.target == nil, let action = keyItem.action else { return }
+			NSApp.sendAction(action, to: window.firstResponder, from: keyItem)
+		}
+		let menuItem = event(.rightMouseDown, clicks: 1).flatMap { editor.menu(for: $0) }?.items.first { $0.action == #selector(NSText.copy(_:)) }
+		let menu = copied {
+			guard let menuItem, let action = menuItem.action else { return }
+			NSApp.sendAction(action, to: menuItem.target ?? window.firstResponder, from: menuItem)
+		}
+		let drag = NSPasteboard(name: NSPasteboard.Name("io.github.moneten.debug.ibancopy"))
+		drag.clearContents()
+		let dragWritten = editor.writeSelection(to: drag, types: editor.writablePasteboardTypes)
+		let dragged = drag.string(forType: .string)
+		let types = drag.types ?? []
+		drag.releaseGlobally()
+		editor.setSelectedRange(NSRange(location: 5, length: 9))
+		let partSelected = (shown as NSString).substring(with: editor.selectedRange())
+		let part = copied { NSApp.sendAction(#selector(NSText.copy(_:)), to: window.firstResponder, from: nil) }
+		log("ibancopy", ("field", .flag(true)), ("editor", .flag(true)), ("grouped", .flag(shown.contains(" ") && IBAN(shown)?.formatted == shown)),
+			("selectedall", .flag(selected == shown)), ("key", .flag(keyItem?.action == #selector(NSText.copy(_:)) && key == electronic)), ("menuitem", .flag(menuItem != nil)),
+			("menu", .flag(menu == electronic)), ("drag", .flag(dragWritten && dragged == electronic && types.allSatisfy { $0 == .string || $0.rawValue == "NSStringPboardType" })),
+			("part", .flag(partSelected.contains(" ") && part == IBAN.copied(partSelected) && part?.count == 8)))
+	}
+
+	private func ibanField(in view: NSView) -> IBANField? {
+		if let field = view as? IBANField { return field }
+		return view.subviews.lazy.compactMap(ibanField(in:)).first
 	}
 
 	/// The tables of transactions in all windows, told apart from the sidebar by their amount column.
