@@ -469,6 +469,11 @@ enum Schema {
 				t.column("values", .text).notNull()
 			}
 		}
+		// The record of the starter set: the key of a starter category (issue #207). Only a new starter set fills it, so
+		// every category stored before has none and keeps its name when the interface language changes. It comes after v32.
+		m.registerMigration("v33") { db in
+			try db.alter(table: "category") { t in t.add(column: "starterKey", .text) }
+		}
 		return m
 	}
 

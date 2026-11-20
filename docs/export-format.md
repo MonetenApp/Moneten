@@ -137,6 +137,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `rule` | The rule for automatic categorization as text, empty for none |
 | `isExpanded` | Whether the sidebar shows the group open |
 | `sourceID` | Identifier of the category in the source it came from |
+| `starterKey` | The place of a category that the starter set made, such as `"living.rent"`, until the user renamed it or moved it to another group. Left out for every other category |
 
 ## Transaction
 

@@ -662,11 +662,47 @@ struct BankAccessTests {
 		#expect(current.kind == .portfolio)
 	}
 
-	@Test("The menu \"Account type\" offers every type but \"Portfolio\", and a portfolio has no menu")
+	@Test("The menu \"Account type\" of an account of a bank access offers six types without \"Cash\", and a portfolio has no menu")
 	func accountTypeChoices() {
-		#expect(AccountKind.giro.choices == [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other])
-		#expect(AccountKind.creditCard.choices == [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other])
-		#expect(AccountKind.portfolio.choices == nil)
+		let six: [AccountKind] = [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .other]
+		var giro = Self.bankAccount("Giro")
+		#expect(giro.kindChoices == six)
+		giro.kind = .creditCard
+		#expect(giro.kindChoices == six)
+		giro.kind = .portfolio
+		#expect(giro.kindChoices == nil)
+	}
+
+	@Test("An offline or migrated account and the setup of an offline account also offer \"Cash\"")
+	func accountTypeChoicesWithoutBankAccess() {
+		let seven: [AccountKind] = [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other]
+		#expect(Account(position: 0, name: "Wallet", kind: .giro, source: .offline).kindChoices == seven)
+		#expect(Account(position: 0, name: "Kasse", kind: .cash, source: .migrated).kindChoices == seven)
+		#expect(AccountKind.choices(hasBankAccess: false) == seven)
+		#expect(Account(position: 0, name: "Depot", kind: .portfolio, source: .offline).kindChoices == nil)
+	}
+
+	@Test("A cash account that a bank access connected later keeps \"Cash\" in its menu")
+	func cashAccountOfABankAccess() {
+		var kasse = Self.bankAccount("Kasse")
+		kasse.kind = .cash
+		#expect(kasse.kindChoices == [.giro, .savings, .fixedTermDeposit, .loan, .creditCard, .cash, .other])
+	}
+
+	@Test("Saving the account settings never makes an account of a bank access a cash account")
+	func settingsNeverChooseCashForABankAccount() {
+		let opened = Self.bankAccount("Giro")
+		var edited = opened
+		edited.kind = .cash
+		var current = opened
+		current.takeSettings(from: edited, opened: opened)
+		#expect(current.kind == .giro)
+		var offline = Account(position: 0, name: "Wallet", kind: .giro, source: .offline)
+		let openedOffline = offline
+		var editedOffline = offline
+		editedOffline.kind = .cash
+		offline.takeSettings(from: editedOffline, opened: openedOffline)
+		#expect(offline.kind == .cash)
 	}
 
 	@Test("Saving the account settings never makes an account a portfolio")

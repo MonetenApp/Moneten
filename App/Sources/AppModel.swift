@@ -709,7 +709,20 @@ final class AppModel {
 		self.store = store
 		lockSettings = try store.lockSettings()
 		unlockSettings = try store.unlockMethods()
-		let loaded = try store.loadLedger()
+		var loaded = try store.loadLedger()
+		// An unchanged starter set of the other language takes the names of the interface language. A failed
+		// write keeps the old names, which the next open tries again, and does not keep the database closed.
+		let renamed = StarterCategories.renamed(in: loaded, to: starterLanguage)
+		if !renamed.isEmpty {
+			do {
+				try store.save(categories: renamed)
+				let byID = Dictionary(uniqueKeysWithValues: renamed.map { ($0.id, $0) })
+				loaded.replace(categories: loaded.categories.map { byID[$0.id] ?? $0 })
+			} catch {
+				// The line names no category, because a name may be one that the user gave.
+				Trail.log("starter rename failed categories=\(renamed.count) error=\(type(of: error))")
+			}
+		}
 		ledgerChange = "load"
 		ledger = loaded
 		accesses = Dictionary(uniqueKeysWithValues: try store.accesses().map { ($0.id, $0) })
@@ -1866,6 +1879,8 @@ final class AppModel {
 
 	func save(category: Domain.Category) {
 		guard let store else { return }
+		// A rename or a move by the user ends the record of the starter set.
+		let category = ledger.userSaved(category)
 		do {
 			try store.save(category)
 			ledger.upsert(category)

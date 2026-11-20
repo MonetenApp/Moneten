@@ -59,7 +59,8 @@ struct StarterCategoriesTests {
 	func change(_ name: String, in ledger: inout Ledger, _ edit: (inout Domain.Category) -> Void) throws {
 		var c = try #require(ledger.categories.first { $0.name == name })
 		edit(&c)
-		ledger.upsert(c)
+		// As the user saves it, so that a rename ends the record of the starter set.
+		ledger.upsert(ledger.userSaved(c))
 	}
 
 	@Test("An unchanged German set is replaced when the interface is German")
@@ -152,5 +153,250 @@ struct StarterCategoriesTests {
 	@Test("The default category is never in the result", arguments: StarterCategories.Language.allCases)
 	func defaultCategory(_ language: StarterCategories.Language) {
 		#expect(unchangedRoots(Ledger(categories: StarterCategories.make(language: language).filter(\.isDefault)), language) == [])
+	}
+
+	/// The sidebar after the app stored the categories that `StarterCategories.renamed(in:to:)` gives.
+	func switched(_ ledger: Ledger, to language: StarterCategories.Language) -> [String] {
+		var l = ledger
+		for c in StarterCategories.renamed(in: ledger, to: language) { l.upsert(c) }
+		return l.categoriesInSidebarOrder.map { l.categoryPath($0.id) }
+	}
+
+	@Test("Both sets carry the same key for each category, and no key twice")
+	func provenance() {
+		let english = StarterCategories.make(language: .english), german = StarterCategories.make(language: .german)
+		#expect(english.map(\.starterKey) == german.map(\.starterKey))
+		#expect(Set(english.compactMap(\.starterKey)).count == english.count)
+	}
+
+	@Test("An unchanged English set takes the German names when the interface is German, so only \"Wohnen\" is left")
+	func switchToGerman() {
+		#expect(switched(Ledger(categories: StarterCategories.make(language: .english)), to: .german) == sidebar(.german))
+	}
+
+	@Test("An unchanged German set takes the English names when the interface is English")
+	func switchToEnglish() {
+		#expect(switched(Ledger(categories: StarterCategories.make(language: .german)), to: .english) == sidebar(.english))
+	}
+
+	@Test("A set in the language of the interface is not renamed", arguments: StarterCategories.Language.allCases)
+	func sameLanguage(_ language: StarterCategories.Language) {
+		#expect(StarterCategories.renamed(in: Ledger(categories: StarterCategories.make(language: language)), to: language).isEmpty)
+	}
+
+	@Test("A renamed category keeps its id and its key, so its transactions and its rule stay")
+	func idsStay() throws {
+		let english = Ledger(categories: StarterCategories.make(language: .english))
+		let renamed = StarterCategories.renamed(in: english, to: .german)
+		let groceries = try #require(english.categories.first { $0.name == "Groceries" })
+		let salary = try #require(english.categories.first { $0.name == "Salary" })
+		#expect(renamed.first { $0.id == groceries.id }?.name == "Lebensmittel")
+		#expect(renamed.first { $0.id == salary.id }?.rule == #""Gehalt" OR "Lohn""#)
+		// "Restaurants" has the same name in both sets, so it needs no write.
+		#expect(Set(renamed.map(\.id)) == Set(english.categories.filter { $0.name != "Restaurants" }.map(\.id)))
+		#expect(renamed.map(\.starterKey) == renamed.map { c in english.category(c.id)?.starterKey })
+	}
+
+	@Test("A set that was renamed once follows the next switch back")
+	func switchBack() {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		for c in StarterCategories.renamed(in: l, to: .german) { l.upsert(c) }
+		#expect(switched(l, to: .english) == sidebar(.english))
+	}
+
+	@Test("A German group \"Wohnen\" with the extra subcategory \"Garten\" keeps its names, the unchanged groups take English names")
+	func changedGroupStays() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .german))
+		let wohnen = try #require(l.categories.first { $0.name == "Wohnen" })
+		l.upsert(Domain.Category(parentID: wohnen.id, position: 4, name: "Garten"))
+		let sidebar = switched(l, to: .english)
+		#expect(sidebar.filter { $0.hasPrefix("Wohnen") } == [
+			"Wohnen", "Wohnen › Miete", "Wohnen › Lebensmittel", "Wohnen › Strom", "Wohnen › Internet & Telefon", "Wohnen › Garten",
+		])
+		#expect(sidebar.contains("Income") && !sidebar.contains("Einnahmen"))
+		#expect(sidebar.last == "Uncategorized")
+	}
+
+	@Test("A group is not renamed when the user removed or renamed one of its starter subcategories", arguments: ["removed", "renamed"])
+	func incompleteGroupStays(_ edit: String) throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		if edit == "removed" {
+			l.replace(categories: l.categories.filter { $0.name != "Car" })
+		} else {
+			try change("Car", in: &l) { $0.name = "Van" }
+		}
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.contains("Mobility") && !sidebar.contains("Mobilität"))
+		#expect(sidebar.contains("Wohnen"))
+	}
+
+	@Test("A starter category whose color the user changed still takes the new name, because only the name is the language")
+	func colorDoesNotCount() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		try change("Car", in: &l) { $0.color = "#FF0000" }
+		#expect(switched(l, to: .german) == sidebar(.german))
+	}
+
+	@Test("A group of the user named like the new name in any case or white space keeps \"Garten\", and \"Living\" keeps its name",
+		arguments: ["Wohnen", "wohnen", " Wohnen "])
+	func userGroupWithTheNewName(_ name: String) {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		let wohnen = Domain.Category(position: 6, name: name, isGroup: true)
+		l.upsert(wohnen)
+		l.upsert(Domain.Category(parentID: wohnen.id, position: 0, name: "Garten"))
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.filter { $0.trimmingCharacters(in: .whitespaces).lowercased() == "wohnen" }.count == 1)
+		#expect(sidebar.contains("\(name) › Garten"))
+		#expect(sidebar.contains("Living") && sidebar.contains("Living › Rent"))
+		#expect(sidebar.contains("Mobilität"))
+	}
+
+	@Test("A name that the user gave in the other language stays, also the name of the default category", arguments: StarterCategories.Language.allCases)
+	func userNameInTheOtherLanguage(_ interface: StarterCategories.Language) throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		for (old, new) in [("Transfers", "Umbuchungen"), ("Uncategorized", "Unkategorisiert")] {
+			var c = try #require(l.categories.first { $0.name == old })
+			c.name = new
+			l.upsert(l.userSaved(c))
+		}
+		let renamed = StarterCategories.renamed(in: l, to: interface)
+		#expect(!renamed.contains { $0.name == "Transfers" || $0.name == "Uncategorized" })
+		let sidebar = switched(l, to: interface)
+		#expect(sidebar.filter { $0 == "Umbuchungen" }.count == 1)
+		#expect(sidebar.last == "Unkategorisiert")
+	}
+
+	@Test("A group \"Living\" with the four English subcategories that the user built in a German ledger keeps its names, also without the starter group \"Wohnen\"",
+		arguments: [false, true])
+	func userBuiltGroup(_ removedWohnen: Bool) throws {
+		var l = Ledger(categories: StarterCategories.make(language: .german))
+		if removedWohnen {
+			let wohnen = try #require(l.categories.first { $0.name == "Wohnen" })
+			let gone = l.categoryIDs(inTree: wohnen.id)
+			l.replace(categories: l.categories.filter { !gone.contains($0.id) })
+		}
+		let living = Domain.Category(position: 6, name: "Living", isGroup: true)
+		l.upsert(living)
+		for (i, name) in ["Rent", "Groceries", "Electricity", "Internet & Phone"].enumerated() {
+			l.upsert(Domain.Category(parentID: living.id, position: i, name: name))
+		}
+		#expect(StarterCategories.renamed(in: l, to: .german).isEmpty)
+		let english = switched(l, to: .english)
+		#expect(english.filter { $0 == "Living" }.count == 1)
+		#expect(english.contains("Wohnen") == !removedWohnen && english.contains("Living › Rent"))
+	}
+
+	@Test("A group with a second \"Rent\" next to or in place of one of its starter subcategories is not renamed",
+		arguments: ["user", "copy", "copy in place of Groceries"])
+	func duplicateChild(_ kind: String) throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		let rent = try #require(l.categories.first { $0.name == "Rent" })
+		if kind == "user" {
+			l.upsert(Domain.Category(parentID: rent.parentID, position: 4, name: "Rent"))
+		} else {
+			// A copy with the key, as an edited export could bring. In place of "Groceries", the group keeps four subcategories.
+			var copy = rent
+			copy.id = UUID()
+			copy.position = 4
+			if kind != "copy" { l.replace(categories: l.categories.filter { $0.name != "Groceries" }) }
+			l.upsert(copy)
+		}
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.filter { $0 == "Living › Rent" }.count == 2)
+		#expect(!sidebar.contains("Wohnen"))
+		#expect(sidebar.contains("Mobilität"))
+	}
+
+	@Test("The default category keeps its name when a top-level category of the user already has the new one", arguments: ["Unkategorisiert", "unkategorisiert"])
+	func defaultNameTaken(_ name: String) {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		l.upsert(Domain.Category(position: 6, name: name))
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.filter { $0.lowercased() == "unkategorisiert" }.count == 1)
+		#expect(sidebar.last == "Uncategorized")
+	}
+
+	@Test("A set without the record of the starter set keeps its names", arguments: StarterCategories.Language.allCases)
+	func withoutRecord(_ created: StarterCategories.Language) {
+		let unrecorded = StarterCategories.make(language: created).map { c in
+			var c = c
+			c.starterKey = nil
+			return c
+		}
+		for language in StarterCategories.Language.allCases {
+			#expect(StarterCategories.renamed(in: Ledger(categories: unrecorded), to: language).isEmpty)
+		}
+	}
+
+	@Test("An empty group \"Living\" of the user in a German ledger is not renamed when the interface is German")
+	func emptyUserGroupStays() {
+		var l = Ledger(categories: StarterCategories.make(language: .german))
+		l.upsert(Domain.Category(position: 6, name: "Living", isGroup: true))
+		#expect(StarterCategories.renamed(in: l, to: .german).isEmpty)
+	}
+
+	@Test("An English set whose default category the user renamed still takes German names, and the default keeps the name of the user")
+	func renamedDefault() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		try change("Uncategorized", in: &l) { $0.name = "Open" }
+		let sidebar = switched(l, to: .german)
+		#expect(Array(sidebar.dropLast()) == Array(self.sidebar(.german).dropLast()))
+		#expect(sidebar.last == "Open")
+	}
+
+	@Test("A rename by the user ends the record, so a name renamed back stays, and a change of the color keeps it")
+	func userRenameBack() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		var transfers = try #require(l.categories.first { $0.name == "Transfers" })
+		for name in ["My transfers", "Transfers"] {
+			transfers.name = name
+			transfers = l.userSaved(transfers)
+			l.upsert(transfers)
+		}
+		#expect(transfers.starterKey == nil)
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.contains("Transfers") && !sidebar.contains("Umbuchungen"))
+		#expect(sidebar.contains("Wohnen"))
+		var car = try #require(l.categories.first { $0.name == "Car" })
+		car.color = "#FF0000"
+		#expect(l.userSaved(car).starterKey == "mobility.car")
+	}
+
+	@Test("A move by the user to another group ends the record of the moved category, a move inside its group keeps it")
+	func userMove() throws {
+		var l = Ledger(categories: StarterCategories.make(language: .english))
+		let rent = try #require(l.categories.first { $0.name == "Rent" })
+		let mobility = try #require(l.categories.first { $0.name == "Mobility" })
+		for (parent, index) in [(rent.parentID, 3), (mobility.id, 0), (nil, 0)] as [(UUID?, Int)] {
+			for c in l.move(category: rent.id, into: parent, at: index) { l.upsert(c) }
+			if parent == rent.parentID { #expect(l.category(rent.id)?.starterKey == "living.rent") }
+		}
+		#expect(l.category(rent.id)?.starterKey == nil)
+		let sidebar = switched(l, to: .german)
+		#expect(sidebar.contains("Rent") && !sidebar.contains("Miete"))
+		#expect(sidebar.contains("Living") && !sidebar.contains("Wohnen"))
+		#expect(sidebar.contains("Mobilität"))
+	}
+
+	@Test("The migration still finds a starter set without the record, because the record is not a setting", arguments: StarterCategories.Language.allCases)
+	func migrationWithoutRecord(_ language: StarterCategories.Language) {
+		let unrecorded = StarterCategories.make(language: language).map { c in
+			var c = c
+			c.starterKey = nil
+			return c
+		}
+		#expect(unchangedRoots(Ledger(categories: unrecorded), language).count == 6)
+	}
+
+	@Test("A category whose key came with a name that is no starter name, as from an edited export, keeps its name")
+	func keyWithForeignName() {
+		let categories = StarterCategories.make(language: .english).map { c in
+			var c = c
+			if c.name == "Transfers" { c.name = "My transfers" }
+			return c
+		}
+		let sidebar = switched(Ledger(categories: categories), to: .german)
+		#expect(sidebar.contains("My transfers") && !sidebar.contains("Umbuchungen"))
+		#expect(sidebar.contains("Wohnen"))
 	}
 }
