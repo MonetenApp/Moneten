@@ -69,7 +69,7 @@ struct ChangedOnDiskView: View {
 			Text("Database file: \(model.vault.folder.databaseFile.path)").font(.callout).foregroundStyle(.secondary)
 				.multilineTextAlignment(.center).textSelection(.enabled).frame(maxWidth: 520)
 			HStack {
-				Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
+				Button("Show Database in Finder") { model.vault.folder.showInFinder() }
 				Button("Load Database Again") { model.loadDatabaseAgain() }.keyboardShortcut(.defaultAction)
 			}
 		}
@@ -87,7 +87,7 @@ struct FailureView: View {
 			Text("Could not open database.").font(.title2)
 			Text(message).multilineTextAlignment(.center).textSelection(.enabled).frame(maxWidth: 520)
 			HStack {
-				Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
+				Button("Show Database in Finder") { model.vault.folder.showInFinder() }
 				Button("Try Again") { model.start() }.keyboardShortcut(.defaultAction)
 			}
 		}
@@ -164,7 +164,7 @@ struct LockView: View {
 			if !Task.isCancelled { password = "" }
 		}
 		.alert("Forgot your password?", isPresented: $showHelp) {
-			Button("Show Database in Finder") { NSWorkspace.shared.activateFileViewerSelecting([model.vault.folder.databaseFolder]) }
+			Button("Show Database in Finder") { model.vault.folder.showInFinder() }
 			Button("OK", role: .cancel) {}
 		} message: {
 			Text("There is no way to recover the database password. Without it the data cannot be read.\n\nTo start over with an empty database, quit Moneten and rename the folder \"Database\" in the data folder, for example to \"Database_OLD\". Renaming keeps the old data in case the password comes back to mind.")
