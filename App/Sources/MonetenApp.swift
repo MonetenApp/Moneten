@@ -65,6 +65,9 @@ struct MonetenApp: App {
 		}
 		// The settings open only while the app is unlocked, so they never come back with the launch.
 		.restorationBehavior(.disabled)
+		// From macOS 26 on, the scene adds its own "Settings…" item after the group `.appSettings`, so replacing the
+		// group no longer removes it. The item of `AppCommands` alone opens the settings, and only while the app is unlocked.
+		.commandsRemoved()
 
 		MenuBarExtra(isInserted: $showMenuBarIcon) {
 			MenuBarPopover()

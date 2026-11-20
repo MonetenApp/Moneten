@@ -185,6 +185,13 @@ poll "^phase=failed" state
 rmdir "$DATA/Database/Moneten.sqlite"
 send create check-debug-log
 poll "phase=unlocked" state
+# The Moneten menu has one "Settings..." item, the one that waits for the unlock. From macOS 26 on, the settings scene adds
+# its own "Settings…" after the group it replaces, unless the scene removes its commands (issue #554).
+poll "^menu Moneten items=" menu Moneten
+menu=$(grep "^menu Moneten items=" "$LOG" | tail -1)
+case "$menu" in *"$(digest "Settings...")"*"$(digest "Settings...")"* | *"$(digest "Settings…")"*)
+	echo "The Moneten menu shows \"Settings\" more than once: $menu" >&2; exit 1 ;; esac
+case "$menu" in *"$(digest "Settings...")"*) ;; *) echo "The Moneten menu has no \"Settings...\": $menu" >&2; exit 1 ;; esac
 # ⌘, opens the settings while the app is unlocked, and a lock closes them. While the app is locked, ⌘, opens nothing.
 send settings open
 poll "^settings window=true .* tab=general " settings state
