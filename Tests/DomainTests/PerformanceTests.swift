@@ -163,7 +163,7 @@ struct PerformanceTests {
 		#endif
 	}
 
-	@Test("Suggestions for a typed name look through 50,000 transactions with different names within a frame")
+	@Test("Suggestions for a typed name look through 50,000 transactions with different names within budget")
 	func nameSuggestions() {
 		let wallet = Account(position: 0, name: "Wallet", kind: .cash, source: .offline)
 		// Separate lets with their types, because the compiler of CI gave up on one expression.
@@ -175,11 +175,15 @@ struct PerformanceTests {
 		}
 		let ledger = Ledger(accounts: [wallet], transactions: ts)
 		var found = 0
-		let keystroke = fastest { found = ledger.nameSuggestions(for: "Bäckerei").count }
-		print("suggestions over 50,000 names: \(keystroke)")
+		let keystroke = fastest(runs: 15) { found = ledger.nameSuggestions(for: "Bäckerei").count }
+		print("suggestions over 50,000 names: \(keystroke), budget \(budget(.milliseconds(25)))")
 		#expect(found == 0)
+		// The fastest of 15 runs. A keystroke reads the search text of every row once and compares bytes. In release it takes
+		// 2 to 6 ms on an M-series Mac, within a frame. Runners that GitHub hosts took 11 to 24 ms for the fastest of 3 runs in
+		// 20 CI runs, so the limit is 25 ms, 37.5 ms on a runner. Folding every name on each keystroke, the slow path this
+		// test guards, took 95 to 120 ms on the same Mac and fails it.
 		#if !DEBUG
-		#expect(keystroke < budget(.milliseconds(16)))
+		#expect(keystroke < budget(.milliseconds(25)))
 		#endif
 	}
 
