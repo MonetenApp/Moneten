@@ -42,6 +42,18 @@ import Testing
 		#expect(try IBAN(parsing: "NO9386011117947").formatted == "NO93 8601 1117 947")
 	}
 
+	@Test("A copy of the IBAN in groups, or of a part of it, has no spaces", arguments: [
+		("DE02 1203 0000 0000 2020 51", "DE02120300000000202051"),
+		("1203 0000", "12030000"),
+		("02 12", "0212"),
+		("2020", "2020"),
+		(" ", ""),
+		("", ""),
+	])
+	func copied(selected: String, copied: String) {
+		#expect(IBAN.copied(selected) == copied)
+	}
+
 	@Test func germanBankCodeAndAccountNumber() throws {
 		let german = try IBAN(parsing: "DE02120300000000202051")
 		#expect(german.germanBankCode == "12030000" && german.germanAccountNumber == "0000202051")
