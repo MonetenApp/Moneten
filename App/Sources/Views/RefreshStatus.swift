@@ -54,7 +54,6 @@ struct RefreshErrorPopover: View {
 			if let editLoginData {
 				Divider()
 				Text("If the bank asks to set up the access again, for example after a new TAN method or an aborted authentication, choose “Edit Login Data...” and confirm the login data.")
-					.fixedSize(horizontal: false, vertical: true)
 				Button("Edit Login Data...", action: editLoginData)
 			}
 			if !error.notices.isEmpty {
@@ -63,6 +62,9 @@ struct RefreshErrorPopover: View {
 				ForEach(error.notices, id: \.self) { Text($0).textSelection(.enabled) }
 			}
 		}
+		// The popover of a sidebar row inherits the line limit of 1 that a sidebar list gives its rows, so every text
+		// takes as many lines as it needs (#556).
+		.lineLimit(nil)
 		.fixedSize(horizontal: false, vertical: true)
 		.frame(width: 320, alignment: .leading)
 		.padding(16)

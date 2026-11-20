@@ -700,7 +700,8 @@ final class DebugHarness {
 			let accounts = model.ledger.accounts.filter { $0.accessID != nil }
 			if let position = accounts.firstIndex(where: { $0.name == argument }), let error = accounts[position].refreshError {
 				let edit: (() -> Void)? = error.suggestsEditLoginData && model.fintsAccess(of: accounts[position].id) != nil ? {} : nil
-				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit), width: 352, name: "\(position)", kind: "error",
+				// With the line limit that the popover inherits from its sidebar row, so the snapshot shows what the user sees.
+				offscreenSnapshot(RefreshErrorPopover(account: accounts[position], error: error, editLoginData: edit).lineLimit(1), width: 352, name: "\(position)", kind: "error",
 					("account", .position(position)), ("kind", .state(accounts[position].kind)))
 			}
 		case "extrun": runExtension(argument)
