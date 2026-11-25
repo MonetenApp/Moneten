@@ -92,7 +92,7 @@ public struct ExtensionConnector: BankConnector {
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
 				guard let table = state.accounts[account.remoteID],
-					let listed = ListedAccount(table)?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: scriptNow)
+					let listed = (try? ListedAccount(table))?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: scriptNow)
 				else {
 					outcomes[account.accountID] = .failed(.unsupported(String(localized: "\(package.name) does not know the account \(account.remoteID). Set up the access again.")))
 					continue
@@ -351,7 +351,14 @@ private final class ScriptRun {
 		}
 		switch answer {
 		case let .array(items):
-			let accounts = items.compactMap(ListedAccount.init)
+			var accounts: [ListedAccount] = []
+			for item in items {
+				do {
+					if let account = try ListedAccount(item) { accounts.append(account) }
+				} catch {
+					throw SyncFailure.unsupported(error.message)
+				}
+			}
 			var seen: Set<String> = []
 			if let twice = accounts.first(where: { !seen.insert($0.remoteID).inserted }) {
 				throw SyncFailure.accountListedTwice(extensionName: connector.package.name, accountNumber: twice.number, currency: twice.currency)

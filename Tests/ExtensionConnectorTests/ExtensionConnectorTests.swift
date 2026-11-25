@@ -135,10 +135,10 @@ import Testing
 		function ListAccounts() return {{name = "Krypto", accountNumber = "A", portfolio = true}} end
 		function RefreshAccount(account)
 			if not account.portfolio then return {balance = 1, transactions = {}} end
-			return {securities = {{name = "Token A", quantity = 10, price = 2}, {name = "Token B", quantity = 10, price = 110, currencyOfPrice = "USDC"}}}
+			return {securities = {{name = "Token A", quantity = 10, price = 2}, {name = "Token B", quantity = 10, price = 110, currencyOfPrice = "USD"}}}
 		end
 		"""
-	static let tokenNotice = "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."
+	static let tokenNotice = "The balance leaves out Token B, because its price is in USD and the extension gives no exchange rate."
 
 	/// The balance and the other positions arrived, so the account refreshed, and a notice names the left out position.
 	@Test func positionWithoutARateIsANoticeAndTheAccountRefreshes() async throws {

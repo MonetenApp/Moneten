@@ -52,6 +52,12 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 
 	public static func < (lhs: Money, rhs: Money) -> Bool { lhs.minorUnits < rhs.minorUnits }
 
+	/// Whether `code` has the form of an ISO 4217 code, three letters A to Z. The complete export accepts only this form,
+	/// so each edge that takes a currency from outside checks it before the code reaches the database.
+	public static func isCurrencyCode(_ code: String) -> Bool {
+		code.wholeMatch(of: /[A-Z]{3}/) != nil
+	}
+
 }
 
 enum Currency {

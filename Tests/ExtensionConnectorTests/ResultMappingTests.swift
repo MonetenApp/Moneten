@@ -6,9 +6,9 @@ import Testing
 
 /// The account and result tables of a script, read into the types of the app.
 @Suite struct ResultMappingTests {
-	let giro = ListedAccount(.object(["name": .string("Premium Account"), "accountNumber": .string("111222333444"), "currency": .string("EUR"),
+	let giro = try! ListedAccount(.object(["name": .string("Premium Account"), "accountNumber": .string("111222333444"), "currency": .string("EUR"),
 		"type": .string("AccountTypeGiro")]))!
-	let depot = ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
+	let depot = try! ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true)]))!
 	let berlinZone = TimeZone(identifier: "Europe/Berlin")!
 
 	func result(_ fields: [String: LuaValue], of account: ListedAccount? = nil) throws -> RefreshResult {
@@ -20,7 +20,7 @@ import Testing
 	}
 
 	@Test func oneAccount() {
-		let account = ListedAccount(.object(["name": .string("Premium Account"), "owner": .string("Erika Mustermann"), "accountNumber": .string("111222333444"),
+		let account = try! ListedAccount(.object(["name": .string("Premium Account"), "owner": .string("Erika Mustermann"), "accountNumber": .string("111222333444"),
 			"bankCode": .string("80007777"), "currency": .string("EUR"), "type": .string("AccountTypeGiro")]))
 		#expect(account?.name == "Premium Account")
 		#expect(account?.kind == .giro)
@@ -35,20 +35,20 @@ import Testing
 		for name in [nil, "", "   "] as [String?] {
 			var fields: [String: LuaValue] = ["accountNumber": .string("202051"), "type": .string("AccountTypeSavings")]
 			fields["name"] = name.map(LuaValue.string)
-			#expect(try #require(ListedAccount(.object(fields))).name == "Savings account")
+			#expect(try #require(try ListedAccount(.object(fields))).name == "Savings account")
 		}
-		let derived = try #require(ListedAccount(.object(["accountNumber": .string("5232 xxxx xxxx 1234")])))
+		let derived = try #require(try ListedAccount(.object(["accountNumber": .string("5232 xxxx xxxx 1234")])))
 		#expect(derived.kind == .creditCard)
 		#expect(derived.name == "Credit card")
 		#expect(derived.remoteID == "5232 xxxx xxxx 1234 EUR")
-		let named = try #require(ListedAccount(.object(["accountNumber": .string("202051"), "name": .string(" Tagesgeld Plus ")])))
+		let named = try #require(try ListedAccount(.object(["accountNumber": .string("202051"), "name": .string(" Tagesgeld Plus ")])))
 		#expect(named.name == " Tagesgeld Plus ")
 		#expect(named.kind == .savings)
 	}
 
 	@Test func ibanIsKeptOnlyWhenValid() {
 		func listed(_ iban: String) -> ListedAccount? {
-			ListedAccount(.object(["accountNumber": .string("4711"), "iban": .string(iban)]))
+			try! ListedAccount(.object(["accountNumber": .string("4711"), "iban": .string(iban)]))
 		}
 		#expect(listed("de02 1203 0000 0000 2020 51")?.iban == "DE02120300000000202051")
 		#expect(listed("DE03120300000000202051")?.iban == nil)
@@ -68,11 +68,11 @@ import Testing
 	}
 
 	@Test func missingAccountNumberIsIgnored() {
-		#expect(ListedAccount(.object(["name": .string("No number")])) == nil)
+		#expect(try! ListedAccount(.object(["name": .string("No number")])) == nil)
 	}
 
 	@Test func portfolio() {
-		#expect(ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true), "type": .string("AccountTypePortfolio")]))?.kind == .portfolio)
+		#expect(try! ListedAccount(.object(["accountNumber": .string("D-1"), "portfolio": .boolean(true), "type": .string("AccountTypePortfolio")]))?.kind == .portfolio)
 	}
 
 	/// Only `portfolio` decides whether the results hold securities. A securities account with `portfolio=false`
@@ -81,7 +81,7 @@ import Testing
 	func portfolioFieldDecidesAboutSecurities(portfolio: LuaValue?, holdsSecurities: Bool) throws {
 		var fields: [String: LuaValue] = ["accountNumber": .string("D-1"), "type": .string("AccountTypePortfolio")]
 		fields["portfolio"] = portfolio
-		let account = try #require(ListedAccount(.object(fields)))
+		let account = try #require(try ListedAccount(.object(fields)))
 		#expect(account.kind == .portfolio)
 		#expect(account.holdsSecurities == holdsSecurities)
 		let transactions = try? result(["balance": .number(100), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(100),
@@ -91,14 +91,14 @@ import Testing
 
 	/// The number 0 asks for securities, as any value but `false` does, and leaves the kind and the remote ID of a giro account.
 	@Test func portfolioZeroKeepsTheKind() throws {
-		let account = try #require(ListedAccount(.object(["accountNumber": .string("G-1"), "type": .string("AccountTypeGiro"), "portfolio": .integer(0)])))
+		let account = try #require(try ListedAccount(.object(["accountNumber": .string("G-1"), "type": .string("AccountTypeGiro"), "portfolio": .integer(0)])))
 		#expect(account.holdsSecurities)
 		#expect(account.kind == .giro)
 		#expect(account.remoteID == "G-1 EUR")
 	}
 
 	@Test func subAccountIsPartOfTheRemoteID() {
-		#expect(ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01 EUR")
+		#expect(try! ListedAccount(.object(["accountNumber": .string("1234"), "subAccount": .string("01")]))?.remoteID == "1234/01 EUR")
 	}
 
 	/// The number decides first: 16 characters as sent, spaces included, or an x or an asterisk. Then the name in lowercase, and
@@ -131,12 +131,12 @@ import Testing
 		("DE02120300000000202051", "Geschäftsbereich", .other),
 	])
 	func typeFromTheNumberAndTheName(number: String, name: String, kind: AccountKind) {
-		#expect(ListedAccount(.object(["accountNumber": .string(number), "name": .string(name)]))?.kind == kind)
+		#expect(try! ListedAccount(.object(["accountNumber": .string(number), "name": .string(name)]))?.kind == kind)
 	}
 
 	/// A given type wins over any hint in the number or the name.
 	@Test func givenTypeWins() {
-		#expect(ListedAccount(.object(["accountNumber": .string("5232123412341234"), "name": .string("Visa"),
+		#expect(try! ListedAccount(.object(["accountNumber": .string("5232123412341234"), "name": .string("Visa"),
 			"type": .string("AccountTypeSavings")]))?.kind == .savings)
 	}
 
@@ -224,7 +224,7 @@ import Testing
 
 	/// Spaces around a code and lowercase letters name the same currency, so the amount adds to that currency.
 	@Test func currencyCodesAreTrimmed() throws {
-		let dollars = ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("USD")]))!
+		let dollars = try! ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("USD")]))!
 		let own = try result(["balances": .array([pair(35.00, " USD")]), "transactions": .array([])], of: dollars)
 		#expect(own.balance == Money(minorUnits: 3500, currency: "USD"))
 		#expect(own.otherBalances.isEmpty)
@@ -324,11 +324,11 @@ import Testing
 	/// The account still refreshed, so the message is a notice and no failure.
 	@Test func priceInAnotherCurrencyWithoutARateAddsNothingToTheBalance() throws {
 		let (tokens, notices) = try mapped(["securities": .array([.object(["name": .string("Token A"), "quantity": .integer(10), "price": .number(2), "amount": .integer(20)]),
-			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USDC")])])], of: depot)
+			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USD")])])], of: depot)
 		#expect(tokens.balance == Money(minorUnits: 2000, currency: "EUR"))
-		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USDC"))
+		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USD"))
 		#expect(tokens.transactionFailure == nil)
-		#expect(notices == ["The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."])
+		#expect(notices == ["The balance leaves out Token B, because its price is in USD and the extension gives no exchange rate."])
 	}
 
 	/// The gain compares the value at today's rate with the cost at the rate of the day of the purchase.
@@ -484,5 +484,81 @@ import Testing
 		#expect(throws: MappingError("The securities add up to more than Moneten can hold.")) {
 			try result(["securities": .array(Array(repeating: big, count: 2_000))], of: depot)
 		}
+	}
+
+	/// The scenarios of "Currency codes of a result". A code that is not three letters A to Z would be stored and then
+	/// refused by the import of the complete export, so the backup could not be restored (#569).
+	static let invalidCodes = ["usdc", "EURO", "€", "US$", "U5D", "EU"]
+
+	@Test(arguments: invalidCodes)
+	func accountCurrencyThatIsNoCode(code: String) {
+		#expect(throws: MappingError("The currency of account 4711/01 is not a currency code.")) {
+			try ListedAccount(.object(["accountNumber": .string("4711"), "subAccount": .string("01"), "currency": .string(code)]))
+		}
+	}
+
+	@Test(arguments: invalidCodes)
+	func transactionCurrencyThatIsNoCode(code: String) {
+		#expect(throws: MappingError("The currency of transaction 2 is not a currency code.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .integer(1)]),
+				.object(["bookingDate": .integer(1794182400), "amount": .integer(1), "currency": .string(code)])])])
+		}
+	}
+
+	/// Each currency field of a security, with the field that makes the app read it. A rate reads the currency of its price.
+	@Test(arguments: invalidCodes)
+	func securityCurrencyThatIsNoCode(code: String) {
+		let fields: [(String, [String: LuaValue], String)] = [
+			("currencyOfPrice", ["price": .integer(110)], "price currency"),
+			("currencyOfPrice", ["amount": .integer(100), "exchangeRateOfPrice": .number(1.1)], "price currency"),
+			("currencyOfPurchasePrice", ["purchasePrice": .integer(100)], "purchase price currency"),
+			("currencyOfPurchasePrice", ["purchasePrice": .integer(100), "exchangeRateOfPurchasePrice": .number(1.25)], "purchase price currency"),
+			("currencyOfQuantity", [:], "quantity currency"),
+		]
+		for (key, others, what) in fields {
+			var security: [String: LuaValue] = ["name": .string("Token B"), "quantity": .integer(10), key: .string(code)]
+			security.merge(others) { $1 }
+			#expect(throws: MappingError("The \(what) of security 2 is not a currency code."), "\(key) with \(others.keys.sorted())") {
+				try result(["securities": .array([.object(["name": .string("Token A"), "amount": .integer(20)]), .object(security)])], of: depot)
+			}
+		}
+	}
+
+	/// A code in lower case or with spaces around it is the code in capitals, and an empty one counts as missing.
+	@Test func currencyCodesInLowerCaseAndEmptyOnes() throws {
+		#expect(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string(" usd ")]))?.currency == "USD")
+		#expect(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("")]))?.currency == "EUR")
+		let rows = try result(["balance": .integer(0), "transactions": .array([
+			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string(" usd")]),
+			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string("")])])]).transactions?.rows
+		#expect(rows?.map(\.amount) == [Money(minorUnits: -2000, currency: "USD"), Money(minorUnits: -2000, currency: "EUR")])
+		let holding = try #require(try result(["securities": .array([.object(["name": .string("Muster Inc."), "quantity": .integer(10),
+			"price": .integer(110), "currencyOfPrice": .string("usd "), "exchangeRateOfPrice": .number(1.1),
+			"purchasePrice": .integer(100), "currencyOfPurchasePrice": .string("")])])], of: depot).holdings?.first)
+		#expect(holding.quote?.currency == "USD")
+		#expect(holding.exchangeRate == ExchangeRate(base: "EUR", quoted: "USD", rate: 1.1))
+		#expect(holding.purchasePrice?.currency == "EUR")
+	}
+
+	/// Every currency that the mapping accepts, in any case, is one that the import of the complete export reads back.
+	@Test func acceptedCurrenciesRoundTripThroughTheCompleteExport() throws {
+		let listed = try #require(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("usd")])))
+		let giro = Account(position: 0, name: "Dollar", kind: .giro, source: .offline, currency: listed.currency)
+		let portfolio = Account(position: 1, name: "Depot", kind: .portfolio, source: .offline, currency: depot.currency)
+		let rows = try result(["balance": .integer(0), "transactions": .array([
+			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string("gbp")])])], of: listed).transactions?.rows ?? []
+		let holdings = try result(["securities": .array([
+			.object(["name": .string("Muster Inc."), "quantity": .integer(10), "price": .integer(110), "currencyOfPrice": .string("usd"),
+				"exchangeRateOfPrice": .number(1.1), "purchasePrice": .integer(100), "currencyOfPurchasePrice": .string("chf")]),
+			.object(["name": .string("Anleihe"), "quantity": .integer(5000), "currencyOfQuantity": .string("usd"), "price": .integer(100),
+				"exchangeRateOfPrice": .number(1.25)])])], of: depot).holdings ?? []
+		let data = AllData(exportedAt: Date(timeIntervalSince1970: 1_794_700_000), accounts: [giro, portfolio],
+			transactions: rows.map { var row = $0; row.accountID = giro.id; return row },
+			holdings: holdings.map { var holding = $0; holding.accountID = portfolio.id; return holding })
+		#expect(rows.map(\.currency) == ["GBP"])
+		#expect(holdings.map(\.quote?.currency) == ["USD", nil])
+		// The file compares, because the time stamps of the rows keep only milliseconds in it.
+		let file = try data.json()
+		#expect(try AllData(json: file).json() == file)
 	}
 }
