@@ -870,6 +870,17 @@
         }
       }
     },
+    "%lld more transactions were not migrated, because their currency is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld weitere Umsätze wurden nicht übernommen, weil ihre Währung kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%lld new transactions" : {
       "localizations" : {
         "de" : {
@@ -1022,6 +1033,17 @@
           }
         }
       }
+    },
+    "1 more transaction was not migrated, because its currency is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 weiterer Umsatz wurde nicht übernommen, weil seine Währung kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "1 new transaction" : {
       "localizations" : {
@@ -10357,6 +10379,17 @@
       },
       "extractionState" : "manual"
     },
+    "The account \"%@\" was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde nicht übernommen, weil seine Währung „%2$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The account group is empty." : {
       "localizations" : {
         "de" : {
@@ -11063,6 +11096,17 @@
       },
       "extractionState" : "manual"
     },
+    "The category \"%@\" was migrated in EUR, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kategorie „%1$@“ wurde in EUR übernommen, weil ihre Währung „%2$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The category \"%@\" was not created, because a level of it is a category and not a group." : {
       "localizations" : {
         "de" : {
@@ -11182,39 +11226,6 @@
       },
       "extractionState" : "manual"
     },
-    "The currency of a transaction is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung eines Umsatzes ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "The currency of the account \"%@\" is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung des Kontos „%@“ ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "The currency of the category \"%@\" is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung der Kategorie „%@“ ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
     "The currency of the transaction changed, so the kept splits were removed. Enter them again." : {
       "localizations" : {
         "de" : {
@@ -11224,17 +11235,6 @@
           }
         }
       }
-    },
-    "The currency of transaction %@ is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung von Umsatz %@ ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
     },
     "The database contains unreadable data: %@." : {
       "localizations" : {
@@ -12928,6 +12928,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Umsatz hat kein Soll- oder Haben-Kennzeichen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The transaction of %@ over %@ in \"%@\" was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz vom %1$@ über %2$@ in „%3$@“ wurde nicht übernommen, weil seine Währung „%4$@“ kein Währungscode ist."
           }
         }
       },

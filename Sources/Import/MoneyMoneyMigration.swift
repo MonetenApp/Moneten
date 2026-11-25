@@ -77,14 +77,6 @@ public struct MoneyMoneyMigration: Sendable {
 			case groupBalance(String)
 		}
 
-		/// What holds a currency that is no code, so the message can name it.
-		public enum CurrencyOwner: Sendable {
-			/// A transaction with its ID in the export, if it has one.
-			case transaction(Int?)
-			case account(String)
-			case category(String)
-		}
-
 		case unreadable(Export)
 		/// An amount above `Money.maxMinorUnits`.
 		case tooLarge(Amount)
@@ -92,8 +84,6 @@ public struct MoneyMoneyMigration: Sendable {
 		case unreadableAmount(Amount)
 		/// An initial balance derived from the bank balance that is above `Money.maxMinorUnits`, with the name of its account.
 		case initialBalanceTooLarge(String)
-		/// A currency text that is not a code by `Money.isCurrencyCode(_:)`, which the complete export would refuse.
-		case notACurrencyCode(CurrencyOwner)
 
 		public var description: String {
 			switch self {
@@ -110,10 +100,6 @@ public struct MoneyMoneyMigration: Sendable {
 			case let .unreadableAmount(.accountBalance(name)): String(localized: "The balance of the account \"\(name)\" cannot be read.")
 			case let .unreadableAmount(.groupBalance(name)): String(localized: "The balance of the group \"\(name)\" cannot be read.")
 			case let .initialBalanceTooLarge(name): String(localized: "The initial balance of the account \"\(name)\" is too large.")
-			case let .notACurrencyCode(.transaction(id?)): String(localized: "The currency of transaction \(String(id)) is not a currency code.")
-			case .notACurrencyCode(.transaction(nil)): String(localized: "The currency of a transaction is not a currency code.")
-			case let .notACurrencyCode(.account(name)): String(localized: "The currency of the account \"\(name)\" is not a currency code.")
-			case let .notACurrencyCode(.category(name)): String(localized: "The currency of the category \"\(name)\" is not a currency code.")
 			}
 		}
 	}
@@ -158,14 +144,24 @@ public struct MoneyMoneyMigration: Sendable {
 		// A transaction without a currency is in the currency of its account in the source, also when it goes into an
 		// account of another currency here. The same amount in another currency is another transaction, so a default of
 		// EUR would add a stored USD row a second time.
+		// A transaction whose currency is no code stays in the source, and the report names it. The complete export would
+		// refuse it, and its account and the other transactions migrate anyway.
+		var unreadableCurrencies: [String] = []
 		for (index, raw) in rawTransactions.enumerated() {
 			if isCanceled() { throw CancellationError() }
 			defer { reporter.send(.init(step: .transactions, completed: index + 1, total: rawTransactions.count, account: (raw["accountUuid"] as? String).flatMap { names[$0] })) }
 			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
-			let currency = try Self.currency(raw["currency"], or: sourceCurrencies[accountSource] ?? "EUR", .transaction(raw["id"] as? Int))
-			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
+			guard let currency = Self.currency(raw["currency"], or: sourceCurrencies[accountSource] ?? "EUR") else {
+				let day = booking.date(in: calendar).formatted(date: .numeric, time: .omitted)
+				let amount = ((raw["amount"] as? Double) ?? 0).formatted(.number.precision(.fractionLength(2...)))
+				let account = names[accountSource] ?? ""
+				let text = raw["currency"] as? String ?? ""
+				unreadableCurrencies.append(String(localized: "The transaction of \(day) over \(amount) in \"\(account)\" was not migrated, because its currency \"\(text)\" is not a currency code."))
+				continue
+			}
+			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
 			if let c = raw["categoryUuid"] as? String, let mapped = categoryMap[c] { categoryID = mapped }
@@ -180,6 +176,13 @@ public struct MoneyMoneyMigration: Sendable {
 				categoryID: categoryID, categorizedBy: categoryID == nil ? .none : .manual, isNew: false, sourceID: id)
 			rows.append(t)
 			sourceRows[accountSource, default: []].append(t)
+		}
+
+		plan.notes += unreadableCurrencies.prefix(Self.listedTransactions)
+		switch unreadableCurrencies.count - Self.listedTransactions {
+		case ...0: break
+		case 1: plan.notes.append(String(localized: "1 more transaction was not migrated, because its currency is not a currency code."))
+		case let more: plan.notes.append(String(localized: "\(more) more transactions were not migrated, because their currency is not a currency code."))
 		}
 
 		let delivered = Dictionary(grouping: rows, by: \.accountID)
@@ -400,6 +403,18 @@ public struct MoneyMoneyMigration: Sendable {
 			let kind = isPortfolio ? .portfolio : Self.kind(item["type"] as? String)
 			// The plan, its report, and the error of a balance name the account as it is stored ("Account name").
 			let name = Account.name(from: listedName, kind: kind)
+			// The currency of the first balance wins over the one of the account. An account with a currency that is no code
+			// stays in the source with its transactions, and the report names it.
+			let firstBalance = (item["balance"] as? [[Any]])?.first.flatMap { pair -> (amount: Double, currency: String)? in
+				guard pair.count >= 2, let amount = pair[0] as? Double, let text = pair[1] as? String else { return nil }
+				return (amount, text)
+			}
+			let listedCurrency = Self.currency(item["currency"], or: "EUR")
+			guard let currency = listedCurrency.flatMap({ Self.currency(firstBalance?.currency, or: $0) }) else {
+				let text = (listedCurrency == nil ? item["currency"] as? String : firstBalance?.currency) ?? ""
+				plan.notes.append(String(localized: "The account \"\(name)\" was not migrated, because its currency \"\(text)\" is not a currency code."))
+				continue
+			}
 			if isPortfolio { plan.portfolios.append((name, false)) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
@@ -412,13 +427,7 @@ public struct MoneyMoneyMigration: Sendable {
 			// with its bank code.
 			let invalidIBAN: String? = [Self.string(item["iban"]), number].compactMap { $0 }.first(where: Self.isInvalidIBAN).map(TextFolding.accountKey)
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
-			var balanceMinor: Int64?
-			var currency = try Self.currency(item["currency"], or: "EUR", .account(name))
-			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
-				let amount = first[0] as? Double, let text = first[1] as? String {
-				currency = try Self.currency(text, or: currency, .account(name))
-				balanceMinor = try Self.money(amount, currency, .accountBalance(name)).minorUnits
-			}
+			let balanceMinor = try firstBalance.map { try Self.money($0.amount, currency, .accountBalance(name)).minorUnits }
 			currencies[source] = currency
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
@@ -492,9 +501,14 @@ public struct MoneyMoneyMigration: Sendable {
 				}
 				continue
 			}
+			// A currency that is no code gives way to the one of a category without a currency, and the report says so.
+			let currency = Self.currency(item["currency"], or: "EUR")
+			if currency == nil {
+				plan.notes.append(String(localized: "The category \"\(name)\" was migrated in EUR, because its currency \"\(item["currency"] as? String ?? "")\" is not a currency code."))
+			}
 			// A group holds no transactions of its own, so the app gives it no rule.
 			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
-				currency: try Self.currency(item["currency"], or: "EUR", .category(name)), rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
+				currency: currency ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
@@ -602,13 +616,14 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	/// The currency code in `value` by `Money.currencyCode(_:)`, or `fallback` when the source has no currency text or an
-	/// empty one. Other text refuses the migration and names `owner`, because the complete export refuses a code that is
-	/// not a code, and a guessed currency would change every sum without a word.
-	private static func currency(_ value: Any?, or fallback: String, _ owner: Failure.CurrencyOwner) throws -> String {
+	/// empty one. Nil for other text, which the complete export would refuse, so its account or transaction is not migrated.
+	private static func currency(_ value: Any?, or fallback: String) -> String? {
 		guard let text = value as? String, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return fallback }
-		guard let code = Money.currencyCode(text) else { throw Failure.notACurrencyCode(owner) }
-		return code
+		return Money.currencyCode(text)
 	}
+
+	/// The transactions with a currency that is no code that the report names one by one. One note counts the rest.
+	private static let listedTransactions = 10
 
 	/// Text in the shape of an IBAN whose check digits do not fit: after folding only ASCII letters and digits, the country
 	/// code of an IBAN country, two digits, and the length of an IBAN of that country. Text that merely starts with a

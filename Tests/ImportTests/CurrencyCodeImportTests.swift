@@ -62,16 +62,17 @@ struct CurrencyCodeImportTests {
 	}
 }
 
-/// A currency of the source that is no code refuses the migration and names its owner (#577).
+/// An account, a transaction, or a category of the source with a currency that is no code never reaches the database, and the
+/// report names it. Everything else migrates (#577).
 extension MoneyMoneyMigrationTests {
-	func currencyFailure(accounts: [[String: Any]]? = nil, categories: [[String: Any]]? = nil, transactions: [String: Any]? = nil) throws -> String? {
-		do {
-			_ = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts ?? self.accounts), categories: try plist(categories ?? self.categories),
-				transactions: try plist(transactions ?? self.transactions), into: Ledger())
-			return nil
-		} catch let failure as MoneyMoneyMigration.Failure {
-			return failure.description
-		}
+	func currencyPlan(accounts: [[String: Any]]? = nil, categories: [[String: Any]]? = nil, rows: [[String: Any]]? = nil) throws -> MoneyMoneyMigration.Plan {
+		try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(accounts ?? self.accounts), categories: try plist(categories ?? self.categories),
+			transactions: try plist(["creator": "MoneyMoney", "transactions": rows ?? (transactions["transactions"] as! [[String: Any]])]), into: Ledger())
+	}
+
+	/// The complete export of what the plan stores, read again.
+	func reimported(_ p: MoneyMoneyMigration.Plan) throws -> AllData {
+		try AllData(json: try AllData(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions).json())
 	}
 
 	@Test("A source with codes in lower case or with spaces migrates in capitals, and an empty code takes the default, all of which the complete export reads again")
@@ -88,42 +89,66 @@ extension MoneyMoneyMigrationTests {
 		rows[0]["currency"] = " usdc"
 		rows[1]["currency"] = ""
 		rows[3]["currency"] = "  "
-		let p = try MoneyMoneyMigration(calendar: calendar).plan(accounts: try plist(source), categories: try plist(kinds),
-			transactions: try plist(["creator": "MoneyMoney", "transactions": rows]), into: Ledger())
+		let p = try currencyPlan(accounts: source, categories: kinds, rows: rows)
 		#expect(p.accounts.map(\.currency) == ["USDC", "EUR", "EUR"])
 		#expect(p.sources.first { $0.sourceID == "A1" }?.balance?.currency == "USDC")
 		#expect(p.categories.map(\.currency) == ["EUR", "CHF", "EUR"])
 		// A row with an empty currency takes the currency of its account in the source.
 		#expect(p.transactions.map(\.currency) == ["USDC", "USDC", "EUR", "EUR"])
-		let file = try AllData(groups: p.groups, accounts: p.accounts, categories: p.categories, transactions: p.transactions).json()
-		let read = try AllData(json: file)
+		let read = try reimported(p)
 		#expect(read.accounts.map(\.currency) == ["USDC", "EUR", "EUR"])
 		#expect(read.transactions.map(\.currency) == ["USDC", "USDC", "EUR", "EUR"])
 	}
 
-	@Test("A transaction currency that is no code refuses the migration and names the transaction", arguments: ["€", "US$", "EU", "1EU", "ABCDEFGHIJK"])
+	@Test("An account whose currency or first balance currency is no code stays out with its transactions, the report names it, and the other accounts migrate", arguments: ["€", "US$", "EU", "1EU", "ABCDEFGHIJK"])
+	func accountCurrencyNoCode(code: String) throws {
+		for inBalance in [false, true] {
+			var source = accounts
+			if inBalance { source[1]["balance"] = [[1234.56, code]] } else { source[1]["currency"] = code }
+			let p = try currencyPlan(accounts: source)
+			#expect(p.accounts.map(\.name) == ["Savings", "Depot"])
+			#expect(p.sources.map(\.name) == ["Savings", "Depot"])
+			// The rows 1 to 3 belong to "Giro", the row 4 to "Savings".
+			#expect(p.transactions.map(\.sourceID) == ["\(Transaction.migrationIDPrefix)4"])
+			#expect(p.notes.contains("The account \"Giro\" was not migrated, because its currency \"\(code)\" is not a currency code."))
+			#expect(try reimported(p).accounts.map(\.name) == ["Savings", "Depot"])
+		}
+	}
+
+	@Test("A transaction whose currency is no code stays out, the report names it with its day and amount, and the rest migrates", arguments: ["€", "US$", "1EU"])
 	func transactionCurrencyNoCode(code: String) throws {
 		let row: [String: Any] = ["id": 4711, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": -20.0, "currency": code,
 			"name": "Musterfirma GmbH", "purpose": "", "booked": true]
-		let rows = (transactions["transactions"] as! [Any]) + [row]
-		#expect(try currencyFailure(transactions: ["creator": "MoneyMoney", "transactions": rows]) == "The currency of transaction 4711 is not a currency code.")
+		let p = try currencyPlan(rows: (transactions["transactions"] as! [[String: Any]]) + [row])
+		#expect(p.transactions.count == 4)
+		#expect(!p.transactions.contains { $0.sourceID == "\(Transaction.migrationIDPrefix)4711" })
+		let day = date(2026, 11, 2).formatted(date: .numeric, time: .omitted)
+		let amount = (-20.0).formatted(.number.precision(.fractionLength(2...)))
+		#expect(p.notes.contains("The transaction of \(day) over \(amount) in \"Giro\" was not migrated, because its currency \"\(code)\" is not a currency code."))
+		#expect(try reimported(p).transactions.count == 4)
 	}
 
-	@Test("An account currency or a balance currency that is no code refuses the migration and names the account", arguments: ["€", "US$", "1EU"])
-	func accountCurrencyNoCode(code: String) throws {
-		var source = accounts
-		source[1]["currency"] = code
-		source[1]["balance"] = nil
-		#expect(try currencyFailure(accounts: source) == "The currency of the account \"Giro\" is not a currency code.")
-		source = accounts
-		source[2]["balance"] = [[500.0, code]]
-		#expect(try currencyFailure(accounts: source) == "The currency of the account \"Savings\" is not a currency code.")
+	@Test("Ten transactions with a currency that is no code are named one by one, and one note counts the rest")
+	func manyTransactionsNoCode() throws {
+		var rows = transactions["transactions"] as! [[String: Any]]
+		for id in 100..<112 {
+			rows.append(["id": id, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": -1.0, "currency": "€", "name": "Kiosk", "booked": true])
+		}
+		let p = try currencyPlan(rows: rows)
+		#expect(p.notes.filter { $0.hasPrefix("The transaction of ") }.count == 10)
+		#expect(p.notes.contains("2 more transactions were not migrated, because their currency is not a currency code."))
+		rows.removeLast()
+		#expect(try currencyPlan(rows: rows).notes.contains("1 more transaction was not migrated, because its currency is not a currency code."))
 	}
 
-	@Test("A category currency that is no code refuses the migration and names the category", arguments: ["€", "US$", "1EU"])
+	@Test("A category whose currency is no code migrates in EUR, and the report says so", arguments: ["€", "US$", "1EU"])
 	func categoryCurrencyNoCode(code: String) throws {
 		var kinds = categories
 		kinds[2]["currency"] = code
-		#expect(try currencyFailure(categories: kinds) == "The currency of the category \"Pets\" is not a currency code.")
+		let p = try currencyPlan(categories: kinds)
+		#expect(p.categories.map(\.name) == ["Household", "Food", "Pets"])
+		#expect(p.categories.map(\.currency) == ["EUR", "EUR", "EUR"])
+		#expect(p.notes.contains("The category \"Pets\" was migrated in EUR, because its currency \"\(code)\" is not a currency code."))
+		#expect(try reimported(p).categories.count == 3)
 	}
 }

@@ -328,7 +328,7 @@ The app SHALL refuse a migration when a transaction, an account balance, or a gr
 
 ### Requirement: Currency codes of the source
 
-The app SHALL read the currency of each account, each first balance of an account, each transaction, and each category of the source as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency takes the currency of the account in the source for a transaction, and EUR for an account or a category. The app refuses a migration with any other currency text, names the account, the transaction, or the category, and stores nothing.
+The app SHALL read the currency of each account, each first balance of an account, each transaction, and each category of the source as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency takes the currency of the account in the source for a transaction, and EUR for an account or a category. The app stores no currency text that is not such a code.
 
 #### Scenario: Code in lower case
 
@@ -341,23 +341,40 @@ The app SHALL read the currency of each account, each first balance of an accoun
 - **WHEN** a transaction of the account "Giro" in USD has the currency ""
 - **THEN** the transaction is in USD
 
-#### Scenario: Transaction currency that is no code
+### Requirement: Source items with a currency that is no code
 
-- **WHEN** the transaction 4711 of the source has the currency "€", "US$", "EU", or "1EU"
-- **THEN** the assistant says "The currency of transaction 4711 is not a currency code."
-- **AND** no account, category, or transaction of this run is stored
+The app SHALL leave out an account of the source whose currency or first balance currency is not a code, together with its transactions, and a transaction whose currency is not a code. The report names each of them. The app migrates every other account and transaction, and the complete export of the result imports again.
 
 #### Scenario: Account currency that is no code
 
-- **WHEN** the account "Giro" of the source has the currency "€", or its first balance has the currency "US$"
-- **THEN** the assistant says 'The currency of the account "Giro" is not a currency code.'
-- **AND** no account, category, or transaction of this run is stored
+- **GIVEN** the source has the accounts "Kasse" with the currency "€" and "Giro" with the currency "EUR"
+- **WHEN** the migration finishes
+- **THEN** the app has the account "Giro" with its transactions and no account "Kasse"
+- **AND** the report says 'The account "Kasse" was not migrated, because its currency "€" is not a currency code.'
 
-#### Scenario: Category currency that is no code
+#### Scenario: Transaction currency that is no code
+
+- **GIVEN** the account "Giro" of the source has a transaction of -20,00 on 2 November 2026 with the currency "US$" and 3 other transactions in EUR
+- **WHEN** the migration finishes
+- **THEN** the account "Giro" has the 3 other transactions
+- **AND** the report says 'The transaction of 02.11.26 over -20,00 in "Giro" was not migrated, because its currency "US$" is not a currency code.'
+
+#### Scenario: Many transactions with a currency that is no code
+
+- **GIVEN** 12 transactions of the source have the currency "€"
+- **WHEN** the migration finishes
+- **THEN** the report names the first 10 of them one by one
+- **AND** the report says "2 more transactions were not migrated, because their currency is not a currency code."
+
+### Requirement: Category currency that is no code
+
+The app SHALL migrate a category of the source whose currency is not a code with the currency EUR, as a category without a currency, and name it in the report.
+
+#### Scenario: Category in a currency sign
 
 - **WHEN** the category "Urlaub" of the source has the currency "€"
-- **THEN** the assistant says 'The currency of the category "Urlaub" is not a currency code.'
-- **AND** no account, category, or transaction of this run is stored
+- **THEN** the app has the category "Urlaub" in EUR
+- **AND** the report says 'The category "Urlaub" was migrated in EUR, because its currency "€" is not a currency code.'
 
 ### Requirement: Category, comment, and checkmark of each transaction
 
