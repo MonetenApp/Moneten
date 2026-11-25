@@ -187,7 +187,7 @@ enum HTMLDocument {
 
 	private static let val: clua_Function = { L in
 		withList(L) { stack, list in
-			stack.push(list.nodes.first.flatMap(Form.value).map(LuaValue.string) ?? .null)
+			stack.pushText(list.nodes.first.flatMap(Form.value))
 			return 1
 		}
 	}

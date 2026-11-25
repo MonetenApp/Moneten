@@ -14,16 +14,20 @@ enum MMLibrary {
 		case .beta: "BETA"
 		case .retail: "RETAIL"
 		}
-		let values: [(String, LuaValue)] = [("productName", .string("Moneten")), ("productVersion", .string(Self.threeNumbers(environment.productVersion))),
-			("productBuild", .integer(Int64(environment.productBuild))), ("apiVersion", .integer(Int64(extensionAPIVersion))),
-			("language", .string(environment.language)), ("deviceUuid", .string(environment.deviceUuid)), (variant, .string(""))]
-		lua_createtable(L, 0, Int32(functions.count + values.count))
+		let texts = [("productName", "Moneten"), ("productVersion", Self.threeNumbers(environment.productVersion)),
+			("language", environment.language), ("deviceUuid", environment.deviceUuid), (variant, "")]
+		let numbers = [("productBuild", environment.productBuild), ("apiVersion", extensionAPIVersion)]
+		lua_createtable(L, 0, Int32(functions.count + texts.count + numbers.count))
 		for (name, function) in functions {
 			clua_pushfunction(L, function)
 			lua_setfield(L, -2, name)
 		}
-		for (name, value) in values {
-			stack.push(value)
+		for (name, text) in texts {
+			stack.pushString(text)
+			lua_setfield(L, -2, name)
+		}
+		for (name, number) in numbers {
+			lua_pushinteger(L, lua_Integer(number))
 			lua_setfield(L, -2, name)
 		}
 		Environment.reportMisses(stack, of: "MM")
@@ -483,9 +487,15 @@ extension LuaStack {
 		return read(lua_absindex(L, -1))
 	}
 
-	/// Pushes one result, `nil` when it is missing, and returns the number of results for the trampoline.
+	/// Pushes one result, `nil` when it is missing, and returns the number of results for the trampoline,
+	/// or -1 for an error when the result cannot be pushed.
 	func returning(_ value: LuaValue?) -> Int32 {
-		push(value ?? .null)
+		do {
+			try push(value ?? .null)
+		} catch {
+			pushMessage("\(error)")
+			return -1
+		}
 		return 1
 	}
 
