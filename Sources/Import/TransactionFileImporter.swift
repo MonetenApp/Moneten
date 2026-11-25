@@ -136,7 +136,11 @@ enum MT940Parser {
 			try Task.checkCancellation()
 			if f.tag == "60F" || f.tag == "60M", f.value.count >= 10 {
 				// An ISO 4217 code is upper case, and the fingerprint of a transaction compares it as it is.
-				currency = String(f.value.dropFirst(7).prefix(3)).uppercased()
+				let text = String(f.value.dropFirst(7).prefix(3))
+				guard let code = Money.currencyCode(text) else {
+					throw TransactionFileImporter.Failure.line(f.line, String(localized: "The currency \"\(text)\" of the opening balance is not a currency code."))
+				}
+				currency = code
 				if result.isEmpty { declaredCurrency = currency }
 			}
 			guard f.tag == "61" else { continue }
@@ -431,8 +435,8 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			purposes = []
 		}
 		if inEntry, name == "Amt", path.count >= 2, path[path.count - 2] == "Ntry" {
-			// An ISO 4217 code is upper case, and the fingerprint of a transaction compares it as it is.
-			entry["currency"] = attributes["Ccy"]?.uppercased()
+			// The text as it is. `finishEntry` reads it as a code, or fails the entry with its line.
+			entry["currency"] = attributes["Ccy"]
 		}
 		if inEntry, name == "Amt", path.count >= 3, path[path.count - 2] == "InstdAmt", path[path.count - 3] == "AmtDtls" {
 			instructedCurrency = attributes["Ccy"]?.uppercased()
@@ -546,7 +550,16 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			return fail(String(localized: "The booking date of the entry cannot be read."))
 		}
 		let debit = entry["sign"] == "DBIT"
-		let currency = entry["currency"] ?? currency
+		// A code is upper case, and the fingerprint of a transaction compares it as it is. A missing or empty `Ccy` is the
+		// currency of the account.
+		var declared: String?
+		if let text = entry["currency"], !text.trimmingCharacters(in: .whitespaces).isEmpty {
+			guard let code = Money.currencyCode(text) else {
+				return fail(String(localized: "The currency \"\(text)\" of the entry is not a currency code."))
+			}
+			declared = code
+		}
+		let currency = declared ?? currency
 		guard let money = Money(fitting: debit ? -amount : amount, currency: currency) else { return fail("The amount of the entry is too large.") }
 		// A value that differs between the details of a batch belongs to none of them alone, so the entry leaves it out.
 		// A batch to several counterparties keeps no counterparty and no reference.
@@ -574,7 +587,7 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 			mandateReference: ofOneParty("mandate"), creditorID: ofOneParty("creditor"),
 			isPending: entry["status"] == "PDNG" || entry["status"] == "FUTR", returnReason: common("returnReason"),
 			originalAmount: Transaction.original(instructed, booked: money), deviatingParty: ofOneParty(debit ? "ultimateCreditor" : "ultimateDebtor"))
-		if result.transactions.isEmpty { result.declaredCurrency = entry["currency"] }
+		if result.transactions.isEmpty { result.declaredCurrency = declared }
 		result.transactions.append(t)
 	}
 }

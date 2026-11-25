@@ -49,6 +49,7 @@ None.
 
 ### Decided for Moneten
 
+- The currency of a CAMT entry and of an MT940 opening balance must be a code of 3 to 10 letters A to Z and digits that starts with a letter, the form that the complete export stores (#582). Any other text fails the file with its line, as an amount that cannot be read does. A CSV cell with an unknown currency keeps its warning and the currency of the account, as before.
 - CSV profiles live in the encrypted database because even column titles can contain personal data. Each profile is versioned JSON so a build can keep unreadable entries while editing another profile.
 - One file may create at most 1,000 categories including groups. This bounds a mistaken mapping of the purpose column to Category.
 

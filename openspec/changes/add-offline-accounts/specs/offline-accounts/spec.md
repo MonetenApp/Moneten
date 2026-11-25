@@ -8,7 +8,7 @@ An offline account holds money that the app cannot fetch from a bank, for exampl
 
 ### Requirement: Create an offline account
 
-The app SHALL create an account without bank access when the user chooses "Offline account / Cash" in the add account assistant. The user gives the account a name, an account type, and a currency. The app asks for no login data.
+The app SHALL create an account without bank access when the user chooses "Offline account / Cash" in the add account assistant. The user gives the account a name, an account type, and a currency. The currency is a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. The app asks for no login data.
 
 #### Scenario: Cash account
 
@@ -19,6 +19,17 @@ The app SHALL create an account without bank access when the user chooses "Offli
 
 - **WHEN** the user creates an offline account with the currency USD
 - **THEN** all amounts of that account are in USD
+
+#### Scenario: Currency in lower case
+
+- **WHEN** the user creates an offline account with the currency " usdc"
+- **THEN** all amounts of that account are in USDC
+
+#### Scenario: Currency that is no code
+
+- **WHEN** the user enters the currency "€", "US$", "EU", or an empty text for an offline account
+- **THEN** the assistant shows "Enter a currency code such as EUR." below the field
+- **AND** the assistant does not create the account until the currency is a code of 3 to 10 letters A to Z and digits that starts with a letter
 
 ### Requirement: An offline account has no bank functions
 

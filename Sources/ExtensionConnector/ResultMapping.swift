@@ -285,7 +285,7 @@ enum ResultMapping {
 		for pair in pairs {
 			// An empty currency is the one of the account, as for a transaction.
 			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
-				let code = text.trimmingCharacters(in: .whitespaces).isEmpty ? currency : currencyCode(text) else {
+				let code = text.trimmingCharacters(in: .whitespaces).isEmpty ? currency : Money.currencyCode(text) else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
 			let value = try deliveredMoney(decimal, code, String(localized: "The balance in \(code)"))
@@ -299,18 +299,11 @@ enum ResultMapping {
 		return (balances[0], balances.dropFirst().filter { $0.minorUnits != 0 })
 	}
 
-	/// A currency code after trimming and uppercasing, by `Money.isCurrencyCode(_:)`, or nil. A code such as "US$" would
-	/// reach the complete export, whose import refuses it.
-	private static func currencyCode(_ text: String) -> String? {
-		let code = text.trimmingCharacters(in: .whitespaces).uppercased()
-		return Money.isCurrencyCode(code) ? code : nil
-	}
-
 	/// The code in the field `key`, or nil when the field is missing or empty, so that it takes the currency of its account.
 	/// Any other text that is no code fails with `error`, which names the field, by the requirement "Currency codes of a result".
 	static func currency(_ fields: [String: LuaValue], _ key: String, or error: @autoclosure () -> MappingError) throws(MappingError) -> String? {
 		guard let text = fields.text(key), !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-		guard let code = currencyCode(text) else { throw error() }
+		guard let code = Money.currencyCode(text) else { throw error() }
 		return code
 	}
 

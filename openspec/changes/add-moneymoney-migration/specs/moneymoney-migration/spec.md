@@ -326,6 +326,39 @@ The app SHALL refuse a migration when a transaction, an account balance, or a gr
 - **THEN** the assistant says that the initial balance of the account "Giro" is too large
 - **AND** no account, category, or transaction of this run is stored
 
+### Requirement: Currency codes of the source
+
+The app SHALL read the currency of each account, each first balance of an account, each transaction, and each category of the source as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency takes the currency of the account in the source for a transaction, and EUR for an account or a category. The app refuses a migration with any other currency text, names the account, the transaction, or the category, and stores nothing.
+
+#### Scenario: Code in lower case
+
+- **WHEN** the account "Krypto" of the source has the currency "usdc" and a transaction of 20,00 with the currency " usdc"
+- **THEN** the account "Krypto" and its transaction are in USDC
+- **AND** the complete export of the database imports again with this account and this transaction
+
+#### Scenario: Empty code
+
+- **WHEN** a transaction of the account "Giro" in USD has the currency ""
+- **THEN** the transaction is in USD
+
+#### Scenario: Transaction currency that is no code
+
+- **WHEN** the transaction 4711 of the source has the currency "€", "US$", "EU", or "1EU"
+- **THEN** the assistant says "The currency of transaction 4711 is not a currency code."
+- **AND** no account, category, or transaction of this run is stored
+
+#### Scenario: Account currency that is no code
+
+- **WHEN** the account "Giro" of the source has the currency "€", or its first balance has the currency "US$"
+- **THEN** the assistant says 'The currency of the account "Giro" is not a currency code.'
+- **AND** no account, category, or transaction of this run is stored
+
+#### Scenario: Category currency that is no code
+
+- **WHEN** the category "Urlaub" of the source has the currency "€"
+- **THEN** the assistant says 'The currency of the category "Urlaub" is not a currency code.'
+- **AND** no account, category, or transaction of this run is stored
+
 ### Requirement: Category, comment, and checkmark of each transaction
 
 The app SHALL keep the category, the comment, and the checkmark of each transaction. A migrated category counts as assigned by hand, so that the rules of the app do not move it.

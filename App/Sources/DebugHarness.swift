@@ -1685,6 +1685,9 @@ final class DebugHarness {
 		case "login": setup.loginName = value
 		case "pin": setup.pin = value
 		case "save": setup.savePIN = value == "yes"
+		// The fields of the step "Offline account / Cash".
+		case "name": setup.offlineName = value
+		case "currency": setup.offlineCurrency = value
 		// "no", "offline", or the name of an extension service.
 		case "other": setup.service = value == "no" ? nil : setup.otherServices.first { $0.title == value } ?? .offline
 		case "next":
@@ -1717,7 +1720,7 @@ final class DebugHarness {
 		log("setup", ("purpose", .state(setup.purpose)), ("listing", .flag(setup.isListing)), ("message", .presence(setup.listingMessage != nil)))
 		log(LogLine("setup", values: [("step", .state(setup.step)), ("entry", .flag(!setup.entry.isEmpty)), ("login", .flag(!setup.loginName.isEmpty)),
 			("highlighted", .position(setup.highlighted))] + Self.lookup(setup.lookup.state) + [("error", .presence(setup.loginError != nil)),
-			("saveError", .presence(setup.saveError != nil)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
+			("saveError", .presence(setup.saveError != nil)), ("canGoOn", .flag(setup.canGoOn)), ("dialog", .flag(model.sync.broker.current != nil)), ("candidates", .count(setup.candidates.count)),
 			("kinds", .list(setup.candidates.map { .state($0.account.kind) })), ("matches", .list(setup.candidates.map { .state($0.match) })),
 			("selected", .list(setup.candidates.indices.filter { setup.selected.contains(setup.candidates[$0].id) }.map { .position($0) })),
 			// For each row, the position in its choice of the account that it connects, or "-" for a new account.
