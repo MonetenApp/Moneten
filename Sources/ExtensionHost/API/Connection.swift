@@ -112,8 +112,7 @@ enum Connection {
 	private static let getBaseURL: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard isConnection(stack, at: 1) else { return needsColon(stack, "getBaseURL") }
-		stack.pushText(lastURL(stack, at: 1)?.absoluteString)
-		return 1
+		return stack.returning(lastURL(stack, at: 1).map { .string($0.absoluteString) })
 	}
 
 	/// `connection:setCookie(cookie)` adds or changes a cookie given in the format of `Set-Cookie`.

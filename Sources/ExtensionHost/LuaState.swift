@@ -296,16 +296,63 @@ struct LuaStack {
 	static let maxValues = 1_000_000
 
 	/// The value at `index`. A table that contains itself ends in `null` where it repeats. A number
-	/// that is not finite fails, because JSON cannot hold it.
+	/// that is not finite fails, because JSON cannot hold it. Nested tables are read with a list of
+	/// open tables instead of recursion, so that a value as deep as `maxDepth` needs little of the
+	/// thread's stack, which is small on a secondary thread and smaller still under a sanitizer.
 	func value(at index: Int32) throws(ScriptError) -> LuaValue {
-		var seen: Set<UnsafeRawPointer> = []
-		var budget = Self.maxValues
-		return try value(at: lua_absindex(L, index), seen: &seen, budget: &budget)
+		let top = lua_gettop(L)
+		var walk = Walk()
+		do {
+			if let value = try read(at: lua_absindex(L, index), in: &walk) { return value }
+			while true {
+				let last = walk.open.count - 1
+				// The key of the open table is on top. `lua_next` replaces it with the next key and value.
+				if lua_next(L, walk.open[last].index) != 0 {
+					if let item = try read(at: lua_gettop(L), in: &walk) { store(item, in: &walk.open[last]) }
+					continue
+				}
+				let table = walk.open.removeLast()
+				walk.seen.remove(table.pointer)
+				guard !walk.open.isEmpty else { return table.value }
+				store(table.value, in: &walk.open[last - 1])
+			}
+		} catch {
+			lua_settop(L, top)
+			throw error
+		}
 	}
 
-	private func value(at index: Int32, seen: inout Set<UnsafeRawPointer>, budget: inout Int) throws(ScriptError) -> LuaValue {
-		budget -= 1
-		guard budget >= 0 else { throw ScriptError("The value holds more than \(Self.maxValues) values.") }
+	/// The state of one read: the tables that are open from the outside in, their pointers, and the
+	/// number of values that may still be read.
+	private struct Walk {
+		var open: [OpenTable] = []
+		var seen: Set<UnsafeRawPointer> = []
+		var budget = LuaStack.maxValues
+	}
+
+	/// A table whose entries are being read. It stays at `index` while `lua_next` walks it.
+	private struct OpenTable {
+		let index: Int32
+		let pointer: UnsafeRawPointer
+		var numbered: [Int64: LuaValue] = [:]
+		var named: [String: LuaValue] = [:]
+
+		/// An array when the integer keys run from 1 without a gap and no other key exists, else an object.
+		var value: LuaValue {
+			let count = Int64(numbered.count)
+			if named.isEmpty, numbered.keys.allSatisfy({ (1...max(count, 1)).contains($0) }) {
+				return .array((1...max(count, 1)).prefix(numbered.count).map { numbered[$0]! })
+			}
+			var fields = named
+			for (key, item) in numbered { fields["\(key)"] = item }
+			return .object(fields)
+		}
+	}
+
+	/// Reads the value at `index`, or opens the table at `index`, pushes nil as the key before its first entry, and returns nil.
+	private func read(at index: Int32, in walk: inout Walk) throws(ScriptError) -> LuaValue? {
+		walk.budget -= 1
+		guard walk.budget >= 0 else { throw ScriptError("The value holds more than \(Self.maxValues) values.") }
 		switch lua_type(L, index) {
 		case LUA_TBOOLEAN: return .boolean(lua_toboolean(L, index) != 0)
 		case LUA_TNUMBER where lua_isinteger(L, index) != 0: return .integer(lua_tointegerx(L, index, nil))
@@ -317,42 +364,26 @@ struct LuaStack {
 			let data = bytes(at: index)
 			return String(validating: data, as: UTF8.self).map(LuaValue.string) ?? .bytes(data)
 		case LUA_TTABLE:
-			guard let pointer = lua_topointer(L, index), seen.insert(pointer).inserted else { return .null }
-			defer { seen.remove(pointer) }
-			guard seen.count <= Self.maxDepth, lua_checkstack(L, 4) != 0 else { throw ScriptError("Tables nest deeper than \(Self.maxDepth) levels.") }
-			return try table(at: index, seen: &seen, budget: &budget)
+			guard let pointer = lua_topointer(L, index), walk.seen.insert(pointer).inserted else { return .null }
+			guard walk.seen.count <= Self.maxDepth, lua_checkstack(L, 4) != 0 else { throw ScriptError("Tables nest deeper than \(Self.maxDepth) levels.") }
+			walk.open.append(OpenTable(index: index, pointer: pointer))
+			lua_pushnil(L)
+			return nil
 		default: return .null
 		}
 	}
 
-	private func table(at index: Int32, seen: inout Set<UnsafeRawPointer>, budget: inout Int) throws(ScriptError) -> LuaValue {
-		var numbered: [Int64: LuaValue] = [:]
-		var named: [String: LuaValue] = [:]
-		lua_pushnil(L)
-		while lua_next(L, index) != 0 {
-			let item: LuaValue
-			do {
-				item = try value(at: lua_absindex(L, -1), seen: &seen, budget: &budget)
-			} catch {
-				lua_settop(L, -3)
-				throw error
-			}
-			switch lua_type(L, -2) {
-			case LUA_TNUMBER where lua_isinteger(L, -2) != 0: numbered[lua_tointegerx(L, -2, nil)] = item
-			case LUA_TNUMBER: named["\(lua_tonumberx(L, -2, nil))"] = item
-			case LUA_TSTRING:
-				lua_pushvalue(L, -2)
-				named[string(at: -1)] = item
-				lua_settop(L, -2)
-			default: break
-			}
+	/// Stores `item`, the value on top, under the key below it in `table`, and pops the value.
+	private func store(_ item: LuaValue, in table: inout OpenTable) {
+		switch lua_type(L, -2) {
+		case LUA_TNUMBER where lua_isinteger(L, -2) != 0: table.numbered[lua_tointegerx(L, -2, nil)] = item
+		case LUA_TNUMBER: table.named["\(lua_tonumberx(L, -2, nil))"] = item
+		case LUA_TSTRING:
+			lua_pushvalue(L, -2)
+			table.named[string(at: -1)] = item
 			lua_settop(L, -2)
+		default: break
 		}
-		let count = Int64(numbered.count)
-		if named.isEmpty, numbered.keys.allSatisfy({ (1...max(count, 1)).contains($0) }) {
-			return .array((1...max(count, 1)).prefix(numbered.count).map { numbered[$0]! })
-		}
-		for (key, item) in numbered { named["\(key)"] = item }
-		return .object(named)
+		lua_settop(L, -2)
 	}
 }
