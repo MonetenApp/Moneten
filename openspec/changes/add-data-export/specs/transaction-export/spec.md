@@ -148,9 +148,9 @@ The app SHALL prefix a text field with an apostrophe when its first character is
 - **THEN** the Name is "'＝1+1" and the Purpose is "' - Miete"
 - **AND** the booking date is 03.11.2026 and the amount is -89,00 €
 
-### Requirement: Formula protection inside a text field
+### Requirement: Formula protection after a comma, a tab, or a line break
 
-The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a line feed inside a text field when the text that follows it, up to the next of these characters, has `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` as its first character after leading whitespace. A spreadsheet that splits the file at commas, at tabs, or at line breaks then starts no cell with a formula sign. Ordinary text without such a sign stays unchanged, and Copy of rows does not add these apostrophes.
+The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a line feed inside a text field of a CSV file when the text that follows it, up to the next of these characters, has `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` as its first character after leading whitespace.
 
 #### Scenario: Formula after a comma
 
@@ -167,10 +167,59 @@ The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a li
 - **WHEN** the Booking text is "Gutschrift, -1+1"
 - **THEN** the Booking text cell is "Gutschrift,' -1+1"
 
+#### Scenario: Formula after a line break
+
+- **WHEN** the Purpose is "Ref\r\n@SUM(1)" or "Ref\n=1+1"
+- **THEN** the Purpose cell is "Ref\r\n'@SUM(1)" or "Ref\n'=1+1" in CSV quotes
+
 #### Scenario: Ordinary text
 
 - **WHEN** the Purpose is "Abschlag November, Kd-Nr 123"
 - **THEN** the Purpose cell is "Abschlag November, Kd-Nr 123"
+
+#### Scenario: Import of a field with an apostrophe inside
+
+- **GIVEN** the export of a transaction with the Purpose "Ref,+1"
+- **WHEN** the user imports that file into an account
+- **THEN** the Purpose is "Ref,'+1"
+
+### Requirement: Characters that hide a formula sign
+
+The app SHALL skip double quotes, control characters, and format characters like leading whitespace when it looks for a formula sign at the start of a text field of a CSV file or after a comma, a tab, a carriage return, or a line feed in it.
+
+#### Scenario: Quote before the sign
+
+- **WHEN** the Purpose is `Ref,"=1+1,x`
+- **THEN** the Purpose cell is `Ref,'"=1+1,x` in CSV quotes
+
+#### Scenario: NUL before the sign
+
+- **WHEN** the Purpose is "Ref,\u{0}=1+1,tail"
+- **THEN** the Purpose cell is "Ref,'\u{0}=1+1,tail"
+
+#### Scenario: Zero-width space at the start of a field
+
+- **WHEN** the Name is "\u{200B}=1+1"
+- **THEN** the Name cell is "'\u{200B}=1+1"
+
+### Requirement: A lone sign after a comma
+
+The app SHALL leave the text after a comma in a text field of a CSV file without an apostrophe when it holds only one formula sign and whitespace up to the next comma, carriage return, or line feed, or up to the end of the field.
+
+#### Scenario: Price with a dash
+
+- **WHEN** the Purpose is "Rate 100,-"
+- **THEN** the Purpose cell is "Rate 100,-"
+
+#### Scenario: Dash before a tab
+
+- **WHEN** the Purpose is "Ref,-\tHYPERLINK(1)"
+- **THEN** the Purpose cell is "Ref,'-\tHYPERLINK(1)"
+
+#### Scenario: Dash before more text
+
+- **WHEN** the Purpose is "50,- EUR"
+- **THEN** the Purpose cell is "50,'- EUR"
 
 ### Requirement: Categories in a CSV file
 

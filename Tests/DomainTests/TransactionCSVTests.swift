@@ -56,16 +56,22 @@ struct TransactionCSVTests {
 		#expect(text.components(separatedBy: "\r\n")[1] == "03.11.2026;;\(cell);\(cell);\(cell);\(cell);\(cell);-89,00;EUR;\(cell);\(cell);\(cell);\(cell);\(cell);\(cell);;")
 	}
 
-	/// Whether the exported row whose Name, Purpose, and Booking text are `text` has `cell` in these three columns. The whole
-	/// row is compared, because a cell can hold a line break.
-	func bankTextExports(_ text: String, as cell: String) throws -> Bool {
+	/// The exported row, without the header and the last line break, whose Name, Purpose, and Booking text are `text`.
+	/// The whole row is compared, because a cell can hold a line break.
+	func exportedRow(_ text: String, amountMinor: Int64 = -8_900) throws -> String {
 		var row = stadtwerke
 		row.name = text
 		row.purpose = text
 		row.bookingText = text
-		let header = TransactionCSV.columns.joined(separator: ";")
-		return try TransactionCSV.text([row], ledger: ledger, locale: Locale(identifier: "de_DE"))
-			== "\(header)\r\n03.11.2026;04.11.2026;Housing;\(cell);\(cell);DE02120300000000202051;BYLADEM1001;-89,00;EUR;DE02120300000000202051;\(cell);E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;\r\n"
+		row.amountMinor = amountMinor
+		let header = TransactionCSV.columns.joined(separator: ";") + "\r\n"
+		let file = try TransactionCSV.text([row], ledger: ledger, locale: Locale(identifier: "de_DE"))
+		return String(file.unicodeScalars.dropFirst(header.unicodeScalars.count).dropLast(2))
+	}
+
+	/// The row of `exportedRow` with `cell` as its Name, Purpose, and Booking text.
+	func row(with cell: String) -> String {
+		"03.11.2026;04.11.2026;Housing;\(cell);\(cell);DE02120300000000202051;BYLADEM1001;-89,00;EUR;DE02120300000000202051;\(cell);E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;"
 	}
 
 	@Test("A formula sign after a comma or a tab inside a field gets an apostrophe, so a reader that splits there starts no formula cell",
@@ -73,23 +79,111 @@ struct TransactionCSVTests {
 	func formulaAfterSeparator(sign: String, separator: String) throws {
 		let separatorEnd = separator.unicodeScalars.first!
 		let rest = String(separator.unicodeScalars.dropFirst())
-		let cell = "Ref\(separatorEnd)'\(rest)\(sign)HYPERLINK(1)"
-		#expect(try bankTextExports("Ref\(separator)\(sign)HYPERLINK(1)", as: cell))
+		#expect(try exportedRow("Ref\(separator)\(sign)HYPERLINK(1)") == row(with: "Ref\(separatorEnd)'\(rest)\(sign)HYPERLINK(1)"))
 	}
 
 	@Test("Each part after a comma, a tab, or a line break is checked on its own", arguments: [
 		("a,+1,b,-2", "a,'+1,b,'-2"), ("\t=1", "'\t'=1"), ("=1,=2", "'=1,'=2"), ("a,\t+1", "a,\t'+1"), ("a, \t+1", "a, \t'+1"),
-		("a\n=1", "\"a\n'=1\""), ("a\r\n@1", "\"a\r\n'@1\""), ("a,,+1", "a,,'+1"), ("a,", "a,"), ("a\t", "a\t"),
+		("a\n=1", "\"a\n'=1\""), ("a\r=1", "\"a\r'=1\""), ("a\r\n@1", "\"a\r\n'@1\""), ("a,,+1", "a,,'+1"), ("a,", "a,"), ("a\t", "a\t"),
 	])
 	func formulaInEveryPart(_ input: String, _ cell: String) throws {
-		#expect(try bankTextExports(input, as: cell))
+		#expect(try exportedRow(input) == row(with: cell))
+	}
+
+	@Test("A double quote, a control character, or a format character before the sign does not hide it", arguments: [
+		("Ref,\"=1+1,x", "\"Ref,'\"\"=1+1,x\""), ("Ref\t\"=1+1", "\"Ref\t'\"\"=1+1\""), ("Ref,\"\"+1", "\"Ref,'\"\"\"\"+1\""),
+		("Ref,\u{0}=1+1,tail", "Ref,'\u{0}=1+1,tail"), ("Ref\t\u{0}=1+1", "Ref\t'\u{0}=1+1"), ("Ref,\u{200B}@SUM(1)", "Ref,'\u{200B}@SUM(1)"),
+		("Ref, \u{1F}－1+1", "Ref,' \u{1F}－1+1"), ("\u{0}=1+1", "'\u{0}=1+1"), ("\u{FEFF}+1", "'\u{FEFF}+1"), ("\u{200B}=1+1", "'\u{200B}=1+1"), ("\"=1+1", "\"'\"\"=1+1\""),
+	])
+	func hiddenSign(_ input: String, _ cell: String) throws {
+		#expect(try exportedRow(input) == row(with: cell))
+	}
+
+	@Test("A part of only a sign and whitespace stays, while a sign before more text still gets the apostrophe", arguments: [
+		("Rate 100,-", "Rate 100,-"), ("123,- ", "123,- "), ("a,+\tb", "a,'+\tb"), ("Summe 50,-\r\nDank", "\"Summe 50,-\r\nDank\""),
+		("50,- EUR", "50,'- EUR"), ("a,- 1+1", "a,'- 1+1"), ("a,-\u{0}", "a,'-\u{0}"), ("a,-\tHYPERLINK(1)", "a,'-\tHYPERLINK(1)"),
+		("a,- \tHYPERLINK(1)", "a,'- \tHYPERLINK(1)"), ("a\t-,HYPERLINK(1)", "a\t'-,HYPERLINK(1)"), ("a\t-", "a\t'-"), ("a\n-", "\"a\n'-\""), ("a,\"-", "\"a,'\"\"-\""),
+	])
+	func loneSign(_ input: String, _ cell: String) throws {
+		#expect(try exportedRow(input) == row(with: cell))
 	}
 
 	@Test("Ordinary text with commas, tabs, and signs inside a part stays unchanged", arguments: [
 		"Abschlag November, Kd-Nr 123", "Miete 11/2026,Hausverwaltung", "Ref\tA+B", "Rabatt 10 %, netto", "a,b,c", "x@example.com, Info",
 	])
 	func ordinaryText(_ text: String) throws {
-		#expect(try bankTextExports(text, as: text))
+		#expect(try exportedRow(text) == row(with: text))
+	}
+
+	/// The cells of `text` as a spreadsheet reads them when it splits at `separator` and at line breaks. Like Excel and the
+	/// csv module of Python, it reads a double quote only at the start of a cell, and keeps what follows the closing quote.
+	func cells(_ text: String, separator: Unicode.Scalar) -> [String] {
+		let scalars = Array(text.unicodeScalars)
+		var cells: [String] = []
+		var cell = String.UnicodeScalarView()
+		var quoted = false
+		var atStart = true
+		var i = 0
+		while i < scalars.count {
+			let c = scalars[i]
+			if quoted {
+				if c == "\"", i + 1 < scalars.count, scalars[i + 1] == "\"" {
+					cell.append(c)
+					i += 1
+				} else if c == "\"" {
+					quoted = false
+				} else {
+					cell.append(c)
+				}
+			} else if atStart, c == "\"" {
+				quoted = true
+				atStart = false
+			} else if c == separator || c == "\r" || c == "\n" {
+				cells.append(String(cell))
+				cell = String.UnicodeScalarView()
+				atStart = true
+			} else {
+				cell.append(c)
+				atStart = false
+			}
+			i += 1
+		}
+		cells.append(String(cell))
+		return cells
+	}
+
+	/// Whether a spreadsheet would read the cell as a formula: its first character after the whitespace, the control
+	/// characters, and the format characters that a reader can drop is a sign, and more than whitespace follows. A semicolon
+	/// right after the sign and its whitespace ends every formula with a syntax error.
+	func readsAsFormula(_ cell: String) -> Bool {
+		let visible = cell.unicodeScalars.drop { $0.properties.isWhitespace || [.control, .format].contains($0.properties.generalCategory) }
+		guard let first = visible.first, "=+-@＝＋－＠".unicodeScalars.contains(first) else { return false }
+		guard let next = visible.dropFirst().first(where: { !$0.properties.isWhitespace }) else { return false }
+		return next != ";"
+	}
+
+	@Test("A lone sign after a comma, at the end of a field or before a tab, starts no formula in any reader", arguments: [
+		"Rate 100,-", "Rate 100,- ", "Ref,-\tHYPERLINK(1)", "Ref,- \tHYPERLINK(1)", "Ref\t-,HYPERLINK(1)", "Ref\t+\tHYPERLINK(1)", "Ref,-\r\nHYPERLINK(1)",
+		"Ref,-,HYPERLINK(1)", "Ref\t-", "Ref,\"-\tHYPERLINK(1)",
+	])
+	func readersAroundLoneSign(text: String) throws {
+		let line = try exportedRow(text, amountMinor: 8_900)
+		for separator: Unicode.Scalar in [";", ",", "\t"] {
+			#expect(cells(line, separator: separator).filter(readsAsFormula) == [], "split at \(separator.escaped(asASCII: true))")
+		}
+	}
+
+	@Test("A reader that splits the file at semicolons, at commas, or at tabs finds no cell that starts a formula", arguments: [
+		"", "Ref,", "Ref\t", "Ref\r\n", "Ref\n", "Ref, ", "Ref,\"", "Ref\t\"", "Ref,\"\"", "Ref,\u{0}", "Ref\t\u{0}", "Ref,\u{200B}", "\"", "\u{0}", " ",
+	])
+	func readers(lead: String) throws {
+		for sign in ["=", "+", "-", "@", "＝", "＋", "－", "＠"] {
+			// A deposit, because the minus sign of a withdrawal starts a cell of its own in a comma reader, as a number.
+			let line = try exportedRow("\(lead)\(sign)HYPERLINK(1),x", amountMinor: 8_900)
+			for separator: Unicode.Scalar in [";", ",", "\t"] {
+				#expect(cells(line, separator: separator).filter(readsAsFormula) == [], "\(sign) after \(lead.debugDescription), split at \(separator.escaped(asASCII: true))")
+			}
+		}
 	}
 
 	@Test("Egyptian Arabic uses ASCII digits for both dates and amounts, and the dates have no direction marks")

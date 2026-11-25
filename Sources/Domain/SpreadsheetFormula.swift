@@ -1,5 +1,5 @@
 /// A spreadsheet reads a cell that starts with a formula sign as a formula, which can show an error or open a link.
-/// The CSV export and Copy of selected rows both write bank text into cells, so both escape it here, with one rule.
+/// The CSV export and Copy of selected rows both write bank text into cells, so both escape it here.
 enum SpreadsheetFormula {
 	/// The signs that start a formula. The full-width forms count too, because a spreadsheet in an East Asian locale
 	/// can read them as the plain ones.
@@ -12,31 +12,55 @@ enum SpreadsheetFormula {
 	static func escaped(_ field: String) -> String {
 		guard let first = field.unicodeScalars.first else { return field }
 		if first == "\t" || first == "\r" || first == "\n" { return "'" + field }
-		return startsWithSign(field.unicodeScalars[...]) ? "'" + field : field
+		guard let sign = field.unicodeScalars.first(where: { !$0.properties.isWhitespace }), signs.contains(sign) else { return field }
+		return "'" + field
 	}
 
 	/// A reader that splits at a comma, a tab, or a line break.
 	private static let cellBreaks: Set<Unicode.Scalar> = [",", "\t", "\r", "\n"]
 
-	/// The field escaped as one cell, and with an apostrophe after each comma, tab, or line break whose part, up to the next
-	/// of these, starts with a formula sign after leading whitespace. The CSV export separates its fields with semicolons, but
-	/// a spreadsheet in a region whose list separator is a comma, or one that splits at tabs, starts a new cell at each of
-	/// these characters, and a quote in the middle of such a cell is plain text. Copy does not need this, because its fields
-	/// hold no tab and a pasted line splits only at tabs.
+	/// The field escaped as one cell, and with an apostrophe at the start of each part, the text before the first comma,
+	/// tab, or line break and the text after each of them up to the next, that a spreadsheet could read as a formula. The
+	/// CSV export separates its fields with semicolons, but a spreadsheet in a region whose list separator is a comma, or
+	/// one that splits at tabs, starts a new cell at each of these characters, and a quote in the middle of such a cell is
+	/// plain text. Copy does not need this, because its fields hold no tab or line break and a pasted line splits at tabs.
+	/// Excel can also split a pasted line at commas after Text to Columns with a comma, a setting this accepts.
 	static func escapedInEveryPart(_ field: String) -> String {
 		let scalars = escaped(field).unicodeScalars
 		var result = String.UnicodeScalarView()
 		var start = scalars.startIndex
-		while let end = scalars[start...].firstIndex(where: cellBreaks.contains) {
-			result.append(contentsOf: scalars[start...end])
+		var before: Unicode.Scalar?
+		while true {
+			let end = scalars[start...].firstIndex(where: cellBreaks.contains) ?? scalars.endIndex
+			let part = scalars[start..<end]
+			let after = end < scalars.endIndex ? scalars[end] : nil
+			if startsFormula(part) && !(before == "," && after != "\t" && isLoneSign(part)) { result.append("'") }
+			result.append(contentsOf: part)
+			guard let after else { return String(result) }
+			result.append(after)
+			before = after
 			start = scalars.index(after: end)
-			if startsWithSign(scalars[start...].prefix { !cellBreaks.contains($0) }) { result.append("'") }
 		}
-		result.append(contentsOf: scalars[start...])
-		return String(result)
 	}
 
-	private static func startsWithSign(_ text: Substring.UnicodeScalarView) -> Bool {
-		text.first { !$0.properties.isWhitespace }.map(signs.contains) ?? false
+	/// Whether the first character of the part after leading whitespace, double quotes, control characters, and format
+	/// characters is a formula sign. A reader reads a quote at the start of a cell as an empty quoted text and can drop a
+	/// NUL or a zero-width space, so none of them hides the sign.
+	private static func startsFormula(_ part: Substring.UnicodeScalarView) -> Bool {
+		guard let sign = part.first(where: { !hides($0) }) else { return false }
+		return signs.contains(sign)
+	}
+
+	/// Whether the part that starts a formula holds its sign and whitespace only, as the "-" of "Rate 100,-" does. Such a part stays as it is
+	/// after a comma and before a comma, a line break, or the end of the field, because an apostrophe would change the
+	/// purpose that the import compares. A comma reader then reads the sign alone, or the sign and the semicolon of the
+	/// next field, which no formula accepts. A tab reader does not start a cell there. After or before a tab, a comma
+	/// reader would join the sign with the text after the tab, so the part gets the apostrophe.
+	private static func isLoneSign(_ part: Substring.UnicodeScalarView) -> Bool {
+		part.filter { !$0.properties.isWhitespace }.count == 1
+	}
+
+	private static func hides(_ scalar: Unicode.Scalar) -> Bool {
+		scalar.properties.isWhitespace || scalar == "\"" || [.control, .format].contains(scalar.properties.generalCategory)
 	}
 }
