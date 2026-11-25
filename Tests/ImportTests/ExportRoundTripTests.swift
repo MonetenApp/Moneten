@@ -25,6 +25,21 @@ struct ExportRoundTripTests {
 		#expect(imported.map(\.amountMinor) == rows.map(\.amountMinor))
 	}
 
+	@Test("An apostrophe of the formula protection comes back with the import, so its row is added again to the account it came from")
+	func formulaApostropheOnReimport() throws {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")
+		let purposes = ["Abschlag November", "Rate 100,-", "Ref,+1+1", "50,- EUR"]
+		let rows = purposes.enumerated().map { i, purpose in
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 11, day: 3 + i), amountMinor: -1_000 * Int64(i + 1), name: "Stadtwerke Musterstadt", purpose: purpose)
+		}
+		let data = try TransactionCSV.data(rows, ledger: Ledger(accounts: [giro]), locale: Locale(identifier: "de_DE"))
+		let imported = try TransactionFileImporter.parse(data, currency: "EUR").transactions.map { var t = $0; t.accountID = giro.id; return t }
+		#expect(imported.map(\.purpose) == ["Abschlag November", "Rate 100,'-", "Ref,'+1+1", "50,'- EUR"])
+		let merged = reconcile(.file(imported), into: giro, stored: rows, deleted: [], rules: Categorizer(ledger: Ledger(accounts: [giro])), now: Date())
+		#expect(merged.skipped == 1)
+		#expect(merged.added.map(\.purpose) == ["Rate 100,'-", "Ref,'+1+1", "50,'- EUR"])
+	}
+
 	@Test("An American export whose days are all 12 or lower asks for the date order, and month first brings back the same days", .bug("https://github.com/MonetenApp/Moneten/issues/509"))
 	func ambiguousAmericanDays() throws {
 		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline, iban: "DE02120300000000202051")

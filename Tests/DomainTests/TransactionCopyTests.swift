@@ -87,6 +87,17 @@ struct TransactionCopyTests {
 		#expect(fields[2] == "'+Rabatt-")
 	}
 
+	@Test("Copy escapes only the start of a field, because its fields hold no tab and a pasted line splits only at tabs")
+	func signAfterComma() {
+		var t = debit
+		t.name = "Ref,+1+1"
+		t.purpose = "Ref,=HYPERLINK(1)"
+		t.mandateReference = nil
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields[1] == "Ref,+1+1")
+		#expect(fields[2] == "Ref,=HYPERLINK(1)")
+	}
+
 	@Test("A full-width formula sign also gets the apostrophe, also after leading whitespace", arguments: ["＝", "＋", "－", "＠"])
 	func fullWidthFormula(sign: String) {
 		var t = debit
