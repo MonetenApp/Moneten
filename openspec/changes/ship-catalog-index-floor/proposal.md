@@ -11,7 +11,7 @@ A new data folder has no version floor for either catalog key. The app then acce
 - The lowest index version moves from the code into a file next to the two catalog keys, which the app reads at launch.
 - The app refuses an index below that version whatever floors it holds, so the higher of the floor and the version decides.
 - Without an index that the build accepts, because the build lacks a readable file or the stored index is below the version, the app shows, installs, and runs nothing from the catalog.
-- A refresh of a catalog extension that starts without an accepted index waits up to 30 seconds for the check of the catalog, and starts one when none runs, so the automatic refresh at launch does not fail after an update that raised the version.
+- A refresh of a catalog extension that starts without an accepted index waits for the check of the catalog, until 30 seconds after the check started, and starts one when none runs, so the automatic refresh at launch does not fail after an update that raised the version.
 - Each release raises the file to the version of the newest index that the catalog signed before the release. The release checklist names the step.
 - `scripts/release.sh` refuses a release whose lowest index version is not a positive number or is lower than that of an earlier release, and checks that the app on the disk image carries the file of the checkout.
 

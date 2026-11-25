@@ -11,11 +11,16 @@ import Testing
 	@MainActor final class Gate {
 		private(set) var runs = 0
 		private var opened = false
+		private var finished = false
 		private var waiting: CheckedContinuation<Void, Never>?
+		private var watchers: [CheckedContinuation<Void, Never>] = []
 
 		func check() async {
 			runs += 1
 			if !opened { await withCheckedContinuation { waiting = $0 } }
+			finished = true
+			for watcher in watchers { watcher.resume() }
+			watchers = []
 		}
 
 		func open() {
@@ -23,27 +28,39 @@ import Testing
 			waiting?.resume()
 			waiting = nil
 		}
+
+		/// Returns once the check ended. `IndexCheck` handles the end in the same step on the main actor,
+		/// so the test goes on only after that.
+		func ended() async {
+			if !finished { await withCheckedContinuation { watchers.append($0) } }
+		}
 	}
 
-	/// What a refresh saw, and the index that a check accepted.
+	/// Whether a refresh stopped waiting.
 	@MainActor final class Seen {
 		var waited = false
-		var index: CatalogIndex?
 	}
 
-	private func settle() async {
-		for _ in 0..<20 { await Task.yield() }
+	/// Starts `body` in a task and returns once it suspends. The task runs on the main actor, so it has
+	/// started its check or put itself among the waiters before the test goes on.
+	private func started(_ body: @escaping @MainActor () async -> Void) async -> Task<Void, Never> {
+		var task: Task<Void, Never>?
+		await withCheckedContinuation { (began: CheckedContinuation<Void, Never>) in
+			task = Task {
+				began.resume()
+				await body()
+			}
+		}
+		return task!
 	}
 
 	@Test func aRefreshWaitsUntilTheCheckEnds() async {
 		let check = IndexCheck(), gate = Gate(), seen = Seen()
-		let launch = Task { await check.run(gate.check) }
-		await settle()
-		let refresh = Task {
+		let launch = await started { await check.run(gate.check) }
+		let refresh = await started {
 			await check.run(gate.check, atMost: .seconds(600))
 			seen.waited = true
 		}
-		await settle()
 		#expect(!seen.waited)
 		gate.open()
 		await refresh.value
@@ -55,12 +72,8 @@ import Testing
 	/// The first refresh after the connection returns starts the check, and the next request joins it.
 	@Test func aRefreshStartsACheckWhenNoneRunsAndOthersJoinIt() async {
 		let check = IndexCheck(), gate = Gate()
-		let refresh = Task { await check.run(gate.check, atMost: .seconds(600)) }
-		await settle()
-		#expect(gate.runs == 1)
-		let other = Task { await check.run(gate.check) }
-		await settle()
-		#expect(gate.runs == 1)
+		let refresh = await started { await check.run(gate.check, atMost: .seconds(600)) }
+		let other = await started { await check.run(gate.check) }
 		gate.open()
 		await refresh.value
 		await other.value
@@ -79,10 +92,23 @@ import Testing
 		gate.open()
 	}
 
+	/// The limit counts from the start of the check, so a refresh that queued behind others does not wait
+	/// once more for a check that does not answer.
+	@Test func theLimitCountsFromTheStartOfTheCheck() async throws {
+		let check = IndexCheck(), gate = Gate()
+		let first = await started { await check.run(gate.check, atMost: .seconds(1)) }
+		try await Task.sleep(for: .seconds(1))
+		await first.value
+		let late = ContinuousClock.now
+		await check.run(gate.check, atMost: .seconds(1))
+		#expect(ContinuousClock.now - late < budget(.milliseconds(500)))
+		#expect(gate.runs == 1)
+		gate.open()
+	}
+
 	@Test func aCanceledRefreshStopsWaiting() async {
 		let check = IndexCheck(), gate = Gate()
-		let refresh = Task { await check.run(gate.check, atMost: .seconds(600)) }
-		await settle()
+		let refresh = await started { await check.run(gate.check, atMost: .seconds(600)) }
 		let start = ContinuousClock.now
 		refresh.cancel()
 		await refresh.value
@@ -94,46 +120,20 @@ import Testing
 	/// does not end the wait for the next one.
 	@Test func aCanceledCheckLetsTheNextOneStart() async {
 		let check = IndexCheck(), first = Gate(), next = Gate(), seen = Seen()
-		let locked = Task { await check.run(first.check, atMost: .seconds(600)) }
-		await settle()
+		let locked = await started { await check.run(first.check, atMost: .seconds(600)) }
 		check.cancel()
 		await locked.value
-		let refresh = Task {
+		let refresh = await started {
 			await check.run(next.check, atMost: .seconds(600))
 			seen.waited = true
 		}
-		await settle()
-		#expect(next.runs == 1)
 		first.open()
-		await settle()
+		await first.ended()
 		#expect(!seen.waited)
 		next.open()
 		await refresh.value
 		#expect(seen.waited)
 		#expect(first.runs == 1)
-	}
-
-	@Test func aRefreshAtLaunchRunsAfterTheFirstCheck() async throws {
-		let check = IndexCheck(), gate = Gate(), seen = Seen()
-		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: [])
-		let accept: @MainActor () async -> Void = {
-			await gate.check()
-			seen.index = try? CatalogIndex.parse(TestCatalog.index(version: 140))
-		}
-		let refresh = Task {
-			await check.run(accept, atMost: IndexCheck.refreshWait)
-			return Standing(of: installed, in: seen.index)
-		}
-		await settle()
-		gate.open()
-		#expect(await refresh.value == .runs(note: nil))
-	}
-
-	@Test func aRefreshAfterAFailedCheckStops() async {
-		let check = IndexCheck(), seen = Seen()
-		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: [])
-		await check.run({ seen.index = nil }, atMost: IndexCheck.refreshWait)
-		#expect(Standing(of: installed, in: seen.index)
-			== .stopped("Moneten has no list of extensions that this version accepts, so Example Bank does not run."))
+		#expect(next.runs == 1)
 	}
 }

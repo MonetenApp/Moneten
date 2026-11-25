@@ -17,5 +17,5 @@
 ## 3. The first check at launch (issue #579)
 
 - [x] 3.1 A refresh waits for the check that runs and returns when it ends, two requests share one check, the wait ends at its limit or at a cancel, and a canceled check lets the next request start its own. Verified by `IndexCheckTests`.
-- [x] 3.2 A refresh that starts before the first check ends runs the package once the check accepts an index, and stops with "Moneten has no list…" when the check fails. Verified by `IndexCheckTests/aRefreshAtLaunchRunsAfterTheFirstCheck` and `IndexCheckTests/aRefreshAfterAFailedCheckStops`.
-- [x] 3.3 `ExtensionLibrary` runs each check through `IndexCheck`, waits in the connector of a catalog package while it holds no index, and cancels the check at the lock.
+- [x] 3.2 The limit counts from the start of the check, so a refresh that starts late does not wait once more. Verified by `IndexCheckTests/theLimitCountsFromTheStartOfTheCheck`. Without an index, a catalog package stops with "Moneten has no list…" after the wait, as `UpdatePlanTests/noAcceptedIndexStopsEveryCatalogPackage` verifies.
+- [x] 3.3 `ExtensionLibrary` runs each check through `IndexCheck`, waits in the connector of a catalog package while it holds no index, and cancels the check at the lock. The app has no unit tests, so this wiring is checked by review and by the build, not by a test.

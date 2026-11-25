@@ -5,10 +5,10 @@ import Foundation
 /// check, so that the automatic refresh at launch does not fail before the first check ends (issue #579).
 @MainActor
 public final class IndexCheck {
-	/// How long a refresh waits for the check before it goes on without an index.
+	/// How long after the start of the check a refresh waits for it before it goes on without an index.
 	public static let refreshWait = Duration.seconds(30)
 
-	private var running: (id: Int, task: Task<Void, Never>)?
+	private var running: (id: Int, task: Task<Void, Never>, started: ContinuousClock.Instant)?
 	private var waiters: [Int: CheckedContinuation<Void, Never>] = [:]
 	private var lastID = 0
 
@@ -16,21 +16,22 @@ public final class IndexCheck {
 
 	/// Starts `check` when none runs, and waits until the check that runs ends.
 	public func run(_ check: @escaping @MainActor () async -> Void) async {
-		await start(check).value
+		await start(check).task.value
 	}
 
-	/// Starts `check` when none runs, and waits until the check that runs ends, for at most `limit`. A
-	/// canceled task stops waiting at once.
+	/// Starts `check` when none runs, and waits until the check that runs ends, but no longer than `limit`
+	/// after that check started. So the refreshes that wait for one check stop waiting together, and the
+	/// refreshes that queue behind them do not wait once more. A canceled task stops waiting at once.
 	public func run(_ check: @escaping @MainActor () async -> Void, atMost limit: Duration) async {
-		start(check)
+		let deadline = start(check).started + limit
 		let id = newID()
 		let timer = Task { [weak self] in
-			try? await Task.sleep(for: limit)
+			guard (try? await Task.sleep(until: deadline, clock: .continuous)) != nil else { return }
 			self?.resume(id)
 		}
 		await withTaskCancellationHandler {
 			await withCheckedContinuation { continuation in
-				if running == nil || Task.isCancelled { continuation.resume() } else { waiters[id] = continuation }
+				if running == nil || Task.isCancelled || deadline <= .now { continuation.resume() } else { waiters[id] = continuation }
 			}
 		} onCancel: {
 			Task { @MainActor [weak self] in self?.resume(id) }
@@ -44,16 +45,16 @@ public final class IndexCheck {
 		ended(running?.id)
 	}
 
-	@discardableResult
-	private func start(_ check: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
-		if let running { return running.task }
+	private func start(_ check: @escaping @MainActor () async -> Void) -> (id: Int, task: Task<Void, Never>, started: ContinuousClock.Instant) {
+		if let running { return running }
 		let id = newID()
 		let task = Task { [weak self] in
 			await check()
 			self?.ended(id)
 		}
-		running = (id, task)
-		return task
+		let started = (id: id, task: task, started: ContinuousClock.now)
+		running = started
+		return started
 	}
 
 	/// Only the end of the check that runs ends the waits, not the late end of one that was canceled.

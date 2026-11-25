@@ -101,7 +101,7 @@ The app SHALL show, install, and run nothing from the catalog while it holds no 
 
 ### Requirement: A refresh waits for the check of the catalog
 
-The app SHALL let a refresh of an extension of the catalog that starts while the app holds no index that this build accepts wait for the check of the catalog, for at most 30 seconds. When no check runs, the refresh starts one. After the wait, the refresh follows "No catalog without an accepted index". A refresh of an extension installed from a file does not wait.
+The app SHALL let a refresh of an extension of the catalog that starts while the app holds no index that this build accepts wait for the check of the catalog, until 30 seconds after that check started. When no check runs, the refresh starts one. After the wait, the refresh follows "No catalog without an accepted index". A refresh of an extension installed from a file does not wait.
 
 #### Scenario: Online at launch
 
@@ -123,5 +123,12 @@ The app SHALL let a refresh of an extension of the catalog that starts while the
 
 - **GIVEN** the same app and "Broker" 2.32, and the Mac is online, but the catalog does not answer
 - **WHEN** the user chooses "Refresh Account" for "Broker Depot"
-- **THEN** the refresh waits for the check of the catalog, for at most 30 seconds
+- **THEN** the refresh waits for the check of the catalog until 30 seconds after the check started
 - **AND** "Broker Depot" says "Moneten has no list of extensions that this version accepts, so Broker does not run."
+
+#### Scenario: Refreshes in line behind others
+
+- **GIVEN** the same app, five due accesses of catalog extensions, and one bank access "Giro" that is due too, and the catalog does not answer
+- **WHEN** the automatic refresh starts three of the accesses, and the other three wait for their turn
+- **THEN** each access of a catalog extension that starts later stops waiting 30 seconds after the check started, with the other accesses
+- **AND** "Giro" waits no more than about 30 seconds for its turn

@@ -127,7 +127,6 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var savedUpdates: [String: UpdateState.Saved] = [:]
 	/// The downloads that run, so that a removal can stop them.
 	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
-	@ObservationIgnored private var checking: Store?
 	/// The check of the index that runs, which a refresh waits for while the app holds no index.
 	@ObservationIgnored private let indexCheck = IndexCheck()
 	@ObservationIgnored private var daily: Task<Void, Never>?
@@ -208,9 +207,7 @@ final class ExtensionLibrary {
 	}
 
 	private func checkIndex() async {
-		guard let store = model?.store, checking !== store else { return }
-		checking = store
-		defer { if checking === store { checking = nil } }
+		guard let store = model?.store else { return }
 		guard let keys = configuration.keys else {
 			problem = String(localized: "This build of Moneten has no catalog keys, so it cannot show the catalog.")
 			return reload()
