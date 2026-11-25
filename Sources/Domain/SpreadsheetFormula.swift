@@ -6,14 +6,13 @@ enum SpreadsheetFormula {
 	private static let signs: Set<Unicode.Scalar> = ["=", "+", "-", "@", "\u{FF1D}", "\u{FF0B}", "\u{FF0D}", "\u{FF20}"]
 
 	/// The field with an apostrophe in front when a spreadsheet could read it as a formula: when it starts with a tab, a
-	/// carriage return, or a line feed, or when its first character after leading whitespace is a formula sign. A
-	/// spreadsheet can trim the whitespace, so it cannot hide the sign. The apostrophe keeps the cell text. An amount
-	/// never comes here, because a withdrawal starts with a minus sign.
+	/// carriage return, or a line feed, or when its first character after leading whitespace, double quotes, control
+	/// characters, and format characters is a formula sign. A spreadsheet can trim or drop them, so they cannot hide the
+	/// sign. The apostrophe keeps the cell text. An amount never comes here, because a withdrawal starts with a minus sign.
 	static func escaped(_ field: String) -> String {
 		guard let first = field.unicodeScalars.first else { return field }
 		if first == "\t" || first == "\r" || first == "\n" { return "'" + field }
-		guard let sign = field.unicodeScalars.first(where: { !$0.properties.isWhitespace }), signs.contains(sign) else { return field }
-		return "'" + field
+		return startsFormula(field.unicodeScalars[...]) ? "'" + field : field
 	}
 
 	/// A reader that splits at a comma, a tab, or a line break.
