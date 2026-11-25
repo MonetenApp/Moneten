@@ -168,6 +168,13 @@ import Testing
 			== .outdated("Version 1.0 of Example Bank is no longer in the catalog. Open Extensions and install the update."))
 	}
 
+	/// Without an index that this build accepts, no catalog package runs (issue #563).
+	@Test func noAcceptedIndexStopsEveryCatalogPackage() {
+		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: [])
+		#expect(Standing(of: installed, in: nil)
+			== .stopped("Moneten has no list of extensions that this version accepts, so Example Bank does not run."))
+	}
+
 	/// The catalog can go back to an older version. There is nothing to install then, so the text offers no update (issue #186).
 	@Test func olderVersionInTheIndexOffersNoUpdate() throws {
 		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [TestCatalog.Package()]))
@@ -199,6 +206,17 @@ import Testing
 		let record = try installed()
 		let reordered = InstalledPackage(id: record.id, name: record.name, version: record.version, files: record.files.reversed())
 		#expect(Standing(of: reordered, in: try CatalogIndex.parse(TestCatalog.index(version: 2))) == .runs(note: nil))
+	}
+
+	/// The record of the install differs from the index entry of the same version by one file, as when the
+	/// catalog lists the version again with a file more or a file less.
+	@Test(arguments: ["added", "dropped"]) func installedVersionListedWithAnotherSetOfFilesStops(change: String) throws {
+		let record = try installed()
+		let extra = PackageFile(path: "Helper.lua", size: 12, sha256: String(repeating: "a", count: 64))
+		let files = change == "added" ? Array(record.files.dropFirst()) : record.files + [extra]
+		let other = InstalledPackage(id: record.id, name: record.name, version: record.version, files: files)
+		#expect(Standing(of: other, in: try CatalogIndex.parse(TestCatalog.index(version: 2)))
+			== .changed("Example Bank was changed and does not match the catalog."))
 	}
 
 	@Test func blockedStateComesBeforeOtherDigests() throws {

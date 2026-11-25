@@ -85,6 +85,46 @@ import Testing
 		#expect(run("local t = {} local c = t for i = 1, 200 do c.x = {} c = c.x end return t") == .string("error: Tables nest deeper than 100 levels."))
 	}
 
+	/// An account table as deep as a script may return it reaches a new session whole, as the
+	/// argument of an entry point and as the answer of a function of the host. Lua does not check its
+	/// stack on a push, so each level must reserve its slots first.
+	@Test func deepValueFromTheAppArrivesWhole() throws {
+		let session = Run(demo("""
+			WebBanking{version = 1}
+			function RefreshAccount(account, since, isKnown)
+				if account.known then account = isKnown("t1") end
+				local levels = 0
+				while type(account) == "table" and account.accountNumber == "1" do
+					levels = levels + 1
+					account = account.x
+				end
+				return {levels = levels, leaf = account}
+			end
+			""")).session!
+		_ = try session.load()
+		func refresh(_ account: LuaValue, known: [String: LuaValue] = [:]) throws -> LuaValue {
+			try session.call(.refreshAccount(account: account, since: 0, known: known, step: 1, credentials: [], interactive: false))
+		}
+		let whole = LuaValue.object(["levels": .integer(100), "leaf": .integer(7)])
+		#expect(try refresh(nested(100)) == whole)
+		#expect(try refresh(.object(["known": .boolean(true)]), known: ["t1": nested(100)]) == whole)
+	}
+
+	@Test func valueFromTheAppDeeperThanTheLimitFails() throws {
+		let session = Run(demo("WebBanking{version = 1}\nfunction RefreshAccount(account) return account end")).session!
+		_ = try session.load()
+		let call = EntryCall.refreshAccount(account: nested(101), since: 0, known: [:], step: 1, credentials: [], interactive: false)
+		#expect(throws: ScriptError("Tables nest deeper than 100 levels.")) { try session.call(call) }
+		#expect(try session.call(.refreshAccount(account: nested(1), since: 0, known: [:], step: 1, credentials: [], interactive: false)) == nested(1))
+	}
+
+	/// An account table whose field `x` nests `levels` tables deep, with the number 7 at the end.
+	private func nested(_ levels: Int) -> LuaValue {
+		var value = LuaValue.integer(7)
+		for _ in 0..<levels { value = .object(["accountNumber": .string("1"), "x": value]) }
+		return value
+	}
+
 	@Test func numberThatJSONCannotHold() {
 		#expect(run("return {0/0}") == .string("error: The value nan is not a finite number."))
 		#expect(Run(demo("WebBanking{version = math.huge}")).call("Check") == .string("error: Demo.lua:1: The value inf is not a finite number."))

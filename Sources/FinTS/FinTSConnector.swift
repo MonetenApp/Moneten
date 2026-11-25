@@ -235,7 +235,7 @@ public struct FinTSConnector: BankConnector {
 	/// When the refresh is canceled or fails, or the helper closes its output but keeps running, the
 	/// helper gets a cancel and at most `grace` to end.
 	/// When the helper ends, its open requests end too. A helper that stays silent for `inactivity`
-	/// while no request is open fails the run with a timeout.
+	/// while no request is open fails the run with a timeout, and so does a certificate check that takes longer.
 	private func run(_ command: Command, session: SyncSession?, _ handle: (HelperMessage) async throws -> Void) async throws {
 		let watchdog = Watchdog(after: inactivity)
 		let asks = OpenAsks(watchdog: watchdog)
@@ -251,7 +251,8 @@ public struct FinTSConnector: BankConnector {
 		var helperLeft = false
 		// A certificate check can wait for the network, for example to fetch an intermediate certificate
 		// that the server left out. A serial queue of its own runs on the overcommitting root queue of
-		// Dispatch, so the wait holds no thread of Swift concurrency, where the other refreshes run.
+		// Dispatch, so the wait holds no thread of Swift concurrency, where the other refreshes run. The run
+		// waits for a check no longer than `inactivity`, and a cancel ends the wait at once.
 		let checks = DispatchQueue(label: "io.github.moneten.fints.trust")
 		// The timer runs from the first write, so a helper that never reads its command times out. The
 		// command goes out before the cancellation handler, so a cancel always follows it.
@@ -299,8 +300,24 @@ public struct FinTSConnector: BankConnector {
 					case .alive:
 						continue
 					case let .trust(id, host, chain):
+						// A check cannot be stopped, so its verdict can come after the end of the wait. The end
+						// of the helper and a cancel end the wait through `asks`.
+						let wait = TrustWait()
+						asks.track(wait)
 						let verdict = await withCheckedContinuation { continuation in
-							checks.async { [trust] in continuation.resume(returning: trust(host, chain)) }
+							guard wait.start(continuation) else { return }
+							checks.async { [trust] in wait.end(trust(host, chain)) }
+							// The timer fails the run from the queue of the timers, as the watchdog does, and before
+							// the run resumes, so the run reports the timeout.
+							HelperProcess.timers.asyncAfter(deadline: .now() + inactivity) { [weak process] in
+								wait.end(nil) { process?.fail(HelperFailure.timeout) }
+							}
+						}
+						// A timeout and a cancel report themselves after the loop, and so does a helper that
+						// ended with an error. A helper that ended without one left without an answer.
+						guard let verdict else {
+							helperLeft = true
+							break reading
 						}
 						process.send(Answer(id: id, value: verdict))
 					case let .withdraw(id):
@@ -356,10 +373,11 @@ extension FinTSConnector {
 	}
 }
 
-/// The requests of one run that wait for the user. No answer reaches a helper that ended, so the end
-/// of the helper closes them, and so does a canceled refresh. While one is open, the timeout pauses.
+/// The requests of one run that wait for the user, and the certificate check that waits for macOS. No
+/// answer reaches a helper that ended, so the end of the helper closes them, and so does a canceled
+/// refresh. While a request to the user is open, the timeout pauses.
 private final class OpenAsks: Sendable {
-	private let state = Mutex<(tasks: [Task<UserAnswer, any Error>], closed: Bool)>(([], false))
+	private let state = Mutex<(tasks: [Task<UserAnswer, any Error>], check: TrustWait?, closed: Bool)>(([], nil, false))
 	private let watchdog: Watchdog
 
 	init(watchdog: Watchdog) {
@@ -383,8 +401,47 @@ private final class OpenAsks: Sendable {
 		return task
 	}
 
+	/// Lets the close end the wait for a certificate check, at once when the requests are closed already.
+	func track(_ check: TrustWait) {
+		if state.withLock({ $0.check = check; return $0.closed }) { check.end(nil) }
+	}
+
 	@Sendable func close() {
-		for task in state.withLock({ $0.closed = true; return $0.tasks }) { task.cancel() }
+		let (tasks, check) = state.withLock { state in
+			state.closed = true
+			return (state.tasks, state.check)
+		}
+		for task in tasks { task.cancel() }
+		check?.end(nil)
+	}
+}
+
+/// The wait of a run for one certificate check. The verdict, the timeout, the end of the helper, and a
+/// cancel each end it, and only the first of them resumes the run, so a verdict that comes later is dropped.
+private final class TrustWait: Sendable {
+	private let state = Mutex<(waiter: CheckedContinuation<String?, Never>?, ended: Bool)>((nil, false))
+
+	/// Keeps the run waiting, or resumes it at once with nil and returns false when the wait ended already.
+	func start(_ waiter: CheckedContinuation<String?, Never>) -> Bool {
+		let ended = state.withLock { state in
+			if !state.ended { state.waiter = waiter }
+			return state.ended
+		}
+		if ended { waiter.resume(returning: nil) }
+		return !ended
+	}
+
+	/// Resumes the run with the verdict, or with nil for the other ends. Only when this call ends the wait,
+	/// `before` runs before the run resumes.
+	func end(_ verdict: String?, before: () -> Void = {}) {
+		// After the end the waiter is gone, so a later call resumes nothing.
+		let (first, waiter) = state.withLock { state in
+			defer { state.ended = true; state.waiter = nil }
+			return (!state.ended, state.waiter)
+		}
+		guard first else { return }
+		before()
+		waiter?.resume(returning: verdict)
 	}
 }
 

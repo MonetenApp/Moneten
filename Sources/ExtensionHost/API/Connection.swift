@@ -112,7 +112,7 @@ enum Connection {
 	private static let getBaseURL: clua_Function = { L in
 		let stack = LuaStack(L!)
 		guard isConnection(stack, at: 1) else { return needsColon(stack, "getBaseURL") }
-		stack.push(lastURL(stack, at: 1).map { .string($0.absoluteString) } ?? .null)
+		stack.pushText(lastURL(stack, at: 1)?.absoluteString)
 		return 1
 	}
 
@@ -179,10 +179,15 @@ enum Connection {
 			return -1
 		}
 		stack.pushBytes(response.body)
-		stack.push(page.charset.map(LuaValue.string) ?? .null)
-		stack.push(page.mimeType.map(LuaValue.string) ?? .null)
-		stack.push(page.filename.map(LuaValue.string) ?? .null)
-		stack.push(.object(response.headers.mapValues(LuaValue.string)))
+		stack.pushText(page.charset)
+		stack.pushText(page.mimeType)
+		stack.pushText(page.filename)
+		lua_createtable(L, 0, Int32(response.headers.count))
+		for (name, value) in response.headers {
+			stack.pushString(name)
+			stack.pushString(value)
+			lua_rawset(L, -3)
+		}
 		return 5
 	}
 

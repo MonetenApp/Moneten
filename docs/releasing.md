@@ -122,7 +122,14 @@ To start over after a failed run, delete the draft and run the workflow again on
 - [ ] CI is green on the commit.
 - [ ] The release candidate was tested on the newest major version of macOS, and the key `MonetenTestedMacOS` in `App/Info.plist` names that version. The app warns at launch on a newer major version of macOS.
 - [ ] The production update key in `App/project.yml` is the public key of `SPARKLE_ED_PRIVATE_KEY`. `scripts/release.sh` checks this too.
+- [ ] `App/Resources/CatalogKeys/lowest-index-version` holds the version of the newest index that the catalog signed, the field `version` of its `index.json`. See [Lowest catalog index version](#lowest-catalog-index-version).
 - [ ] If hbci4java or `BankData/corrections.properties` changed since the last bank data, the workflow "Bank data" published them on this commit.
+
+## Lowest catalog index version
+
+`App/Resources/CatalogKeys/lowest-index-version` holds one number: the lowest version of a catalog index that the app accepts, whatever floors its data folder holds ([ADR 0015](decisions/0015-extension-program.md), decision 23). Without it, a server that answers for the catalog host could give a new installation, or one that accepted only older indexes, an old signed index with package versions that a later index blocked. After an update, the app also stops using a stored index below the number, and until it accepts a newer index, it shows, installs, and runs nothing from the catalog. A build without a readable file does the same.
+
+Raise it in the release pull request to the version of the newest index that the catalog signed, and never above it: an app with a higher number refuses every index until the catalog signs one at least that high. The design of [ship-catalog-index-floor](../openspec/changes/ship-catalog-index-floor/design.md) explains why no script reads the catalog for it. `scripts/release.sh` checks in `dry-run` and in `preflight` that the file holds one positive number and a newline, that no earlier tag `v*` holds a higher number or a file that cannot be read, and that the checkout is not shallow. `preflight` also checks that each published version of the app has its tag in the checkout. `package` checks that the app on the disk image carries the same file.
 
 ## Publish bank data
 

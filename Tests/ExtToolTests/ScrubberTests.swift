@@ -1,5 +1,6 @@
 import ExtensionHost
 import Foundation
+import TestSupport
 import Testing
 @testable import ext
 
@@ -113,6 +114,58 @@ extension ExtTool {
 			#expect(fixture.exchanges[0].request.body == "data={{password}}&next=1")
 			#expect(fixture.exchanges[0].response.body == "{\"echo\": \"{{password}}\"}")
 			#expect(!file.contains(encoded))
+		}
+
+		/// The Base64 of the login values and of the Basic form, as a script that escapes it again sends it,
+		/// such as `MM.urlencode(MM.base64(password))` under a field name that is no token name. Each
+		/// Base64 holds `+`, `/`, or padding.
+		static let encodedBase64: [(value: String, placeholder: String, encoded: String)] = {
+			let (username, password) = ("erika>mus?", "r0ter~Faden?")
+			let values = [(username, "{{username}}"), (password, "{{password}}"), (username + ":" + password, "{{username}}:{{password}}")]
+			return values.flatMap { value, placeholder in
+				let base64 = Data(value.utf8).base64EncodedString()
+				let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+				let percent = { (text: String, digits: String) in
+					text.utf8.map { Encodings.unreserved.contains($0) ? String(UnicodeScalar($0)) : String(format: digits, $0) }.joined()
+				}
+				return [percent(base64, "%%%02X"), percent(base64, "%%%02x"), percent(url, "%%%02X"),
+					percent(base64.trimmingCharacters(in: CharacterSet(charactersIn: "=")), "%%%02X"),
+					base64.replacingOccurrences(of: "/", with: #"\/"#), base64.replacingOccurrences(of: "/", with: #"\u002F"#)]
+					.map { (value, placeholder, $0) }
+			}
+		}()
+
+		@Test(arguments: encodedBase64.indices) func encodedBase64OfTheLogin(_ index: Int) throws {
+			let (value, placeholder, encoded) = Self.encodedBase64[index]
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login", body: "feld=\(encoded)&next=1", response: "{\"echo\": \"\(encoded)\"}")],
+				login: ["erika>mus?", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.body == "feld=\(placeholder)&next=1")
+			#expect(fixture.exchanges[0].response.body == "{\"echo\": \"\(placeholder)\"}")
+			#expect(!file.contains(String(Data(value.utf8).base64EncodedString().prefix(8))))
+		}
+
+		/// An escaped letter or digit right before or after the Base64 makes it part of a longer value, as a plain one does.
+		@Test(arguments: ["%59%51%42%43", #"YQ\u0042C"#, "&#66;YQ==", "%42%59%51%3D%3D"])
+		func base64InsideALongerValueStays(_ encoded: String) throws {
+			let (fixture, _, _) = try scrub([exchange("POST", "https://bank.example/login", body: "feld=\(encoded)&next=1")], login: ["a", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.body == "feld=\(encoded)&next=1")
+		}
+
+		/// A text that almost holds the value, escaped, takes no exponential time: each character has no two
+		/// alternatives that match the same text.
+		@Test(arguments: [String(repeating: "%59%57%46%68", count: 5) + "%59%57%46!", String(repeating: "%61", count: 17) + "!"])
+		func nearMatchIsFast(_ text: String) {
+			let matcher = Encodings.matcher(for: String(repeating: "a", count: 18), ignoringCase: true)
+			var count = -1
+			let elapsed = ContinuousClock().measure { count = Encodings.replace(matcher, with: "", in: text).1 }
+			#expect(count == 0)
+			#expect(elapsed < budget(.milliseconds(100)))
+		}
+
+		@Test func percentEncodedBase64OfThePasswordInTheURL() throws {
+			let (fixture, _, file) = try scrub([exchange("GET", "https://bank.example/login?kennung=erika&passwort=cjB0ZXJ%2BRmFkZW4%2F")], login: ["erika", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?kennung=%7B%7Busername%7D%7D&passwort=%7B%7Bpassword%7D%7D")
+			#expect(!file.contains("cjB0ZXJ"))
 		}
 
 		@Test func passwordInTheURL() throws {

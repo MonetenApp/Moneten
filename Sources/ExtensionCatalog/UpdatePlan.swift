@@ -145,23 +145,30 @@ public enum Standing: Sendable, Equatable {
 	/// (ADR 0015, decisions 21 and 24).
 	case changed(String)
 
-	public init(of installed: InstalledPackage, in index: CatalogIndex) {
+	/// Without an accepted index, no catalog package runs: only the files that an accepted index signs run
+	/// (decision 24), and this build may refuse the index it had (issue #563).
+	public init(of installed: InstalledPackage, in index: CatalogIndex?) {
+		guard let index else {
+			self = .stopped(String(localized: "Moneten has no list of extensions that this version accepts, so \(installed.name) does not run."))
+			return
+		}
 		guard let entry = index.entry(installed.id) else {
 			self = .stopped(String(localized: "\(installed.name) is no longer in the catalog."))
 			return
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
+		let listedRuns = entry.status == .active || entry.status == .unmaintained
 		// A catalog that went back to an older version has no update for the installed one (issue #186).
-		if entry.status == .active || entry.status == .unmaintained, let listed = entry.version,
-			UpdatePlan.isNewer(installed.version, than: listed) {
+		if listedRuns, let listed = entry.version, UpdatePlan.isNewer(installed.version, than: listed) {
 			self = .stopped(String(localized: "The catalog lists version \(listed) of \(installed.name), which is older than the installed version \(installed.version). There is no update to install."))
 			return
 		}
-		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
+		if listedRuns, entry.version != installed.version {
 			self = .outdated(String(localized: "Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update."))
 			return
 		}
-		if entry.status == .active || entry.status == .unmaintained, Self.digests(entry.files) != Self.digests(installed.files) {
+		// The order of the files in an index carries no meaning.
+		if listedRuns, Set(entry.files) != Set(installed.files) {
 			self = .changed(CatalogError.changed(installed.name).description)
 			return
 		}
@@ -171,10 +178,5 @@ public enum Standing: Sendable, Equatable {
 		case .blocked: .stopped(String(localized: "\(installed.name) is blocked.\(note)"))
 		case .withdrawn: .stopped(String(localized: "\(installed.name) was withdrawn.\(note)"))
 		}
-	}
-
-	/// Each file by its path, with its size and digest. The order of the files in an index carries no meaning.
-	private static func digests(_ files: [PackageFile]) -> [String: PackageFile] {
-		Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
 	}
 }
