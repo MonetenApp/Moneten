@@ -28,8 +28,9 @@ struct SearchQuery {
 		case amount(AmountBounds)
 		case constant(Bool)
 		case not(Node)
-		case and(Node, Node)
-		case or(Node, Node)
+		/// Two or more terms, tested in their order, as in `RuleExpression`.
+		case and([Node])
+		case or([Node])
 
 		/// The term reads the fields of a row, which costs more than the search text.
 		var readsFields: Bool {
@@ -37,7 +38,7 @@ struct SearchQuery {
 			case .text, .amountWord, .words, .amount, .constant: false
 			case .field, .regex: true
 			case let .not(a): a.readsFields
-			case let .and(a, b), let .or(a, b): a.readsFields || b.readsFields
+			case let .and(terms), let .or(terms): terms.contains { $0.readsFields }
 			}
 		}
 	}
@@ -214,10 +215,10 @@ struct SearchQuery {
 			return value
 		case let .not(a):
 			return !holds(a, row)
-		case let .and(a, b):
-			return holds(a, row) && holds(b, row)
-		case let .or(a, b):
-			return holds(a, row) || holds(b, row)
+		case let .and(terms):
+			return terms.allSatisfy { holds($0, row) }
+		case let .or(terms):
+			return terms.contains { holds($0, row) }
 		}
 	}
 
@@ -263,7 +264,7 @@ struct SearchQuery {
 			negated = false
 		}
 		let terms = words.map { RuleExpression.phrase([WildcardPatternBox(pattern: WildcardPattern(String($0)))], field: nil) }
-		return terms.first.map { terms.dropFirst().reduce($0) { .and($0, $1) } }
+		return terms.count > 1 ? .and(terms) : terms.first
 	}
 
 	/// Plain text that every match of the pattern holds, in lower case, as the search text has it. A run with other
@@ -322,8 +323,7 @@ struct SearchQuery {
 		patterns.flatMap { $0.pattern.characters.split { $0 == "*" || $0 == "?" }.map { Needle(String($0)) } }
 	}
 
-	/// Of two joined terms, the one that reads no fields goes first, so that it often decides before a row reads its
-	/// fields.
+	/// Of joined terms, those that read no fields go first, so that they often decide before a row reads its fields.
 	private static func node(_ e: RuleExpression, watch: RegexWatch) -> Node {
 		switch e {
 		case let .phrase(patterns, nil):
@@ -349,13 +349,15 @@ struct SearchQuery {
 			return .constant(value)
 		case let .not(a):
 			return .not(node(a, watch: watch))
-		case let .and(a, b):
-			let (x, y) = (node(a, watch: watch), node(b, watch: watch))
-			return x.readsFields && !y.readsFields ? .and(y, x) : .and(x, y)
-		case let .or(a, b):
-			let (x, y) = (node(a, watch: watch), node(b, watch: watch))
-			return x.readsFields && !y.readsFields ? .or(y, x) : .or(x, y)
+		case let .and(terms):
+			return .and(cheapFirst(terms.map { node($0, watch: watch) }))
+		case let .or(terms):
+			return .or(cheapFirst(terms.map { node($0, watch: watch) }))
 		}
+	}
+
+	private static func cheapFirst(_ nodes: [Node]) -> [Node] {
+		nodes.filter { !$0.readsFields } + nodes.filter(\.readsFields)
 	}
 }
 

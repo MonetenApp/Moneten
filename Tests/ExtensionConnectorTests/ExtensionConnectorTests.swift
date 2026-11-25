@@ -37,6 +37,19 @@ import Testing
 
 		"""
 
+	/// An account that an earlier version stored with a currency that is no code fails with that error, and not with the
+	/// advice to set the access up again, whose setup would then fail with the currency error.
+	@Test func storedAccountWithACurrencyThatIsNoCodeShowsTheCurrencyError() async throws {
+		let session = TestSession()
+		var state = ExtensionState(nil)
+		state.accounts = ["A EUR": .object(["accountNumber": .string("A"), "currency": .string("€")]), "B EUR": .object(["accountNumber": .string("B")])]
+		let (report, ids) = try await Self.refresh(session.connector(demo(Self.calls + """
+			function RefreshAccount() return {balance = 1, transactions = {}} end
+			""")), session, state: state)
+		#expect(report.outcomes[ids[0]]?.failure == "The currency of account A is not a currency code.")
+		#expect(report.outcomes[ids[1]]?.failure == nil)
+	}
+
 	/// A replay runs on the clock of its recording, so a new account gets that time as `balanceDate`.
 	@Test func newAccountTakesTheBalanceDateFromTheReplayClock() async throws {
 		let session = TestSession()

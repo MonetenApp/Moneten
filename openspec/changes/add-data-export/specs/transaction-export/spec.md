@@ -148,6 +148,72 @@ The app SHALL prefix a text field with an apostrophe when its first character is
 - **THEN** the Name is "'＝1+1" and the Purpose is "' - Miete"
 - **AND** the booking date is 03.11.2026 and the amount is -89,00 €
 
+### Requirement: Formula protection after a comma, a tab, or a line break
+
+The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a line feed inside a text field of a CSV file when the text that follows it, up to the next of these characters, has `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` as its first character after leading whitespace.
+
+#### Scenario: Formula after a comma
+
+- **WHEN** the Purpose is "Ref,+HYPERLINK(1)"
+- **THEN** the Purpose cell is "Ref,'+HYPERLINK(1)"
+
+#### Scenario: Formula after a tab
+
+- **WHEN** the Name is "Ref\t=1+1"
+- **THEN** the Name cell is "Ref\t'=1+1"
+
+#### Scenario: Formula after a comma and a space
+
+- **WHEN** the Booking text is "Gutschrift, -1+1"
+- **THEN** the Booking text cell is "Gutschrift,' -1+1"
+
+#### Scenario: Formula after a line break
+
+- **WHEN** the Purpose is "Ref\r\n@SUM(1)" or "Ref\n=1+1"
+- **THEN** the Purpose cell is "Ref\r\n'@SUM(1)" or "Ref\n'=1+1" in CSV quotes
+
+#### Scenario: Price with a dash
+
+- **WHEN** the Purpose is "Rate 100,-"
+- **THEN** the Purpose cell is "Rate 100,'-"
+
+#### Scenario: Sign at the end of a quoted field
+
+- **GIVEN** the Name is "Shop; Berlin,-" and the Purpose is "&HYPERLINK(1),;"
+- **WHEN** the user exports it
+- **THEN** the Name cell is "Shop; Berlin,'-" in CSV quotes
+- **AND** a spreadsheet that splits the line at commas reads no cell that starts with a formula sign
+
+#### Scenario: Ordinary text
+
+- **WHEN** the Purpose is "Abschlag November, Kd-Nr 123"
+- **THEN** the Purpose cell is "Abschlag November, Kd-Nr 123"
+
+#### Scenario: Import of a field with an apostrophe inside
+
+- **GIVEN** the export of a transaction with the Purpose "Ref,+1"
+- **WHEN** the user imports that file into an account
+- **THEN** the Purpose is "Ref,'+1"
+
+### Requirement: Characters that hide a formula sign
+
+The app SHALL skip double quotes, control characters, and format characters like leading whitespace when it looks for a formula sign at the start of a text field of a CSV file or after a comma, a tab, a carriage return, or a line feed in it.
+
+#### Scenario: Quote before the sign
+
+- **WHEN** the Purpose is `Ref,"=1+1,x`
+- **THEN** the Purpose cell is `Ref,'"=1+1,x` in CSV quotes
+
+#### Scenario: NUL before the sign
+
+- **WHEN** the Purpose is "Ref,\u{0}=1+1,tail"
+- **THEN** the Purpose cell is "Ref,'\u{0}=1+1,tail"
+
+#### Scenario: Zero-width space at the start of a field
+
+- **WHEN** the Name is "\u{200B}=1+1"
+- **THEN** the Name cell is "'\u{200B}=1+1"
+
 ### Requirement: Categories in a CSV file
 
 The app SHALL write the full path of the category with " - " between a category group and its category, and the name of the default category for a transaction without a category. A split transaction is written as one line for each part, with the amount and the category of the part.
@@ -376,9 +442,9 @@ The app SHALL refuse a file with a newer format version and name the version of 
 
 #### Scenario: Invalid currency code
 
-- **WHEN** a currency code is "not a currency", "eur", or "EU1"
+- **WHEN** a currency code is "not a currency", "eur", "EU", "1EU", "U$D", or "ABCDEFGHIJK"
 - **THEN** the app refuses the file as damaged and names the object
-- **AND** a currency code consists of exactly three uppercase ASCII letters
+- **AND** a currency code consists of 3 to 10 uppercase ASCII letters and digits and starts with a letter, so "EUR", "USDC", and "EURO" are read
 
 #### Scenario: Nonpositive format version
 

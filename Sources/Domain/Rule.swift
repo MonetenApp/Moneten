@@ -162,8 +162,11 @@ public indirect enum RuleExpression: Sendable {
 	/// The rule `true` or `false`.
 	case constant(Bool)
 	case not(RuleExpression)
-	case and(RuleExpression, RuleExpression)
-	case or(RuleExpression, RuleExpression)
+	/// Two or more terms, tested in their order. All terms of one `AND` or `OR` are one node, because each walker over a
+	/// parsed rule recurses once for each level of the tree, and a chain of two terms per node would be as deep as the
+	/// rule has terms.
+	case and([RuleExpression])
+	case or([RuleExpression])
 }
 
 public struct WildcardPatternBox: Sendable {
@@ -176,14 +179,25 @@ public struct RegexBox: @unchecked Sendable {
 	/// The position of the slash that opens the regular expression in the rule text, counted from 0.
 	let position: Int
 	/// Most fields of a transaction are empty, and a watched call costs about three times a plain one, so an empty
-	/// field takes this answer, found once when the rule is read.
-	let matchesEmpty: Bool
+	/// field takes this answer, found at the first empty field of a run under the watch of the run. The parser runs no
+	/// regular expression, so a rule with many of them costs no watched call each time it is read.
+	let matchesEmpty = EmptyTextAnswer()
+}
 
-	init(regex: NSRegularExpression, position: Int) {
-		self.regex = regex
-		self.position = position
-		matchesEmpty = RegexWatch().firstMatch(regex, "") != nil
+/// Whether a regular expression of one parsed rule matches the empty text, once it is known. The categorizer can test
+/// one rule on more than one thread, so it is atomic: 0 is unknown, 1 is no match, and 2 is a match.
+final class EmptyTextAnswer: Sendable {
+	private let answer = Atomic<UInt8>(0)
+
+	var known: Bool? {
+		switch answer.load(ordering: .relaxed) {
+		case 1: false
+		case 2: true
+		default: nil
+		}
 	}
+
+	func store(_ found: Bool) { answer.store(found ? 2 : 1, ordering: .relaxed) }
 }
 
 /// One call of a regular expression on one text: whether it matched, the processor time it took, and whether it
@@ -230,7 +244,7 @@ extension RuleExpression {
 		case .regex: true
 		case .phrase, .amount, .constant: false
 		case let .not(a): a.hasRegex
-		case let .and(a, b), let .or(a, b): a.hasRegex || b.hasRegex
+		case let .and(terms), let .or(terms): terms.contains { $0.hasRegex }
 		}
 	}
 }
@@ -248,10 +262,47 @@ public struct Rule: Sendable {
 	/// Nil for a rule without a regular expression, which can never stop.
 	private let stop: RegexStop?
 
+	/// The longest rule that the parser reads, far above a real rule: one that "Create Rule" extended 400 times has
+	/// about 15,000 characters. The message of the error names the number.
+	static let maxLength = 20_000
+	/// The most UTF-8 bytes of a rule. One character can hold any number of combining marks, so 3 characters can be
+	/// 20 MB of text for the tokenizer and the regex compiler. A rule of 20,000 characters of one code point each fits.
+	/// The message of the error names the number.
+	static let maxBytes = 80_000
+	/// The most parentheses and NOT operators that a rule nests inside each other. The parser recurses once for each
+	/// level, and the tree of a rule is at most about 200 levels deep, an `OR` and an `AND` for each parenthesis, which
+	/// fits into the stack of a detached task also in a debug build. The message of the error names the number.
+	static let maxNesting = 100
+
 	public init(parsing text: String) throws(RuleSyntaxError) {
+		if let error = Self.sizeError(of: text) { throw error }
 		var parser = RuleParser(text)
 		expression = try parser.parse()
 		stop = expression.hasRegex ? RegexStop() : nil
+	}
+
+	/// The error of a rule beyond `maxLength` characters or `maxBytes` bytes, read from at most `maxBytes` of the text.
+	/// Counting the characters of the whole text would read all of it, also 20 MB of combining marks.
+	package static func sizeError(of text: String) -> RuleSyntaxError? {
+		// A count of the UTF-8 bytes is free, and a text has at least as many of them as characters.
+		guard text.utf8.count > maxLength else { return nil }
+		let scalars = text.unicodeScalars
+		var end = scalars.startIndex
+		var bytes = 0
+		while end < scalars.endIndex, bytes <= maxBytes {
+			bytes += UTF8.width(scalars[end])
+			scalars.formIndex(after: &end)
+		}
+		// The text up to the first code point beyond `maxBytes`, or all of it. A copy, because a substring finds the end
+		// of its last character in the whole text.
+		let head = String(String.UnicodeScalarView(scalars[..<end]))
+		let characters = head.count
+		if characters > maxLength {
+			return RuleSyntaxError(position: maxLength, message: String(localized: "The rule is longer than 20,000 characters."))
+		}
+		guard bytes > maxBytes else { return nil }
+		// The code point beyond the limit belongs to the last character of `head`.
+		return RuleSyntaxError(position: characters - 1, message: String(localized: "The rule is longer than 80,000 bytes."))
 	}
 
 	/// The processor time that the regular expressions of one parsed rule may spend in all, over every transaction that it
@@ -300,8 +351,7 @@ public struct Rule: Sendable {
 		case let .regex(box, _): box.position
 		case .phrase, .amount, .constant: nil
 		case let .not(a): firstRegexPosition(a)
-		case let .and(a, b), let .or(a, b):
-			[firstRegexPosition(a), firstRegexPosition(b)].compactMap { $0 }.min()
+		case let .and(terms), let .or(terms): terms.compactMap(firstRegexPosition).min()
 		}
 	}
 
@@ -348,19 +398,32 @@ public struct Rule: Sendable {
 			if result.stopped || watch.budget.gaveUp || stop.slow >= Rule.slowLimit { stop.record(box.position) }
 			return result.found
 		}
+
+		/// Whether the regular expression matches the empty text, found by a call of this run the first time a parsed rule
+		/// meets an empty field. A pattern that does not end on the empty text stops the rule as on any other text.
+		mutating func matchesEmpty(_ box: RegexBox) -> Bool {
+			if let known = box.matchesEmpty.known { return known }
+			let found = firstMatch(box, "")
+			if stop?.position == nil { box.matchesEmpty.store(found) }
+			return found
+		}
 	}
 
 	private static func evaluate(_ e: RuleExpression, _ s: RuleSubject, watch: inout Watch) -> Bool {
 		switch e {
-		case let .and(a, b): return evaluate(a, s, watch: &watch) && evaluate(b, s, watch: &watch)
-		case let .or(a, b): return evaluate(a, s, watch: &watch) || evaluate(b, s, watch: &watch)
+		case let .and(terms):
+			for term in terms where !evaluate(term, s, watch: &watch) { return false }
+			return true
+		case let .or(terms):
+			for term in terms where evaluate(term, s, watch: &watch) { return true }
+			return false
 		case let .not(a): return !evaluate(a, s, watch: &watch)
 		case let .amount(op, value): return op.holds(s.amount, value)
 		case let .constant(value): return value
 		case let .regex(box, field):
 			let fields = field.map { [$0] } ?? RuleField.unqualified
 			for f in fields {
-				for text in s.patternTexts(of: f) where text.isEmpty ? box.matchesEmpty : watch.firstMatch(box, text) { return true }
+				for text in s.patternTexts(of: f) where text.isEmpty ? watch.matchesEmpty(box) : watch.firstMatch(box, text) { return true }
 			}
 			return false
 		case let .phrase(patterns, field):
@@ -449,6 +512,8 @@ private struct RuleParser {
 	/// as the operator it is elsewhere, so the search can read the text while the user types.
 	var lenient = false
 	var index = 0
+	/// The parentheses and NOT operators that enclose the next token.
+	private var nesting = 0
 
 	init(_ text: String) { chars = Array(text) }
 
@@ -467,40 +532,68 @@ private struct RuleParser {
 	private var endPosition: Int { chars.count }
 
 	private mutating func parseOr() throws(RuleSyntaxError) -> RuleExpression {
-		var lhs = try parseAnd()
+		var terms = [try parseAnd()]
 		while index < tokens.count, tokens[index].token == .or {
 			index += 1
-			lhs = .or(lhs, try parseAnd())
+			terms.append(try parseAnd())
 		}
-		return lhs
+		return terms.count == 1 ? terms[0] : .or(terms)
 	}
 
 	private mutating func parseAnd() throws(RuleSyntaxError) -> RuleExpression {
-		var lhs = try parseNot()
-		while index < tokens.count {
+		var terms = [try parseNot()]
+		loop: while index < tokens.count {
 			switch tokens[index].token {
 			case .and:
 				index += 1
-				lhs = .and(lhs, try parseNot())
+				terms.append(try parseNot())
 			case .or, .close:
-				return lhs
+				break loop
 			default:
 				// Two expressions without an operator between them must both match.
-				lhs = .and(lhs, try parseNot())
+				terms.append(try parseNot())
 			}
 		}
-		return lhs
+		return terms.count == 1 ? terms[0] : .and(terms)
+	}
+
+	/// Enters one more level of parentheses and NOT operators at the token at `position`.
+	private mutating func enter(at position: Int) throws(RuleSyntaxError) {
+		nesting += 1
+		guard nesting <= Rule.maxNesting else {
+			throw RuleSyntaxError(position: position, message: String(localized: "The rule nests more than 100 parentheses and NOT operators."))
+		}
 	}
 
 	private mutating func parseNot() throws(RuleSyntaxError) -> RuleExpression {
 		if index < tokens.count, tokens[index].token == .not {
+			try enter(at: tokens[index].position)
 			index += 1
-			return .not(try parseNot())
+			let e = RuleExpression.not(try parseNot())
+			nesting -= 1
+			return e
 		}
 		return try parsePrimary()
 	}
 
 	private mutating func parsePrimary() throws(RuleSyntaxError) -> RuleExpression {
+		guard index < tokens.count, tokens[index].token == .open else { return try parseTerm() }
+		try enter(at: tokens[index].position)
+		index += 1
+		let e = try parseOr()
+		guard index < tokens.count, tokens[index].token == .close else { throw missingClosingParenthesis() }
+		index += 1
+		nesting -= 1
+		return e
+	}
+
+	private func missingClosingParenthesis() -> RuleSyntaxError {
+		RuleSyntaxError(position: index < tokens.count ? tokens[index].position : endPosition, message: String(localized: "A closing parenthesis is missing at the end of the rule."))
+	}
+
+	/// Every token but an opening parenthesis. It is apart from `parsePrimary`, which the parser enters once for each
+	/// level of parentheses, because the many messages give it a frame of several kilobytes in a debug build.
+	private mutating func parseTerm() throws(RuleSyntaxError) -> RuleExpression {
 		guard index < tokens.count else {
 			throw RuleSyntaxError(position: endPosition, message: String(localized: "A search term is missing at the end of the rule."))
 		}
@@ -508,12 +601,7 @@ private struct RuleParser {
 		index += 1
 		switch token {
 		case .open:
-			let e = try parseOr()
-			guard index < tokens.count, tokens[index].token == .close else {
-				throw RuleSyntaxError(position: index < tokens.count ? tokens[index].position : endPosition, message: String(localized: "A closing parenthesis is missing at the end of the rule."))
-			}
-			index += 1
-			return e
+			preconditionFailure("parsePrimary reads an opening parenthesis")
 		case .close:
 			throw RuleSyntaxError(position: position, message: String(localized: "A search term is missing before this closing parenthesis."))
 		case .and, .or:

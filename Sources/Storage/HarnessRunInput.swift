@@ -9,7 +9,7 @@ extension HarnessRun {
 		let flag: @Sendable (String) -> Bool = { $0 == "yes" }
 		let amount: @Sendable (String) -> Bool = { Int64($0).map { $0.magnitude <= maxMinorUnits.magnitude } ?? false }
 		return ["name": text, "purpose": text, "comment": text, "iban": text, "booking": text, "reference": text, "mandate": text,
-			"creditor": text, "id": text, "amount": amount, "balance": amount, "currency": isCurrencyCode,
+			"creditor": text, "id": text, "amount": amount, "balance": amount, "currency": isISOCurrencyCode,
 			"days": { daysAgo($0) != nil }, "balanceday": { daysAgo($0) != nil }, "from": { daysAgo($0) != nil },
 			"count": { Int($0).map { (0...100_000).contains($0) } ?? false },
 			"pending": flag, "failed": flag, "complete": flag, "older": flag, "manual": flag,
@@ -38,7 +38,7 @@ extension HarnessRun {
 	}
 
 	/// Three capital letters A to Z, the form of an ISO 4217 code.
-	public static func isCurrencyCode(_ text: String) -> Bool {
+	public static func isISOCurrencyCode(_ text: String) -> Bool {
 		text.count == 3 && text.allSatisfy { ("A"..."Z").contains($0) }
 	}
 

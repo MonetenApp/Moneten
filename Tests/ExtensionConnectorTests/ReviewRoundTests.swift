@@ -84,6 +84,17 @@ extension ExtensionConnectorTests {
 		#expect(failure?.failure as? SyncFailure == .accountListedTwice(extensionName: "Demo", accountNumber: "123", currency: "EUR"))
 	}
 
+	/// The scenario "Account currency that is no code" of "Currency codes of a result" (#569).
+	@Test func accountCurrencyThatIsNoCodeFailsTheSetup() async throws {
+		let session = TestSession()
+		let failure = await #expect(throws: FailureWithState.self) {
+			_ = try await session.connector(demo(Self.calls + """
+				function ListAccounts() return {{accountNumber = "4711", currency = "€"}} end
+				""")).setUp(Self.access, session)
+		}
+		#expect(failure?.failure as? SyncFailure == .unsupported("The currency of account 4711 is not a currency code."))
+	}
+
 	/// The reason and the name of the extension, so the app words the error in its language when it shows it (#462).
 	@Test func answerThatIsNoListOfAccountsIsRefused() async throws {
 		let session = TestSession()
