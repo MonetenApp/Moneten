@@ -265,19 +265,44 @@ public struct Rule: Sendable {
 	/// The longest rule that the parser reads, far above a real rule: one that "Create Rule" extended 400 times has
 	/// about 15,000 characters. The message of the error names the number.
 	static let maxLength = 20_000
+	/// The most UTF-8 bytes of a rule. One character can hold any number of combining marks, so 3 characters can be
+	/// 20 MB of text for the tokenizer and the regex compiler. A rule of 20,000 characters of one code point each fits.
+	/// The message of the error names the number.
+	static let maxBytes = 80_000
 	/// The most parentheses and NOT operators that a rule nests inside each other. The parser recurses once for each
 	/// level, and the tree of a rule is at most about 200 levels deep, an `OR` and an `AND` for each parenthesis, which
 	/// fits into the stack of a detached task also in a debug build. The message of the error names the number.
 	static let maxNesting = 100
 
 	public init(parsing text: String) throws(RuleSyntaxError) {
-		// A count of the UTF-8 bytes is free, and a rule has at least as many of them as characters.
-		if text.utf8.count > Self.maxLength, text.count > Self.maxLength {
-			throw RuleSyntaxError(position: Self.maxLength, message: String(localized: "The rule is longer than 20,000 characters."))
-		}
+		if let error = Self.sizeError(of: text) { throw error }
 		var parser = RuleParser(text)
 		expression = try parser.parse()
 		stop = expression.hasRegex ? RegexStop() : nil
+	}
+
+	/// The error of a rule beyond `maxLength` characters or `maxBytes` bytes, read from at most `maxBytes` of the text.
+	/// Counting the characters of the whole text would read all of it, also 20 MB of combining marks.
+	package static func sizeError(of text: String) -> RuleSyntaxError? {
+		// A count of the UTF-8 bytes is free, and a text has at least as many of them as characters.
+		guard text.utf8.count > maxLength else { return nil }
+		let scalars = text.unicodeScalars
+		var end = scalars.startIndex
+		var bytes = 0
+		while end < scalars.endIndex, bytes <= maxBytes {
+			bytes += UTF8.width(scalars[end])
+			scalars.formIndex(after: &end)
+		}
+		// The text up to the first code point beyond `maxBytes`, or all of it. A copy, because a substring finds the end
+		// of its last character in the whole text.
+		let head = String(String.UnicodeScalarView(scalars[..<end]))
+		let characters = head.count
+		if characters > maxLength {
+			return RuleSyntaxError(position: maxLength, message: String(localized: "The rule is longer than 20,000 characters."))
+		}
+		guard bytes > maxBytes else { return nil }
+		// The code point beyond the limit belongs to the last character of `head`.
+		return RuleSyntaxError(position: characters - 1, message: String(localized: "The rule is longer than 80,000 bytes."))
 	}
 
 	/// The processor time that the regular expressions of one parsed rule may spend in all, over every transaction that it

@@ -12466,6 +12466,17 @@
       },
       "extractionState" : "manual"
     },
+    "The rule is longer than 80,000 bytes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel ist länger als 80.000 Bytes."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The rule matches %lld transactions." : {
       "localizations" : {
         "de" : {

@@ -421,9 +421,9 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 - **THEN** the app shows at position 6 that a sign cannot follow `name:`, and that `name!="…"` excludes a value
 - **AND** the app does not change the stored rule
 
-### Requirement: A rule has at most 20,000 characters
+### Requirement: A rule has at most 20,000 characters and 80,000 bytes
 
-The app SHALL refuse a rule that is longer than 20,000 characters as a rule that it cannot parse. The message says that the rule is longer than 20,000 characters and names position 20,001.
+The app SHALL refuse a rule that is longer than 20,000 characters, or longer than 80,000 bytes in UTF-8, as a rule that it cannot parse. The message says which limit the rule passes. For 20,000 characters it names position 20,001, and for 80,000 bytes the position of the character that holds byte 80,001. A rule of 20,000 characters with one code point each is never longer than 80,000 bytes.
 
 #### Scenario: Rule at the limit
 
@@ -435,6 +435,11 @@ The app SHALL refuse a rule that is longer than 20,000 characters as a rule that
 - **WHEN** the user enters a rule of 20,001 characters and closes the settings
 - **THEN** the app shows at position 20,001 that the rule is longer than 20,000 characters
 - **AND** the app does not change the stored rule
+
+#### Scenario: Rule beyond the limit in bytes
+
+- **WHEN** the user enters `/a`, then 40,000 combining acute accents (U+0301), then `/`, which is 3 characters and 80,003 bytes in UTF-8
+- **THEN** the app shows at position 2 that the rule is longer than 80,000 bytes
 
 ### Requirement: A rule nests at most 100 levels
 
@@ -726,4 +731,11 @@ The app SHALL build the condition of "Create Rule" as `name:` with the counterpa
 - **GIVEN** the category "Energy" with the saved rule `name:`, which does not read
 - **WHEN** the user creates a rule for "Energy" from a transaction of "Stadtwerke Musterstadt"
 - **THEN** the settings show the rule `name: OR name:"Stadtwerke Musterstadt"` with its error
+- **AND** OK is disabled
+
+#### Scenario: Created rule beyond the length limit
+
+- **GIVEN** the category "Energy" with a saved rule of 19,990 characters
+- **WHEN** the user creates a rule for "Energy" from a transaction of "Stadtwerke Musterstadt"
+- **THEN** the settings show the joined rule of 20,023 characters with the error that the rule is longer than 20,000 characters
 - **AND** OK is disabled

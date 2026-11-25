@@ -50,6 +50,10 @@ struct RuleTests {
 		#expect(try matches(#""Lohn" OR "Gehalt""#, RuleSubject(purpose: "Gehalt Oktober")))
 		#expect(try !matches(#""EC-Karte" AND (NOT "Barauszahlung")"#, RuleSubject(purpose: "EC-Karte Barauszahlung")))
 		#expect(try matches(#""Bücher" OR "eBooks" OR ("Waren" AND "Versand")"#, RuleSubject(purpose: "Waren und Versand")))
+		// NOT binds closest, then AND, then OR.
+		#expect(try matches("true OR false AND false", RuleSubject()))
+		#expect(try matches("NOT true OR true", RuleSubject()))
+		#expect(try !matches("NOT (true OR true)", RuleSubject()))
 	}
 
 	@Test("Lower case operator")
@@ -360,6 +364,25 @@ struct RuleTests {
 		#expect(atLimit.count == 20_000)
 		#expect(try matches(atLimit, RuleSubject(purpose: "Miete Pa")))
 		#expect(throws: RuleSyntaxError(position: 20_000, message: "The rule is longer than 20,000 characters.")) { try Rule(parsing: atLimit + "x") }
+		// "Create Rule" joins its condition to a rule near the limit, and the joined rule does not read.
+		let created = Rule.adding(#"name:"Stadtwerke Musterstadt""#, to: String(repeating: "Miete ", count: 3_331) + "Pach")
+		#expect(created.count == 20_023)
+		#expect(throws: RuleSyntaxError(position: 20_000, message: "The rule is longer than 20,000 characters.")) { try Rule(parsing: created) }
+	}
+
+	@Test("A rule of 3 characters with 40,000 combining marks is longer than 80,000 bytes, and the check reads only that much", .timeLimit(.minutes(1)))
+	func byteLimit() throws {
+		let accents = "/a" + String(repeating: "\u{0301}", count: 40_000) + "/"
+		#expect(accents.count == 3 && accents.utf8.count == 80_003)
+		#expect(throws: RuleSyntaxError(position: 1, message: "The rule is longer than 80,000 bytes.")) { try Rule(parsing: accents) }
+		_ = try Rule(parsing: "/a" + String(repeating: "\u{0301}", count: 39_998) + "/")
+		// 20 MB in one character.
+		let huge = "/a" + String(repeating: "\u{0301}", count: 10_000_000) + "/"
+		let start = ContinuousClock.now
+		#expect(throws: RuleSyntaxError(position: 1, message: "The rule is longer than 80,000 bytes.")) { try Rule(parsing: huge) }
+		#expect(ContinuousClock.now - start < budget(.milliseconds(500)))
+		// 20,000 characters of four bytes each still read.
+		_ = try Rule(parsing: String(repeating: "😀", count: 20_000))
 	}
 
 	@Test("A rule nests at most 100 parentheses and NOT operators, and a field operator is no level")
@@ -426,13 +449,34 @@ struct RuleTests {
 		#expect(found == [1, 1, 1, 1])
 	}
 
-	@Test("A rule with 1,000 regular expressions reads within a time limit, and an empty field takes the answer of each", .timeLimit(.minutes(1)))
+	@Test("A search beyond the limits of a rule searches its plain words")
+	func searchBeyondTheLimits() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		func row(_ name: String) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: -1_000, currency: "EUR", name: name)
+		}
+		let ledger = Ledger(accounts: [giro], transactions: [row("Stadtwerke Musterstadt"), row("Miete Mai")])
+		var filter = TransactionFilter()
+		filter.searchText = String(repeating: "(", count: 101) + "Stadtwerke" + String(repeating: ")", count: 101)
+		#expect(ledger.rows(in: .all, filter: filter).rows.map(\.name) == ["Stadtwerke Musterstadt"])
+		filter.searchText = (0..<101).reduce("Miete") { inner, _ in "(Stadtwerke OR " + inner + ")" }
+		#expect(ledger.rows(in: .all, filter: filter).rows.isEmpty)
+	}
+
+	@Test("A rule with 800 regular expressions reads within a time limit, and an empty field takes the answer of each", .timeLimit(.minutes(1)))
 	func manyRegularExpressions() throws {
-		let text = (0..<1_000).map { "/^+?4\($0)/" }.joined(separator: " OR ")
+		// The pattern takes about 1.5 ms on the empty text, so a parser that ran each on the empty text would take more than
+		// 1 second.
+		let text = Array(repeating: "/((a?){300}){300}$/", count: 800).joined(separator: " OR ")
 		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
 		let rule = try Rule(parsing: text)
 		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) < budget(.milliseconds(500)))
-		#expect(!rule.matches(RuleSubject()))
+		guard case let .or(terms) = rule.expression else { Issue.record("not one OR"); return }
+		#expect(terms.allSatisfy { if case let .regex(box, _) = $0 { box.matchesEmpty.known == nil } else { false } })
+		// The pattern matches the empty text. The first empty field finds that under the watch of the run, and keeps it.
+		#expect(rule.matches(RuleSubject()))
+		#expect(rule.stoppedRegexPosition == nil)
+		if case let .regex(box, _) = terms[0] { #expect(box.matchesEmpty.known == true) }
 		let empty = try Rule(parsing: "purpose:/^$/")
 		#expect(empty.matches(RuleSubject(name: "Stadtwerke")))
 		#expect(empty.matches(RuleSubject(name: "Telekom")))
