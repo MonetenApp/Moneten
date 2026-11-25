@@ -56,7 +56,7 @@ enum EntryPoints {
 		case let .supportsBank(proto, bankCode):
 			let answer = try lua.call(EntryPoint.supportsBank.rawValue, [.value(.string(proto.rawValue)), .value(.string(bankCode))])
 			if case .string = answer {
-				lua.stack.push(answer)
+				try lua.stack.push(answer)
 				lua.stack.setGlobal("url")
 			}
 			return answer
@@ -89,7 +89,12 @@ enum EntryPoints {
 			lua_pushnil(L)
 			return 1
 		}
-		stack.push(stored)
+		do {
+			try stack.push(stored)
+		} catch {
+			stack.pushMessage("\(error)")
+			return -1
+		}
 		return 1
 	}
 }

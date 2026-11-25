@@ -165,7 +165,12 @@ enum Environment {
 		let url = fields.url, description = fields.description
 		HostSession.current(L).registration = Registration(version: version, url: url.text, services: services, description: description.text)
 		for (name, value) in [("version", LuaValue.number(version)), ("url", url), ("services", .array(services.map(LuaValue.string))), ("description", description)] {
-			stack.push(value)
+			do {
+				try stack.push(value)
+			} catch {
+				stack.pushMessage("\(error)")
+				return -1
+			}
 			stack.setGlobal(name)
 		}
 		return 0
