@@ -15,11 +15,18 @@ public struct CatalogKeys: Sendable {
 		self.lowestVersion = lowestVersion
 	}
 
-	/// The lowest index version in the text of `lowest-index-version`, which ships beside the keys and
-	/// which each release raises (docs/releasing.md): one positive number in decimal digits without a
-	/// leading zero, and at most one newline after it. Nil for any other text, so the app never falls
-	/// back to a bound that accepts every old index.
-	public static func lowestVersion(_ text: String) -> Int? {
+	/// The keys and the lowest index version that a build ships, from the texts of `current.pub`, `next.pub`,
+	/// and `lowest-index-version`. Nil when one is missing or cannot be read: the app then shows, installs,
+	/// and runs nothing from the catalog, and never falls back to a bound that accepts every old index.
+	public static func shipped(currentPEM: String?, nextPEM: String?, lowestVersion: String?) -> CatalogKeys? {
+		guard let currentPEM, let nextPEM, let lowest = lowestVersion.flatMap(Self.lowestVersion) else { return nil }
+		return try? CatalogKeys(currentPEM: currentPEM, nextPEM: nextPEM, lowestVersion: lowest)
+	}
+
+	/// The lowest index version in the text of `lowest-index-version`, which each release raises
+	/// (docs/releasing.md): one positive number in decimal digits without a leading zero, and at most one
+	/// newline after it.
+	static func lowestVersion(_ text: String) -> Int? {
 		let digits = text.hasSuffix("\n") ? text.dropLast() : Substring(text)
 		guard let first = digits.first, first != "0", digits.allSatisfy({ $0.isASCII && $0.isWholeNumber }) else { return nil }
 		return Int(digits)
@@ -91,20 +98,36 @@ public enum IndexVerifier {
 		return floors
 	}
 
+	/// What the app restores from its database at launch.
+	public struct Restored: Sendable {
+		/// Nil for an index below the lowest index version of this build: the app then shows, installs,
+		/// and runs nothing from the catalog until it accepts a newer index.
+		public let index: CatalogIndex?
+		public let floors: KeyFloors?
+	}
+
+	/// The stored index, unless this build no longer accepts its version, and the stored floors (see
+	/// `KeyFloors.restored`). The floors stay even without the index, so an older index is still refused.
+	public static func restored(index data: Data, signature: Data, floors: Data, keys: CatalogKeys) -> Restored {
+		let index = (try? CatalogIndex.parse(data)).flatMap { $0.version < keys.lowestVersion ? nil : $0 }
+		return Restored(index: index, floors: KeyFloors.restored(floors, index: data, signature: signature, keys: keys))
+	}
+
 	/// The new index and floors, or nil when `index` is the index that the app has. `accepted` holds the
 	/// bytes of the index the app accepted last. Nothing of an index that fails a check is used.
 	public static func check(index data: Data, signature: Data, keys: CatalogKeys, floors: KeyFloors, accepted: Data?) throws(CatalogError) -> Accepted? {
 		guard let key = [keys.current, keys.next].first(where: { $0.isValidSignature(signature, for: data) }) else { throw .unverified }
 		if floors.refused.contains(key.id) { throw .retiredKey }
 		let index = try CatalogIndex.parse(data)
+		// The bound of the release applies with every floor, so a release raises the floor of a data folder
+		// that accepted only older indexes too (issue #563).
+		if index.version < keys.lowestVersion { throw .belowLowest(version: index.version, lowest: keys.lowestVersion) }
 		if let floor = floors.floor(of: key) {
 			if index.version < floor { throw .replayed(version: index.version, floor: floor) }
 			if index.version == floor {
 				guard data == accepted else { throw .otherContent(version: index.version) }
 				return nil
 			}
-		} else if floors.floor(of: keys.current) == nil, floors.floor(of: keys.next) == nil, index.version < keys.lowestVersion {
-			throw .belowLowest(version: index.version, lowest: keys.lowestVersion)
 		}
 		var floors = floors
 		floors.floors[key.id] = index.version

@@ -8,11 +8,19 @@
 
 ### The bound is a file next to the keys
 
-`App/Resources/CatalogKeys/lowest-index-version` holds one positive number. The app target copies it into `Contents/Resources` beside `current.pub` and `next.pub`, and `ExtensionLibrary` reads all three at launch. `CatalogKeys.lowestVersion(_:)` in `ExtensionCatalog` turns the text into the number, so the tests check the rule and the shipped file without the app. A missing or unreadable file gives no keys, and the app then uses no catalog, as it does without its keys. A bound of 1 by mistake would accept every old index, so the app never falls back to a default.
+`App/Resources/CatalogKeys/lowest-index-version` holds one positive number. The app target copies it into `Contents/Resources` beside `current.pub` and `next.pub`, and `ExtensionLibrary` reads all three at launch. `CatalogKeys.shipped` in `ExtensionCatalog` turns the three texts into the keys, so the tests check the rule and the shipped files without the app. When one of them is missing or cannot be read, there are no keys, and the app never falls back to a bound of 1, which would accept every old index.
 
 The file sits beside the keys because decision 23 pairs the bound with the keys that a build ships. A build setting in `App/project.yml` would work too, but a plain file is easier to read from the checkout, from an earlier tag with `git show`, and from the app on a disk image.
 
 The throwaway keys of a Debug build, which `MONETEN_CATALOG_URL` and `MONETEN_CATALOG_KEYS` name, keep the bound 1. They sign local indexes for the live checks, whose versions follow no release, and they never meet an index of the real catalog.
+
+### The bound applies with every floor
+
+`IndexVerifier.check` refuses an index below the bound before it looks at the floors. So the higher of the floor and the bound decides. A data folder that accepted only index 50 refuses index 60 after an update to a release that ships 140, and so does the first index of the next key while only the current key has a floor. Decision 23 lets an update start from the bound when it drops the floors of retired keys. Applying the bound to kept floors too is stricter and follows from the consequence that each release records the lowest index version it accepts.
+
+### No accepted index, no catalog
+
+Without keys, the app restores no stored index. With keys, `IndexVerifier.restored` drops a stored index below the bound and keeps the floors. In both cases the app holds no index, and nothing from the catalog shows, installs, or runs. `Standing(of:in:)` with no index stops every catalog package. Before this change, a catalog package without an index ran without a check of its standing. That was only possible when the stored index could not be read, but with the bound it happens after each update that raises it, so it must fail closed. A package installed from a file is not affected. The app downloads the index at launch, so a Mac that is online runs the catalog packages again within seconds.
 
 ### The release raises it by hand, and the release check stops a lower one
 
@@ -23,8 +31,8 @@ The newest index version lives in the catalog repository and on `extensions.mone
 
 So raising the bound is a step of the release checklist in [docs/releasing.md](../../../docs/releasing.md): in the release pull request, the owner sets the file to the version of the newest index that the catalog signed. The owner takes the version of an index that exists. A bound above every signed index makes the new app refuse each index until the catalog signs one at least that high.
 
-What the release tooling can check offline is the history of this repository. `scripts/release.sh` checks in `dry-run` and in `preflight` that the file holds one positive number and that no earlier tag `v*` of the app shipped a higher one. `check_dmg` checks that the app on the disk image carries the same file as the checkout. So a release can forget to raise the bound, which the checklist covers, but it can never lower it or ship another value than the checkout.
+What the release tooling can check is the history of this repository. `scripts/release.sh` checks in `dry-run` and in `preflight` that the file holds one positive number and that no earlier tag `v*` of the app shipped a higher one. A tag from before the file is skipped, but a tag whose file cannot be read stops the release. Both refuse a shallow checkout, and `preflight`, which reads the releases from GitHub anyway, refuses a checkout that lacks the tag of a published version, so a clone without tags cannot pass. `check_dmg` checks that the app on the disk image carries the same file as the checkout. So a release can forget to raise the bound, which the checklist covers, but it can never lower it or ship another value than the checkout.
 
 ### What stays open
 
-A new data folder still accepts an index that the catalog signed after the release and before the newest one. Each release narrows that window to the indexes signed since the release before. An existing data folder keeps the floors it holds, which already refuse every older index.
+The app still accepts an index that the catalog signed after the bound of the release and before the newest one, when its floor is lower. Each release narrows that window to the indexes signed since the release before. Real protection starts with the first release that raises the file above 1.

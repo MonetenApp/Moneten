@@ -8,7 +8,9 @@ A new data folder has no version floor for either catalog key. The app then acce
 
 ## What Changes
 
-- The lowest index version moves from the code into a file next to the two catalog keys, which the app reads at launch. Without a readable file, the app uses no catalog, as without its keys.
+- The lowest index version moves from the code into a file next to the two catalog keys, which the app reads at launch.
+- The app refuses an index below that version whatever floors it holds, so the higher of the floor and the version decides.
+- Without an index that the build accepts, because the build lacks a readable file or the stored index is below the version, the app shows, installs, and runs nothing from the catalog.
 - Each release raises the file to the version of the newest index that the catalog signed before the release. The release checklist names the step.
 - `scripts/release.sh` refuses a release whose lowest index version is not a positive number or is lower than that of an earlier release, and checks that the app on the disk image carries the file of the checkout.
 
@@ -20,7 +22,7 @@ None.
 
 ### Modified Capabilities
 
-- `extension-catalog`: a new requirement says that a new data folder refuses an index below the lowest index version of its release, and that each release raises that version.
+- `extension-catalog`: "Index version floor" adds the lowest index version of the release. "An app update resets the floor of retired keys" no longer limits that version to data folders without floors. Two new requirements say that each release raises the version, and that the app uses no catalog without an index it accepts.
 
 ## Impact
 

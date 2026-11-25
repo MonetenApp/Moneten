@@ -31,12 +31,12 @@ final class ExtensionLibrary {
 				return Configuration(source: CatalogSource(base: base), keys: keys)
 			}
 			#endif
-			let pems = ["current", "next"].compactMap { Bundle.main.url(forResource: $0, withExtension: "pub").flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
-			// The lowest index version that this build accepts while neither key has a floor (decision 23).
-			// Each release raises it, and without it the app uses no catalog, as without its keys.
-			let lowest = Bundle.main.url(forResource: "lowest-index-version", withExtension: nil)
-				.flatMap { try? String(contentsOf: $0, encoding: .utf8) }.flatMap(CatalogKeys.lowestVersion)
-			let keys = pems.count == 2 ? lowest.flatMap { try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: $0) } : nil
+			let resource = { (name: String, type: String?) in
+				Bundle.main.url(forResource: name, withExtension: type).flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+			}
+			// The lowest index version that this build accepts (decision 23), which each release raises.
+			let keys = CatalogKeys.shipped(currentPEM: resource("current", "pub"), nextPEM: resource("next", "pub"),
+				lowestVersion: resource("lowest-index-version", nil))
 			NSLog("Catalog keys %@", keys == nil ? "missing" : "loaded")
 			return Configuration(source: CatalogSource(base: URL(string: "https://extensions.monetenapp.com/")!), keys: keys)
 			#endif
@@ -142,12 +142,13 @@ final class ExtensionLibrary {
 	/// Loads what the database knows, then downloads the index now and once a day while the database is open.
 	func open(_ store: Store) {
 		do {
-			if let stored = try store.catalog() {
-				indexData = stored.index
-				index = try? CatalogIndex.parse(stored.index)
-				if let keys = configuration.keys {
-					floors = KeyFloors.restored(stored.floors, index: stored.index, signature: stored.signature, keys: keys)
-				}
+			// Without keys, or with an index below the bound of this build, the app keeps no index, and so
+			// shows, installs, and runs nothing from the catalog.
+			if let stored = try store.catalog(), let keys = configuration.keys {
+				let restored = IndexVerifier.restored(index: stored.index, signature: stored.signature, floors: stored.floors, keys: keys)
+				index = restored.index
+				indexData = restored.index == nil ? nil : stored.index
+				floors = restored.floors
 			}
 			for installed in try store.installedExtensions() {
 				records[installed.id] = InstalledOrigin(catalog: installed.origin == .catalog, record: installed.record)
@@ -550,13 +551,11 @@ final class ExtensionLibrary {
 	func verifiedPackage(_ id: String) throws(SyncFailure) -> ExtensionPackage {
 		switch records[id] {
 		case let .catalog(installed)?:
-			if let index {
-				switch Standing(of: installed, in: index) {
-				case let .stopped(reason), let .outdated(reason):
-					log(LogLine("ext stopped", ("extension", .hash(id))))
-					throw .unsupported(reason)
-				case .runs: break
-				}
+			switch Standing(of: installed, in: index) {
+			case let .stopped(reason), let .outdated(reason):
+				log(LogLine("ext stopped", ("extension", .hash(id))))
+				throw .unsupported(reason)
+			case .runs: break
 			}
 			do {
 				let package = try Installer.load(installed, from: folder)
@@ -603,7 +602,7 @@ final class ExtensionLibrary {
 	private func mayRun(_ id: String) -> ExtensionPackage? {
 		switch records[id] {
 		case let .catalog(installed)?:
-			if let index { guard case .runs = Standing(of: installed, in: index) else { return nil } }
+			guard case .runs = Standing(of: installed, in: index) else { return nil }
 			return try? Installer.load(installed, from: folder)
 		case let .file(allowed)?:
 			return FileInstall.url(of: id, in: folder).flatMap { try? FileInstall.load($0, allowed: allowed) }
@@ -648,7 +647,7 @@ final class ExtensionLibrary {
 	private func catalogItem(_ record: InstalledPackage) -> Item {
 		let entry = index?.entry(record.id)
 		let manifest = try? Installer.load(record, from: folder).manifest
-		let standing = index.map { Standing(of: record, in: $0) } ?? .runs(note: nil)
+		let standing = Standing(of: record, in: index)
 		var note: String?
 		var action: Item.Action?
 		var badge = String(localized: "Installed \(record.version)")

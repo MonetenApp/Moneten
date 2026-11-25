@@ -79,10 +79,12 @@ import Testing
 		#expect(try accept(TestCatalog.index(version: 140), by: newCurrent, floors: floors, keys: shipped).get()?.index.version == 140)
 	}
 
-	@Test func theShippedMinimumAppliesOnlyWhileNeitherKeyHasAFloor() throws {
+	/// The bound of the release applies to the first index of the next key too.
+	@Test func theShippedBoundAppliesToEveryKey() throws {
 		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
 		let first = try #require(try accept(TestCatalog.index(version: 200), by: current, keys: keys).get())
-		#expect(try accept(TestCatalog.index(version: 130), by: next, floors: first.floors, keys: keys).get()?.index.version == 130)
+		#expect(accept(TestCatalog.index(version: 130), by: next, floors: first.floors, keys: keys) == .failure(.belowLowest(version: 130, lowest: 140)))
+		#expect(try accept(TestCatalog.index(version: 150), by: next, floors: first.floors, keys: keys).get()?.index.version == 150)
 	}
 
 	@Test func aNewDataFolderRefusesAnIndexOlderThanTheRelease() throws {
@@ -92,11 +94,40 @@ import Testing
 		#expect(try accept(TestCatalog.index(version: 140), by: current, floors: KeyFloors(), keys: keys).get()?.index.version == 140)
 	}
 
-	@Test func aHigherFloorStillDecides() throws {
+	/// The higher of the floor and the bound of the release decides (issue #563).
+	@Test func theHigherOfFloorAndBoundDecides() throws {
+		let older = try #require(try accept(TestCatalog.index(version: 50), by: current).get())
 		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
-		let first = try #require(try accept(TestCatalog.index(version: 200), by: current, keys: keys).get())
-		#expect(accept(TestCatalog.index(version: 150), by: current, floors: first.floors, accepted: TestCatalog.index(version: 200), keys: keys)
+		#expect(accept(TestCatalog.index(version: 60), by: current, floors: older.floors, accepted: TestCatalog.index(version: 50), keys: keys)
+			== .failure(.belowLowest(version: 60, lowest: 140)))
+		#expect(accept(TestCatalog.index(version: 60), by: next, floors: older.floors, keys: keys) == .failure(.belowLowest(version: 60, lowest: 140)))
+		#expect(try accept(TestCatalog.index(version: 140), by: current, floors: older.floors, keys: keys).get()?.index.version == 140)
+		let newer = try #require(try accept(TestCatalog.index(version: 200), by: current, keys: keys).get())
+		#expect(accept(TestCatalog.index(version: 150), by: current, floors: newer.floors, accepted: TestCatalog.index(version: 200), keys: keys)
 			== .failure(.replayed(version: 150, floor: 200)))
+	}
+
+	/// After an update that raised the bound, the app keeps no stored index below it, but keeps its floors.
+	@Test func aStoredIndexBelowTheBoundIsNotRestored() throws {
+		let data = TestCatalog.index(version: 50)
+		let accepted = try #require(try accept(data, by: current).get())
+		let stored = try JSONEncoder().encode(accepted.floors)
+		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
+		let below = IndexVerifier.restored(index: data, signature: current.sign(data), floors: stored, keys: keys)
+		#expect(below.index == nil)
+		#expect(below.floors == accepted.floors)
+		let kept = IndexVerifier.restored(index: data, signature: current.sign(data), floors: stored, keys: self.keys)
+		#expect(kept.index?.version == 50)
+	}
+
+	/// A build without one of its three files has no keys, so it uses no catalog.
+	@Test func shippedKeysNeedEveryFile() {
+		#expect(CatalogKeys.shipped(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: "140\n")?.lowestVersion == 140)
+		for lowest in [nil, "", "0", "abc", "1.5"] {
+			#expect(CatalogKeys.shipped(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: lowest) == nil)
+		}
+		#expect(CatalogKeys.shipped(currentPEM: nil, nextPEM: next.pem, lowestVersion: "140\n") == nil)
+		#expect(CatalogKeys.shipped(currentPEM: current.pem, nextPEM: "not a key", lowestVersion: "140\n") == nil)
 	}
 
 	@Test(arguments: [("140", 140), ("140\n", 140), ("1", 1), ("0", nil), ("0140", nil), ("-3", nil), ("+5", nil), (" 7\n", nil), ("", nil), ("\n", nil), ("abc", nil),
@@ -105,10 +136,11 @@ import Testing
 		#expect(CatalogKeys.lowestVersion(text) == version)
 	}
 
-	/// The lowest index version that the app ships beside its keys, which each release raises (docs/releasing.md).
-	@Test func shippedLowestIndexVersionIsReadable() throws {
-		let file = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../App/Resources/CatalogKeys/lowest-index-version")
-		#expect(CatalogKeys.lowestVersion(try String(contentsOf: file, encoding: .utf8)) != nil)
+	/// The files that the app ships: the keys and the lowest index version, which each release raises (docs/releasing.md).
+	@Test func shippedFilesGiveKeys() throws {
+		let folder = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../App/Resources/CatalogKeys")
+		let text = { (name: String) in try String(contentsOf: folder.appending(path: name), encoding: .utf8) }
+		#expect(CatalogKeys.shipped(currentPEM: try text("current.pub"), nextPEM: try text("next.pub"), lowestVersion: try text("lowest-index-version")) != nil)
 	}
 
 	@Test func floorsComeBackFromTheAcceptedIndex() throws {

@@ -141,7 +141,13 @@ public enum Standing: Sendable, Equatable {
 	/// the update is installed (ADR 0015, decision 24, with the index of one version per package).
 	case outdated(String)
 
-	public init(of installed: InstalledPackage, in index: CatalogIndex) {
+	/// Without an accepted index, no catalog package runs: only the files that an accepted index signs run
+	/// (decision 24), and this build may refuse the index it had (issue #563).
+	public init(of installed: InstalledPackage, in index: CatalogIndex?) {
+		guard let index else {
+			self = .stopped(String(localized: "Moneten has no list of extensions that this version accepts, so \(installed.name) does not run. Open Extensions to see why."))
+			return
+		}
 		guard let entry = index.entry(installed.id) else {
 			self = .stopped(String(localized: "\(installed.name) is no longer in the catalog."))
 			return

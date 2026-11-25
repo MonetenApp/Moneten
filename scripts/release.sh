@@ -68,13 +68,31 @@ lowest_in() {
 	echo "$LOWEST_TEXT"
 }
 
-# The lowest index version of each earlier tag v* of the app that has the file, one per line.
+# The lowest index version of each tag v* of the app that has the file, as "version tag", one per line.
+# A tag from before the file is skipped. A file that a tag holds but that cannot be read stops the release.
 earlier_lowest() {
-	for TAG in $(git tag --list 'v*'); do
+	git tag --list 'v*' > "$WORK/version-tags" || fail "The tags of the checkout cannot be listed."
+	while read -r TAG; do
 		app_tag "${TAG%%-*}" || continue
-		git show "$TAG:$LOWEST_FILE" > "$WORK/earlier-lowest" 2>/dev/null || continue
-		lowest_in "$WORK/earlier-lowest" | sed "s|$| $TAG|" || true
-	done
+		ENTRY=$(git ls-tree "$TAG" -- "$LOWEST_FILE") || fail "The files of $TAG cannot be read."
+		[ -n "$ENTRY" ] || continue
+		git show "$TAG:$LOWEST_FILE" > "$WORK/earlier-lowest" || fail "$LOWEST_FILE of $TAG cannot be read."
+		EARLIER=$(lowest_in "$WORK/earlier-lowest") || fail "$LOWEST_FILE of $TAG is not one positive number and a newline."
+		echo "$EARLIER $TAG"
+	done < "$WORK/version-tags"
+}
+
+# Fails unless the checkout holds a tag for each published version of the app, so check_lowest sees the
+# bound of each of them. A clone without tags would see no earlier bound.
+check_release_tags() {
+	gh api --paginate --slurp "repos/$REPO/releases?per_page=100" > "$WORK/tag-releases.json" \
+		|| fail "The releases of $REPO cannot be read."
+	app_releases "$WORK/tag-releases.json" > "$WORK/tag-releases.txt" 2>"$WORK/tag-releases-error" \
+		|| fail "The list of releases of $REPO has an unexpected shape: $(cat "$WORK/tag-releases-error")"
+	while read -r TAG; do
+		git rev-parse -q --verify "refs/tags/$TAG" > /dev/null \
+			|| fail "The published release $TAG has no tag in this checkout, so the check of the lowest catalog index version cannot see its bound. Fetch the tags."
+	done < "$WORK/tag-releases.txt"
 }
 
 # Fails unless $LOWEST_FILE holds one positive number that no earlier release of the app exceeds. The
@@ -86,7 +104,7 @@ check_lowest() {
 	while read -r EARLIER TAG; do
 		[ "$LOWEST" -ge "$EARLIER" ] || fail "$LOWEST_FILE holds $LOWEST, lower than $EARLIER of $TAG. A release never lowers the lowest catalog index version."
 	done < "$WORK/earlier-lowest-list"
-	echo "The app accepts catalog indexes from version $LOWEST on in a new data folder."
+	echo "The app accepts no catalog index below version $LOWEST."
 }
 
 # A release must carry one production update key: not the placeholder, and not the public test key.
@@ -182,11 +200,12 @@ check_latest() {
 
 preflight() {
 	check_production_key "$(committed_key)"
-	check_lowest
 	notes check
 	notes section "$1" >/dev/null
 	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the build number would be wrong."
 	git merge-base --is-ancestor HEAD origin/main || fail "The tagged commit is not on main."
+	check_release_tags
+	check_lowest
 	checked_current_feed "$(committed_key)"
 	notes check-release "$1" --build "$(git rev-list --count HEAD)" $FEED_ARGS
 	echo "Version $1 with build $(git rev-list --count HEAD) can be released."
@@ -907,8 +926,8 @@ check_keys() {
 }
 
 # The check of the lowest catalog index version: it refuses a file that is not one positive number
-# and a newline, and a bound lower than that of an earlier release, which the stub of earlier_lowest
-# stands in for.
+# and a newline, a bound lower than that of an earlier release, a tag whose file cannot be read, and a
+# published version without its tag.
 check_lowest_rule() { (
 	for TEXT in 0 0140 -3 +5 ' 7' '' abc 1.5 '140\n141' '140\n' 99999999999999999999; do
 		printf -- "$TEXT\n" > "$WORK/lowest"
@@ -918,13 +937,36 @@ check_lowest_rule() { (
 	lowest_in "$WORK/lowest" > /dev/null && fail "The check of the lowest catalog index version accepts a file without a newline."
 	printf '140\n' > "$WORK/lowest"
 	[ "$(lowest_in "$WORK/lowest")" = 140 ] || fail "The check of the lowest catalog index version refuses 140."
-	LOWEST_FILE="$WORK/lowest"
-	earlier_lowest() { printf '140 v0.1.0\n120 v0.0.9\n'; }
-	check_lowest > /dev/null || fail "The check of the lowest catalog index version refuses the bound of the release before."
-	earlier_lowest() { printf '120 v0.1.0\n141 v0.1.1\n'; }
-	(check_lowest) 2>"$WORK/error" > /dev/null && fail "The check of the lowest catalog index version accepts a bound lower than that of v0.1.1."
-	grep -qF "lower than 141 of v0.1.1" "$WORK/error" || fail "A lowered bound stopped the release with another message: $(cat "$WORK/error")"
-	echo "The check of the lowest catalog index version refuses a file that is not one positive number, and a bound lower than that of an earlier release."
+	# A stub of earlier_lowest stands in for the tags.
+	(
+		LOWEST_FILE="$WORK/lowest"
+		earlier_lowest() { printf '140 v0.1.0\n120 v0.0.9\n'; }
+		check_lowest > /dev/null || fail "The check of the lowest catalog index version refuses the bound of the release before."
+		earlier_lowest() { printf '120 v0.1.0\n141 v0.1.1\n'; }
+		(check_lowest) 2>"$WORK/error" > /dev/null && fail "The check of the lowest catalog index version accepts a bound lower than that of v0.1.1."
+		grep -qF "lower than 141 of v0.1.1" "$WORK/error" || fail "A lowered bound stopped the release with another message: $(cat "$WORK/error")"
+	)
+	# Tags in a throwaway repository: one from before the file, one with a bound, and one whose file is
+	# not a number, which must stop the release instead of being skipped.
+	REPO_DIR="$WORK/lowest-repo"
+	git init -q "$REPO_DIR"
+	cd "$REPO_DIR"
+	commit() { git -c user.name=Release -c user.email=release@example.com commit -q --allow-empty -m "$1"; }
+	commit before && git tag v0.0.1
+	mkdir -p "$(dirname "$LOWEST_FILE")"
+	printf '120\n' > "$LOWEST_FILE" && git add -A && commit bound && git tag v0.0.2
+	[ "$(earlier_lowest)" = "120 v0.0.2" ] || fail "The bounds of earlier tags are not \"120 v0.0.2\": $(earlier_lowest)"
+	printf 'abc\n' > "$LOWEST_FILE" && git add -A && commit broken && git tag v0.0.3
+	(earlier_lowest > /dev/null) 2>"$WORK/error" && fail "The check of the lowest catalog index version skips a tag whose file is not a number."
+	grep -qF "of v0.0.3 is not one positive number" "$WORK/error" || fail "A broken bound of a tag stopped the release with another message: $(cat "$WORK/error")"
+	# Each published version needs its tag. gh is a stub with the list of releases in STUB_RELEASES.
+	gh() { printf '%s\n' "$STUB_RELEASES"; }
+	STUB_RELEASES='[[{"tag_name": "v0.0.2", "draft": false}, {"tag_name": "v0.0.9", "draft": true}]]'
+	check_release_tags || fail "The check of the release tags refuses a checkout with the tag of each published version."
+	STUB_RELEASES='[[{"tag_name": "v0.0.4", "draft": false}]]'
+	(check_release_tags) 2>"$WORK/error" && fail "The check of the release tags accepts a published version without its tag."
+	grep -qF "The published release v0.0.4 has no tag in this checkout" "$WORK/error" || fail "A missing tag stopped the release with another message: $(cat "$WORK/error")"
+	echo "The check of the lowest catalog index version refuses a file that is not one positive number, a bound lower than that of an earlier release, a broken bound of a tag, and a published version without its tag."
 ); }
 
 # The check of draft: it accepts paths in /Users/runner/ and refuses another home folder. On the
@@ -966,6 +1008,8 @@ check_source_rule() {
 
 dry_run() {
 	VERSION=${1:-0.0.0-beta.1}
+	# check_lowest needs the tags of every earlier release, which a shallow clone may lack.
+	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the check of the lowest catalog index version would miss earlier releases."
 	cp CHANGELOG.md "$WORK/CHANGELOG.md"
 	CHANGELOG="$WORK/CHANGELOG.md"
 	notes check
