@@ -166,7 +166,7 @@ import Testing
 	@Test func noAcceptedIndexStopsEveryCatalogPackage() {
 		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: [])
 		#expect(Standing(of: installed, in: nil)
-			== .stopped("Moneten has no list of extensions that this version accepts, so Example Bank does not run. Open Extensions to see why."))
+			== .stopped("Moneten has no list of extensions that this version accepts, so Example Bank does not run."))
 	}
 
 	/// The catalog can go back to an older version. There is nothing to install then, so the text offers no update (issue #186).

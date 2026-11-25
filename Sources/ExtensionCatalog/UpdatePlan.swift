@@ -145,7 +145,7 @@ public enum Standing: Sendable, Equatable {
 	/// (decision 24), and this build may refuse the index it had (issue #563).
 	public init(of installed: InstalledPackage, in index: CatalogIndex?) {
 		guard let index else {
-			self = .stopped(String(localized: "Moneten has no list of extensions that this version accepts, so \(installed.name) does not run. Open Extensions to see why."))
+			self = .stopped(String(localized: "Moneten has no list of extensions that this version accepts, so \(installed.name) does not run."))
 			return
 		}
 		guard let entry = index.entry(installed.id) else {

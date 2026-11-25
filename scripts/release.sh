@@ -82,12 +82,12 @@ earlier_lowest() {
 	done < "$WORK/version-tags"
 }
 
-# Fails unless the checkout holds a tag for each published version of the app, so check_lowest sees the
-# bound of each of them. A clone without tags would see no earlier bound.
+# Fails unless the checkout holds a tag for each published version of the app, pre-releases included,
+# so check_lowest sees the bound of each of them. A clone without tags would see no earlier bound.
 check_release_tags() {
 	gh api --paginate --slurp "repos/$REPO/releases?per_page=100" > "$WORK/tag-releases.json" \
 		|| fail "The releases of $REPO cannot be read."
-	app_releases "$WORK/tag-releases.json" > "$WORK/tag-releases.txt" 2>"$WORK/tag-releases-error" \
+	app_releases "$WORK/tag-releases.json" pre-releases > "$WORK/tag-releases.txt" 2>"$WORK/tag-releases-error" \
 		|| fail "The list of releases of $REPO has an unexpected shape: $(cat "$WORK/tag-releases-error")"
 	while read -r TAG; do
 		git rev-parse -q --verify "refs/tags/$TAG" > /dev/null \
@@ -134,7 +134,8 @@ app_tag() { printf '%s\n' "$1" | grep -qxE 'v[0-9]+\.[0-9]+\.[0-9]+'; }
 # releases that gh api --paginate --slurp wrote. Fails unless each page is a list, each page before
 # the last holds 100 releases, and each release has a string tag_name and a Boolean draft, so a page
 # that is cut short or an answer of another shape never reads as a list without a version. A release
-# marked as a pre-release still counts, so the list ignores the field prerelease.
+# marked as a pre-release still counts, so the list ignores the field prerelease. With "pre-releases"
+# as $2, it also prints the published pre-release versions, such as v1.2.3-beta.1.
 app_releases() {
 	python3 -c '
 import json, re, sys
@@ -144,6 +145,7 @@ except ValueError as error:
 	sys.exit("it is not JSON: %s" % error)
 if not isinstance(pages, list) or not pages:
 	sys.exit("gh sent no page")
+suffix = r"(-[0-9A-Za-z.]+)?" if sys.argv[2:] == ["pre-releases"] else ""
 for number, page in enumerate(pages, 1):
 	if not isinstance(page, list):
 		sys.exit("page %d is not a list of releases" % number)
@@ -152,9 +154,9 @@ for number, page in enumerate(pages, 1):
 	for release in page:
 		if not isinstance(release, dict) or not isinstance(release.get("tag_name"), str) or not isinstance(release.get("draft"), bool):
 			sys.exit("page %d holds a release without a string tag_name and a Boolean draft: %.200s" % (number, json.dumps(release)))
-		if not release["draft"] and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", release["tag_name"]):
+		if not release["draft"] and re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+" + suffix, release["tag_name"]):
 			print(release["tag_name"])
-' "$1"
+' "$@"
 }
 
 # Writes the current feed to $WORK/current.xml and sets FEED_ARGS. Only a list of every release
@@ -951,7 +953,9 @@ check_lowest_rule() { (
 	REPO_DIR="$WORK/lowest-repo"
 	git init -q "$REPO_DIR"
 	cd "$REPO_DIR"
-	commit() { git -c user.name=Release -c user.email=release@example.com commit -q --allow-empty -m "$1"; }
+	# The repository ignores the git settings of the user, so no signing or hook stops the check.
+	git() { command git -c user.name=Release -c user.email=release@example.com -c commit.gpgSign=false -c tag.gpgSign=false -c core.hooksPath=/dev/null "$@"; }
+	commit() { git commit -q --allow-empty -m "$1"; }
 	commit before && git tag v0.0.1
 	mkdir -p "$(dirname "$LOWEST_FILE")"
 	printf '120\n' > "$LOWEST_FILE" && git add -A && commit bound && git tag v0.0.2
@@ -963,9 +967,11 @@ check_lowest_rule() { (
 	gh() { printf '%s\n' "$STUB_RELEASES"; }
 	STUB_RELEASES='[[{"tag_name": "v0.0.2", "draft": false}, {"tag_name": "v0.0.9", "draft": true}]]'
 	check_release_tags || fail "The check of the release tags refuses a checkout with the tag of each published version."
-	STUB_RELEASES='[[{"tag_name": "v0.0.4", "draft": false}]]'
-	(check_release_tags) 2>"$WORK/error" && fail "The check of the release tags accepts a published version without its tag."
-	grep -qF "The published release v0.0.4 has no tag in this checkout" "$WORK/error" || fail "A missing tag stopped the release with another message: $(cat "$WORK/error")"
+	for TAG in v0.0.4 v0.0.4-beta.1; do
+		STUB_RELEASES='[[{"tag_name": "'$TAG'", "draft": false, "prerelease": true}]]'
+		(check_release_tags) 2>"$WORK/error" && fail "The check of the release tags accepts the published version $TAG without its tag."
+		grep -qF "The published release $TAG has no tag in this checkout" "$WORK/error" || fail "A missing tag $TAG stopped the release with another message: $(cat "$WORK/error")"
+	done
 	echo "The check of the lowest catalog index version refuses a file that is not one positive number, a bound lower than that of an earlier release, a broken bound of a tag, and a published version without its tag."
 ); }
 

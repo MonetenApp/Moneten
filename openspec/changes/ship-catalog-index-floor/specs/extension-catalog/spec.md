@@ -84,7 +84,7 @@ The app SHALL show, install, and run nothing from the catalog while it holds no 
 - **GIVEN** "Broker" 2.32 is installed from the catalog, and the app accepted index 50, which lists it
 - **AND** the update ships the lowest index version 140, and the catalog cannot be reached
 - **WHEN** a refresh of "Broker Depot" starts
-- **THEN** "Broker" does not run, and "Broker Depot" says "Moneten has no list of extensions that this version accepts, so Broker does not run. Open Extensions to see why."
+- **THEN** "Broker" does not run, and "Broker Depot" says "Moneten has no list of extensions that this version accepts, so Broker does not run."
 - **AND** the "Extensions" window shows "Broker" with the badge "Stopped" and lists no other extension of the catalog
 
 #### Scenario: Index of the release arrives
