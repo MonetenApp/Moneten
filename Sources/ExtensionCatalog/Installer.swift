@@ -102,23 +102,30 @@ public struct Installer: Sendable {
 		return installed
 	}
 
-	/// Loads an installed package for a session and checks the bytes that it was built from, the
-	/// manifest and each Lua file, against the digests of the index.
+	/// Loads an installed package for a session. Every file of the record must be a regular file with the size and
+	/// the SHA-256 of the index, and the folder may hold no other item, so the session runs only from bytes that
+	/// the accepted index signs. The Finder's `.DS_Store` is the one exception, because the Finder writes it into a
+	/// folder that the user only looks at, and nothing runs it.
 	public static func load(_ installed: InstalledPackage, from folder: URL) throws(CatalogError) -> ExtensionPackage {
-		let digests = Dictionary(installed.files.map { ($0.path, $0.sha256) }, uniquingKeysWith: { first, _ in first })
-		var read: [String: Data] = [:]
-		let package: ExtensionPackage
+		let directory = folder.appending(path: installed.id)
+		var verified: [String: Data] = [:]
 		do {
-			package = try ExtensionPackage.load(from: folder.appending(path: installed.id), mode: .catalog) { url in
+			let present = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0 != ".DS_Store" }
+			guard present.count == installed.files.count, Set(present) == Set(installed.files.map(\.path)) else { throw CatalogError.changed(installed.name) }
+			for file in installed.files {
+				let url = directory.appending(path: file.path)
 				let data = try FileInstall.readRegularFile(url)
-				read[url.lastPathComponent] = data
+				guard data.count == file.size, sha256Hex(data) == file.sha256 else { throw CatalogError.changed(installed.name) }
+				verified[url.path] = data
+			}
+			// The package is built from the checked bytes, so a file that changes after the check does not run.
+			return try ExtensionPackage.load(from: directory, mode: .catalog) { url in
+				guard let data = verified[url.path] else { throw CocoaError(.fileReadNoSuchFile) }
 				return data
 			}
 		} catch {
 			throw .changed(installed.name)
 		}
-		guard read["manifest.json"] != nil, read.allSatisfy({ digests[$0.key] == sha256Hex($0.value) }) else { throw .changed(installed.name) }
-		return package
 	}
 
 	public func remove(_ id: String) throws {

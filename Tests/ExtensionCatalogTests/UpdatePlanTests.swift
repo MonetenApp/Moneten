@@ -202,6 +202,17 @@ import Testing
 			== .changed("Example Bank was changed and does not match the catalog."))
 	}
 
+	/// The relisted script has the size of the installed one, so only its digest tells them apart.
+	@Test func installedVersionListedWithAScriptOfTheSameSizeStops() throws {
+		var relisted = TestCatalog.Package()
+		relisted.script = relisted.script.replacingOccurrences(of: "version = 1.0", with: "version = 1.1")
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [relisted]))
+		let listed = try #require(index.entry("example")?.files.first { $0.path == "Example.lua" })
+		let record = try #require(try installed().files.first { $0.path == "Example.lua" })
+		#expect(listed.size == record.size && listed.sha256 != record.sha256)
+		#expect(Standing(of: try installed(), in: index) == .changed("Example Bank was changed and does not match the catalog."))
+	}
+
 	@Test func installedVersionListedWithTheSameDigestsInAnotherOrderRuns() throws {
 		let record = try installed()
 		let reordered = InstalledPackage(id: record.id, name: record.name, version: record.version, files: record.files.reversed())
