@@ -127,7 +127,8 @@ final class ExtensionLibrary {
 	@ObservationIgnored private var savedUpdates: [String: UpdateState.Saved] = [:]
 	/// The downloads that run, so that a removal can stop them.
 	@ObservationIgnored private var downloads: [String: InstallCancellation] = [:]
-	@ObservationIgnored private var checking: Store?
+	/// The check of the index that runs, which a refresh waits for while the app holds no index.
+	@ObservationIgnored private let indexCheck = IndexCheck()
 	@ObservationIgnored private var daily: Task<Void, Never>?
 
 	private var folder: URL { DataFolder.current.extensionsFolder }
@@ -168,6 +169,7 @@ final class ExtensionLibrary {
 	func close() {
 		daily?.cancel()
 		daily = nil
+		indexCheck.cancel()
 		for download in downloads.values { download.cancel() }
 		downloads = [:]
 		index = nil
@@ -198,11 +200,14 @@ final class ExtensionLibrary {
 
 	// MARK: The index
 
-	/// Downloads the index and its signature, and uses the index only when it passes every check.
+	/// Downloads the index and its signature, and uses the index only when it passes every check. A second
+	/// call while a check runs waits for that check.
 	func checkNow() async {
-		guard let store = model?.store, checking !== store else { return }
-		checking = store
-		defer { if checking === store { checking = nil } }
+		await indexCheck.run { [weak self] in await self?.checkIndex() }
+	}
+
+	private func checkIndex() async {
+		guard let store = model?.store else { return }
 		guard let keys = configuration.keys else {
 			problem = String(localized: "This build of Moneten has no catalog keys, so it cannot show the catalog.")
 			return reload()
@@ -247,7 +252,8 @@ final class ExtensionLibrary {
 			problem = String(localized: "The list of extensions could not be saved. \(String(describing: error))")
 		}
 		reload()
-		await applyUpdates()
+		// The updates install after the check, so a refresh that waits for the check does not wait for their downloads.
+		Task { await applyUpdates() }
 	}
 
 	/// A blocked or withdrawn package, and one that the index lists with other files, stops at once:
@@ -538,7 +544,8 @@ final class ExtensionLibrary {
 	func connector(for id: String) -> (any BankConnector)? {
 		guard records[id] != nil || FileInstall.url(of: id, in: folder) != nil else { return nil }
 		return CheckedAtStart { [weak self] in
-			try await MainActor.run {
+			await self?.waitForIndex(of: id)
+			return try await MainActor.run {
 				guard let self, let model = self.model else { throw CancellationError() }
 				let package = try self.verifiedPackage(id)
 				let log = self.log
@@ -548,6 +555,14 @@ final class ExtensionLibrary {
 				return connector
 			}
 		}
+	}
+
+	/// While the app holds no accepted index, as after an update that raised the lowest index version, a
+	/// refresh of a catalog package waits for the check of the index, and starts one when none runs, so that
+	/// the automatic refresh at launch does not fail before the first check ends (issue #579).
+	private func waitForIndex(of id: String) async {
+		guard index == nil, case .catalog? = records[id] else { return }
+		await indexCheck.run({ [weak self] in await self?.checkIndex() }, atMost: IndexCheck.refreshWait)
 	}
 
 	/// The package of an installed extension, checked against the index or against what the user

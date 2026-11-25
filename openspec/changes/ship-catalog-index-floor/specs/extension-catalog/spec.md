@@ -98,3 +98,37 @@ The app SHALL show, install, and run nothing from the catalog while it holds no 
 - **GIVEN** a build whose lowest index version cannot be read, and the app accepted index 150 before
 - **WHEN** the user opens the "Extensions" window
 - **THEN** the window says "This build of Moneten has no catalog keys, so it cannot show the catalog." and offers no extension of the catalog to install
+
+### Requirement: A refresh waits for the check of the catalog
+
+The app SHALL let a refresh of an extension of the catalog that starts while the app holds no index that this build accepts wait for the check of the catalog, until 30 seconds after that check started. When no check runs, the refresh starts one. After the wait, the refresh follows "No catalog without an accepted index". A refresh of an extension installed from a file does not wait.
+
+#### Scenario: Online at launch
+
+- **GIVEN** "Broker" 2.32 is installed from the catalog, and the app accepted index 50, which lists it
+- **AND** the update ships the lowest index version 140, the catalog serves index 140, which lists "Broker" 2.32, and the Mac is online
+- **AND** "Broker Depot" is due for the automatic refresh
+- **WHEN** the updated app launches, and the automatic refresh starts "Broker Depot" before the check of the catalog ends
+- **THEN** the refresh of "Broker Depot" waits for the check, runs "Broker" 2.32, and shows no error
+
+#### Scenario: Offline at launch
+
+- **GIVEN** the same app and "Broker" 2.32, and the Mac is offline
+- **WHEN** the updated app launches
+- **THEN** the check of the catalog fails, the automatic refresh does not start, and "Broker Depot" keeps its last state
+- **WHEN** the connection returns
+- **THEN** the automatic refresh of "Broker Depot" starts a check of the catalog, waits for it, and runs "Broker" 2.32 once the app accepts index 140
+
+#### Scenario: Catalog does not answer
+
+- **GIVEN** the same app and "Broker" 2.32, and the Mac is online, but the catalog does not answer
+- **WHEN** the user chooses "Refresh Account" for "Broker Depot"
+- **THEN** the refresh waits for the check of the catalog until 30 seconds after the check started
+- **AND** "Broker Depot" says "Moneten has no list of extensions that this version accepts, so Broker does not run."
+
+#### Scenario: Refreshes in line behind others
+
+- **GIVEN** the same app, five due accesses of catalog extensions, and one bank access "Giro" that is due too, and the catalog does not answer
+- **WHEN** the automatic refresh starts three of the accesses, and the other three wait for their turn
+- **THEN** each access of a catalog extension that starts later stops waiting 30 seconds after the check started, with the other accesses
+- **AND** "Giro" waits no more than about 30 seconds for its turn
