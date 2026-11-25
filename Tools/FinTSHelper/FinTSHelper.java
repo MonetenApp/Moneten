@@ -1824,10 +1824,10 @@ public class FinTSHelper {
 	static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
 
 	/// The currencies whose minor unit is not the hundredth, with the number of their decimal places, as the app rounds an amount.
-	/// Keep it equal to `Currency.exponent(of:)` in `Sources/Domain/Money.swift`, which has the same list.
+	/// Keep it equal to `Currency.exponent(of:)` in `Sources/Domain/Money.swift`, which has the same list and the crypto codes.
 	static final Map<String, Integer> DECIMAL_PLACES = Map.ofEntries(Map.entry("JPY", 0), Map.entry("KRW", 0), Map.entry("ISK", 0), Map.entry("CLP", 0),
 		Map.entry("VND", 0), Map.entry("XOF", 0), Map.entry("XAF", 0), Map.entry("BHD", 3), Map.entry("KWD", 3), Map.entry("OMR", 3), Map.entry("JOD", 3),
-		Map.entry("TND", 3));
+		Map.entry("TND", 3), Map.entry("USDC", 6), Map.entry("USDT", 6), Map.entry("BTC", 8), Map.entry("ETH", 9));
 
 	/// `amount` rounded to the minor unit of `currency`, half away from zero, as `Money.init(_:currency:)` rounds with `.plain`.
 	static BigDecimal rounded(BigDecimal amount, String currency) {

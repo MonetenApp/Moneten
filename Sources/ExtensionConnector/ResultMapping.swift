@@ -183,9 +183,9 @@ enum ResultMapping {
 	}
 
 	/// An amount that the script gives for a balance or a transaction. In an ISO 4217 currency it rounds to the minor units,
-	/// because scripts compute balances such as portfolio sums with more places. A code outside ISO 4217 has two places
-	/// that may not fit a token, and rounding would store 0.004 USDC as 0 and drop it without a word, so such an amount must
-	/// fit. Only the rounding error of a Lua number is rounded away, such as the 0.30000000000000004 that 0.1 + 0.2 gives:
+	/// because scripts compute balances such as portfolio sums with more places. A code outside ISO 4217 has the places of
+	/// `Currency.exponent(of:)`, 8 for BTC and 2 for a code it does not list, and rounding would store 0.004 DOGE as 0 and
+	/// drop it without a word, so such an amount must fit. Only the rounding error of a Lua number is rounded away, such as the 0.30000000000000004 that 0.1 + 0.2 gives:
 	/// a difference of at most 10^-15 of the amount, a few steps of a double.
 	private static func deliveredMoney(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
 		let money = try money(decimal, currency, what)

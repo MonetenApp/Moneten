@@ -1,6 +1,6 @@
 # Format of the complete export
 
-"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 3 key by key. The reader also accepts versions 1 and 2. The test `AllDataTests` checks that each key of an export is described here.
+"Export All Data..." writes one JSON file with all user data of a database, and "Import All Data..." reads it into an empty database. This page describes format version 4 key by key. The reader also accepts versions 1 to 3. The test `AllDataTests` checks that each key of an export is described here.
 
 ## Conventions
 
@@ -9,7 +9,7 @@
 - A time is ISO 8601 text in UTC with milliseconds, such as `"2026-11-14T23:46:40.000Z"`.
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
-- A currency code has 3 to 10 uppercase ASCII letters and digits and starts with a letter, `[A-Z][A-Z0-9]{2,9}`. This also applies to optional currencies of holdings and both currencies of an exchange rate. An ISO 4217 code such as `EUR` has this form, and so does the ticker of a crypto token such as `USDC`, which an extension can give as the currency of a position. A code that is not in ISO 4217 has two decimal places. An extension amount in such a code with more decimal places, such as 0.004 USDC, fails its account, so the database never holds it rounded.
+- A currency code has 3 to 10 uppercase ASCII letters and digits and starts with a letter, `[A-Z][A-Z0-9]{2,9}`. This also applies to optional currencies of holdings and both currencies of an exchange rate. An ISO 4217 code such as `EUR` has this form, and so does the ticker of a crypto token such as `USDC`, which an extension can give as the currency of a position. BTC has 8 decimal places, ETH 9, USDC and USDT 6, and every other code that is not in ISO 4217 has 2, so 0.00012345 BTC is `"0.00012345"` and 20 USDC is `"20.000000"`. An extension amount with more decimal places than its code, such as 0.004 DOGE, fails its account, so the database never holds it rounded.
 - Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` or `savedSearches` key as an empty list.
 - A change that a reader of an earlier version cannot read raises the format version: a new required key, a required key that is removed or renamed, and a new value of a fixed word such as `reason` in `failure` or `review`. A reader of the earlier version then refuses the file as needing a newer app, and not as damaged.
 - The lists keep the order of the database.
@@ -21,7 +21,7 @@
 | Key | Content |
 |---|---|
 | `format` | Always `"moneten-export"` |
-| `version` | The format version as a number, `3` for this page. A reader refuses a version below 1 as damaged and a version above 3 as needing a newer app. |
+| `version` | The format version as a number, `4` for this page. A reader refuses a version below 1 as damaged and a version above 4 as needing a newer app. |
 | `exportedAt` | The time of the export |
 | `accountGroups` | List of account groups |
 | `accounts` | List of accounts |
@@ -164,7 +164,7 @@ An access is a login at a bank. The file never holds its PIN or the data that it
 | `isNew` | Whether the transaction is marked as new |
 | `review` | Optional `"unclearBooking"` for an unclear pending match or `"splitUndone"` for a split undone by a bank correction. Missing means no review. |
 | `isFetched` | Whether a refresh delivered the transaction |
-| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity. It holds the amount in minor units, so a file of version 3 or lower holds 2 places for BTC, ETH, USDC, and USDT, which the reader converts. |
 | `isManual` | Optional `true` for a transaction that the user added with "Add Transaction...". Missing means a transaction that a source delivered. |
 | `sourceID` | Identifier of the transaction at its bank or source, such as `moneymoney:<id>` |
 | `createdAt` | Time when the app stored the transaction |
@@ -177,7 +177,7 @@ What the app keeps of a transaction that the user deleted, so that no refresh, f
 | Key | Content |
 |---|---|
 | `accountID` | The account |
-| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity |
+| `fileIdentity` | Original file fingerprint, if a file import recorded one; absent or null means no file identity. It holds the amount in minor units, so a file of version 3 or lower holds 2 places for BTC, ETH, USDC, and USDT, which the reader converts. |
 | `sourceID` | Identifier of the transaction at its bank or source |
 | `bookingDate` | Booking day |
 | `amount`, `currency` | Amount and its currency |
@@ -236,3 +236,5 @@ The original stays once in `transactions` with its category and comment for undo
 A version-1 file has neither `splitParts` nor `review`. The reader imports it with no parts and maps `needsReview: true` to `review: "unclearBooking"` and `needsReview: false` to no review. A version-2 file writes `review` and omits `needsReview`. The version-1 app refuses a version-2 file as needing a newer app.
 
 A version-3 file writes the error of a refresh as `failure` and omits `message` and `code` (#310). A reader of version 2 requires `message`, so version 3 lets it refuse the file as needing a newer app. The reader of version 3 reads the `message` and `code` of a version-1 or version-2 file as an answer of the bank with that text and code.
+
+A version-4 file writes the amounts in BTC, ETH, USDC, and USDT with 8, 9, 6, and 6 decimal places (#581). A reader of version 3 gives these codes 2 places and refuses an amount with more as damaged, so version 4 lets it refuse the file as needing a newer app. An amount of a file of version 3 or lower reads with the new places and keeps its value, so "0.25" BTC is still 0.25 BTC. The file identity of a row in one of these codes holds the amount in minor units with 2 places, such as `2:25` for 0.25 BTC, and the reader multiplies it to the places of the code, `8:25000000`, as the database migration v34 does with stored rows.
