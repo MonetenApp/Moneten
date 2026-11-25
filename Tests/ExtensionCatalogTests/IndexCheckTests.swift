@@ -1,6 +1,6 @@
 @testable import ExtensionCatalog
 import Foundation
-import TestSupport
+import Synchronization
 import Testing
 
 /// The actor of the tests of `IndexCheck`. A suite on the main actor would measure how busy the main actor
@@ -10,7 +10,7 @@ import Testing
 }
 
 /// A refresh of a catalog extension that starts before the first check of the index ends waits for it
-/// (issue #579).
+/// (issue #579). The limits run on a `ManualClock`, so no test measures how busy the machine is (issue #594).
 @IndexCheckActor
 @Suite struct IndexCheckTests {
 	/// A check of the index that ends only when the test opens it.
@@ -61,10 +61,10 @@ import Testing
 	}
 
 	@Test func aRefreshWaitsUntilTheCheckEnds() async {
-		let check = IndexCheck(), gate = Gate(), seen = Seen()
+		let check = IndexCheck(clock: ManualClock()), gate = Gate(), seen = Seen()
 		let launch = await started { await check.run { await gate.check() } }
 		let refresh = await started {
-			await check.run({ await gate.check() }, atMost: .seconds(600))
+			await check.run({ await gate.check() }, atMost: .seconds(30))
 			seen.waited = true
 		}
 		#expect(!seen.waited)
@@ -77,8 +77,8 @@ import Testing
 
 	/// The first refresh after the connection returns starts the check, and the next request joins it.
 	@Test func aRefreshStartsACheckWhenNoneRunsAndOthersJoinIt() async {
-		let check = IndexCheck(), gate = Gate()
-		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(600)) }
+		let check = IndexCheck(clock: ManualClock()), gate = Gate()
+		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
 		let other = await started { await check.run { await gate.check() } }
 		gate.open()
 		await refresh.value
@@ -89,48 +89,55 @@ import Testing
 	}
 
 	@Test func theWaitEndsAtItsLimit() async {
-		let check = IndexCheck(), gate = Gate()
-		let start = ContinuousClock.now
-		await check.run({ await gate.check() }, atMost: .milliseconds(50))
-		let elapsed = ContinuousClock.now - start
-		#expect(elapsed >= .milliseconds(50))
-		#expect(elapsed < budget(.seconds(5)))
+		let clock = ManualClock(), gate = Gate(), seen = Seen()
+		let check = IndexCheck(clock: clock)
+		let refresh = await started {
+			await check.run({ await gate.check() }, atMost: .seconds(30))
+			seen.waited = true
+		}
+		clock.advance(by: .seconds(29))
+		#expect(!seen.waited)
+		clock.advance(by: .seconds(1))
+		await refresh.value
+		// The check goes on after the wait, so the next request joins it.
+		let other = await started { await check.run { await gate.check() } }
 		gate.open()
+		await other.value
+		#expect(gate.runs == 1)
 	}
 
 	/// The limit counts from the start of the check, so a refresh that queued behind others does not wait
 	/// once more for a check that does not answer.
-	@Test func theLimitCountsFromTheStartOfTheCheck() async throws {
-		let check = IndexCheck(), gate = Gate()
-		let first = await started { await check.run({ await gate.check() }, atMost: .seconds(1)) }
-		try await Task.sleep(for: .seconds(1))
+	/// Without the clock moving on, a limit counted from the start of the late request would never end it.
+	@Test func theLimitCountsFromTheStartOfTheCheck() async {
+		let clock = ManualClock(), gate = Gate()
+		let check = IndexCheck(clock: clock)
+		let first = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
+		clock.advance(by: .seconds(30))
 		await first.value
-		let late = ContinuousClock.now
-		await check.run({ await gate.check() }, atMost: .seconds(1))
-		#expect(ContinuousClock.now - late < budget(.milliseconds(500)))
+		await check.run({ await gate.check() }, atMost: .seconds(30))
 		#expect(gate.runs == 1)
 		gate.open()
 	}
 
+	/// The clock never moves, so only the cancel can end the wait.
 	@Test func aCanceledRefreshStopsWaiting() async {
-		let check = IndexCheck(), gate = Gate()
-		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(600)) }
-		let start = ContinuousClock.now
+		let check = IndexCheck(clock: ManualClock()), gate = Gate()
+		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
 		refresh.cancel()
 		await refresh.value
-		#expect(ContinuousClock.now - start < budget(.seconds(5)))
 		gate.open()
 	}
 
 	/// The lock cancels the check, so the unlock after it starts its own, and the end of the canceled check
 	/// does not end the wait for the next one.
 	@Test func aCanceledCheckLetsTheNextOneStart() async throws {
-		let check = IndexCheck(), first = Gate(), next = Gate(), seen = Seen()
-		let locked = await started { await check.run({ await first.check() }, atMost: .seconds(600)) }
+		let check = IndexCheck(clock: ManualClock()), first = Gate(), next = Gate(), seen = Seen()
+		let locked = await started { await check.run({ await first.check() }, atMost: .seconds(30)) }
 		check.cancel()
 		await locked.value
 		let refresh = await started {
-			await check.run({ await next.check() }, atMost: .seconds(600))
+			await check.run({ await next.check() }, atMost: .seconds(30))
 			seen.waited = true
 		}
 		first.open()
@@ -143,5 +150,73 @@ import Testing
 		#expect(seen.waited)
 		#expect(first.runs == 1)
 		#expect(next.runs == 1)
+	}
+}
+
+/// A clock that moves only when a test advances it. A sleep ends when the clock reaches its deadline, at once
+/// when it is there already, and with an error when its task is canceled.
+final class ManualClock: Clock, Sendable {
+	struct Instant: InstantProtocol {
+		let offset: Duration
+
+		func advanced(by duration: Duration) -> Instant {
+			Instant(offset: offset + duration)
+		}
+
+		func duration(to other: Instant) -> Duration {
+			other.offset - offset
+		}
+
+		static func < (a: Instant, b: Instant) -> Bool {
+			a.offset < b.offset
+		}
+	}
+
+	private struct State {
+		var now = Duration.zero
+		var sleepers: [Int: (deadline: Duration, continuation: CheckedContinuation<Void, any Error>)] = [:]
+		var lastID = 0
+	}
+
+	private let state = Mutex(State())
+
+	var now: Instant {
+		Instant(offset: state.withLock { $0.now })
+	}
+
+	var minimumResolution: Duration {
+		.zero
+	}
+
+	func sleep(until deadline: Instant, tolerance _: Duration?) async throws {
+		let id = state.withLock { state in
+			state.lastID += 1
+			return state.lastID
+		}
+		try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { continuation in
+				// Under the lock, so that a cancel and an advance either come before and end the sleep here, or
+				// come after and find it.
+				let result = state.withLock { state -> Result<Void, any Error>? in
+					if Task.isCancelled { return .failure(CancellationError()) }
+					if deadline.offset <= state.now { return .success(()) }
+					state.sleepers[id] = (deadline.offset, continuation)
+					return nil
+				}
+				if let result { continuation.resume(with: result) }
+			}
+		} onCancel: {
+			state.withLock { $0.sleepers.removeValue(forKey: id) }?.continuation.resume(throwing: CancellationError())
+		}
+	}
+
+	func advance(by duration: Duration) {
+		let due = state.withLock { state in
+			state.now += duration
+			let due = state.sleepers.filter { $0.value.deadline <= state.now }
+			for id in due.keys { state.sleepers[id] = nil }
+			return due.values.map(\.continuation)
+		}
+		for continuation in due { continuation.resume() }
 	}
 }

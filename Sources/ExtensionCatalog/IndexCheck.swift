@@ -13,7 +13,8 @@ public final class IndexCheck: Sendable {
 	private struct Running: Sendable {
 		let id: Int
 		let task: Task<Void, Never>
-		let started: ContinuousClock.Instant
+		/// The time on `clock` since this object was made.
+		let started: Duration
 	}
 
 	private struct State {
@@ -28,8 +29,21 @@ public final class IndexCheck: Sendable {
 	}
 
 	private let state = Mutex(State())
+	/// The time since this object was made, and a sleep until a time counted the same way.
+	private let elapsed: @Sendable () -> Duration
+	private let sleep: @Sendable (_ until: Duration) async throws -> Void
 
-	public init() {}
+	public convenience init() {
+		self.init(clock: ContinuousClock())
+	}
+
+	/// The tests pass a clock that moves only when they advance it, so the limit does not depend on how busy
+	/// the test machine is (issue #594).
+	init<C: Clock<Duration>>(clock: C) {
+		let origin = clock.now
+		elapsed = { origin.duration(to: clock.now) }
+		sleep = { until in try await clock.sleep(until: origin.advanced(by: until), tolerance: nil) }
+	}
 
 	/// Starts `check` when none runs, and waits until the check that runs ends. It starts the check before
 	/// it suspends, on the actor of the caller.
@@ -45,7 +59,7 @@ public final class IndexCheck: Sendable {
 		let deadline = start(check).started + limit
 		let id = state.withLock { $0.newID() }
 		let timer = Task.detached { [self] in
-			guard (try? await Task.sleep(until: deadline, clock: .continuous)) != nil else { return }
+			guard (try? await sleep(deadline)) != nil else { return }
 			resume(id)
 		}
 		await withTaskCancellationHandler {
@@ -53,7 +67,7 @@ public final class IndexCheck: Sendable {
 				// Under the lock, so that a cancel, the limit, and the end of the check either come before and
 				// keep the waiter out, or come after and find it.
 				let waits = state.withLock { state in
-					guard state.running != nil, !Task.isCancelled, deadline > .now else { return false }
+					guard state.running != nil, !Task.isCancelled, deadline > elapsed() else { return false }
 					state.waiters[id] = continuation
 					return true
 				}
@@ -80,7 +94,7 @@ public final class IndexCheck: Sendable {
 				await check()
 				ended(id)
 			}
-			let running = Running(id: id, task: task, started: .now)
+			let running = Running(id: id, task: task, started: elapsed())
 			state.running = running
 			return running
 		}
