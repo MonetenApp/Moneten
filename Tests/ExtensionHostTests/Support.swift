@@ -53,6 +53,16 @@ final class Run {
 	}
 }
 
+/// Runs `body` on a thread with 128 KB of stack. A recursion over 100 tables overflows it in a
+/// Debug build, which crashes the test run.
+func onSmallStack<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+	await withCheckedContinuation { continuation in
+		let thread = Thread { continuation.resume(returning: body()) }
+		thread.stackSize = 128 * 1024
+		thread.start()
+	}
+}
+
 func decode<T: Decodable>(_ type: T.Type, _ object: Any) throws -> T {
 	try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: object))
 }

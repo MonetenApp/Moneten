@@ -381,6 +381,33 @@ The app SHALL write the complete export in a format that the project documents f
 - **THEN** the file has format version 3
 - **AND** the older version refuses the file as needing a newer version of the app, not as damaged
 
+### Requirement: Decimal places of a token in the complete export
+
+The app SHALL write an amount in BTC, ETH, USDC, or USDT in the complete export with the decimal places of its code, 8, 9, 6, and 6, under format version 4.
+
+#### Scenario: Fraction of a bitcoin
+
+- **WHEN** a transaction has the amount 0,00012345 BTC and another one 0,004 USDC
+- **THEN** the file has format version 4 and holds the texts "0.00012345" and "0.004000"
+- **AND** the import of the file gives both amounts back exactly
+
+#### Scenario: Reader of version 3
+
+- **GIVEN** a version of the app that reads up to format version 3, with 2 decimal places for BTC
+- **WHEN** it imports a file of version 4
+- **THEN** it refuses the file as needing a newer version of the app, not as damaged
+
+### Requirement: Token amounts of an earlier file
+
+The app SHALL import a complete export of format version 3 or lower, which a version with 2 decimal places for BTC, ETH, USDC, and USDT wrote, with the values that the file holds. The file identity of a row in such a code holds its amount in minor units, so the import converts that amount to the places of the code.
+
+#### Scenario: Bitcoin row from a file of version 3
+
+- **GIVEN** a file of version 3 with a transaction of "0.25" BTC whose file identity holds the amount 25
+- **WHEN** the user imports it
+- **THEN** the transaction has the amount 0,25 BTC
+- **AND** its file identity holds the amount 25000000, so an import of the same bank file finds the row and adds nothing
+
 ### Requirement: Import a complete export
 
 The app SHALL offer "Import All Data..." in the File menu, which reads a complete export into an empty database. After the import, the accounts, groups, categories, rules, transactions, comments, checkmarks, splits, and identifiers equal those of the exported database.
@@ -412,7 +439,7 @@ The app SHALL refuse a file with a newer format version and name the version of 
 
 #### Scenario: Newer format
 
-- **WHEN** the file has format version 5 and the app reads up to version 3
+- **WHEN** the file has format version 5 and the app reads up to version 4
 - **THEN** the app says that a newer version of the app is needed and imports nothing
 
 #### Scenario: Truncated file

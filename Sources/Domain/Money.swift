@@ -85,14 +85,26 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 }
 
 enum Currency {
-	/// Number of decimal places of an ISO 4217 currency.
+	/// Number of decimal places of a currency: those of ISO 4217, and those of the crypto codes that extensions deliver,
+	/// so that a small amount in them is stored exactly (#581). Any other code has 2.
+	///
+	/// BTC has the 8 places of the satoshi, USDC and USDT the 6 of their tokens. ETH has 9, the gwei, and not the 18 of the
+	/// wei, because every amount stays within `Money.maxMinorUnits`: 18 places would hold at most 0.001 ETH, 9 hold
+	/// 1,000,000 ETH. Adding or changing a code here changes the meaning of the minor units that the database stores, so
+	/// it needs a migration and a new format version of the complete export, as `TwoPlaceTokenAmounts` did for these codes.
 	static func exponent(of code: String) -> Int {
-		switch code.uppercased() {
+		let code = code.uppercased()
+		if let places = tokenPlaces[code] { return places }
+		return switch code {
 		case "JPY", "KRW", "ISK", "CLP", "VND", "XOF", "XAF": 0
 		case "BHD", "KWD", "OMR", "JOD", "TND": 3
 		default: 2
 		}
 	}
+
+	/// The codes outside ISO 4217 with decimal places of their own. Such an amount shows only the places it needs, at
+	/// least 2, so 20 USDC reads "20,00 USDC" and not "20,000000 USDC". The formatter knows only ISO 4217 and would show 2.
+	static let tokenPlaces = ["BTC": 8, "ETH": 9, "USDC": 6, "USDT": 6]
 
 	/// Whether `value` has no more decimal places than the currency, so it needs no rounding.
 	static func fits(_ value: Decimal, _ code: String) -> Bool {

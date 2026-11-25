@@ -110,12 +110,26 @@ import Testing
 		#expect(try refresh(.object(["known": .boolean(true)]), known: ["t1": nested(100)]) == whole)
 	}
 
+	/// The script returns 1, so only the push of the account can fail.
 	@Test func valueFromTheAppDeeperThanTheLimitFails() throws {
-		let session = Run(demo("WebBanking{version = 1}\nfunction RefreshAccount(account) return account end")).session!
+		let session = Run(demo("WebBanking{version = 1}\nfunction RefreshAccount(account) return 1 end")).session!
 		_ = try session.load()
 		let call = EntryCall.refreshAccount(account: nested(101), since: 0, known: [:], step: 1, credentials: [], interactive: false)
 		#expect(throws: ScriptError("Tables nest deeper than 100 levels.")) { try session.call(call) }
-		#expect(try session.call(.refreshAccount(account: nested(1), since: 0, known: [:], step: 1, credentials: [], interactive: false)) == nested(1))
+		#expect(try session.call(.refreshAccount(account: nested(100), since: 0, known: [:], step: 1, credentials: [], interactive: false)) == .integer(1))
+	}
+
+	/// The reader keeps the open tables in a list instead of its own frames, so a value as deep as the
+	/// limit fits in 128 KB of stack. A reader that recursed would overflow it, also without a sanitizer.
+	@Test func deepTableOnASmallStack() async {
+		let script = "local t = {} local c = t for i = 2, %d do c.x = {} c = c.x end return t"
+		let (deepest, tooDeep) = await onSmallStack {
+			(run(String(format: script, 100)), run(String(format: script, 101)))
+		}
+		var expected = LuaValue.array([])
+		for _ in 1..<100 { expected = .object(["x": expected]) }
+		#expect(deepest == expected)
+		#expect(tooDeep == .string("error: Tables nest deeper than 100 levels."))
 	}
 
 	/// An account table whose field `x` nests `levels` tables deep, with the number 7 at the end.

@@ -96,6 +96,51 @@ import StorageTestSupport
 		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
 	}
 
+	/// Every file of the entry is checked, also one without Lua (issue #584).
+	@Test(arguments: ["README.md", "LICENSE"]) func changedFileWithoutLuaBeforeASession(name: String) async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let file = folder.appending(path: "example/\(name)")
+		var bytes = try Data(contentsOf: file)
+		bytes[0] ^= 0x20
+		try bytes.write(to: file)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	@Test func missingFileBeforeASession() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		try FileManager.default.removeItem(at: folder.appending(path: "example/README.md"))
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	@Test(arguments: ["Notes.txt", ".hidden"]) func fileThatTheEntryDoesNotListBeforeASession(name: String) async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		try Data("print('extra')\n".utf8).write(to: folder.appending(path: "example/\(name)"))
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	@Test func folderThatTheEntryDoesNotListBeforeASession() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		try FileManager.default.createDirectory(at: folder.appending(path: "example/lib"), withIntermediateDirectories: false)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	/// The Finder writes its view settings into a folder that the user opens there. They are not part of the package.
+	@Test func finderViewSettingsDoNotStopThePackage() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		try Data([0, 0, 0, 1]).write(to: folder.appending(path: "example/.DS_Store"))
+		#expect(try Installer.load(installed, from: folder).files.map(\.text) == [package.script])
+	}
+
 	@Test func updateReplacesEveryFileTogether() async throws {
 		let old = TestCatalog.Package()
 		server.publish(old)

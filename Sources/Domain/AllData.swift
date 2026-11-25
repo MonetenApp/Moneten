@@ -5,8 +5,10 @@ import Foundation
 /// access, and everything about extensions stay out.
 public struct AllData: Sendable, Equatable {
 	/// 3 since the error of a refresh holds `failure` in place of the required `message` (#310). A reader of version 2
-	/// would refuse such a file as damaged, so the higher version makes it ask for a newer app.
-	public static let formatVersion = 3
+	/// would refuse such a file as damaged, so the higher version makes it ask for a newer app. 4 since the amounts in
+	/// BTC, ETH, USDC, and USDT have the decimal places of their codes (#581), which a reader of version 3 refuses as
+	/// more places than the currency has.
+	public static let formatVersion = 4
 
 	public var exportedAt: Date
 	public var groups: [AccountGroup]
@@ -246,7 +248,7 @@ private struct File: Codable {
 		let originals = Dictionary(stored.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 		return AllData(exportedAt: exportedAt, groups: accountGroups, accounts: try each("accounts", accounts) { try $0.account() }, accesses: accesses.map(\.access),
 			categories: try each("categories", categories) { try currencyCode($0.currency); return $0 }, transactions: stored,
-			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted() },
+			deletedTransactions: try each("deletedTransactions", deletedTransactions) { try $0.deleted(version: version) },
 			portfolioValues: try each("portfolioValues", portfolioValues) { entry in
 				let value = try entry.portfolioValue()
 				if let currency = currencies[entry.accountID], entry.currency != currency {
@@ -310,6 +312,12 @@ enum AmountText {
 		}
 		return d
 	}
+}
+
+/// A file identity holds its amount in minor units, which a file before version 4 wrote with 2 places for BTC, ETH, USDC,
+/// and USDT. Every other amount of the file is decimal text and keeps its value with the places of version 4.
+private func tokenPlaces(_ fileIdentity: String, version: Int) -> String {
+	version >= 4 ? fileIdentity : TwoPlaceTokenAmounts.convertedFileIdentity(fileIdentity) ?? fileIdentity
 }
 
 private func currencyCode(_ text: String) throws {
@@ -537,7 +545,7 @@ private struct TransactionEntry: Codable {
 			counterpartyIBAN: counterpartyIBAN, counterpartyBIC: counterpartyBIC, bookingText: bookingText, endToEndReference: endToEndReference,
 			mandateReference: mandateReference, creditorID: creditorID, comment: comment, isChecked: isChecked, isPending: isPending,
 			categoryID: categoryID, categorizedBy: categorizedBy, isNew: isNew, review: version == 1 ? (needsReview == true ? .unclearBooking : nil) : review, isFetched: isFetched, sourceID: sourceID,
-			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity, isManual: isManual == true)
+			createdAt: createdAt, returnReason: returnReason, fileIdentity: fileIdentity.map { tokenPlaces($0, version: version) }, isManual: isManual == true)
 		t.original = try original?.values(currency: currency)
 		t.deviatingParty = deviatingParty
 		switch (originalAmount, originalCurrency) {
@@ -635,11 +643,11 @@ private struct DeletedEntry: Codable {
 		deletedAt = d.deletedAt
 	}
 
-	func deleted() throws -> DeletedTransaction {
+	func deleted(version: Int) throws -> DeletedTransaction {
 		try currencyCode(currency)
 		let row = Transaction(accountID: accountID, bookingDate: try day(bookingDate), amountMinor: try AmountText.minorUnits(amount, currency),
 			currency: currency, name: "", purpose: purpose, counterpartyIBAN: counterpartyIBAN, endToEndReference: endToEndReference, isPending: isPending,
-			isFetched: wasFetched, sourceID: sourceID, fileIdentity: fileIdentity)
+			isFetched: wasFetched, sourceID: sourceID, fileIdentity: fileIdentity.map { tokenPlaces($0, version: version) })
 		return DeletedTransaction(row, deletedAt: deletedAt)
 	}
 }
