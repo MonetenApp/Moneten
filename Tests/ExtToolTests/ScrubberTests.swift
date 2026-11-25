@@ -115,6 +115,40 @@ extension ExtTool {
 			#expect(!file.contains(encoded))
 		}
 
+		/// The Base64 of the login values and of the Basic form, as a script that escapes it again sends it,
+		/// such as `MM.urlencode(MM.base64(password))` under a field name that is no token name. Each
+		/// Base64 holds `+`, `/`, or padding.
+		static let encodedBase64: [(value: String, placeholder: String, encoded: String)] = {
+			let (username, password) = ("erika>mus?", "r0ter~Faden?")
+			let values = [(username, "{{username}}"), (password, "{{password}}"), (username + ":" + password, "{{username}}:{{password}}")]
+			return values.flatMap { value, placeholder in
+				let base64 = Data(value.utf8).base64EncodedString()
+				let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
+				let percent = { (text: String, digits: String) in
+					text.utf8.map { Encodings.unreserved.contains($0) ? String(UnicodeScalar($0)) : String(format: digits, $0) }.joined()
+				}
+				return [percent(base64, "%%%02X"), percent(base64, "%%%02x"), percent(url, "%%%02X"),
+					percent(base64.trimmingCharacters(in: CharacterSet(charactersIn: "=")), "%%%02X"),
+					base64.replacingOccurrences(of: "/", with: #"\/"#), base64.replacingOccurrences(of: "/", with: #"/"#)]
+					.map { (value, placeholder, $0) }
+			}
+		}()
+
+		@Test(arguments: encodedBase64.indices) func encodedBase64OfTheLogin(_ index: Int) throws {
+			let (value, placeholder, encoded) = Self.encodedBase64[index]
+			let (fixture, _, file) = try scrub([exchange("POST", "https://bank.example/login", body: "feld=\(encoded)&next=1", response: "{\"echo\": \"\(encoded)\"}")],
+				login: ["erika>mus?", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.body == "feld=\(placeholder)&next=1")
+			#expect(fixture.exchanges[0].response.body == "{\"echo\": \"\(placeholder)\"}")
+			#expect(!file.contains(String(Data(value.utf8).base64EncodedString().prefix(8))))
+		}
+
+		@Test func percentEncodedBase64OfThePasswordInTheURL() throws {
+			let (fixture, _, file) = try scrub([exchange("GET", "https://bank.example/login?kennung=erika&passwort=cjB0ZXJ%2BRmFkZW4%2F")], login: ["erika", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?kennung=%7B%7Busername%7D%7D&passwort=%7B%7Bpassword%7D%7D")
+			#expect(!file.contains("cjB0ZXJ"))
+		}
+
 		@Test func passwordInTheURL() throws {
 			let (fixture, _, _) = try scrub([exchange("GET", "https://bank.example/login?user=erika&pin=geheim123")])
 			#expect(fixture.exchanges[0].request.url.absoluteString == "https://bank.example/login?user=%7B%7Busername%7D%7D&pin=%7B%7Bpassword%7D%7D")

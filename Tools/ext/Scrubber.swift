@@ -753,18 +753,14 @@ enum Encodings {
 
 	/// Each character of the value as itself, percent-encoded in UTF-8 or ISO-8859-1, form-encoded,
 	/// JSON-escaped, HTML-escaped, or as the bytes of UTF-8 read as ISO-8859-1, in any mix; or the whole
-	/// value in Base64 or Base64url. The match stands between characters that are not letters or digits,
-	/// or `asWholeValue` between the start or the end of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`,
-	/// `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
+	/// value in Base64 or Base64url, whose characters may stand in the same forms. The match stands
+	/// between characters that are not letters or digits, or `asWholeValue` between the start or the end
+	/// of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`, `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
 	/// `2025` inside a longer value.
 	/// With `entire`, the pattern matches only a text that is the value as a whole, in one of its forms.
 	static func matcher(for value: String, ignoringCase: Bool, asWholeValue: Bool = false, entire: Bool = false) -> NSRegularExpression {
 		let characters = value.unicodeScalars.map { "(?:" + forms(of: $0, ignoringCase: ignoringCase).joined(separator: "|") + ")" }.joined()
-		let base64 = Data(value.utf8).base64EncodedString()
-		let url = base64.replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_")
-		let whole = [base64, url].flatMap { [$0, $0.trimmingCharacters(in: CharacterSet(charactersIn: "="))] }
-			.sorted { $0.count > $1.count }.map(NSRegularExpression.escapedPattern(for:))
-		let core = "(?:" + ([characters] + whole).joined(separator: "|") + ")"
+		let core = "(?:" + characters + "|" + base64(of: value) + ")"
 		if entire {
 			return try! NSRegularExpression(pattern: "^" + core + "$")
 		}
@@ -774,6 +770,21 @@ enum Encodings {
 		let first = value.unicodeScalars.first.map(isWordCharacter) ?? false
 		let last = value.unicodeScalars.last.map(isWordCharacter) ?? false
 		return try! NSRegularExpression(pattern: (first ? "(?<![A-Za-z0-9])" : "") + core + (last ? "(?![A-Za-z0-9])" : ""))
+	}
+
+	/// The value in Base64 or Base64url, with or without its padding. Each character of it may stand in
+	/// the forms of `encodedForms(of:)` as a character of the plain value may, such as `%2F` or `\/` for
+	/// `/`, because a script may escape the Base64 again, as `MM.urlencode(MM.base64(password))` does.
+	/// The case of its letters counts.
+	private static func base64(of value: String) -> String {
+		let base64 = Data(value.utf8).base64EncodedString()
+		let digits = base64.trimmingCharacters(in: CharacterSet(charactersIn: "="))
+		let alphabets: [Unicode.Scalar: [Unicode.Scalar]] = ["+": ["+", "-"], "/": ["/", "_"]]
+		let pattern = digits.unicodeScalars.map { digit in
+			"(?:" + (alphabets[digit] ?? [digit]).flatMap(encodedForms(of:)).joined(separator: "|") + ")"
+		}.joined()
+		let padding = base64.count - digits.count
+		return padding == 0 ? pattern : pattern + "(?:(?:" + encodedForms(of: "=").joined(separator: "|") + "){\(padding)})?"
 	}
 
 	/// A whole JSON number outside a string.
