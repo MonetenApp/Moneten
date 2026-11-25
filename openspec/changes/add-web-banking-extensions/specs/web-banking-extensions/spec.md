@@ -1031,21 +1031,67 @@ The app SHALL read each currency of an account, a transaction, a pair of `balanc
 - **THEN** the setup of the access fails with the error "The currency of account 4711 is not a currency code."
 - **AND** a refresh of an access that stored such an account fails the account with the same error
 
-### Requirement: Decimal places of an amount
+### Requirement: Decimal places of a token
 
-The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result is in a currency that ISO 4217 does not name and has more than two decimal places. The message names the field and the currency. An amount in an ISO 4217 currency rounds to the minor units of its currency, half away from zero. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
+The app SHALL store an amount in BTC with 8 decimal places, in ETH with 9, and in USDC and USDT with 6, and show it with at least 2 and at most these places, as many as it needs. Any other code that ISO 4217 does not name has 2 decimal places.
 
-#### Scenario: Balance in a token below a cent
+#### Scenario: Fraction of a bitcoin
+
+- **WHEN** the first transaction of the result of a giro account in EUR has `amount=0.00012345` and `currency="btc"`
+- **THEN** the transaction is a deposit of 0,00012345 BTC
+- **AND** a transaction of `amount=1` and `currency="BTC"` shows 1,00 BTC
+
+#### Scenario: Token balance below a cent
 
 - **WHEN** the result of a giro account in EUR has `balance=10.00` and `balances={{10.00, "EUR"}, {0.004, "USDC"}}`
+- **THEN** the account shows the balances 10,00 € and 0,004 USDC
+
+#### Scenario: Ether in gwei
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=-0.000000021` and `currency="ETH"`
+- **THEN** the transaction is a withdrawal of 0,000000021 ETH
+
+### Requirement: Token amounts of an earlier database
+
+The app SHALL keep the value of each amount that an earlier version stored with 2 decimal places in BTC, ETH, USDC, or USDT when it opens the database. An amount beyond the requirement "Amount limit of a result" with the new places holds at that limit, and a split transaction whose amount or part holds there loses its split.
+
+#### Scenario: Database of an earlier version
+
+- **GIVEN** a database of an earlier version, which stored every amount in BTC, ETH, USDC, and USDT with 2 decimal places, with a transaction of 0,25 BTC and an account balance of 1,50 USDC
+- **WHEN** the app opens the database
+- **THEN** the transaction shows 0,25 BTC and the balance 1,50 USDC, and the complete export holds "0.25000000" and "1.500000"
+
+#### Scenario: Amount of an earlier database beyond the limit
+
+- **GIVEN** a database of an earlier version with a transaction of 10.000.000.000 ETH, split into two parts, and a transaction whose original amount is 1.000.001 ETH
+- **WHEN** the app opens the database
+- **THEN** both amounts hold at the amount limit of 1.000.000 ETH, the first transaction loses its split and keeps its category, and the complete export of the database imports again
+
+### Requirement: Decimal places of an amount
+
+The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result is in a currency that ISO 4217 does not name and has more decimal places than the requirement "Decimal places of a token" gives that currency. The message names the field and the currency. An amount in an ISO 4217 currency rounds to the minor units of its currency, half away from zero. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
+
+#### Scenario: Balance in a token below its smallest unit
+
+- **WHEN** the result of a giro account in EUR has `balance=10.00` and `balances={{10.00, "EUR"}, {0.0000004, "USDC"}}`
 - **THEN** the account shows the error "The balance in USDC has more decimal places than the currency USDC allows."
 - **AND** the stored balances stay as they were
 
-#### Scenario: Transaction of a fraction of a bitcoin
+#### Scenario: Transaction below a satoshi
 
-- **WHEN** the first transaction of the result of a giro account has `amount=0.00012345` and `currency="btc"`
+- **WHEN** the first transaction of the result of a giro account has `amount=0.000000001` and `currency="btc"`
 - **THEN** the account shows the error "The amount of transaction 1 has more decimal places than the currency BTC allows."
 - **AND** no transaction of this result is stored
+
+#### Scenario: Ether in wei
+
+- **WHEN** the first transaction of the result of a giro account has `amount=0.1234567891` and `currency="ETH"`
+- **THEN** the account shows the error "The amount of transaction 1 has more decimal places than the currency ETH allows."
+
+#### Scenario: Token without decimal places of its own
+
+- **WHEN** the result of a giro account in EUR has `balance=10.00` and `balances={{10.00, "EUR"}, {0.004, "DOGE"}}`
+- **THEN** the account shows the error "The balance in DOGE has more decimal places than the currency DOGE allows."
 
 #### Scenario: Sum of Lua numbers in a token
 
@@ -1064,7 +1110,7 @@ The app SHALL fail an account when a balance, a pair of `balances`, or a transac
 
 ### Requirement: Amount limit of a result
 
-The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also fails the account when the values of its securities add up to more, in any order, and when the value of a security less its purchase value is more. The message names the field.
+The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro, 10.000.000 BTC for the bitcoin, and 1.000.000 ETH for the ether. The app also fails the account when the values of its securities add up to more, in any order, and when the value of a security less its purchase value is more. The message names the field.
 
 #### Scenario: Absurd transaction
 

@@ -50,7 +50,7 @@ struct AllDataTests {
 		try source.replaceParts(of: original.id, with: parts)
 		let file = try source.exportAllData(at: exportedAt).json()
 		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
-		#expect(json["version"] as? Int == 3)
+		#expect(json["version"] as? Int == 4)
 		let entries = json["splitParts"] as? [[String: Any]] ?? []
 		#expect(entries.compactMap { $0["amount"] as? String } == ["-100.00", "-19.00"])
 		#expect(entries.compactMap { ($0["vat"] as? [String: Any])?["rate"] as? Int } == [1900, 1900])
@@ -101,11 +101,11 @@ struct AllDataTests {
 		#expect(ledger.parts(of: pending.id).isEmpty && ledger.parts(of: booked.id).isEmpty)
 	}
 
-	@Test("An export with a refresh error writes version 3 and the failure without its text, so a reader of version 2 asks for a newer app")
+	@Test("An export with a refresh error writes version 3 or later and the failure without its text, so a reader of version 2 asks for a newer app")
 	func refreshErrorVersion() throws {
 		let file = try filledStore().exportAllData(at: exportedAt).json()
 		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
-		#expect(json["version"] as? Int == 3)
+		#expect(json["version"] as? Int == 4)
 		let accounts = try #require(json["accounts"] as? [[String: Any]])
 		let error = try #require(accounts.compactMap { $0["refreshError"] as? [String: Any] }.first)
 		#expect(error["message"] == nil && error["code"] == nil)
@@ -468,7 +468,69 @@ struct AllDataTests {
 		#expect(text.contains(#""quantity" : "12.345""#))
 		#expect(text.contains(#""bookingDate" : "2026-11-02""#))
 		#expect(text.contains(#""exportedAt" : "2026-11-14T23:46:40.000Z""#))
-		#expect(text.contains(#""version" : 3"#))
+		#expect(text.contains(#""version" : 4"#))
+	}
+
+	/// "Decimal places of a token in the complete export": with 2 places for every code outside ISO 4217, these amounts
+	/// could not be stored at all (#581).
+	@Test("Token amounts have the places of their codes in the file, under version 4, and come back exactly")
+	func tokenAmountsRoundTrip() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let source = try emptyStore("token-amounts-source")
+		let account = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "BTC", initialBalanceMinor: 100_000_000)
+		try source.save(accounts: [account])
+		let rows = [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 12_345, currency: "BTC", name: "Example A", createdAt: exportedAt),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: 4_000, currency: "USDC", name: "Example B", createdAt: exportedAt),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -21, currency: "ETH", name: "Example C", createdAt: exportedAt),
+		]
+		try source.save(rows)
+		let exported = try source.exportAllData(at: exportedAt)
+		let file = try exported.json()
+		let json = try #require(try JSONSerialization.jsonObject(with: file) as? [String: Any])
+		#expect(json["version"] as? Int == 4)
+		let entries = try #require(json["transactions"] as? [[String: Any]])
+		#expect(entries.compactMap { $0["amount"] as? String } == ["0.00012345", "0.004000", "-0.000000021"])
+		#expect((json["accounts"] as? [[String: Any]])?.first?["initialBalance"] as? String == "1.00000000")
+		let target = try emptyStore("token-amounts-target")
+		try target.importAllData(try AllData(json: file))
+		let imported = try target.exportAllData(at: exportedAt)
+		#expect(imported == exported)
+		#expect(imported.transactions.map(\.amount) == rows.map(\.amount))
+	}
+
+	/// "Token amounts of an earlier file": a file of version 3 wrote these codes with 2 places. Its amounts are decimal text
+	/// and keep their value, but a file identity holds minor units, which the import converts, so the same bank file finds
+	/// its rows again.
+	@Test("A file of version 3 imports its token amounts with their values and converts its file identities, so the same bank file adds nothing")
+	func tokenFileIdentityOfVersion3() throws {
+		defer { try? FileManager.default.removeItem(at: root) }
+		let source = try emptyStore("token-v3-source")
+		let account = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "BTC")
+		try source.save(accounts: [account])
+		let rows = [
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 3), amountMinor: 25_000_000, currency: "BTC", name: "Example A", isPending: true),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 4), amountMinor: -1_500_000, currency: "USDC", name: "Example B", isPending: true),
+			Transaction(accountID: account.id, bookingDate: Day(year: 2026, month: 11, day: 5), amountMinor: -2_000, currency: "EUR", name: "Example C", isPending: true),
+		]
+		let added = try source.merge(.file(rows), into: account.id, now: exportedAt).added
+		try source.deleteTransactions([try #require(added.first { $0.currency == "USDC" }).id])
+		let exported = try source.exportAllData(at: exportedAt)
+		#expect(exported.transactions.compactMap(\.fileIdentity).allSatisfy { $0.contains("8:25000000") || $0.contains("5:-2000") })
+		#expect(exported.deletedTransactions.compactMap(\.fileIdentity).allSatisfy { $0.contains("8:-1500000") })
+		// The same file as version 3 wrote it, with 2 places for BTC and USDC.
+		var text = String(decoding: try exported.json(), as: UTF8.self)
+		for (new, old) in [(#""version" : 4"#, #""version" : 3"#), ("8:25000000", "2:25"), ("8:-1500000", "4:-150"),
+			(#""0.25000000""#, #""0.25""#), (#""-1.500000""#, #""-1.50""#)] {
+			#expect(text.contains(new))
+			text = text.replacingOccurrences(of: new, with: old)
+		}
+		let target = try emptyStore("token-v3-target")
+		try target.importAllData(try AllData(json: Data(text.utf8)))
+		#expect(try target.exportAllData(at: exportedAt) == exported)
+		// Two pending rows pair only when their file identities are equal. A file import adds a deleted row again by design.
+		let again = try target.merge(.file(rows.filter { $0.currency != "USDC" }), into: account.id, now: exportedAt)
+		#expect(again.added == [] && again.skipped == 2)
 	}
 
 	@Test("The file names the bank, the user ID, and the connector of an access, and holds neither its PIN nor its state")
@@ -518,7 +580,7 @@ struct AllDataTests {
 		json["version"] = 5
 		#expect(throws: AllData.ReadError.newerVersion(5)) { try AllData(json: try JSONSerialization.data(withJSONObject: json)) }
 		#expect(AllData.ReadError.newerVersion(5).description
-			== "The file has format version 5, and this version of Moneten reads up to version 3. Install a newer version of Moneten to import it.")
+			== "The file has format version 5, and this version of Moneten reads up to version 4. Install a newer version of Moneten to import it.")
 		#expect(throws: AllData.ReadError.notAnExport) { try AllData(json: Data(#"{"format": "other", "version": 1}"#.utf8)) }
 	}
 

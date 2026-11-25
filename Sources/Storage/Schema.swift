@@ -474,6 +474,10 @@ enum Schema {
 		m.registerMigration("v33") { db in
 			try db.alter(table: "category") { t in t.add(column: "starterKey", .text) }
 		}
+		// Amounts in BTC, ETH, USDC, and USDT have the decimal places of their codes (#581). An earlier version stored them
+		// with 2, so each stored amount in these codes keeps its value with the new places. No release stored such rows,
+		// only development databases. It comes after v33.
+		m.registerMigration("v34") { db in try TokenPlacesAtV34.migrate(db) }
 		return m
 	}
 

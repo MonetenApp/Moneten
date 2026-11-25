@@ -16,7 +16,11 @@ public enum Format {
 	/// United States. Every amount shows its currency, also a row of a list in the currency of its view. The minus sign
 	/// is U+2212, as in MoneyMoney.
 	public static func money(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
-		minus(m.decimal.formatted(.currency(code: m.currency).locale(locale)))
+		// The formatter takes only codes of three letters. It showed a longer one, such as "USDC", as a bare "0.004" without
+		// the code and the marks of the region.
+		guard m.currency.utf8.count == 3 else { return amount(m, locale: locale) + "\u{00A0}" + m.currency }
+		let style = Decimal.FormatStyle.Currency(code: m.currency, locale: locale)
+		return minus(m.decimal.formatted(Currency.tokenPlaces[m.currency].map { style.precision(.fractionLength(2...$0)) } ?? style))
 	}
 
 	/// One amount for each currency, never added up, such as the sum of a group with euro and dollar accounts.
@@ -36,9 +40,10 @@ public enum Format {
 	}
 
 	/// An amount without its currency, such as "−42,50": the marks of the region and the decimal places of the
-	/// currency. `foreignAmount` adds the code to it.
+	/// currency, of a token only those it needs, at least 2. `foreignAmount` adds the code to it.
 	public static func amount(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
-		minus(m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(m.decimalPlaces))))
+		let places = Currency.tokenPlaces[m.currency].map { 2...$0 } ?? m.decimalPlaces...m.decimalPlaces
+		return minus(m.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(places))))
 	}
 
 	/// An amount in a currency other than the one of its row, such as the original amount of a card payment abroad:

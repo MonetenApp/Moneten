@@ -99,6 +99,12 @@ The selection, formula, Arabic digit, cancellation, and write-only folder regres
 
 - [x] Drop the exemption of a lone sign. `TransactionCSV` quotes a field with a semicolon, a double quote, or a line break, so the closing quote stood right after an exempted sign, and a comma reader read the Name "Shop; Berlin,-" and the Purpose "&HYPERLINK(1),;" as the cell `-";"&HYPERLINK(1)`, a valid formula. TransactionCSVTests "A sign at the end of a quoted field starts no formula with the text of the next field in any reader" gives the Name and the Purpose different texts and failed in 36 cases with the exemption. "Rate 100,-" now exports as "Rate 100,'-" and joins the cost of the import: ExportRoundTripTests "An apostrophe of the formula protection comes back with the import, so its row is added again to the account it came from" now adds three of the four rows again.
 
+## Decimal places of tokens (#581)
+
+- [x] Write amounts in BTC, ETH, USDC, and USDT with the places of their codes under format version 4, and read a file of version 3 with the same values. AllDataTests.tokenAmountsRoundTrip writes "0.00012345" BTC, "0.004000" USDC, and "-0.000000021" ETH under version 4 and reads them back exactly. AllDataTests.tokenFileIdentityOfVersion3 rewrites such an export as version 3 wrote it, with "0.25" BTC and the amount 25 in the file identity, imports it, and merges the same bank rows again without adding one. It failed without the conversion of the file identity.
+- [x] Convert the stored rows of a database of an earlier version (migration v34). SchemaTests.tokenAmountsKeepTheirValue stores every amount column and every JSON amount at v33 with the 2-place meaning and checks each value after the migration. SchemaTests.tokenAmountsBeyondTheLimit checks that an amount beyond `Money.maxMinorUnits` holds at it and never becomes a floating-point number, and SchemaTests.tokenFileIdentity checks file identities that do not read.
+- [x] Keep a migrated database restorable (merge gate of #592). v34 first clamped at the bounds of `Int64`, so a split original of 10,000,000,000 ETH no longer matched its parts and an original amount of 1,000,001 ETH passed the limit, and the import of the complete export refused both. SchemaTests.tokenAmountsBeyondTheLimitStillRestore exports such a database after v34 and imports it again. It failed with "The file is damaged" before the fix.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

@@ -57,4 +57,30 @@ struct FormatTests {
 			}
 		}
 	}
+
+	/// "Decimal places of a token": a token shows the places it needs, at least 2 and at most those of its code. The
+	/// formatter alone knows only ISO 4217 and showed 0,00012345 BTC as "0,00 BTC" (#581).
+	@Test("A token amount shows its decimal places, at least two")
+	func tokens() {
+		let satoshis = Money(minorUnits: 12_345, currency: "BTC")
+		let bitcoin = Money(minorUnits: 100_000_000, currency: "BTC")
+		let cents = Money(minorUnits: 4_000, currency: "USDC")
+		let gwei = Money(minorUnits: -21, currency: "ETH")
+		let doge = Money(minorUnits: 30, currency: "DOGE")
+		#expect(Format.money(satoshis, locale: germany) == "0,00012345\(nbsp)BTC")
+		#expect(Format.money(bitcoin, locale: germany) == "1,00\(nbsp)BTC")
+		#expect(Format.money(cents, locale: germany) == "0,004\(nbsp)USDC")
+		#expect(Format.money(gwei, locale: germany) == "\(minus)0,000000021\(nbsp)ETH")
+		#expect(Format.money(doge, locale: germany) == "0,30\(nbsp)DOGE")
+		#expect(Format.money(satoshis, locale: unitedStates) == "BTC\(nbsp)0.00012345")
+		#expect(Format.money(cents, locale: unitedStates) == "0.004\(nbsp)USDC")
+		#expect(Format.foreignAmount(satoshis, locale: germany) == "0,00012345 BTC")
+		#expect(Format.foreignAmount(Money(minorUnits: 1_500_000, currency: "USDC"), locale: unitedStates) == "1.50 USDC")
+		#expect(Format.amount(Money(minorUnits: 20_000_000, currency: "USDT"), locale: germany) == "20,00")
+		// An amount field shows every place, so the text reads back to the same amount.
+		#expect(Format.editableAmount(satoshis, locale: germany) == "0,00012345")
+		for money in [satoshis, bitcoin, cents, gwei] {
+			#expect(Money(typed: Format.editableAmount(money, locale: germany), currency: money.currency) == money)
+		}
+	}
 }
