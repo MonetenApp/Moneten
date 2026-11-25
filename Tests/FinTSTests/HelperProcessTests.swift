@@ -190,6 +190,72 @@ struct HelperProcessTests {
 		}
 	}
 
+	/// A helper that asks for one certificate check, writes the line that it gets back and the time into
+	/// `record`, and ends.
+	static func trustScript(record: URL) -> String {
+		#"read cmd; echo '{"type":"trust","id":1,"host":"fints.example.com","chain":["AAAA"]}'; read a; "#
+			+ #"printf '%s\n{"at":%s}\n' "$a" "$(date +%s)" > '\#(record.path)'"#
+	}
+
+	/// The line that the helper of `trustScript` got back, and the seconds from `start` until it got it.
+	func trustAnswer(_ record: URL, since start: Date) throws -> (type: String?, seconds: Double) {
+		let lines = try String(contentsOf: record, encoding: .utf8).split(separator: "\n")
+		let objects = lines.map { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
+		let at = try #require(objects.last??["at"] as? Double)
+		return (objects.first??["type"] as? String, at - start.timeIntervalSince1970)
+	}
+
+	@Test("A certificate check that never ends fails the run with a timeout after the inactivity, and its late verdict is dropped")
+	func certificateCheckTimesOut() async throws {
+		let gate = Gate()
+		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
+		defer { try? FileManager.default.removeItem(at: record) }
+		let started = Date.now
+		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
+			_ = try await connector(Self.trustScript(record: record), inactivity: 1, trust: gate.check)
+				.listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		// The gate holds the check for 20 seconds, so a run that waited for the verdict would have none here.
+		#expect(gate.waiting == 1)
+		let answer = try trustAnswer(record, since: started)
+		#expect(answer.type == "cancel")
+		// About 1 second: the timer sends the cancel without a thread of Swift concurrency.
+		#expect(answer.seconds < 10) // time-ok: about 1 s by the clock of the helper, against the 20 s of the gate
+		// The verdict after the end of the wait must not resume the run a second time.
+		gate.open()
+		for _ in 0..<500 where gate.waiting > 0 {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(gate.waiting == 0)
+	}
+
+	@Test("A cancel ends the wait for a certificate check at once")
+	func certificateCheckCanceled() async throws {
+		let gate = Gate()
+		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
+		defer { try? FileManager.default.removeItem(at: record) }
+		let task = Task {
+			try await connector(Self.trustScript(record: record), trust: gate.check).listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		for _ in 0..<500 where gate.waiting == 0 {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(gate.waiting == 1)
+		let canceled = Date.now
+		task.cancel()
+		await #expect(throws: CancellationError.self) { try await task.value }
+		// The gate holds the check for 20 seconds, so a run that waited for the verdict would still be open.
+		#expect(gate.waiting == 1)
+		let answer = try trustAnswer(record, since: canceled)
+		#expect(answer.type == "cancel")
+		#expect(answer.seconds < 10) // time-ok: at once by the clock of the helper, against the 20 s of the gate
+		gate.open()
+		for _ in 0..<500 where gate.waiting > 0 {
+			try await Task.sleep(for: .milliseconds(10))
+		}
+		#expect(gate.waiting == 0)
+	}
+
 	@Test("A finished run releases the helper and its pipes")
 	func releasesPipes() async throws {
 		// Each leaked run keeps two pipes open. Other suites open files at the same time, so the bound is loose.
