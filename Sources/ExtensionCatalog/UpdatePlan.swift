@@ -140,6 +140,10 @@ public enum Standing: Sendable, Equatable {
 	/// The index lists a newer version than the installed one, or one it cannot order. The installed version does not run until
 	/// the update is installed (ADR 0015, decision 24, with the index of one version per package).
 	case outdated(String)
+	/// The index lists the installed version with other files, so the installed files are not the ones that
+	/// its signature covers. The package stays blocked as changed, as a package whose files were altered
+	/// (ADR 0015, decisions 21 and 24).
+	case changed(String)
 
 	public init(of installed: InstalledPackage, in index: CatalogIndex) {
 		guard let entry = index.entry(installed.id) else {
@@ -157,11 +161,20 @@ public enum Standing: Sendable, Equatable {
 			self = .outdated(String(localized: "Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update."))
 			return
 		}
+		if entry.status == .active || entry.status == .unmaintained, Self.digests(entry.files) != Self.digests(installed.files) {
+			self = .changed(CatalogError.changed(installed.name).description)
+			return
+		}
 		self = switch entry.status {
 		case .active: .runs(note: nil)
 		case .unmaintained: .runs(note: String(localized: "Nobody maintains \(installed.name).\(note)"))
 		case .blocked: .stopped(String(localized: "\(installed.name) is blocked.\(note)"))
 		case .withdrawn: .stopped(String(localized: "\(installed.name) was withdrawn.\(note)"))
 		}
+	}
+
+	/// Each file by its path, with its size and digest. The order of the files in an index carries no meaning.
+	private static func digests(_ files: [PackageFile]) -> [String: PackageFile] {
+		Dictionary(files.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
 	}
 }

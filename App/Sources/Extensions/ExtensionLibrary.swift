@@ -247,11 +247,15 @@ final class ExtensionLibrary {
 		await applyUpdates()
 	}
 
-	/// A blocked or withdrawn package stops at once: its running and waiting refreshes end.
+	/// A blocked or withdrawn package, and one that the index lists with other files, stops at once:
+	/// its running and waiting refreshes end.
 	private func stopSessionsOfStoppedPackages() {
 		guard let index else { return }
 		for case let (id, .catalog(installed)) in records {
-			if case .stopped = Standing(of: installed, in: index) { cancelSessions(of: id) }
+			switch Standing(of: installed, in: index) {
+			case .stopped, .changed: cancelSessions(of: id)
+			case .runs, .outdated: break
+			}
 		}
 	}
 
@@ -550,7 +554,7 @@ final class ExtensionLibrary {
 		case let .catalog(installed)?:
 			if let index {
 				switch Standing(of: installed, in: index) {
-				case let .stopped(reason), let .outdated(reason):
+				case let .stopped(reason), let .outdated(reason), let .changed(reason):
 					log(LogLine("ext stopped", ("extension", .hash(id))))
 					throw .unsupported(reason)
 				case .runs: break
@@ -652,6 +656,9 @@ final class ExtensionLibrary {
 		var badge = String(localized: "Installed \(record.version)")
 		if working.contains(record.id) {
 			badge = String(localized: "Installing...")
+		} else if case let .changed(reason) = standing {
+			badge = String(localized: "Changed")
+			note = reason
 		} else if updateState.changed.contains(record.id) || manifest == nil {
 			badge = String(localized: "Changed")
 			note = CatalogError.changed(record.name).description
