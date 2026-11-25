@@ -94,6 +94,10 @@ The selection, formula, Arabic digit, cancellation, and write-only folder regres
 - [x] Read the exported line as a spreadsheet does. TransactionCSVTests "A reader that splits the file at semicolons, at commas, or at tabs finds no cell that starts a formula" splits each line at semicolons, commas, and tabs, reads a quote only at the start of a cell, as Excel and the csv module of Python do, and checks 15 leads before each of the eight signs. 34 cases failed before.
 - [x] Record the cost of the apostrophe for an import. ExportRoundTripTests "An apostrophe of the formula protection comes back with the import, so its row is added again to the account it came from" exports four rows and imports them into the same account: "Abschlag November" and "Rate 100,-" are skipped, while "Ref,'+1+1" and "50,'- EUR" are added again.
 
+## Merge gate round 2 for #566
+
+- [x] Drop the exemption of a lone sign. `TransactionCSV` quotes a field with a semicolon, a double quote, or a line break, so the closing quote stood right after an exempted sign, and a comma reader read the Name "Shop; Berlin,-" and the Purpose "&HYPERLINK(1),;" as the cell `-";"&HYPERLINK(1)`, a valid formula. TransactionCSVTests "A sign at the end of a quoted field starts no formula with the text of the next field in any reader" gives the Name and the Purpose different texts and failed in 36 cases with the exemption. "Rate 100,-" now exports as "Rate 100,'-" and joins the cost of the import: ExportRoundTripTests "An apostrophe of the formula protection comes back with the import, so its row is added again to the account it came from" now adds three of the four rows again.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

@@ -172,6 +172,18 @@ The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a li
 - **WHEN** the Purpose is "Ref\r\n@SUM(1)" or "Ref\n=1+1"
 - **THEN** the Purpose cell is "Ref\r\n'@SUM(1)" or "Ref\n'=1+1" in CSV quotes
 
+#### Scenario: Price with a dash
+
+- **WHEN** the Purpose is "Rate 100,-"
+- **THEN** the Purpose cell is "Rate 100,'-"
+
+#### Scenario: Sign at the end of a quoted field
+
+- **GIVEN** the Name is "Shop; Berlin,-" and the Purpose is "&HYPERLINK(1),;"
+- **WHEN** the user exports it
+- **THEN** the Name cell is "Shop; Berlin,'-" in CSV quotes
+- **AND** a spreadsheet that splits the line at commas reads no cell that starts with a formula sign
+
 #### Scenario: Ordinary text
 
 - **WHEN** the Purpose is "Abschlag November, Kd-Nr 123"
@@ -201,25 +213,6 @@ The app SHALL skip double quotes, control characters, and format characters like
 
 - **WHEN** the Name is "\u{200B}=1+1"
 - **THEN** the Name cell is "'\u{200B}=1+1"
-
-### Requirement: A lone sign after a comma
-
-The app SHALL leave the text after a comma in a text field of a CSV file without an apostrophe when it holds only one formula sign and whitespace up to the next comma, carriage return, or line feed, or up to the end of the field.
-
-#### Scenario: Price with a dash
-
-- **WHEN** the Purpose is "Rate 100,-"
-- **THEN** the Purpose cell is "Rate 100,-"
-
-#### Scenario: Dash before a tab
-
-- **WHEN** the Purpose is "Ref,-\tHYPERLINK(1)"
-- **THEN** the Purpose cell is "Ref,'-\tHYPERLINK(1)"
-
-#### Scenario: Dash before more text
-
-- **WHEN** the Purpose is "50,- EUR"
-- **THEN** the Purpose cell is "50,'- EUR"
 
 ### Requirement: Categories in a CSV file
 

@@ -34,10 +34,10 @@ struct ExportRoundTripTests {
 		}
 		let data = try TransactionCSV.data(rows, ledger: Ledger(accounts: [giro]), locale: Locale(identifier: "de_DE"))
 		let imported = try TransactionFileImporter.parse(data, currency: "EUR").transactions.map { var t = $0; t.accountID = giro.id; return t }
-		#expect(imported.map(\.purpose) == ["Abschlag November", "Rate 100,-", "Ref,'+1+1", "50,'- EUR"])
+		#expect(imported.map(\.purpose) == ["Abschlag November", "Rate 100,'-", "Ref,'+1+1", "50,'- EUR"])
 		let merged = reconcile(.file(imported), into: giro, stored: rows, deleted: [], rules: Categorizer(ledger: Ledger(accounts: [giro])), now: Date())
-		#expect(merged.skipped == 2)
-		#expect(merged.added.map(\.purpose) == ["Ref,'+1+1", "50,'- EUR"])
+		#expect(merged.skipped == 1)
+		#expect(merged.added.map(\.purpose) == ["Rate 100,'-", "Ref,'+1+1", "50,'- EUR"])
 	}
 
 	@Test("An American export whose days are all 12 or lower asks for the date order, and month first brings back the same days", .bug("https://github.com/MonetenApp/Moneten/issues/509"))

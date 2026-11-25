@@ -29,16 +29,13 @@ enum SpreadsheetFormula {
 		let scalars = escaped(field).unicodeScalars
 		var result = String.UnicodeScalarView()
 		var start = scalars.startIndex
-		var before: Unicode.Scalar?
 		while true {
 			let end = scalars[start...].firstIndex(where: cellBreaks.contains) ?? scalars.endIndex
 			let part = scalars[start..<end]
-			let after = end < scalars.endIndex ? scalars[end] : nil
-			if startsFormula(part) && !(before == "," && after != "\t" && isLoneSign(part)) { result.append("'") }
+			if startsFormula(part) { result.append("'") }
 			result.append(contentsOf: part)
-			guard let after else { return String(result) }
-			result.append(after)
-			before = after
+			guard end < scalars.endIndex else { return String(result) }
+			result.append(scalars[end])
 			start = scalars.index(after: end)
 		}
 	}
@@ -51,15 +48,9 @@ enum SpreadsheetFormula {
 		return signs.contains(sign)
 	}
 
-	/// Whether the part that starts a formula holds its sign and whitespace only, as the "-" of "Rate 100,-" does. Such a part stays as it is
-	/// after a comma and before a comma, a line break, or the end of the field, because an apostrophe would change the
-	/// purpose that the import compares. A comma reader then reads the sign alone, or the sign and the semicolon of the
-	/// next field, which no formula accepts. A tab reader does not start a cell there. After or before a tab, a comma
-	/// reader would join the sign with the text after the tab, so the part gets the apostrophe.
-	private static func isLoneSign(_ part: Substring.UnicodeScalarView) -> Bool {
-		part.filter { !$0.properties.isWhitespace }.count == 1
-	}
-
+	/// A character that a reader can skip or drop before it reads a cell. Characters that some text renders as blank, such
+	/// as U+3164, U+115F, U+2800, and U+FFFC, and the nonspacing marks such as U+034F and U+FE0F stay visible, because no
+	/// known spreadsheet drops them before a formula sign.
 	private static func hides(_ scalar: Unicode.Scalar) -> Bool {
 		scalar.properties.isWhitespace || scalar == "\"" || [.control, .format].contains(scalar.properties.generalCategory)
 	}

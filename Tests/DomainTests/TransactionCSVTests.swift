@@ -56,12 +56,13 @@ struct TransactionCSVTests {
 		#expect(text.components(separatedBy: "\r\n")[1] == "03.11.2026;;\(cell);\(cell);\(cell);\(cell);\(cell);-89,00;EUR;\(cell);\(cell);\(cell);\(cell);\(cell);\(cell);;")
 	}
 
-	/// The exported row, without the header and the last line break, whose Name, Purpose, and Booking text are `text`.
+	/// The exported row, without the header and the last line break, whose Name and Booking text are `text`, and whose
+	/// Purpose is `purpose` or else `text` too.
 	/// The whole row is compared, because a cell can hold a line break.
-	func exportedRow(_ text: String, amountMinor: Int64 = -8_900) throws -> String {
+	func exportedRow(_ text: String, purpose: String? = nil, amountMinor: Int64 = -8_900) throws -> String {
 		var row = stadtwerke
 		row.name = text
-		row.purpose = text
+		row.purpose = purpose ?? text
 		row.bookingText = text
 		row.amountMinor = amountMinor
 		let header = TransactionCSV.columns.joined(separator: ";") + "\r\n"
@@ -99,10 +100,9 @@ struct TransactionCSVTests {
 		#expect(try exportedRow(input) == row(with: cell))
 	}
 
-	@Test("A part of only a sign and whitespace stays, while a sign before more text still gets the apostrophe", arguments: [
-		("Rate 100,-", "Rate 100,-"), ("123,- ", "123,- "), ("a,+\tb", "a,'+\tb"), ("Summe 50,-\r\nDank", "\"Summe 50,-\r\nDank\""),
-		("50,- EUR", "50,'- EUR"), ("a,- 1+1", "a,'- 1+1"), ("a,-\u{0}", "a,'-\u{0}"), ("a,-\tHYPERLINK(1)", "a,'-\tHYPERLINK(1)"),
-		("a,- \tHYPERLINK(1)", "a,'- \tHYPERLINK(1)"), ("a\t-,HYPERLINK(1)", "a\t'-,HYPERLINK(1)"), ("a\t-", "a\t'-"), ("a\n-", "\"a\n'-\""), ("a,\"-", "\"a,'\"\"-\""),
+	@Test("A part of only a sign and whitespace gets the apostrophe too", arguments: [
+		("Rate 100,-", "Rate 100,'-"), ("123,- ", "123,'- "), ("a,+\tb", "a,'+\tb"), ("Summe 50,-\r\nDank", "\"Summe 50,'-\r\nDank\""), ("50,- EUR", "50,'- EUR"),
+		("a\t-", "a\t'-"), ("a,\"-", "\"a,'\"\"-\""),
 	])
 	func loneSign(_ input: String, _ cell: String) throws {
 		#expect(try exportedRow(input) == row(with: cell))
@@ -152,22 +152,21 @@ struct TransactionCSVTests {
 		return cells
 	}
 
-	/// Whether a spreadsheet would read the cell as a formula: its first character after the whitespace, the control
-	/// characters, and the format characters that a reader can drop is a sign, and more than whitespace follows. A semicolon
-	/// right after the sign and its whitespace ends every formula with a syntax error.
+	/// Whether a spreadsheet could read the cell as a formula: its first character after the whitespace, the control
+	/// characters, and the format characters that a reader can drop is a sign.
 	func readsAsFormula(_ cell: String) -> Bool {
 		let visible = cell.unicodeScalars.drop { $0.properties.isWhitespace || [.control, .format].contains($0.properties.generalCategory) }
-		guard let first = visible.first, "=+-@＝＋－＠".unicodeScalars.contains(first) else { return false }
-		guard let next = visible.dropFirst().first(where: { !$0.properties.isWhitespace }) else { return false }
-		return next != ";"
+		guard let first = visible.first else { return false }
+		return "=+-@＝＋－＠".unicodeScalars.contains(first)
 	}
 
-	@Test("A lone sign after a comma, at the end of a field or before a tab, starts no formula in any reader", arguments: [
-		"Rate 100,-", "Rate 100,- ", "Ref,-\tHYPERLINK(1)", "Ref,- \tHYPERLINK(1)", "Ref\t-,HYPERLINK(1)", "Ref\t+\tHYPERLINK(1)", "Ref,-\r\nHYPERLINK(1)",
-		"Ref,-,HYPERLINK(1)", "Ref\t-", "Ref,\"-\tHYPERLINK(1)",
-	])
-	func readersAroundLoneSign(text: String) throws {
-		let line = try exportedRow(text, amountMinor: 8_900)
+	/// The CSV quotes of a field that holds a semicolon, a double quote, or a line break stand next to the parts of the
+	/// field, so a sign at the end of one field can start a cell that reaches into the next field.
+	@Test("A sign at the end of a quoted field starts no formula with the text of the next field in any reader", arguments: [
+		"Shop; Berlin,-", "Shop \"X\",-", "Shop\nBerlin,-", "Rate 100,-", "Rate 100,- ", "Shop; Berlin,+", "Shop; Berlin\t-", "Ref,-\tHYPERLINK(1)", "Ref\t-,HYPERLINK(1)",
+	], ["&HYPERLINK(1),;", "&HYPERLINK(1),\"", "\"&HYPERLINK(1)", ";&HYPERLINK(1)", "&HYPERLINK(1)", "Abschlag November"])
+	func readersAcrossFields(name: String, purpose: String) throws {
+		let line = try exportedRow(name, purpose: purpose, amountMinor: 8_900)
 		for separator: Unicode.Scalar in [";", ",", "\t"] {
 			#expect(cells(line, separator: separator).filter(readsAsFormula) == [], "split at \(separator.escaped(asASCII: true))")
 		}
