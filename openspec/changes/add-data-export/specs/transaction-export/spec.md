@@ -148,6 +148,30 @@ The app SHALL prefix a text field with an apostrophe when its first character is
 - **THEN** the Name is "'＝1+1" and the Purpose is "' - Miete"
 - **AND** the booking date is 03.11.2026 and the amount is -89,00 €
 
+### Requirement: Formula protection inside a text field
+
+The app SHALL put an apostrophe after a comma, a tab, a carriage return, or a line feed inside a text field when the text that follows it, up to the next of these characters, has `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` as its first character after leading whitespace. A spreadsheet that splits the file at commas, at tabs, or at line breaks then starts no cell with a formula sign. Ordinary text without such a sign stays unchanged, and Copy of rows does not add these apostrophes.
+
+#### Scenario: Formula after a comma
+
+- **WHEN** the Purpose is "Ref,+HYPERLINK(1)"
+- **THEN** the Purpose cell is "Ref,'+HYPERLINK(1)"
+
+#### Scenario: Formula after a tab
+
+- **WHEN** the Name is "Ref\t=1+1"
+- **THEN** the Name cell is "Ref\t'=1+1"
+
+#### Scenario: Formula after a comma and a space
+
+- **WHEN** the Booking text is "Gutschrift, -1+1"
+- **THEN** the Booking text cell is "Gutschrift,' -1+1"
+
+#### Scenario: Ordinary text
+
+- **WHEN** the Purpose is "Abschlag November, Kd-Nr 123"
+- **THEN** the Purpose cell is "Abschlag November, Kd-Nr 123"
+
 ### Requirement: Categories in a CSV file
 
 The app SHALL write the full path of the category with " - " between a category group and its category, and the name of the default category for a transaction without a category. A split transaction is written as one line for each part, with the amount and the category of the part.

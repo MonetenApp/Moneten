@@ -83,6 +83,10 @@ The selection, formula, Arabic digit, cancellation, and write-only folder regres
 
 - [x] Escape the full-width formula signs, also after leading whitespace. TransactionCSVTests.formulaProtection checks "＝HYPERLINK(1)", "＋1+1", "－1+1", "＠SUM(1)", " =1+1", a full-width space before "＝", and a no-break space and a space before "＠" in every bank-controlled column. These seven cases failed before the fix. `SpreadsheetFormula.escaped` in `Domain` now holds the rule for the CSV export and for Copy. Amount stays "-89,00". The scenario "Import of an exported file" was checked once with a test that was not kept: `TransactionFileImporter.parse` read the exported file back with the Name "'＝1+1", the Purpose "' - Miete", 03.11.2026, and the amount of -8900 minor units.
 
+## Formula signs after a comma, a tab, or a line break (issue #566)
+
+- [x] Escape a formula sign at the start of each part of a text field after a comma, a tab, a carriage return, or a line feed, so a spreadsheet that splits the semicolon file there starts no formula cell. Quoting alone does not help, because the opening quote of a field then stands in the middle of a cell. `SpreadsheetFormula.escapedInEveryPart` holds the rule, and only the CSV export uses it. TransactionCSVTests "A formula sign after a comma or a tab inside a field gets an apostrophe, so a reader that splits there starts no formula cell" checks the eight signs after a comma, a tab, a comma and a space, and a comma and a no-break space in Name, Purpose, and Booking text. "Each part after a comma, a tab, or a line break is checked on its own" checks several parts, a leading tab, empty parts, and line breaks. These 40 cases failed before the fix. "Ordinary text with commas, tabs, and signs inside a part stays unchanged" and TransactionCopyTests "Copy escapes only the start of a field, because its fields hold no tab and a pasted line splits only at tabs" passed before and after. The formulaProtection case "\n=HYPERLINK(1)" now also gets the apostrophe after the line feed.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-data-export` when every task is checked.

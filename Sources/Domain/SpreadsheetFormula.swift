@@ -12,7 +12,31 @@ enum SpreadsheetFormula {
 	static func escaped(_ field: String) -> String {
 		guard let first = field.unicodeScalars.first else { return field }
 		if first == "\t" || first == "\r" || first == "\n" { return "'" + field }
-		guard let sign = field.unicodeScalars.first(where: { !$0.properties.isWhitespace }), signs.contains(sign) else { return field }
-		return "'" + field
+		return startsWithSign(field.unicodeScalars[...]) ? "'" + field : field
+	}
+
+	/// A reader that splits at a comma, a tab, or a line break.
+	private static let cellBreaks: Set<Unicode.Scalar> = [",", "\t", "\r", "\n"]
+
+	/// The field escaped as one cell, and with an apostrophe after each comma, tab, or line break whose part, up to the next
+	/// of these, starts with a formula sign after leading whitespace. The CSV export separates its fields with semicolons, but
+	/// a spreadsheet in a region whose list separator is a comma, or one that splits at tabs, starts a new cell at each of
+	/// these characters, and a quote in the middle of such a cell is plain text. Copy does not need this, because its fields
+	/// hold no tab and a pasted line splits only at tabs.
+	static func escapedInEveryPart(_ field: String) -> String {
+		let scalars = escaped(field).unicodeScalars
+		var result = String.UnicodeScalarView()
+		var start = scalars.startIndex
+		while let end = scalars[start...].firstIndex(where: cellBreaks.contains) {
+			result.append(contentsOf: scalars[start...end])
+			start = scalars.index(after: end)
+			if startsWithSign(scalars[start...].prefix { !cellBreaks.contains($0) }) { result.append("'") }
+		}
+		result.append(contentsOf: scalars[start...])
+		return String(result)
+	}
+
+	private static func startsWithSign(_ text: Substring.UnicodeScalarView) -> Bool {
+		text.first { !$0.properties.isWhitespace }.map(signs.contains) ?? false
 	}
 }

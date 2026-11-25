@@ -42,7 +42,7 @@ struct TransactionCSVTests {
 	@Test("Formula prefixes are text in every bank-controlled column, while Amount stays numeric", arguments: [
 		("=HYPERLINK(\"http://x.example\",\"Klick\")", "\"'=HYPERLINK(\"\"http://x.example\"\",\"\"Klick\"\")\""),
 		("+1+1", "'+1+1"), ("-1+1", "'-1+1"), ("@SUM(1)", "'@SUM(1)"),
-		("\tText", "'\tText"), ("\rText", "\"'\rText\""), ("\n=HYPERLINK(1)", "\"'\n=HYPERLINK(1)\""),
+		("\tText", "'\tText"), ("\rText", "\"'\rText\""), ("\n=HYPERLINK(1)", "\"'\n'=HYPERLINK(1)\""),
 		("＝HYPERLINK(1)", "'＝HYPERLINK(1)"), ("＋1+1", "'＋1+1"), ("－1+1", "'－1+1"), ("＠SUM(1)", "'＠SUM(1)"),
 		(" =1+1", "' =1+1"), ("\u{3000}＝1+1", "'\u{3000}＝1+1"), ("\u{00A0} ＠SUM(1)", "'\u{00A0} ＠SUM(1)")
 	])
@@ -54,6 +54,42 @@ struct TransactionCSVTests {
 			mandateReference: input, creditorID: input, comment: input, categoryID: category.id)
 		let text = try TransactionCSV.text([row], ledger: Ledger(accounts: [account], categories: [category]), locale: Locale(identifier: "de_DE"))
 		#expect(text.components(separatedBy: "\r\n")[1] == "03.11.2026;;\(cell);\(cell);\(cell);\(cell);\(cell);-89,00;EUR;\(cell);\(cell);\(cell);\(cell);\(cell);\(cell);;")
+	}
+
+	/// Whether the exported row whose Name, Purpose, and Booking text are `text` has `cell` in these three columns. The whole
+	/// row is compared, because a cell can hold a line break.
+	func bankTextExports(_ text: String, as cell: String) throws -> Bool {
+		var row = stadtwerke
+		row.name = text
+		row.purpose = text
+		row.bookingText = text
+		let header = TransactionCSV.columns.joined(separator: ";")
+		return try TransactionCSV.text([row], ledger: ledger, locale: Locale(identifier: "de_DE"))
+			== "\(header)\r\n03.11.2026;04.11.2026;Housing;\(cell);\(cell);DE02120300000000202051;BYLADEM1001;-89,00;EUR;DE02120300000000202051;\(cell);E2E-1;M-1;DE98ZZZ09999999999;Abschlag;X;\r\n"
+	}
+
+	@Test("A formula sign after a comma or a tab inside a field gets an apostrophe, so a reader that splits there starts no formula cell",
+		arguments: ["=", "+", "-", "@", "＝", "＋", "－", "＠"], [",", "\t", ", ", ",\u{00A0}"])
+	func formulaAfterSeparator(sign: String, separator: String) throws {
+		let separatorEnd = separator.unicodeScalars.first!
+		let rest = String(separator.unicodeScalars.dropFirst())
+		let cell = "Ref\(separatorEnd)'\(rest)\(sign)HYPERLINK(1)"
+		#expect(try bankTextExports("Ref\(separator)\(sign)HYPERLINK(1)", as: cell))
+	}
+
+	@Test("Each part after a comma, a tab, or a line break is checked on its own", arguments: [
+		("a,+1,b,-2", "a,'+1,b,'-2"), ("\t=1", "'\t'=1"), ("=1,=2", "'=1,'=2"), ("a,\t+1", "a,\t'+1"), ("a, \t+1", "a, \t'+1"),
+		("a\n=1", "\"a\n'=1\""), ("a\r\n@1", "\"a\r\n'@1\""), ("a,,+1", "a,,'+1"), ("a,", "a,"), ("a\t", "a\t"),
+	])
+	func formulaInEveryPart(_ input: String, _ cell: String) throws {
+		#expect(try bankTextExports(input, as: cell))
+	}
+
+	@Test("Ordinary text with commas, tabs, and signs inside a part stays unchanged", arguments: [
+		"Abschlag November, Kd-Nr 123", "Miete 11/2026,Hausverwaltung", "Ref\tA+B", "Rabatt 10 %, netto", "a,b,c", "x@example.com, Info",
+	])
+	func ordinaryText(_ text: String) throws {
+		#expect(try bankTextExports(text, as: text))
 	}
 
 	@Test("Egyptian Arabic uses ASCII digits for both dates and amounts, and the dates have no direction marks")
