@@ -1,6 +1,6 @@
 # Proposal: Ship a lowest catalog index version that each release raises
 
-Closes #563.
+Closes #563 and #579.
 
 ## Why
 
@@ -11,6 +11,7 @@ A new data folder has no version floor for either catalog key. The app then acce
 - The lowest index version moves from the code into a file next to the two catalog keys, which the app reads at launch.
 - The app refuses an index below that version whatever floors it holds, so the higher of the floor and the version decides.
 - Without an index that the build accepts, because the build lacks a readable file or the stored index is below the version, the app shows, installs, and runs nothing from the catalog.
+- A refresh of a catalog extension that starts without an accepted index waits up to 30 seconds for the check of the catalog, and starts one when none runs, so the automatic refresh at launch does not fail after an update that raised the version.
 - Each release raises the file to the version of the newest index that the catalog signed before the release. The release checklist names the step.
 - `scripts/release.sh` refuses a release whose lowest index version is not a positive number or is lower than that of an earlier release, and checks that the app on the disk image carries the file of the checkout.
 
@@ -22,13 +23,13 @@ None.
 
 ### Modified Capabilities
 
-- `extension-catalog`: "Index version floor" adds the lowest index version of the release. "An app update resets the floor of retired keys" no longer limits that version to data folders without floors. Two new requirements say that each release raises the version, and that the app uses no catalog without an index it accepts.
+- `extension-catalog`: "Index version floor" adds the lowest index version of the release. "An app update resets the floor of retired keys" no longer limits that version to data folders without floors. Three new requirements say that each release raises the version, that the app uses no catalog without an index it accepts, and that a refresh waits for the check of the catalog.
 
 ## Impact
 
 - Milestone: v0.1
-- Issues: #563
-- Modules: `ExtensionCatalog` reads the lowest index version from its text. `App` loads the file with the keys. `scripts/release.sh` and `docs/releasing.md` hold the release step.
+- Issues: #563, #579
+- Modules: `ExtensionCatalog` reads the lowest index version from its text and runs one check of the index at a time, which a refresh can wait for. `App` loads the file with the keys. `scripts/release.sh` and `docs/releasing.md` hold the release step.
 - Decisions: [ADR 0015](../../../docs/decisions/0015-extension-program.md), decisions 10 and 23.
 
 ## Reference behavior
@@ -40,3 +41,4 @@ None.
 ### Decided for Moneten
 
 - A new data folder refuses an index below the lowest index version of the release. Each release raises that version, so an index older than the release cannot be replayed to a new installation.
+- A refresh of a catalog extension that starts without an accepted index waits up to 30 seconds for the check of the catalog, so the automatic refresh at launch after an update does not fail before the first check ends.

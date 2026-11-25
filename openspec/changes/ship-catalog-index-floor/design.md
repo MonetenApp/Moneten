@@ -36,3 +36,11 @@ What the release tooling can check is the history of this repository. `scripts/r
 ### What stays open
 
 The app still accepts an index that the catalog signed after the bound of the release and before the newest one, when its floor is lower. Each release narrows that window to the indexes signed since the release before. Real protection starts with the first release that raises the file above 1.
+
+### A refresh waits for the check of the catalog
+
+After an update that raised the bound, the app holds no index until the first check at launch accepts one. The automatic refresh starts with the unlock, before that check ends, so without a wait every account of a catalog extension that is due would fail its refresh with "Moneten has no list…", even on a Mac that is online, and the next refresh could be hours away (issue #579).
+
+So a refresh of a catalog extension that starts without an accepted index waits for the check that runs, and starts one when none runs. The second part covers a Mac that was offline at launch: the automatic refresh waits for the connection anyway, and the first refresh after it then checks the catalog instead of failing until the daily check. The wait lasts at most 30 seconds, so a catalog that does not answer holds a refresh no longer than that, and a canceled refresh stops waiting at once. After the wait, the refresh checks the standing of the package as before, so a failed check ends in the existing message. A manual refresh waits the same way. A package installed from a file never waits, and neither does a catalog package while the app holds an index.
+
+`IndexCheck` in the module `ExtensionCatalog` runs one check at a time: a second request joins the check that runs, and a refresh waits for it with the limit. `ExtensionLibrary` in the app runs each check through it and waits before it builds the connector of a session. The lock cancels the check that runs, so the next unlock starts its own. The updates that a check finds install after the check ends, so a refresh does not also wait for their downloads.
