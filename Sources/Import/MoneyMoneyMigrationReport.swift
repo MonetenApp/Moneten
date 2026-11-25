@@ -9,6 +9,9 @@ extension MoneyMoneyMigration {
 		public var accountID: UUID
 		/// The transactions of the export for this account.
 		public var rows: [Transaction] = []
+		/// The transactions of the export for this account that stay out, because their currency is no code. The report
+		/// counts them for the source, so the account differs.
+		public var leftOutRows = 0
 		public var balance: Money?
 	}
 
@@ -132,7 +135,7 @@ extension MoneyMoneyMigration.Plan {
 				balance = Money(minorUnits: Int64(clampingSum: Int128(account.initialBalanceMinor) + sum(ofSource) + sum(others) - sum(added)), currency: account.currency)
 			}
 			if shared, let sourceBalance = source.balance { balance = sourceBalance }
-			return .init(name: source.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count,
+			return .init(name: source.name, transactions: source.rows.count - missing + gone, sourceTransactions: source.rows.count + source.leftOutRows,
 				balance: balance, sourceBalance: source.balance, comparesBalance: migrated)
 		}
 		return .init(rows: rows, notes: mergeNotes + notes)

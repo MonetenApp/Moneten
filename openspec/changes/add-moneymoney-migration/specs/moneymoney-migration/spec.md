@@ -343,14 +343,15 @@ The app SHALL read the currency of each account, each first balance of an accoun
 
 ### Requirement: Source items with a currency that is no code
 
-The app SHALL leave out an account of the source whose currency or first balance currency is not a code, together with its transactions, and a transaction whose currency is not a code. The report names each of them. The app migrates every other account and transaction, and the complete export of the result imports again.
+The app SHALL leave out an account of the source whose currency or first balance currency is not a code, together with its transactions, and a transaction whose currency is not a code. The summary before the import names each of them, an account with the number of its transactions. The list of accounts in the report counts a transaction that stays out for the source, so its account differs. The app migrates every other account and transaction, and the complete export of the result imports again.
 
 #### Scenario: Account currency that is no code
 
-- **GIVEN** the source has the accounts "Kasse" with the currency "€" and "Giro" with the currency "EUR"
+- **GIVEN** the source has the account "Kasse" with the currency "€" and 37 transactions, and the account "Giro" with the currency "EUR"
 - **WHEN** the migration finishes
 - **THEN** the app has the account "Giro" with its transactions and no account "Kasse"
-- **AND** the report says 'The account "Kasse" was not migrated, because its currency "€" is not a currency code.'
+- **AND** the report says 'The account "Kasse" with its 37 transactions was not migrated, because its currency "€" is not a currency code.'
+- **AND** the accounts after "Kasse" keep their order without a gap
 
 #### Scenario: Transaction currency that is no code
 
@@ -358,6 +359,7 @@ The app SHALL leave out an account of the source whose currency or first balance
 - **WHEN** the migration finishes
 - **THEN** the account "Giro" has the 3 other transactions
 - **AND** the report says 'The transaction of 02.11.26 over -20,00 in "Giro" was not migrated, because its currency "US$" is not a currency code.'
+- **AND** the list of accounts shows 3 transactions for "Giro" against 4 in the source, and "Differs"
 
 #### Scenario: Many transactions with a currency that is no code
 

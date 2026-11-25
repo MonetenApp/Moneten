@@ -553,11 +553,10 @@ final class CAMTParser: NSObject, XMLParserDelegate {
 		// A code is upper case, and the fingerprint of a transaction compares it as it is. A missing or empty `Ccy` is the
 		// currency of the account.
 		var declared: String?
-		if let text = entry["currency"], !text.trimmingCharacters(in: .whitespaces).isEmpty {
-			guard let code = Money.currencyCode(text) else {
-				return fail(String(localized: "The currency \"\(text)\" of the entry is not a currency code."))
-			}
-			declared = code
+		switch Money.CurrencyField(entry["currency"]) {
+		case .missing: break
+		case let .code(code): declared = code
+		case .invalid: return fail(String(localized: "The currency \"\(entry["currency"] ?? "")\" of the entry is not a currency code."))
 		}
 		let currency = declared ?? currency
 		guard let money = Money(fitting: debit ? -amount : amount, currency: currency) else { return fail("The amount of the entry is too large.") }

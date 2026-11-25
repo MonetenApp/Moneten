@@ -284,9 +284,14 @@ enum ResultMapping {
 		var sums: [(currency: String, total: Int128)] = [(currency, 0)]
 		for pair in pairs {
 			// An empty currency is the one of the account, as for a transaction.
-			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
-				let code = text.trimmingCharacters(in: .whitespaces).isEmpty ? currency : Money.currencyCode(text) else {
+			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1] else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
+			}
+			let code: String
+			switch Money.CurrencyField(text) {
+			case .missing: code = currency
+			case let .code(read): code = read
+			case .invalid: throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
 			let value = try deliveredMoney(decimal, code, String(localized: "The balance in \(code)"))
 			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append((value.currency, 0)); return sums.count - 1 }()
@@ -302,9 +307,11 @@ enum ResultMapping {
 	/// The code in the field `key`, or nil when the field is missing or empty, so that it takes the currency of its account.
 	/// Any other text that is no code fails with `error`, which names the field, by the requirement "Currency codes of a result".
 	static func currency(_ fields: [String: LuaValue], _ key: String, or error: @autoclosure () -> MappingError) throws(MappingError) -> String? {
-		guard let text = fields.text(key), !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-		guard let code = Money.currencyCode(text) else { throw error() }
-		return code
+		switch Money.CurrencyField(fields.text(key)) {
+		case .missing: return nil
+		case let .code(code): return code
+		case .invalid: throw error()
+		}
 	}
 
 	/// The whole part of `bonusPoints`, or nil for a missing value, an empty text, or 0.

@@ -100,19 +100,45 @@ extension MoneyMoneyMigrationTests {
 		#expect(read.transactions.map(\.currency) == ["USDC", "USDC", "EUR", "EUR"])
 	}
 
-	@Test("An account whose currency or first balance currency is no code stays out with its transactions, the report names it, and the other accounts migrate", arguments: ["€", "US$", "EU", "1EU", "ABCDEFGHIJK"])
+	@Test("An account whose currency or first balance currency is no code stays out with its transactions, the report names it with their count, and the other accounts migrate", arguments: ["€", "US$", "EU", "1EU", "ABCDEFGHIJK"])
 	func accountCurrencyNoCode(code: String) throws {
 		for inBalance in [false, true] {
 			var source = accounts
 			if inBalance { source[1]["balance"] = [[1234.56, code]] } else { source[1]["currency"] = code }
 			let p = try currencyPlan(accounts: source)
 			#expect(p.accounts.map(\.name) == ["Savings", "Depot"])
+			// "Savings" takes the first place of the group, so the group has no gap.
+			#expect(p.accounts.map(\.position) == [0, 1])
 			#expect(p.sources.map(\.name) == ["Savings", "Depot"])
 			// The rows 1 to 3 belong to "Giro", the row 4 to "Savings".
 			#expect(p.transactions.map(\.sourceID) == ["\(Transaction.migrationIDPrefix)4"])
-			#expect(p.notes.contains("The account \"Giro\" was not migrated, because its currency \"\(code)\" is not a currency code."))
+			#expect(p.notes.contains("The account \"Giro\" with its 3 transactions was not migrated, because its currency \"\(code)\" is not a currency code."))
 			#expect(try reimported(p).accounts.map(\.name) == ["Savings", "Depot"])
 		}
+	}
+
+	@Test("The note of an account that stays out counts one transaction, or names none")
+	func accountCurrencyNoCodeCounts() throws {
+		var source = accounts
+		source[2]["currency"] = "€"
+		#expect(try currencyPlan(accounts: source).notes.contains("The account \"Savings\" with its 1 transaction was not migrated, because its currency \"€\" is not a currency code."))
+		source[2]["currency"] = "EUR"
+		source[3]["currency"] = "€"
+		source[3]["balance"] = nil
+		#expect(try currencyPlan(accounts: source).notes.contains("The account \"Depot\" was not migrated, because its currency \"€\" is not a currency code."))
+	}
+
+	@Test("The report counts a transaction that stays out for the source, so its account differs")
+	func leftOutTransactionDiffers() throws {
+		let row: [String: Any] = ["id": 4711, "accountUuid": "A1", "bookingDate": date(2026, 11, 2), "amount": -20.0, "currency": "US$",
+			"name": "Musterfirma GmbH", "purpose": "", "booked": true]
+		let p = try currencyPlan(rows: (transactions["transactions"] as! [[String: Any]]) + [row])
+		let report = p.report(after: Ledger(accounts: p.accounts, transactions: p.transactions))
+		let giro = try #require(report.rows.first { $0.name == "Giro" })
+		#expect(giro.transactions == 3)
+		#expect(giro.sourceTransactions == 4)
+		#expect(!giro.matches)
+		#expect(report.rows.first { $0.name == "Savings" }?.matches == true)
 	}
 
 	@Test("A transaction whose currency is no code stays out, the report names it with its day and amount, and the rest migrates", arguments: ["€", "US$", "1EU"])

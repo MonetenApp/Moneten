@@ -10390,6 +10390,28 @@
       },
       "extractionState" : "manual"
     },
+    "The account \"%@\" with its %lld transactions was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde mit seinen %2$lld Umsätzen nicht übernommen, weil seine Währung „%3$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The account \"%@\" with its 1 transaction was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde mit seinem 1 Umsatz nicht übernommen, weil seine Währung „%2$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The account group is empty." : {
       "localizations" : {
         "de" : {
@@ -10884,12 +10906,12 @@
       },
       "extractionState" : "manual"
     },
-    "The bank listed the account %@ with a currency that is not a currency code." : {
+    "The bank listed the account %@ with the currency \"%@\", which is not a currency code, so Moneten leaves it out." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Bank hat das Konto %@ mit einer Währung gemeldet, die kein Währungscode ist."
+            "value" : "Die Bank hat das Konto %1$@ mit der Währung „%2$@“ gemeldet, die kein Währungscode ist, daher lässt Moneten es aus."
           }
         }
       },

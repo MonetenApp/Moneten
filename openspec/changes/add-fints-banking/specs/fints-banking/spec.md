@@ -298,6 +298,11 @@ The app SHALL read each currency that the bank sends for an account, a balance, 
 - **WHEN** the bank sends a transaction of the account "Giro" with the currency "usd"
 - **THEN** the transaction is in USD
 
+#### Scenario: Balance without a currency
+
+- **WHEN** the bank sends a balance of 10,00 for the account "Dollar" in USD without a currency
+- **THEN** the account "Dollar" shows 10,00 USD
+
 #### Scenario: Transaction currency that is no code
 
 - **WHEN** the bank sends a transaction of the account "Giro" with the currency "€"
@@ -312,13 +317,14 @@ The app SHALL read each currency that the bank sends for an account, a balance, 
 
 ### Requirement: Currency codes of listed accounts
 
-The app SHALL fail the list of the accounts of a login when the bank lists an account with a currency that is not a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. The message names the account. A missing or empty currency is EUR.
+The app SHALL leave out an account of the list of a login whose currency is not a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals, and show a notice that names it. The other accounts of the login can be added, and the app keeps the state of the access. A missing or empty currency is EUR.
 
 #### Scenario: Listed account with a currency that is no code
 
-- **WHEN** the bank lists the account 202051 with the currency "€"
-- **THEN** the add account assistant shows "The bank listed the account 202051 with a currency that is not a currency code."
-- **AND** the assistant adds no account of this login
+- **GIVEN** the bank lists the account 202051 in EUR and the account 202051/01 with the currency "€"
+- **WHEN** the add account assistant lists the accounts of the login
+- **THEN** the assistant offers the account 202051
+- **AND** it shows the notice 'The bank listed the account 202051/01 with the currency "€", which is not a currency code, so Moneten leaves it out.'
 
 ### Requirement: Mark pending transactions
 

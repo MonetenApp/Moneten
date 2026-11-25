@@ -45,8 +45,8 @@ enum HelperMessage: Decodable {
 	case progress(done: Int, of: Int)
 	case notice(String)
 	case banks([BankDirectory.Entry])
-	/// The accounts of a login, or the failure of an account whose currency is no code.
-	case accounts(Result<[FinTSAccount], SyncFailure>)
+	/// The accounts of a login, and a notice for each listed account that stays out because its currency is no code.
+	case accounts([FinTSAccount], leftOut: [BankMessage])
 	/// A result that does not read fails only its account.
 	case result(account: String, Result<AccountResult, any Error>)
 	case accountFailed(account: String, HelperError)
@@ -88,7 +88,7 @@ enum HelperMessage: Decodable {
 		case "banks": self = .banks(try c.decode([BankLine].self, forKey: .banks).map(\.entry))
 		case "accounts":
 			let lines = try c.decode([AccountLine].self, forKey: .accounts)
-			self = .accounts(Result { () throws(SyncFailure) in try lines.map { line throws(SyncFailure) in try line.account() } })
+			self = .accounts(lines.compactMap(\.account), leftOut: lines.compactMap(\.leftOut))
 		case "result": self = .result(account: try c.decode(String.self, forKey: .account), Result { try AccountResult(from: decoder) })
 		case "accountFailed": self = .accountFailed(account: try c.decode(String.self, forKey: .account), try HelperError(from: decoder))
 		case "state": self = .state(try c.decode(Data.self, forKey: .data))
@@ -309,7 +309,8 @@ struct AccountResult: Decodable {
 
 	struct Balance: Decodable {
 		let amount: String
-		let currency: String
+		/// Nil when the bank sent no currency, so the balance is in the currency of the account. The helper leaves out an empty one.
+		let currency: String?
 		let date: String?
 	}
 
@@ -382,9 +383,11 @@ struct AccountResult: Decodable {
 	/// or nil when the bank sent none or an empty one. Other text fails the account and names `field`, because the complete
 	/// export refuses a currency that is no code.
 	static func currency(_ text: String?, _ field: @autoclosure () -> String) throws -> String? {
-		guard let text, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-		guard let code = Money.currencyCode(text) else { throw HelperFailure.notACurrencyCode(field()) }
-		return code
+		switch Money.CurrencyField(text) {
+		case .missing: return nil
+		case let .code(code): return code
+		case .invalid: throw HelperFailure.notACurrencyCode(field())
+		}
 	}
 
 	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The
@@ -465,7 +468,7 @@ extension AccountResult {
 
 		/// A price, in percent of the nominal amount when its currency is "%".
 		private static func quote(_ a: Amount, _ field: String) throws -> Quote {
-			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : try AccountResult.currency(a.currency, field), day: try a.day.map(AccountResult.day))
+			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency?.trimmingCharacters(in: .whitespaces) == "%" ? nil : try AccountResult.currency(a.currency, field), day: try a.day.map(AccountResult.day))
 		}
 	}
 }
@@ -499,18 +502,24 @@ private struct AccountLine: Decodable {
 	/// The helper knows a securities account also by its jobs, when the bank gives it no securities account type.
 	let securities: Bool?
 
-	/// The account, in EUR when the bank gives no currency. A currency that is no code fails the list and names the account.
-	func account() throws(SyncFailure) -> FinTSAccount {
-		var code = "EUR"
-		if let currency, !currency.trimmingCharacters(in: .whitespaces).isEmpty {
-			guard let read = Money.currencyCode(currency) else {
-				let numbered = subnumber.map { "\(number)/\($0)" } ?? number
-				throw .unsupported(String(localized: "The bank listed the account \(numbered) with a currency that is not a currency code."))
-			}
-			code = read
+	/// The account, in EUR when the bank gives no currency. Nil when its currency is no code, which no account can store,
+	/// so the other accounts of the login can still be added.
+	var account: FinTSAccount? {
+		let code: String
+		switch Money.CurrencyField(currency) {
+		case .missing: code = "EUR"
+		case let .code(read): code = read
+		case .invalid: return nil
 		}
 		return FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
 			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: code)
+	}
+
+	/// The notice that names the account when its currency is no code and it stays out of the list.
+	var leftOut: BankMessage? {
+		guard Money.CurrencyField(currency) == .invalid else { return nil }
+		let numbered = subnumber.map { "\(number)/\($0)" } ?? number
+		return BankMessage(text: String(localized: "The bank listed the account \(numbered) with the currency \"\(currency ?? "")\", which is not a currency code, so Moneten leaves it out."))
 	}
 }
 

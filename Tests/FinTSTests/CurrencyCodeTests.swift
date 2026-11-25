@@ -62,21 +62,44 @@ extension FinTSConnectorTests {
 		#expect(try AllData(json: file).json() == file)
 	}
 
-	@Test("An account in the list of a login with a currency that is no code fails the listing and names the account", arguments: ["€", "US$", "1EU"])
+	@Test("An account in the list of a login with a currency that is no code stays out with a notice, and the other accounts and the state remain", arguments: ["€", "US$", "1EU"])
 	func listedCurrencyNoCode(code: String) async throws {
 		let script = """
 			read cmd
-			echo '{"type":"accounts","accounts":[{"number":"4711","kind":"1","currency":"EUR"},{"number":"202051","subnumber":"01","kind":"1","currency":"\(code)"}]}'
+			echo '{"type":"accounts","accounts":[{"number":"202051","kind":"1","currency":"EUR"},{"number":"202051","subnumber":"01","kind":"1","currency":"\(code)"}]}'
+			echo '{"type":"state","data":"AQID"}'
 			"""
-		await #expect(throws: SyncFailure.unsupported("The bank listed the account 202051/01 with a currency that is not a currency code.")) {
-			_ = try await connector(script).listAccounts(of: Self.access, state: nil, session: Session())
-		}
+		let list = try await connector(script).listAccounts(of: Self.access, state: nil, session: Session())
+		#expect(list.accounts.map(\.remoteID) == ["202051"])
+		#expect(list.state == AccessState(Data([1, 2, 3])))
+		#expect(list.notices == [BankMessage(text: "The bank listed the account 202051/01 with the currency \"\(code)\", which is not a currency code, so Moneten leaves it out.")])
 	}
 
 	@Test("An account in the list of a login with an empty currency is in EUR")
 	func listedEmptyCurrency() throws {
 		let accounts = #"{"type":"accounts","accounts":[{"number":"202051","kind":"1","currency":" "},{"number":"4711","kind":"1","currency":"chf"}]}"#
-		guard case let .accounts(found) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
-		#expect(try found.get().map(\.currency) == ["EUR", "CHF"])
+		guard case let .accounts(found, leftOut) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
+		#expect(found.map(\.currency) == ["EUR", "CHF"])
+		#expect(leftOut.isEmpty)
+	}
+
+	@Test("A balance without a currency, or with a null one, is in the currency of the account", arguments: [
+		#"{"amount":"10.00"}"#, #"{"amount":"10.00","currency":null}"#, #"{"amount":"10.00","currency":""}"#,
+	])
+	func balanceWithoutCurrency(balance: String) async throws {
+		let usd = AccountRequest(accountID: UUID(), name: "Dollar", remoteID: "DE02120300000000202051", currency: "USD")
+		let report = try await refresh("""
+			read cmd
+			echo '{"type":"result",\(Self.account),"balance":\(balance),"errors":[]}'
+			""", accounts: [usd])
+		guard case let .fetched(result) = report.outcomes[usd.accountID] else { Issue.record("not fetched"); return }
+		#expect(result.balance == Money(minorUnits: 1_000, currency: "USD"))
+	}
+
+	@Test("A price in percent reads also with spaces around the sign")
+	func percentWithSpaces() throws {
+		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"EUR","price":{"amount":"101","currency":" % "}}"#
+		let holding = try JSONDecoder().decode(AccountResult.Position.self, from: Data(position.utf8)).holding(of: Self.giro, server: nil)
+		#expect(holding.quote?.currency == nil)
 	}
 }

@@ -67,6 +67,21 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 		return isCurrencyCode(code) ? code : nil
 	}
 
+	/// How a currency field from outside reads. Every edge takes a missing or empty field as the currency of its account,
+	/// stores a code, and refuses or leaves out anything else, so the rule has one place.
+	public enum CurrencyField: Equatable, Sendable {
+		/// No text, or only spaces.
+		case missing
+		case code(String)
+		/// Text that `currencyCode(_:)` does not read.
+		case invalid
+
+		public init(_ text: String?) {
+			guard let text, !text.trimmingCharacters(in: .whitespaces).isEmpty else { self = .missing; return }
+			self = Money.currencyCode(text).map(Self.code) ?? .invalid
+		}
+	}
+
 }
 
 enum Currency {
