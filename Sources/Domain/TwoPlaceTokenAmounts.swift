@@ -15,11 +15,18 @@ public enum TwoPlaceTokenAmounts {
 		places[currency].map { count in (2..<count).reduce(Int64(1)) { factor, _ in factor * 10 } }
 	}
 
-	/// `minorUnits` with 2 places in the minor units of `currency`. An amount beyond `Int64` holds at `Int64.max` or
-	/// `-Int64.max`, because a migration must never trap. Only an amount above 9.2 billion ETH or 92 billion BTC is beyond.
+	/// `minorUnits` with 2 places in the minor units of `currency`. An amount beyond `Money.maxMinorUnits` holds at that
+	/// limit, such as 1,000,001 ETH at 1,000,000 ETH: every edge, also the import of the complete export, refuses a larger
+	/// amount, so a backup of the database could not be restored. A migration must never trap either.
 	public static func converted(_ minorUnits: Int64, _ currency: String) -> Int64 {
 		guard let factor = factor(of: currency) else { return minorUnits }
-		return Int64(clampingSum: Int128(minorUnits) * Int128(factor))
+		let limit = Int128(Money.maxMinorUnits)
+		return Int64(min(limit, max(-limit, Int128(minorUnits) * Int128(factor))))
+	}
+
+	/// The largest amount with 2 places in `currency` that `converted(_:_:)` does not hold at the limit.
+	public static func largestConverted(in currency: String) -> Int64? {
+		factor(of: currency).map { Money.maxMinorUnits / $0 }
 	}
 
 	/// The file identity of a row (`Transaction.originalFileIdentity`) with its amount converted to the places of its

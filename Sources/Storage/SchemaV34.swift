@@ -8,13 +8,21 @@ import GRDB
 enum TokenPlacesAtV34 {
 	static func migrate(_ db: Database) throws {
 		for code in TwoPlaceTokenAmounts.places.keys.sorted() {
-			guard let factor = TwoPlaceTokenAmounts.factor(of: code) else { continue }
+			guard let factor = TwoPlaceTokenAmounts.factor(of: code), let bound = TwoPlaceTokenAmounts.largestConverted(in: code) else { continue }
+			let limit = Money.maxMinorUnits
+			func beyond(_ column: String) -> String { "(\(column) > \(bound) OR \(column) < -\(bound))" }
 			func scaled(_ column: String) -> String {
-				// SQLite makes a floating-point number of an integer product that overflows, so an amount beyond the range
-				// holds at its bound, as `TwoPlaceTokenAmounts.converted` does. Int64.min has no negation, so no abs().
-				let bound = Int64.max / factor
-				return "\(column) = CASE WHEN \(column) > \(bound) THEN \(Int64.max) WHEN \(column) < -\(bound) THEN -\(Int64.max) ELSE \(column) * \(factor) END"
+				// An amount beyond `Money.maxMinorUnits` holds at it, as `TwoPlaceTokenAmounts.converted` does. The bound also
+				// keeps the product from overflowing, which SQLite would turn into a floating-point number. Int64.min has no
+				// negation, so no abs().
+				"\(column) = CASE WHEN \(column) > \(bound) THEN \(limit) WHEN \(column) < -\(bound) THEN -\(limit) ELSE \(column) * \(factor) END"
 			}
+			// A split whose original or part holds at the limit no longer adds up, and the import of the complete export
+			// would refuse it. The original keeps its category and loses its parts, before any amount changes.
+			try db.execute(sql: """
+				DELETE FROM splitPart WHERE transactionID IN (SELECT t.id FROM bankTransaction t WHERE t.currency = ? AND (\(beyond("t.amountMinor"))
+					OR EXISTS (SELECT 1 FROM splitPart p WHERE p.transactionID = t.id AND \(beyond("p.amountMinor")))))
+				""", arguments: [code])
 			try db.execute(sql: "UPDATE account SET \(scaled("bankBalanceMinor")), \(scaled("initialBalanceMinor")) WHERE currency = ?", arguments: [code])
 			try db.execute(sql: "UPDATE portfolioValue SET \(scaled("minorUnits")) WHERE accountID IN (SELECT id FROM account WHERE currency = ?)", arguments: [code])
 			try db.execute(sql: "UPDATE bankTransaction SET \(scaled("amountMinor")) WHERE currency = ?", arguments: [code])

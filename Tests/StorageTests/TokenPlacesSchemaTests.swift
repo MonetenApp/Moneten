@@ -64,17 +64,17 @@ extension SchemaTests {
 		#expect(migrated.accounts[0].otherBankBalances.map(\.decimal) == [4, Decimal(string: "12.34")!])
 	}
 
-	/// An amount above 9.2 billion ETH overflows `Int64` with 9 places. A migration must never trap or store a
-	/// floating-point number, which SQLite makes of an integer product that overflows.
-	@Test("v34 holds an amount beyond the range of Int64 at its bound, and leaves the bound of Int64 itself as it is")
-	func tokenAmountsBeyondTheRangeOfInt64() throws {
+	/// An amount beyond `Money.maxMinorUnits` with the places of its code holds at that limit, which every edge also
+	/// keeps, and never becomes a floating-point number, which SQLite makes of an integer product that overflows.
+	@Test("v34 holds an amount beyond the limit of amounts at the limit, also one at the bounds of Int64")
+	func tokenAmountsBeyondTheLimit() throws {
 		let queue = try DatabaseQueue()
 		defer { try? queue.close() }
 		try Schema.migrator.migrate(queue, upTo: "v33")
 		let account = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "ETH")
 		try Store(queue: queue).save(accounts: [account])
 		try queue.write { db in
-			for (minor, day) in [(Int64.max / 10_000_000 + 1, 1), (Int64.min, 2), (-Int64.max, 3), (Int64.max / 10_000_000, 4)] {
+			for (minor, day) in [(Int64.max / 10_000_000 + 1, 1), (Int64.min, 2), (-Int64.max, 3), (100_000_000, 4), (100_000_001, 5), (-100_000_001, 6)] {
 				try db.execute(sql: """
 					INSERT INTO bankTransaction (id, accountID, bookingDate, amountMinor, currency, name, purpose, isChecked, isPending,
 						categorizedBy, isNew, isFetched, createdAt)
@@ -84,8 +84,50 @@ extension SchemaTests {
 		}
 		try Schema.migrator.migrate(queue)
 		let rows = try queue.read { db in try Row.fetchAll(db, sql: "SELECT amountMinor, typeof(amountMinor) AS type FROM bankTransaction ORDER BY bookingDate") }
-		#expect(rows.map { $0["type"] as String } == ["integer", "integer", "integer", "integer"])
-		#expect(rows.map { $0["amountMinor"] as Int64 } == [.max, -.max, -.max, Int64.max / 10_000_000 * 10_000_000])
+		#expect(rows.allSatisfy { $0["type"] as String == "integer" })
+		let limit = Money.maxMinorUnits
+		#expect(rows.map { $0["amountMinor"] as Int64 } == [limit, -limit, -limit, limit, limit, -limit])
+	}
+
+	/// The merge gate of #592 found that a clamped original with unclamped parts no longer formed a split, and that an
+	/// amount above the limit made the import of the complete export refuse the backup.
+	@Test("After v34, a database with an amount beyond the limit exports and imports again, and a split that no longer adds up is undone")
+	func tokenAmountsBeyondTheLimitStillRestore() throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v33")
+		let store = Store(queue: queue)
+		let day = Day(year: 2026, month: 11, day: 3)
+		let at = Date(timeIntervalSince1970: 1_794_700_000)
+		let food = Domain.Category(position: 0, name: "Food")
+		let wallet = Account(position: 0, name: "Wallet", kind: .giro, source: .offline, currency: "ETH")
+		// With 2 places: 10,000,000,000 ETH, 1,000,001 ETH, 50 ETH with a part above the limit, and 50 ETH that fits.
+		let huge = Transaction(accountID: wallet.id, bookingDate: day, amountMinor: 1_000_000_000_000, currency: "ETH", name: "Example A",
+			categoryID: food.id, categorizedBy: .manual, createdAt: at)
+		var converted = Transaction(accountID: wallet.id, bookingDate: day, amountMinor: -500, currency: "ETH", name: "Example B", createdAt: at)
+		converted.originalAmount = Money(minorUnits: -100_000_100, currency: "ETH")
+		let wide = Transaction(accountID: wallet.id, bookingDate: day, amountMinor: 5_000, currency: "ETH", name: "Example C", createdAt: at)
+		let fitting = Transaction(accountID: wallet.id, bookingDate: day, amountMinor: 5_000, currency: "ETH", name: "Example D", createdAt: at)
+		let parts = [
+			SplitPart(transactionID: huge.id, position: 0, amountMinor: 600_000_000_000), SplitPart(transactionID: huge.id, position: 1, amountMinor: 400_000_000_000),
+			SplitPart(transactionID: wide.id, position: 0, amountMinor: 200_000_000), SplitPart(transactionID: wide.id, position: 1, amountMinor: -199_995_000),
+			SplitPart(transactionID: fitting.id, position: 0, amountMinor: 3_000), SplitPart(transactionID: fitting.id, position: 1, amountMinor: 2_000),
+		]
+		try store.importAllData(AllData(exportedAt: at, accounts: [wallet], categories: [food], transactions: [huge, converted, wide, fitting], splitParts: parts))
+
+		try Schema.migrator.migrate(queue)
+		let migrated = try store.exportAllData(at: at)
+		let limit = Money.maxMinorUnits
+		#expect(migrated.transactions.map(\.amountMinor) == [limit, -5_000_000_000, 50_000_000_000, 50_000_000_000])
+		#expect(migrated.transactions.map(\.originalAmount?.minorUnits) == [nil, -limit, nil, nil])
+		#expect(migrated.transactions.first?.categoryID == food.id)
+		#expect(migrated.splitParts.map(\.transactionID) == [fitting.id, fitting.id])
+		#expect(migrated.splitParts.map(\.amountMinor) == [30_000_000_000, 20_000_000_000])
+		let restored = try DatabaseQueue()
+		defer { try? restored.close() }
+		try Schema.migrator.migrate(restored)
+		try Store(queue: restored).importAllData(try AllData(json: try migrated.json()))
+		#expect(try Store(queue: restored).exportAllData(at: at) == migrated)
 	}
 }
 

@@ -75,6 +75,7 @@ struct FormatTests {
 		#expect(Format.money(satoshis, locale: unitedStates) == "BTC\(nbsp)0.00012345")
 		#expect(Format.money(cents, locale: unitedStates) == "0.004\(nbsp)USDC")
 		#expect(Format.foreignAmount(satoshis, locale: germany) == "0,00012345 BTC")
+		#expect(Format.foreignAmount(Money(minorUnits: 1_500_000, currency: "USDC"), locale: unitedStates) == "1.50 USDC")
 		#expect(Format.amount(Money(minorUnits: 20_000_000, currency: "USDT"), locale: germany) == "20,00")
 		// An amount field shows every place, so the text reads back to the same amount.
 		#expect(Format.editableAmount(satoshis, locale: germany) == "0,00012345")

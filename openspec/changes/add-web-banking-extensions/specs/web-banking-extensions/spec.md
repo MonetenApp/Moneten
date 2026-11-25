@@ -1051,11 +1051,21 @@ The app SHALL store an amount in BTC with 8 decimal places, in ETH with 9, and i
 - **WHEN** a transaction of the result of a giro account in EUR has `amount=-0.000000021` and `currency="ETH"`
 - **THEN** the transaction is a withdrawal of 0,000000021 ETH
 
+### Requirement: Token amounts of an earlier database
+
+The app SHALL keep the value of each amount that an earlier version stored with 2 decimal places in BTC, ETH, USDC, or USDT when it opens the database. An amount beyond the requirement "Amount limit of a result" with the new places holds at that limit, and a split transaction whose amount or part holds there loses its split.
+
 #### Scenario: Database of an earlier version
 
 - **GIVEN** a database of an earlier version, which stored every amount in BTC, ETH, USDC, and USDT with 2 decimal places, with a transaction of 0,25 BTC and an account balance of 1,50 USDC
 - **WHEN** the app opens the database
 - **THEN** the transaction shows 0,25 BTC and the balance 1,50 USDC, and the complete export holds "0.25000000" and "1.500000"
+
+#### Scenario: Amount of an earlier database beyond the limit
+
+- **GIVEN** a database of an earlier version with a transaction of 10.000.000.000 ETH, split into two parts, and a transaction whose original amount is 1.000.001 ETH
+- **WHEN** the app opens the database
+- **THEN** both amounts hold at the amount limit of 1.000.000 ETH, the first transaction loses its split and keeps its category, and the complete export of the database imports again
 
 ### Requirement: Decimal places of an amount
 

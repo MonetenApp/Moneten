@@ -49,9 +49,7 @@ extension MoneyMoneyMigration {
 		/// The report as plain text for a file, with amounts in the format of `locale`.
 		public func text(locale: Locale = .current) -> String {
 			func count(_ n: Int) -> String { Self.count(n, locale: locale) }
-			func amount(_ money: Money) -> String {
-				money.decimal.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(money.decimalPlaces))) + " " + money.currency
-			}
+			func amount(_ money: Money) -> String { Format.foreignAmount(money, locale: locale) }
 			var lines = [String(localized: "Report of the migration from MoneyMoney"), "", String(localized: "Accounts"), Self.balanceRule]
 			for row in rows {
 				let own = String(localized: "\(row.name): \(count(row.transactions)), balance \(amount(row.balance)).")
