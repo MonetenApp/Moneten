@@ -140,6 +140,10 @@ public enum Standing: Sendable, Equatable {
 	/// The index lists a newer version than the installed one, or one it cannot order. The installed version does not run until
 	/// the update is installed (ADR 0015, decision 24, with the index of one version per package).
 	case outdated(String)
+	/// The index lists the installed version with other files, so the installed files are not the ones that
+	/// its signature covers. The package stays blocked as changed, as a package whose files were altered
+	/// (ADR 0015, decisions 21 and 24).
+	case changed(String)
 
 	/// Without an accepted index, no catalog package runs: only the files that an accepted index signs run
 	/// (decision 24), and this build may refuse the index it had (issue #563).
@@ -153,14 +157,19 @@ public enum Standing: Sendable, Equatable {
 			return
 		}
 		let note = entry.note.map { " \($0)" } ?? ""
+		let listedRuns = entry.status == .active || entry.status == .unmaintained
 		// A catalog that went back to an older version has no update for the installed one (issue #186).
-		if entry.status == .active || entry.status == .unmaintained, let listed = entry.version,
-			UpdatePlan.isNewer(installed.version, than: listed) {
+		if listedRuns, let listed = entry.version, UpdatePlan.isNewer(installed.version, than: listed) {
 			self = .stopped(String(localized: "The catalog lists version \(listed) of \(installed.name), which is older than the installed version \(installed.version). There is no update to install."))
 			return
 		}
-		if entry.status == .active || entry.status == .unmaintained, entry.version != installed.version {
+		if listedRuns, entry.version != installed.version {
 			self = .outdated(String(localized: "Version \(installed.version) of \(installed.name) is no longer in the catalog. Open Extensions and install the update."))
+			return
+		}
+		// The order of the files in an index carries no meaning.
+		if listedRuns, Set(entry.files) != Set(installed.files) {
+			self = .changed(CatalogError.changed(installed.name).description)
 			return
 		}
 		self = switch entry.status {

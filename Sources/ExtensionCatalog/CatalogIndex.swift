@@ -63,7 +63,7 @@ public struct CatalogIndex: Sendable, Equatable {
 }
 
 /// One file of a package with its size and its SHA-256 in lower-case hex.
-public struct PackageFile: Sendable, Equatable, Codable {
+public struct PackageFile: Sendable, Hashable, Codable {
 	public let path: String
 	public let size: Int
 	public let sha256: String
