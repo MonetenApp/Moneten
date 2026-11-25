@@ -15,9 +15,6 @@ final class ExtensionLibrary {
 		let source: CatalogSource
 		let keys: CatalogKeys?
 
-		/// The lowest index version that this build accepts while neither key has a floor (decision 23).
-		static let lowestIndexVersion = 1
-
 		static func standard() -> Configuration {
 			#if PERF_HARNESS
 			// The performance check shows a made-up index and never contacts the catalog.
@@ -29,12 +26,17 @@ final class ExtensionLibrary {
 			if let address = environment["MONETEN_CATALOG_URL"], let base = URL(string: address) {
 				let paths = environment["MONETEN_CATALOG_KEYS"]?.components(separatedBy: ":") ?? []
 				let pems = paths.compactMap { try? String(contentsOfFile: $0, encoding: .utf8) }
-				let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: lowestIndexVersion) : nil
+				// The throwaway keys sign indexes whose versions follow no release, so they start at version 1.
+				let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: 1) : nil
 				return Configuration(source: CatalogSource(base: base), keys: keys)
 			}
 			#endif
 			let pems = ["current", "next"].compactMap { Bundle.main.url(forResource: $0, withExtension: "pub").flatMap { try? String(contentsOf: $0, encoding: .utf8) } }
-			let keys = pems.count == 2 ? try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: lowestIndexVersion) : nil
+			// The lowest index version that this build accepts while neither key has a floor (decision 23).
+			// Each release raises it, and without it the app uses no catalog, as without its keys.
+			let lowest = Bundle.main.url(forResource: "lowest-index-version", withExtension: nil)
+				.flatMap { try? String(contentsOf: $0, encoding: .utf8) }.flatMap(CatalogKeys.lowestVersion)
+			let keys = pems.count == 2 ? lowest.flatMap { try? CatalogKeys(currentPEM: pems[0], nextPEM: pems[1], lowestVersion: $0) } : nil
 			NSLog("Catalog keys %@", keys == nil ? "missing" : "loaded")
 			return Configuration(source: CatalogSource(base: URL(string: "https://extensions.monetenapp.com/")!), keys: keys)
 			#endif

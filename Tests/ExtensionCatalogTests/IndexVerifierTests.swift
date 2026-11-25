@@ -85,6 +85,32 @@ import Testing
 		#expect(try accept(TestCatalog.index(version: 130), by: next, floors: first.floors, keys: keys).get()?.index.version == 130)
 	}
 
+	@Test func aNewDataFolderRefusesAnIndexOlderThanTheRelease() throws {
+		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
+		#expect(accept(TestCatalog.index(version: 139), by: current, floors: KeyFloors(), keys: keys) == .failure(.belowLowest(version: 139, lowest: 140)))
+		#expect(accept(TestCatalog.index(version: 139), by: next, floors: KeyFloors(), keys: keys) == .failure(.belowLowest(version: 139, lowest: 140)))
+		#expect(try accept(TestCatalog.index(version: 140), by: current, floors: KeyFloors(), keys: keys).get()?.index.version == 140)
+	}
+
+	@Test func aHigherFloorStillDecides() throws {
+		let keys = try CatalogKeys(currentPEM: current.pem, nextPEM: next.pem, lowestVersion: 140)
+		let first = try #require(try accept(TestCatalog.index(version: 200), by: current, keys: keys).get())
+		#expect(accept(TestCatalog.index(version: 150), by: current, floors: first.floors, accepted: TestCatalog.index(version: 200), keys: keys)
+			== .failure(.replayed(version: 150, floor: 200)))
+	}
+
+	@Test(arguments: [("140", 140), ("140\n", 140), ("1", 1), ("0", nil), ("0140", nil), ("-3", nil), ("+5", nil), (" 7\n", nil), ("", nil), ("\n", nil), ("abc", nil),
+		("1.5", nil), ("140\n\n", nil), ("140\n141\n", nil), ("99999999999999999999", nil)] as [(String, Int?)])
+	func lowestVersionFromText(text: String, version: Int?) {
+		#expect(CatalogKeys.lowestVersion(text) == version)
+	}
+
+	/// The lowest index version that the app ships beside its keys, which each release raises (docs/releasing.md).
+	@Test func shippedLowestIndexVersionIsReadable() throws {
+		let file = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "../../App/Resources/CatalogKeys/lowest-index-version")
+		#expect(CatalogKeys.lowestVersion(try String(contentsOf: file, encoding: .utf8)) != nil)
+	}
+
 	@Test func floorsComeBackFromTheAcceptedIndex() throws {
 		let data = TestCatalog.index(version: 120)
 		let accepted = try #require(try accept(data, by: current).get())

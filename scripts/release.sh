@@ -53,6 +53,42 @@ public_key() { notes public-key "$1"; }
 committed_key() { sed -n 's/^ \{8\}MONETEN_UPDATE_PUBLIC_KEY: *//p' App/project.yml; }
 debug_key() { awk '/^        [A-Za-z]+:$/ { debug = ($1 == "Debug:") } debug && /^ {10}MONETEN_UPDATE_PUBLIC_KEY:/ { sub(/^ +MONETEN_UPDATE_PUBLIC_KEY: */, ""); print }' App/project.yml; }
 
+# The lowest catalog index version that the app accepts in a new data folder (ADR 0015, decision 23).
+# Each release raises it by hand to the version of the newest index that the catalog signed
+# (docs/releasing.md), because the check here reads no catalog.
+LOWEST_FILE=App/Resources/CatalogKeys/lowest-index-version
+
+# Prints the number in the file $1 when the file is one positive number without a leading zero and
+# one newline, the strictest form that CatalogKeys.lowestVersion in the app reads. Fails otherwise.
+lowest_in() {
+	LOWEST_TEXT=$(cat "$1") || return 1
+	case "$LOWEST_TEXT" in ''|0*|*[!0-9]*) return 1 ;; esac
+	[ ${#LOWEST_TEXT} -le 18 ] || return 1
+	printf '%s\n' "$LOWEST_TEXT" | cmp -s - "$1" || return 1
+	echo "$LOWEST_TEXT"
+}
+
+# The lowest index version of each earlier tag v* of the app that has the file, one per line.
+earlier_lowest() {
+	for TAG in $(git tag --list 'v*'); do
+		app_tag "${TAG%%-*}" || continue
+		git show "$TAG:$LOWEST_FILE" > "$WORK/earlier-lowest" 2>/dev/null || continue
+		lowest_in "$WORK/earlier-lowest" | sed "s|$| $TAG|" || true
+	done
+}
+
+# Fails unless $LOWEST_FILE holds one positive number that no earlier release of the app exceeds. The
+# check cannot see the catalog, so it stops a release that lowers the bound, not one that forgot to
+# raise it: the checklist of docs/releasing.md covers that.
+check_lowest() {
+	LOWEST=$(lowest_in "$LOWEST_FILE") || fail "$LOWEST_FILE must hold one positive number and a newline."
+	earlier_lowest > "$WORK/earlier-lowest-list"
+	while read -r EARLIER TAG; do
+		[ "$LOWEST" -ge "$EARLIER" ] || fail "$LOWEST_FILE holds $LOWEST, lower than $EARLIER of $TAG. A release never lowers the lowest catalog index version."
+	done < "$WORK/earlier-lowest-list"
+	echo "The app accepts catalog indexes from version $LOWEST on in a new data folder."
+}
+
 # A release must carry one production update key: not the placeholder, and not the public test key.
 check_production_key() {
 	case "$1" in
@@ -146,6 +182,7 @@ check_latest() {
 
 preflight() {
 	check_production_key "$(committed_key)"
+	check_lowest
 	notes check
 	notes section "$1" >/dev/null
 	[ "$(git rev-parse --is-shallow-repository)" = false ] || fail "The checkout is shallow, so the build number would be wrong."
@@ -193,6 +230,8 @@ check_dmg() {
 	codesign --verify --strict --deep "$MOUNTED" || unmount_and_fail "The app on the disk image fails its code signature check."
 	[ "$(plist "$MOUNTED" CFBundleShortVersionString)" = "${2%%-*}" ] || unmount_and_fail "The app on the disk image has another version."
 	python3 scripts/licenses.py check-app "$MOUNTED" >/dev/null || unmount_and_fail "The app on the disk image lacks license notices."
+	cmp -s "$MOUNTED/Contents/Resources/lowest-index-version" "$LOWEST_FILE" \
+		|| unmount_and_fail "The app on the disk image does not carry the lowest catalog index version of $LOWEST_FILE."
 	JDK_VERSION=$(sed -n 's/^jdk:temurin-aarch64-mac:\([^ ]*\) .*/\1/p' Tools/FinTSProbeJava/dependencies.lock)
 	env -i "$MOUNTED/Contents/Resources/FinTSHelper/java" -Xshare:off -version 2>&1 | grep -qF "(build $JDK_VERSION," \
 		|| unmount_and_fail "The FinTS helper on the disk image does not start with the pinned Java runtime $JDK_VERSION."
@@ -867,6 +906,27 @@ check_keys() {
 	echo "The test key is the Debug key, and the check of a release refuses it and the placeholder."
 }
 
+# The check of the lowest catalog index version: it refuses a file that is not one positive number
+# and a newline, and a bound lower than that of an earlier release, which the stub of earlier_lowest
+# stands in for.
+check_lowest_rule() { (
+	for TEXT in 0 0140 -3 +5 ' 7' '' abc 1.5 '140\n141' '140\n' 99999999999999999999; do
+		printf -- "$TEXT\n" > "$WORK/lowest"
+		lowest_in "$WORK/lowest" > /dev/null && fail "The check of the lowest catalog index version accepts \"$TEXT\"."
+	done
+	printf 140 > "$WORK/lowest"
+	lowest_in "$WORK/lowest" > /dev/null && fail "The check of the lowest catalog index version accepts a file without a newline."
+	printf '140\n' > "$WORK/lowest"
+	[ "$(lowest_in "$WORK/lowest")" = 140 ] || fail "The check of the lowest catalog index version refuses 140."
+	LOWEST_FILE="$WORK/lowest"
+	earlier_lowest() { printf '140 v0.1.0\n120 v0.0.9\n'; }
+	check_lowest > /dev/null || fail "The check of the lowest catalog index version refuses the bound of the release before."
+	earlier_lowest() { printf '120 v0.1.0\n141 v0.1.1\n'; }
+	(check_lowest) 2>"$WORK/error" > /dev/null && fail "The check of the lowest catalog index version accepts a bound lower than that of v0.1.1."
+	grep -qF "lower than 141 of v0.1.1" "$WORK/error" || fail "A lowered bound stopped the release with another message: $(cat "$WORK/error")"
+	echo "The check of the lowest catalog index version refuses a file that is not one positive number, and a bound lower than that of an earlier release."
+); }
+
 # The check of draft: it accepts paths in /Users/runner/ and refuses another home folder. On the
 # zip of this run, it must pass in a checkout of the GitHub runner and refuse a checkout in another
 # home folder, such as the one of a maintainer.
@@ -922,6 +982,8 @@ dry_run() {
 		notes cut "$VERSION"
 	fi
 	notes check-release "$VERSION" --build "$(git rev-list --count HEAD)" --first-release
+	check_lowest_rule
+	check_lowest
 	check_latest_rule
 	if [ "$MONETEN_SIGN" = 1 ]; then package "$VERSION" signed dry-run; else package "$VERSION" unsigned; fi
 	check_path_rule "$VERSION"

@@ -15,6 +15,16 @@ public struct CatalogKeys: Sendable {
 		self.lowestVersion = lowestVersion
 	}
 
+	/// The lowest index version in the text of `lowest-index-version`, which ships beside the keys and
+	/// which each release raises (docs/releasing.md): one positive number in decimal digits without a
+	/// leading zero, and at most one newline after it. Nil for any other text, so the app never falls
+	/// back to a bound that accepts every old index.
+	public static func lowestVersion(_ text: String) -> Int? {
+		let digits = text.hasSuffix("\n") ? text.dropLast() : Substring(text)
+		guard let first = digits.first, first != "0", digits.allSatisfy({ $0.isASCII && $0.isWholeNumber }) else { return nil }
+		return Int(digits)
+	}
+
 	/// The DER of an Ed25519 SubjectPublicKeyInfo is this prefix and the 32 bytes of the key.
 	private static let prefix = Data([0x30, 0x2a, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x03, 0x21, 0x00])
 
