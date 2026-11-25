@@ -83,4 +83,19 @@ struct FormatTests {
 			#expect(Money(typed: Format.editableAmount(money, locale: germany), currency: money.currency) == money)
 		}
 	}
+
+	/// A price of a holding has the decimal places of its source, not those of its currency. The formatter takes only
+	/// codes of three letters and showed a price in USDC as a bare "0.004" without the code and the comma (#593).
+	@Test("A price shows its currency code, also the code of a token, in the number format of the region")
+	func prices() {
+		#expect(Format.money(Decimal(string: "0.004")!, currency: "USDC", places: 2...3, locale: germany) == "0,004\(nbsp)USDC")
+		#expect(Format.money(Decimal(string: "0.004")!, currency: "USDC", places: 2...3, locale: unitedStates) == "0.004\(nbsp)USDC")
+		#expect(Format.money(Decimal(string: "-1.5")!, currency: "USDC", places: 2...2, locale: germany) == "\(minus)1,50\(nbsp)USDC")
+		#expect(Format.money(Decimal(string: "1234.5")!, currency: "DOGE", places: 2...2, locale: germany) == "1.234,50\(nbsp)DOGE")
+		#expect(Format.money(25, currency: "EUR", places: 2...2, locale: germany) == "25,00\(nbsp)€")
+		#expect(Format.money(Decimal(string: "12.3456")!, currency: "EUR", places: 2...4, locale: germany) == "12,3456\(nbsp)€")
+		#expect(Format.money(Decimal(string: "-5000")!, currency: "EUR", places: 2...2, locale: germany) == "\(minus)5.000,00\(nbsp)€")
+		#expect(Format.money(25, currency: "EUR", places: 2...2, locale: unitedStates) == "€25.00")
+		#expect(Format.money(Decimal(string: "0.00000123")!, currency: "USD", places: 2...8, locale: unitedStates) == "$0.00000123")
+	}
 }

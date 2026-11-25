@@ -165,25 +165,25 @@ struct TotalGainText: View {
 }
 
 extension Format {
-	/// "40 shares", "12,3456 shares", "1 share", or a nominal amount such as "5.000,00 €", or "5.000,00" without a
-	/// known currency, with every decimal place of the source.
+	/// "40 shares", "12,3456 shares", "1 share", or a nominal amount such as "5.000,00 €" or "5.000,00 USDC", or
+	/// "5.000,00" without a known currency, with every decimal place of the source.
 	static func quantity(_ h: Holding) -> String {
 		let places = decimalPlaces(of: h.quantity)
 		if h.isNominal {
-			let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, places))
-			guard let currency = h.nominalCurrency else { return signed(h.quantity.formatted(.number.precision(precision))) }
-			return signed(h.quantity.formatted(.currency(code: currency).precision(precision)))
+			let nominalPlaces = 2...max(2, places)
+			guard let currency = h.nominalCurrency else { return signed(h.quantity.formatted(.number.precision(.fractionLength(nominalPlaces)))) }
+			return money(h.quantity, currency: currency, places: nominalPlaces)
 		}
 		let number = signed(h.quantity.formatted(.number.precision(.fractionLength(0...places))))
 		return h.quantity == 1 ? String(localized: "\(number) share") : String(localized: "\(number) shares")
 	}
 
-	/// "25,00 €", "12,3456 €", "0,00000123 $", or "98,50 %": at least two decimal places, and those of the source
-	/// up to six digits after the leading zeros. A price converted from another currency can have 38 decimal places.
+	/// "25,00 €", "12,3456 €", "0,00000123 $", "0,004 USDC", or "98,50 %": at least two decimal places, and those of
+	/// the source up to six digits after the leading zeros. A price converted from another currency can have 38 decimal places.
 	static func price(_ q: Quote) -> String {
-		let precision = NumberFormatStyleConfiguration.Precision.fractionLength(2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6)))
-		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(precision))) + " %" }
-		return signed(q.amount.formatted(.currency(code: currency).precision(precision)))
+		let places = 2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6))
+		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(.fractionLength(places)))) + " %" }
+		return money(q.amount, currency: currency, places: places)
 	}
 
 	/// "25,00 %" or "−20,00 %".
