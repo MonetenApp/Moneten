@@ -442,9 +442,9 @@ The app SHALL refuse a file with a newer format version and name the version of 
 
 #### Scenario: Invalid currency code
 
-- **WHEN** a currency code is "not a currency", "eur", or "EU1"
+- **WHEN** a currency code is "not a currency", "eur", "EU", "1EU", "U$D", or "ABCDEFGHIJK"
 - **THEN** the app refuses the file as damaged and names the object
-- **AND** a currency code consists of exactly three uppercase ASCII letters
+- **AND** a currency code consists of 3 to 10 uppercase ASCII letters and digits and starts with a letter, so "EUR", "USDC", and "EURO" are read
 
 #### Scenario: Nonpositive format version
 

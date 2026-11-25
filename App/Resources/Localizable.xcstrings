@@ -178,6 +178,17 @@
       },
       "extractionState" : "manual"
     },
+    "%@ has more decimal places than the currency %@ allows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ hat mehr Nachkommastellen, als die Währung %2$@ erlaubt."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%@ has no valid status." : {
       "localizations" : {
         "de" : {
@@ -2048,6 +2059,39 @@
       },
       "extractionState" : "manual"
     },
+    "price currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurswährung"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "purchase price currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Kaufpreises"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "quantity currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung der Anzahl"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Remove saved %@" : {
       "localizations" : {
         "de" : {
@@ -2067,6 +2111,39 @@
           }
         }
       }
+    },
+    "The %@ of security %lld is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Feld „%1$@“ von Wertpapier %2$lld ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The currency of account %@ is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung von Konto %@ ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The currency of transaction %lld is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung von Umsatz %lld ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The login data is removed for every account of this access. The next refresh asks for it." : {
       "localizations" : {

@@ -52,6 +52,14 @@ public struct Money: Hashable, Sendable, Codable, Comparable {
 
 	public static func < (lhs: Money, rhs: Money) -> Bool { lhs.minorUnits < rhs.minorUnits }
 
+	/// Whether `code` has the form of a currency code: 3 to 10 letters A to Z and digits that start with a letter. ISO 4217
+	/// codes have it, and so do the tickers of crypto tokens such as "USDC", which extensions give as the currency of a
+	/// position. The complete export accepts only this form, so each edge that takes a currency from outside checks it
+	/// before the code reaches the database.
+	public static func isCurrencyCode(_ code: String) -> Bool {
+		code.wholeMatch(of: /[A-Z][A-Z0-9]{2,9}/) != nil
+	}
+
 }
 
 enum Currency {

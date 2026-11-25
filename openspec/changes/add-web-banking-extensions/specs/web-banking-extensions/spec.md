@@ -992,6 +992,76 @@ The app SHALL read these transaction fields. `amount` and `bookingDate` are requ
 - **WHEN** one transaction in the array has no `amount`
 - **THEN** the account shows an error that says that a transaction has no amount
 
+### Requirement: Currency codes of a result
+
+The app SHALL read each currency of an account, a transaction, a pair of `balances`, or a security as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty field takes the currency of the account, or EUR for an account. Other text fails the account list or the account with a message that names the field.
+
+#### Scenario: Code in lower case
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency=" usd"`
+- **THEN** the transaction is a withdrawal of 20,00 US dollars
+
+#### Scenario: Ticker of a token
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency="usdc"`
+- **THEN** the transaction is a withdrawal of 20,00 USDC
+- **AND** the complete export of the database imports again with this transaction
+
+#### Scenario: Empty code
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency=""`
+- **THEN** the transaction is a withdrawal of 20,00 €
+- **AND** a result with `balances={{35.00, ""}}` for an account in EUR shows the balance 35,00 €
+
+#### Scenario: Transaction currency that is no code
+
+- **WHEN** the first transaction of the result of a giro account has `currency="€"`, `currency="US$"`, `currency="EU"`, `currency="1EU"`, or `currency="ABCDEFGHIJK"`
+- **THEN** the account shows the error "The currency of transaction 1 is not a currency code."
+- **AND** no transaction of this result is stored
+
+#### Scenario: Price currency that is no code
+
+- **WHEN** the first security of the result of a portfolio has `price=110` and `currencyOfPrice="US$"`
+- **THEN** the portfolio shows the error "The price currency of security 1 is not a currency code."
+- **AND** the same applies to `currencyOfPurchasePrice` with the purchase price currency and to `currencyOfQuantity` with the quantity currency
+
+#### Scenario: Account currency that is no code
+
+- **WHEN** `ListAccounts` returns an account with `accountNumber="4711"` and `currency="€"`
+- **THEN** the setup of the access fails with the error "The currency of account 4711 is not a currency code."
+- **AND** a refresh of an access that stored such an account fails the account with the same error
+
+### Requirement: Decimal places of an amount
+
+The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result is in a currency that ISO 4217 does not name and has more than two decimal places. The message names the field and the currency. An amount in an ISO 4217 currency rounds to the minor units of its currency, half away from zero. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
+
+#### Scenario: Balance in a token below a cent
+
+- **WHEN** the result of a giro account in EUR has `balance=10.00` and `balances={{10.00, "EUR"}, {0.004, "USDC"}}`
+- **THEN** the account shows the error "The balance in USDC has more decimal places than the currency USDC allows."
+- **AND** the stored balances stay as they were
+
+#### Scenario: Transaction of a fraction of a bitcoin
+
+- **WHEN** the first transaction of the result of a giro account has `amount=0.00012345` and `currency="btc"`
+- **THEN** the account shows the error "The amount of transaction 1 has more decimal places than the currency BTC allows."
+- **AND** no transaction of this result is stored
+
+#### Scenario: Sum of Lua numbers in a token
+
+- **WHEN** a transaction has `currency="USDC"` and the amount `0.1 + 0.2`, which a Lua number holds as 0.30000000000000004
+- **THEN** the transaction has the amount 0,30 USDC
+
+#### Scenario: Euro amount with a third decimal place
+
+- **WHEN** the result of a giro account in EUR has `balance=1234.56789` and a transaction with `amount=-10.005`
+- **THEN** the account shows the balance 1.234,57 € and a withdrawal of 10,01 €
+
+#### Scenario: Yen amount with a decimal place
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=100.5` and `currency="JPY"`
+- **THEN** the transaction is a deposit of 101 yen
+
 ### Requirement: Amount limit of a result
 
 The app SHALL fail an account when its result has a balance, a security value, or a transaction amount of more than 1,000,000,000,000,000 in the smallest unit of its currency, which is 10.000.000.000.000,00 € for the euro. The app also fails the account when the values of its securities add up to more, in any order, and when the value of a security less its purchase value is more. The message names the field.

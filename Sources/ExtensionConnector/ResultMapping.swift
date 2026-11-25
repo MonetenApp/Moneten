@@ -51,17 +51,20 @@ struct ListedAccount: Equatable {
 		"\(number) \(currency)" + (kind == .portfolio ? " portfolio" : "")
 	}
 
-	/// Reads one account table. An account without `accountNumber` is ignored, so it gives nil.
-	init?(_ value: LuaValue) {
+	/// Reads one account table. An account without `accountNumber` is ignored, so it gives nil. A currency that is no
+	/// code fails, because the account cannot be stored with it.
+	init?(_ value: LuaValue) throws(MappingError) {
 		guard case let .object(fields) = value, let number = fields.text("accountNumber"), !number.isEmpty else { return nil }
 		table = value
 		accountNumber = number
 		subAccount = fields.text("subAccount")
+		let numbered = subAccount.map { "\(number)/\($0)" } ?? number
+		currency = try ResultMapping.currency(fields, "currency",
+			or: MappingError(String(localized: "The currency of account \(numbered) is not a currency code."))) ?? "EUR"
 		// The type reads the name as listed, or the number without a name, as before, because the remote ID depends on it.
 		let listedName = fields.text("name") ?? number
 		owner = fields.text("owner")
 		bankCode = fields.text("bankCode")
-		currency = fields.text("currency")?.uppercased() ?? "EUR"
 		iban = fields.text("iban").flatMap(IBAN.init)
 		bic = fields.text("bic")
 		holdsSecurities = fields["portfolio"].map { $0 != .boolean(false) && $0 != .null } ?? false
@@ -86,7 +89,7 @@ struct ListedAccount: Equatable {
 		fields["balanceDate"] = .integer(Int64((refreshedAt ?? now).timeIntervalSince1970))
 		fields["comment"] = .string(comment ?? "")
 		fields["attributes"] = .object([:])
-		return ListedAccount(.object(fields)) ?? self
+		return (try? ListedAccount(.object(fields))) ?? self
 	}
 
 	/// The type of an account whose table has none, by the requirement "Derive a missing account type": the number
@@ -179,6 +182,23 @@ enum ResultMapping {
 			bonusPoints: try bonusPoints(fields["bonusPoints"])), [])
 	}
 
+	/// An amount that the script gives for a balance or a transaction. In an ISO 4217 currency it rounds to the minor units,
+	/// because scripts compute balances such as portfolio sums with more places. A code outside ISO 4217 has two places
+	/// that may not fit a token, and rounding would store 0.004 USDC as 0 and drop it without a word, so such an amount must
+	/// fit. Only the rounding error of a Lua number is rounded away, such as the 0.30000000000000004 that 0.1 + 0.2 gives:
+	/// a difference of at most 10^-15 of the amount, a few steps of a double.
+	private static func deliveredMoney(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
+		let money = try money(decimal, currency, what)
+		guard !isoCurrencies.contains(currency) else { return money }
+		guard (money.decimal - decimal).magnitude <= decimal.magnitude * Decimal(sign: .plus, exponent: -15, significand: 1) else {
+			throw MappingError(String(localized: "\(what) has more decimal places than the currency \(currency) allows."))
+		}
+		return money
+	}
+
+	/// The codes of ISO 4217 that the system knows, also historic ones such as DEM.
+	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+
 	/// An amount in the minor units of `currency`, or an error that names `what` when it is above `Money.maxMinorUnits`.
 	private static func money(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
 		guard let money = Money(fitting: decimal, currency: currency) else { throw MappingError(String(localized: "\(what) is out of range.")) }
@@ -199,10 +219,19 @@ enum ResultMapping {
 			return decimal
 		}
 		let quantity = try decimal("quantity", String(localized: "quantity")) ?? 0
-		let nominalCurrency = fields.text("currencyOfQuantity")?.uppercased()
+		/// A currency field, read only where the app uses it, so that a field the security does not need fails nothing.
+		func code(_ key: String) throws(MappingError) -> String? {
+			let what = switch key {
+			case "currencyOfQuantity": String(localized: "quantity currency")
+			case "currencyOfPurchasePrice": String(localized: "purchase price currency")
+			default: String(localized: "price currency")
+			}
+			return try ResultMapping.currency(fields, key, or: MappingError(String(localized: "The \(what) of security \(number) is not a currency code.")))
+		}
+		let nominalCurrency = try code("currencyOfQuantity")
 		/// A rate of the script, as units of `currencyKey` for one unit of the account currency.
 		func rate(_ key: String, _ currencyKey: String) throws(MappingError) -> ExchangeRate? {
-			guard let rate = try decimal(key, String(localized: "exchange rate")), rate > 0, let quoted = fields.text(currencyKey)?.uppercased(), quoted != currency else { return nil }
+			guard let rate = try decimal(key, String(localized: "exchange rate")), rate > 0, let quoted = try code(currencyKey), quoted != currency else { return nil }
 			return ExchangeRate(base: currency, quoted: quoted, rate: rate)
 		}
 		/// A price as a quote, with the check that the quantity at that price fits the range of an amount.
@@ -212,7 +241,7 @@ enum ResultMapping {
 			_ = try money(worth, nominalCurrency ?? currency, key == "price"
 				? String(localized: "The value of security \(number) at its price")
 				: String(localized: "The value of security \(number) at its purchase price"))
-			return Quote(amount: price, currency: nominalCurrency == nil ? fields.text(currencyKey)?.uppercased() ?? currency : nil, day: day)
+			return Quote(amount: price, currency: nominalCurrency == nil ? try code(currencyKey) ?? currency : nil, day: day)
 		}
 		let day = try decimal("tradeTimestamp", String(localized: "trade time")).flatMap { seconds -> Day? in
 			guard seconds >= minDate, seconds <= maxDate else { return nil }
@@ -249,16 +278,17 @@ enum ResultMapping {
 		guard !pairs.isEmpty else {
 			guard let amount = fields["balance"] else { return nil }
 			guard let decimal = amount.decimal else { throw MappingError(String(localized: "The balance is not a number.")) }
-			return (try money(decimal, currency, String(localized: "The balance")), [])
+			return (try deliveredMoney(decimal, currency, String(localized: "The balance")), [])
 		}
 		// The sums add up exactly, and only the sum of each currency has to be within the limit, as with the securities.
 		var sums: [(currency: String, total: Int128)] = [(currency, 0)]
 		for pair in pairs {
+			// An empty currency is the one of the account, as for a transaction.
 			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
-				let code = currencyCode(text) else {
+				let code = text.trimmingCharacters(in: .whitespaces).isEmpty ? currency : currencyCode(text) else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
-			let value = try money(decimal, code, String(localized: "The balance in \(code)"))
+			let value = try deliveredMoney(decimal, code, String(localized: "The balance in \(code)"))
 			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append((value.currency, 0)); return sums.count - 1 }()
 			sums[index].total += Int128(value.minorUnits)
 		}
@@ -269,11 +299,19 @@ enum ResultMapping {
 		return (balances[0], balances.dropFirst().filter { $0.minorUnits != 0 })
 	}
 
-	/// An ISO 4217 code, three letters A to Z after trimming and uppercasing, or nil. A code such as "US$" would reach the
-	/// complete export, whose import refuses it.
+	/// A currency code after trimming and uppercasing, by `Money.isCurrencyCode(_:)`, or nil. A code such as "US$" would
+	/// reach the complete export, whose import refuses it.
 	private static func currencyCode(_ text: String) -> String? {
 		let code = text.trimmingCharacters(in: .whitespaces).uppercased()
-		return code.wholeMatch(of: /[A-Z]{3}/) != nil ? code : nil
+		return Money.isCurrencyCode(code) ? code : nil
+	}
+
+	/// The code in the field `key`, or nil when the field is missing or empty, so that it takes the currency of its account.
+	/// Any other text that is no code fails with `error`, which names the field, by the requirement "Currency codes of a result".
+	static func currency(_ fields: [String: LuaValue], _ key: String, or error: @autoclosure () -> MappingError) throws(MappingError) -> String? {
+		guard let text = fields.text(key), !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+		guard let code = currencyCode(text) else { throw error() }
+		return code
 	}
 
 	/// The whole part of `bonusPoints`, or nil for a missing value, an empty text, or 0.
@@ -300,11 +338,12 @@ enum ResultMapping {
 			}
 			return Day(Date(timeIntervalSince1970: NSDecimalNumber(decimal: seconds).doubleValue), calendar: calendar)
 		}
-		let rowCurrency = fields.text("currency")?.uppercased() ?? currency
+		let rowCurrency = try ResultMapping.currency(fields, "currency",
+			or: MappingError(String(localized: "The currency of transaction \(number) is not a currency code."))) ?? currency
 		let booked = fields["booked"] != .boolean(false)
 		return Transaction(accountID: UUID(), bookingDate: try day(rawBooking, String(localized: "booking date")), valueDate: try fields["valueDate"].map { value throws(MappingError) in
 			try day(value, String(localized: "value date"))
-		}, amountMinor: try money(amount, rowCurrency, String(localized: "The amount of transaction \(number)")).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
+		}, amountMinor: try deliveredMoney(amount, rowCurrency, String(localized: "The amount of transaction \(number)")).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
 			purpose: fields.text("purpose") ?? "", counterpartyIBAN: fields.text("accountNumber").map(IBAN.electronicForm), counterpartyBIC: fields.text("bankCode"),
 			bookingText: fields.text("bookingText"), endToEndReference: fields.text("endToEndReference"), mandateReference: fields.text("mandateReference"),
 			creditorID: fields.text("creditorId"), isPending: !booked, sourceID: booked ? fields.text("transactionId") : nil)

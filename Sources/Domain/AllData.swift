@@ -313,8 +313,8 @@ enum AmountText {
 }
 
 private func currencyCode(_ text: String) throws {
-	guard text.wholeMatch(of: /[A-Z]{3}/) != nil else {
-		throw AllData.ReadError.damaged("\"\(text)\" is not a currency code in the form [A-Z]{3}")
+	guard Money.isCurrencyCode(text) else {
+		throw AllData.ReadError.damaged("\"\(text)\" is not a currency code in the form [A-Z][A-Z0-9]{2,9}")
 	}
 }
 
