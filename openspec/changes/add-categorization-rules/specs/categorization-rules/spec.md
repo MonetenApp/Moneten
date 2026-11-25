@@ -421,6 +421,46 @@ The app SHALL refuse to store a rule that it cannot parse. It shows a message th
 - **THEN** the app shows at position 6 that a sign cannot follow `name:`, and that `name!="…"` excludes a value
 - **AND** the app does not change the stored rule
 
+### Requirement: A rule has at most 20,000 characters
+
+The app SHALL refuse a rule that is longer than 20,000 characters as a rule that it cannot parse. The message says that the rule is longer than 20,000 characters and names position 20,001.
+
+#### Scenario: Rule at the limit
+
+- **WHEN** the user enters a rule of 20,000 characters: the word `Miete` and a space 3,333 times, and then `Pa`
+- **THEN** the app accepts the rule
+
+#### Scenario: Rule beyond the limit
+
+- **WHEN** the user enters a rule of 20,001 characters and closes the settings
+- **THEN** the app shows at position 20,001 that the rule is longer than 20,000 characters
+- **AND** the app does not change the stored rule
+
+### Requirement: A rule nests at most 100 levels
+
+The app SHALL refuse a rule that nests more than 100 levels as a rule that it cannot parse. Each opening parenthesis and each NOT operator (`NOT`, `!`, or `-`) is one level for the text after it, up to its closing parenthesis or to the end of its term. A field operator such as `name!=` is no level. The message names the position of the parenthesis or NOT operator that opens level 101.
+
+#### Scenario: 100 NOT signs
+
+- **WHEN** the user enters 100 signs `!` and then `Miete`
+- **THEN** the app accepts the rule
+- **AND** the rule matches a transaction with the purpose "Miete Mai"
+
+#### Scenario: 101 NOT signs
+
+- **WHEN** the user enters 101 signs `!` and then `Miete`
+- **THEN** the app shows at position 101 that the rule nests more than 100 parentheses and NOT operators
+
+#### Scenario: 101 parentheses
+
+- **WHEN** the user enters 101 opening parentheses, `Miete`, and 101 closing parentheses
+- **THEN** the app shows at position 101 that the rule nests more than 100 parentheses and NOT operators
+
+#### Scenario: Many terms side by side
+
+- **WHEN** the user enters `(Miete)` 1,000 times, joined by `OR`
+- **THEN** the app accepts the rule, because each parenthesis closes before the next one opens
+
 ### Requirement: A saved rule that cannot be read is marked
 
 The app SHALL mark a category in the sidebar when it cannot parse the saved rule of the category, because such a category gets no new transactions. The mark is a warning symbol with a tooltip that names the error. The mark goes away when the user saves a rule that the app can parse.
@@ -431,6 +471,14 @@ The app SHALL mark a category in the sidebar when it cannot parse the saved rule
 - **WHEN** the sidebar shows "Rent"
 - **THEN** the row of "Rent" shows a warning symbol
 - **AND** its tooltip says that the amount -1,000 is not a number
+
+#### Scenario: Imported rule beyond a limit
+
+- **GIVEN** "Import All Data..." read the category "Rent" with a saved rule of 1,000,000 signs `!` and the word `Miete`
+- **WHEN** the sidebar shows "Rent"
+- **THEN** the row of "Rent" shows a warning symbol
+- **AND** its tooltip says that the rule is longer than 20,000 characters
+- **AND** a refresh puts no transaction into "Rent"
 
 #### Scenario: Fixed rule
 
