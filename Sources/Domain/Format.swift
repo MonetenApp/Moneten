@@ -23,6 +23,15 @@ public enum Format {
 		return minus(m.decimal.formatted(Currency.tokenPlaces[m.currency].map { style.precision(.fractionLength(2...$0)) } ?? style))
 	}
 
+	/// A value in a currency with the decimal places of its source, such as the price of a holding: "0,004 USDC" or
+	/// "12,3456 €". The formatter takes only codes of three letters, so any other code follows the number of the region.
+	public static func money(_ value: Decimal, currency: String, places: ClosedRange<Int>, locale: Locale = .autoupdatingCurrent) -> String {
+		guard currency.utf8.count == 3 else {
+			return minus(value.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(places)))) + "\u{00A0}" + currency
+		}
+		return minus(value.formatted(Decimal.FormatStyle.Currency(code: currency, locale: locale).precision(.fractionLength(places))))
+	}
+
 	/// One amount for each currency, never added up, such as the sum of a group with euro and dollar accounts.
 	public static func sums(_ s: MoneySums, locale: Locale = .autoupdatingCurrent) -> String {
 		sums(s.amounts, locale: locale)
