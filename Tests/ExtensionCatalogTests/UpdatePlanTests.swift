@@ -133,12 +133,18 @@ import Testing
 		#expect(try plan { $0.version = "2" } == .install)
 	}
 
+	/// The record that an install of `package` writes, with the files that its index entry lists.
+	func installed(_ package: TestCatalog.Package = TestCatalog.Package()) throws -> InstalledPackage {
+		let entry = try #require(try CatalogIndex.parse(TestCatalog.index(version: 1, [package])).entry(package.id))
+		return InstalledPackage(id: package.id, name: "Example Bank", version: package.version, files: entry.files)
+	}
+
 	func standing(status: String, note: String? = nil, listed: Bool = true) throws -> Standing {
 		var package = TestCatalog.Package()
 		package.status = status
 		package.note = note
 		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, listed ? [package] : []))
-		return Standing(of: InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: []), in: index)
+		return Standing(of: try installed(), in: index)
 	}
 
 	@Test func blockedPackageStopsWithTheNote() throws {
@@ -182,6 +188,43 @@ import Testing
 
 	@Test func activePackageRuns() throws {
 		#expect(try standing(status: "active") == .runs(note: nil))
+	}
+
+	/// The catalog lists the installed version again with another script. The installed files are not the ones
+	/// that the accepted index signs, so they do not run.
+	@Test func installedVersionListedWithOtherDigestsStops() throws {
+		var relisted = TestCatalog.Package()
+		relisted.script += "-- fixed\n"
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [relisted]))
+		#expect(Standing(of: try installed(), in: index) == .changed("Example Bank was changed and does not match the catalog."))
+		relisted.status = "unmaintained"
+		#expect(Standing(of: try installed(), in: try CatalogIndex.parse(TestCatalog.index(version: 3, [relisted])))
+			== .changed("Example Bank was changed and does not match the catalog."))
+	}
+
+	@Test func installedVersionListedWithTheSameDigestsInAnotherOrderRuns() throws {
+		let record = try installed()
+		let reordered = InstalledPackage(id: record.id, name: record.name, version: record.version, files: record.files.reversed())
+		#expect(Standing(of: reordered, in: try CatalogIndex.parse(TestCatalog.index(version: 2))) == .runs(note: nil))
+	}
+
+	/// The record of the install differs from the index entry of the same version by one file, as when the
+	/// catalog lists the version again with a file more or a file less.
+	@Test(arguments: ["added", "dropped"]) func installedVersionListedWithAnotherSetOfFilesStops(change: String) throws {
+		let record = try installed()
+		let extra = PackageFile(path: "Helper.lua", size: 12, sha256: String(repeating: "a", count: 64))
+		let files = change == "added" ? Array(record.files.dropFirst()) : record.files + [extra]
+		let other = InstalledPackage(id: record.id, name: record.name, version: record.version, files: files)
+		#expect(Standing(of: other, in: try CatalogIndex.parse(TestCatalog.index(version: 2)))
+			== .changed("Example Bank was changed and does not match the catalog."))
+	}
+
+	@Test func blockedStateComesBeforeOtherDigests() throws {
+		var relisted = TestCatalog.Package()
+		relisted.script += "-- fixed\n"
+		relisted.status = "blocked"
+		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [relisted]))
+		#expect(Standing(of: try installed(), in: index) == .stopped("Example Bank is blocked."))
 	}
 
 	@Test func packageMissingFromTheIndexStops() throws {
