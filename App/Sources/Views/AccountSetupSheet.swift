@@ -90,6 +90,8 @@ final class AccountSetup {
 	var offlineName = ""
 	var offlineKind = AccountKind.cash
 	var offlineCurrency = "EUR"
+	/// The code that the currency field holds. The complete export refuses any other text, so "Done" waits for a code.
+	var offlineCurrencyCode: String? { Money.currencyCode(offlineCurrency) }
 
 	private var task: Task<Void, Never>?
 
@@ -137,7 +139,7 @@ final class AccountSetup {
 		case .login: !isLoggingIn && !loginName.trimmingCharacters(in: .whitespaces).isEmpty && !pin.isEmpty
 		// Without a new account "Done" closes "Look for New Accounts...".
 		case .accounts: !selected.isEmpty || (!isListing && candidates.isEmpty)
-		case .offline: Account.acceptedName(offlineName) != nil
+		case .offline: Account.acceptedName(offlineName) != nil && offlineCurrencyCode != nil
 		}
 	}
 
@@ -184,8 +186,8 @@ final class AccountSetup {
 				finish()
 			}
 		case .offline:
-			guard let name = Account.acceptedName(offlineName) else { return }
-			let kind = offlineKind, currency = offlineCurrency.uppercased(), group = groupID
+			guard let name = Account.acceptedName(offlineName), let currency = offlineCurrencyCode else { return }
+			let kind = offlineKind, group = groupID
 			Task { await model.addOfflineAccount(name: name, kind: kind, currency: currency, groupID: group) }
 			model.closeAccountSetup()
 		}
@@ -707,7 +709,7 @@ struct AccountSetupSheet: View {
 	}
 
 	@ViewBuilder private var offlineStep: some View {
-		Section("Offline account / Cash") {
+		Section {
 			TextField("Name", text: $setup.offlineName, prompt: Text("Required"))
 			Picker("Account type", selection: $setup.offlineKind) {
 				ForEach(AccountKind.choices(hasBankAccess: false), id: \.self) { Text($0.title).tag($0) }
@@ -716,6 +718,12 @@ struct AccountSetupSheet: View {
 			Picker("Account group", selection: $setup.groupID) {
 				Text("None").tag(UUID?.none)
 				ForEach(model.ledger.groups) { Text($0.name).tag(UUID?.some($0.id)) }
+			}
+		} header: {
+			Text("Offline account / Cash")
+		} footer: {
+			if setup.offlineCurrencyCode == nil {
+				Text("Enter a currency code such as EUR.").foregroundStyle(Palette.red)
 			}
 		}
 	}

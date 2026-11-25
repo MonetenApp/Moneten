@@ -326,6 +326,58 @@ The app SHALL refuse a migration when a transaction, an account balance, or a gr
 - **THEN** the assistant says that the initial balance of the account "Giro" is too large
 - **AND** no account, category, or transaction of this run is stored
 
+### Requirement: Currency codes of the source
+
+The app SHALL read the currency of each account, each first balance of an account, each transaction, and each category of the source as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency takes the currency of the account in the source for a transaction, and EUR for an account or a category. The app stores no currency text that is not such a code.
+
+#### Scenario: Code in lower case
+
+- **WHEN** the account "Krypto" of the source has the currency "usdc" and a transaction of 20,00 with the currency " usdc"
+- **THEN** the account "Krypto" and its transaction are in USDC
+- **AND** the complete export of the database imports again with this account and this transaction
+
+#### Scenario: Empty code
+
+- **WHEN** a transaction of the account "Giro" in USD has the currency ""
+- **THEN** the transaction is in USD
+
+### Requirement: Source items with a currency that is no code
+
+The app SHALL leave out an account of the source whose currency or first balance currency is not a code, together with its transactions, and a transaction whose currency is not a code. The summary before the import names each of them, an account with the number of its transactions. The list of accounts in the report counts a transaction that stays out for the source, so its account differs. The app migrates every other account and transaction, and the complete export of the result imports again.
+
+#### Scenario: Account currency that is no code
+
+- **GIVEN** the source has the account "Kasse" with the currency "€" and 37 transactions, and the account "Giro" with the currency "EUR"
+- **WHEN** the migration finishes
+- **THEN** the app has the account "Giro" with its transactions and no account "Kasse"
+- **AND** the report says 'The account "Kasse" with its 37 transactions was not migrated, because its currency "€" is not a currency code.'
+- **AND** the accounts after "Kasse" keep their order without a gap
+
+#### Scenario: Transaction currency that is no code
+
+- **GIVEN** the account "Giro" of the source has a transaction of -20,00 on 2 November 2026 with the currency "US$" and 3 other transactions in EUR
+- **WHEN** the migration finishes
+- **THEN** the account "Giro" has the 3 other transactions
+- **AND** the report says 'The transaction of 02.11.26 over -20,00 in "Giro" was not migrated, because its currency "US$" is not a currency code.'
+- **AND** the list of accounts shows 3 transactions for "Giro" against 4 in the source, and "Differs"
+
+#### Scenario: Many transactions with a currency that is no code
+
+- **GIVEN** 12 transactions of the source have the currency "€"
+- **WHEN** the migration finishes
+- **THEN** the report names the first 10 of them one by one
+- **AND** the report says "2 more transactions were not migrated, because their currency is not a currency code."
+
+### Requirement: Category currency that is no code
+
+The app SHALL migrate a category of the source whose currency is not a code with the currency EUR, as a category without a currency, and name it in the report.
+
+#### Scenario: Category in a currency sign
+
+- **WHEN** the category "Urlaub" of the source has the currency "€"
+- **THEN** the app has the category "Urlaub" in EUR
+- **AND** the report says 'The category "Urlaub" was migrated in EUR, because its currency "€" is not a currency code.'
+
 ### Requirement: Category, comment, and checkmark of each transaction
 
 The app SHALL keep the category, the comment, and the checkmark of each transaction. A migrated category counts as assigned by hand, so that the rules of the app do not move it.

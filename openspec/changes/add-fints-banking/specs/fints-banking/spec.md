@@ -289,6 +289,43 @@ The app SHALL fail an account when the bank sends a balance, a value, or a trans
 - **WHEN** the bank sends a position of 10.000.000.000 units at a price of 10.000.000.000,00 € without a market value for the portfolio "Depot"
 - **THEN** the portfolio "Depot" shows that the bank sent an amount that is too large
 
+### Requirement: Currency codes of a bank answer
+
+The app SHALL read each currency that the bank sends for an account, a balance, a transaction, or a position as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency of a balance, a transaction, a value, or accrued interest takes the currency of the account. Any other text fails the account and names the field. The app stores nothing of that account from this refresh, and the other accounts of the login refresh as usual.
+
+#### Scenario: Code in lower case
+
+- **WHEN** the bank sends a transaction of the account "Giro" with the currency "usd"
+- **THEN** the transaction is in USD
+
+#### Scenario: Balance without a currency
+
+- **WHEN** the bank sends a balance of 10,00 for the account "Dollar" in USD without a currency
+- **THEN** the account "Dollar" shows 10,00 USD
+
+#### Scenario: Transaction currency that is no code
+
+- **WHEN** the bank sends a transaction of the account "Giro" with the currency "€"
+- **THEN** the account "Giro" shows "The transaction currency that the bank sent is not a currency code, so nothing of this account was stored."
+- **AND** the account "Tagesgeld" of the same login shows its new balance
+
+#### Scenario: Position currency that is no code
+
+- **WHEN** the bank sends a position of the portfolio "Depot" with a price in the currency "US$"
+- **THEN** the portfolio "Depot" shows "The price currency that the bank sent is not a currency code, so nothing of this account was stored."
+- **AND** the same applies to the balance currency, the quantity currency, the value currency, the accrued interest currency, the purchase price currency, and the exchange rate currency
+
+### Requirement: Currency codes of listed accounts
+
+The app SHALL leave out an account of the list of a login whose currency is not a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals, and show a notice that names it. The other accounts of the login can be added, and the app keeps the state of the access. A missing or empty currency is EUR.
+
+#### Scenario: Listed account with a currency that is no code
+
+- **GIVEN** the bank lists the account 202051 in EUR and the account 202051/01 with the currency "€"
+- **WHEN** the add account assistant lists the accounts of the login
+- **THEN** the assistant offers the account 202051
+- **AND** it shows the notice 'The bank listed the account 202051/01 with the currency "€", which is not a currency code, so Moneten leaves it out.'
+
 ### Requirement: Mark pending transactions
 
 The app SHALL take over the transactions that a bank reports as not yet booked and mark each of them as pending.

@@ -870,6 +870,17 @@
         }
       }
     },
+    "%lld more transactions were not migrated, because their currency is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld weitere Umsätze wurden nicht übernommen, weil ihre Währung kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%lld new transactions" : {
       "localizations" : {
         "de" : {
@@ -1022,6 +1033,17 @@
           }
         }
       }
+    },
+    "1 more transaction was not migrated, because its currency is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 weiterer Umsatz wurde nicht übernommen, weil seine Währung kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "1 new transaction" : {
       "localizations" : {
@@ -1637,6 +1659,17 @@
           }
         }
       }
+    },
+    "accrued interest currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung der Stückzinsen"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Active" : {
       "localizations" : {
@@ -2649,6 +2682,17 @@
           }
         }
       }
+    },
+    "balance currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Saldos"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Balances are computed from the initial balance and the transactions. Add missing transactions and remove duplicates first. Then enter the correct balance at the end of today, and the initial balance changes by the difference." : {
       "localizations" : {
@@ -4906,6 +4950,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wechselkurs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "exchange rate currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Devisenkurses"
           }
         }
       },
@@ -10302,12 +10357,56 @@
       },
       "extractionState" : "manual"
     },
+    "The %@ that the bank sent is not a currency code, so nothing of this account was stored." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Feld „%@“, das die Bank gesendet hat, ist kein Währungscode, daher wurde nichts von diesem Konto gespeichert."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The access does not use FinTS." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der Zugang verwendet kein FinTS."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The account \"%@\" was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde nicht übernommen, weil seine Währung „%2$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The account \"%@\" with its %lld transactions was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde mit seinen %2$lld Umsätzen nicht übernommen, weil seine Währung „%3$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The account \"%@\" with its 1 transaction was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Konto „%1$@“ wurde mit seinem 1 Umsatz nicht übernommen, weil seine Währung „%2$@“ kein Währungscode ist."
           }
         }
       },
@@ -10807,6 +10906,17 @@
       },
       "extractionState" : "manual"
     },
+    "The bank listed the account %@ with the currency \"%@\", which is not a currency code, so Moneten leaves it out." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Bank hat das Konto %1$@ mit der Währung „%2$@“ gemeldet, die kein Währungscode ist, daher lässt Moneten es aus."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The bank no longer accepts this login: %@\nChoose “Edit Login Data...” and enter the new login that the bank gave you." : {
       "localizations" : {
         "de" : {
@@ -11008,6 +11118,17 @@
       },
       "extractionState" : "manual"
     },
+    "The category \"%@\" was migrated in EUR, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kategorie „%1$@“ wurde in EUR übernommen, weil ihre Währung „%2$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The category \"%@\" was not created, because a level of it is a category and not a group." : {
       "localizations" : {
         "de" : {
@@ -11104,6 +11225,28 @@
           }
         }
       }
+    },
+    "The currency \"%@\" of the entry is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung „%@“ der Buchung ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The currency \"%@\" of the opening balance is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung „%@“ des Anfangssaldos ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The currency of the transaction changed, so the kept splits were removed. Enter them again." : {
       "localizations" : {
@@ -12812,6 +12955,17 @@
       },
       "extractionState" : "manual"
     },
+    "The transaction of %@ over %@ in \"%@\" was not migrated, because its currency \"%@\" is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Umsatz vom %1$@ über %2$@ in „%3$@“ wurde nicht übernommen, weil seine Währung „%4$@“ kein Währungscode ist."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The transactions could not be fetched." : {
       "localizations" : {
         "de" : {
@@ -13371,6 +13525,17 @@
       },
       "extractionState" : "manual"
     },
+    "transaction currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Umsatzes"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Transaction Import" : {
       "localizations" : {
         "de" : {
@@ -13757,6 +13922,17 @@
           }
         }
       }
+    },
+    "value currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Kurswerts"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Value date" : {
       "localizations" : {

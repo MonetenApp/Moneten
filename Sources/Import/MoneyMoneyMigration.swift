@@ -132,7 +132,8 @@ public struct MoneyMoneyMigration: Sendable {
 		var plan = Plan(exports: Exports(accounts: accountsData, categories: categoriesData, transactions: transactionsData), calendar: calendar)
 		var accountMap: [String: UUID] = [:]
 		var sourceCurrencies: [String: String] = [:]
-		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap, currencies: &sourceCurrencies, isCanceled: isCanceled)
+		var leftOutAccounts: [LeftOutAccount] = []
+		try mapAccounts(rawAccounts, ledger: ledger, plan: &plan, map: &accountMap, currencies: &sourceCurrencies, leftOut: &leftOutAccounts, isCanceled: isCanceled)
 		var categoryMap: [String: UUID?] = [:]
 		try mapCategories(rawCategories, ledger: ledger, plan: &plan, map: &categoryMap, isCanceled: isCanceled)
 
@@ -144,14 +145,30 @@ public struct MoneyMoneyMigration: Sendable {
 		// A transaction without a currency is in the currency of its account in the source, also when it goes into an
 		// account of another currency here. The same amount in another currency is another transaction, so a default of
 		// EUR would add a stored USD row a second time.
+		// A transaction whose currency is no code stays in the source, and the report names it. The complete export would
+		// refuse it, and its account and the other transactions migrate anyway.
+		var unreadableCurrencies: [String] = []
+		var leftOutRows: [String: Int] = [:]
 		for (index, raw) in rawTransactions.enumerated() {
 			if isCanceled() { throw CancellationError() }
 			defer { reporter.send(.init(step: .transactions, completed: index + 1, total: rawTransactions.count, account: (raw["accountUuid"] as? String).flatMap { names[$0] })) }
-			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else { continue }
+			guard let accountSource = raw["accountUuid"] as? String, let accountID = accountMap[accountSource] else {
+				// The rows of an account that stays out, which its note counts.
+				if let source = raw["accountUuid"] as? String { leftOutRows[source, default: 0] += 1 }
+				continue
+			}
 			let id = (raw["id"] as? Int).map { "\(Transaction.migrationIDPrefix)\($0)" }
-			let currency = (raw["currency"] as? String)?.uppercased() ?? sourceCurrencies[accountSource] ?? "EUR"
-			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let booking = (raw["bookingDate"] as? Date).map { Day($0, calendar: calendar) } ?? Day.today(calendar: calendar)
+			guard let currency = Self.currency(raw["currency"], or: sourceCurrencies[accountSource] ?? "EUR") else {
+				let day = booking.date(in: calendar).formatted(date: .numeric, time: .omitted)
+				let amount = ((raw["amount"] as? Double) ?? 0).formatted(.number.precision(.fractionLength(2...)))
+				let account = names[accountSource] ?? ""
+				let text = raw["currency"] as? String ?? ""
+				unreadableCurrencies.append(String(localized: "The transaction of \(day) over \(amount) in \"\(account)\" was not migrated, because its currency \"\(text)\" is not a currency code."))
+				leftOutRows[accountSource, default: 0] += 1
+				continue
+			}
+			let amount = try Self.money((raw["amount"] as? Double) ?? 0, currency, .transaction(raw["id"] as? Int))
 			let pending = !((raw["booked"] as? Bool) ?? true)
 			var categoryID: UUID?
 			if let c = raw["categoryUuid"] as? String, let mapped = categoryMap[c] { categoryID = mapped }
@@ -168,8 +185,26 @@ public struct MoneyMoneyMigration: Sendable {
 			sourceRows[accountSource, default: []].append(t)
 		}
 
+		for account in leftOutAccounts {
+			let note = switch leftOutRows[account.sourceID, default: 0] {
+			case 0: String(localized: "The account \"\(account.name)\" was not migrated, because its currency \"\(account.currency)\" is not a currency code.")
+			case 1: String(localized: "The account \"\(account.name)\" with its 1 transaction was not migrated, because its currency \"\(account.currency)\" is not a currency code.")
+			case let rows: String(localized: "The account \"\(account.name)\" with its \(rows) transactions was not migrated, because its currency \"\(account.currency)\" is not a currency code.")
+			}
+			plan.notes.append(note)
+		}
+		plan.notes += unreadableCurrencies.prefix(Self.listedTransactions)
+		switch unreadableCurrencies.count - Self.listedTransactions {
+		case ...0: break
+		case 1: plan.notes.append(String(localized: "1 more transaction was not migrated, because its currency is not a currency code."))
+		case let more: plan.notes.append(String(localized: "\(more) more transactions were not migrated, because their currency is not a currency code."))
+		}
+
 		let delivered = Dictionary(grouping: rows, by: \.accountID)
-		for i in plan.sources.indices { plan.sources[i].rows = sourceRows[plan.sources[i].sourceID] ?? [] }
+		for i in plan.sources.indices {
+			plan.sources[i].rows = sourceRows[plan.sources[i].sourceID] ?? []
+			plan.sources[i].leftOutRows = leftOutRows[plan.sources[i].sourceID] ?? 0
+		}
 
 		// `reconcile` decides which rows are new. A new row keeps what MoneyMoney says: its category, comment,
 		// and checkmark, and no new mark. Only the review mark comes from `reconcile`.
@@ -360,8 +395,15 @@ public struct MoneyMoneyMigration: Sendable {
 		!deleted.isPending && isOfSource(deleted.sourceID)
 	}
 
+	/// An account of the source that stays out, because its currency is no code, with that text for its note.
+	private struct LeftOutAccount {
+		let sourceID: String
+		let name: String
+		let currency: String
+	}
+
 	private func mapAccounts(_ raw: [[String: Any]], ledger: Ledger, plan: inout Plan, map: inout [String: UUID], currencies: inout [String: String],
-		isCanceled: () -> Bool) throws {
+		leftOut: inout [LeftOutAccount], isCanceled: () -> Bool) throws {
 		var parents: [Int: UUID] = [:]
 		var positions: [UUID?: Int] = [:]
 		for item in raw {
@@ -370,8 +412,8 @@ public struct MoneyMoneyMigration: Sendable {
 			let indentation = (item["indentation"] as? Int) ?? 0
 			let parent = indentation > 0 ? parents[indentation - 1] : nil
 			let position = positions[parent, default: 0]
-			positions[parent] = position + 1
 			if (item["group"] as? Bool) == true {
+				positions[parent] = position + 1
 				let id = ledger.groups.first(where: { $0.name == listedName && $0.parentID == parent })?.id
 				if let id {
 					parents[indentation] = id
@@ -386,6 +428,20 @@ public struct MoneyMoneyMigration: Sendable {
 			let kind = isPortfolio ? .portfolio : Self.kind(item["type"] as? String)
 			// The plan, its report, and the error of a balance name the account as it is stored ("Account name").
 			let name = Account.name(from: listedName, kind: kind)
+			// The currency of the first balance wins over the one of the account. An account with a currency that is no code
+			// stays in the source with its transactions, and the report names it.
+			let firstBalance = (item["balance"] as? [[Any]])?.first.flatMap { pair -> (amount: Double, currency: String)? in
+				guard pair.count >= 2, let amount = pair[0] as? Double, let text = pair[1] as? String else { return nil }
+				return (amount, text)
+			}
+			let listedCurrency = Self.currency(item["currency"], or: "EUR")
+			guard let currency = listedCurrency.flatMap({ Self.currency(firstBalance?.currency, or: $0) }) else {
+				let text = (listedCurrency == nil ? item["currency"] as? String : firstBalance?.currency) ?? ""
+				leftOut.append(LeftOutAccount(sourceID: source, name: name, currency: text))
+				continue
+			}
+			// An account that stays out takes no place, so the accounts after it keep their order without a gap.
+			positions[parent] = position + 1
 			if isPortfolio { plan.portfolios.append((name, false)) }
 			// MoneyMoney puts the IBAN into `accountNumber` and the BIC into `bankCode`.
 			let number = Self.string(item["accountNumber"])
@@ -398,13 +454,7 @@ public struct MoneyMoneyMigration: Sendable {
 			// with its bank code.
 			let invalidIBAN: String? = [Self.string(item["iban"]), number].compactMap { $0 }.first(where: Self.isInvalidIBAN).map(TextFolding.accountKey)
 			let bic = Self.string(item["bic"]) ?? bankCode.flatMap { Self.isBIC($0) ? $0 : nil }
-			var balanceMinor: Int64?
-			var currency = (item["currency"] as? String)?.uppercased() ?? "EUR"
-			if let balance = item["balance"] as? [[Any]], let first = balance.first, first.count >= 2,
-				let amount = first[0] as? Double, let c = (first[1] as? String)?.uppercased() {
-				currency = c
-				balanceMinor = try Self.money(amount, c, .accountBalance(name)).minorUnits
-			}
+			let balanceMinor = try firstBalance.map { try Self.money($0.amount, currency, .accountBalance(name)).minorUnits }
 			currencies[source] = currency
 			let balanceDate = (item["balanceDate"] as? Date) ?? (item["refreshTimestamp"] as? Date)
 			let color = (item["icon"] as? Data).flatMap(Self.iconColor)
@@ -478,9 +528,14 @@ public struct MoneyMoneyMigration: Sendable {
 				}
 				continue
 			}
+			// A currency that is no code gives way to the one of a category without a currency, and the report says so.
+			let currency = Self.currency(item["currency"], or: "EUR")
+			if currency == nil {
+				plan.notes.append(String(localized: "The category \"\(name)\" was migrated in EUR, because its currency \"\(item["currency"] as? String ?? "")\" is not a currency code."))
+			}
 			// A group holds no transactions of its own, so the app gives it no rule.
 			let c = Domain.Category(parentID: parent, position: position, name: name, isGroup: isGroup, color: color,
-				currency: (item["currency"] as? String)?.uppercased() ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
+				currency: currency ?? "EUR", rule: isGroup ? "" : Self.string(item["rules"]) ?? "", sourceID: source)
 			plan.categories.append(c)
 			map[source] = c.id
 			if isGroup { parents[indentation] = c.id }
@@ -586,6 +641,19 @@ public struct MoneyMoneyMigration: Sendable {
 		guard let money = Money(fitting: Decimal(value), currency: currency) else { throw Failure.tooLarge(what) }
 		return money
 	}
+
+	/// The currency code in `value` by `Money.currencyCode(_:)`, or `fallback` when the source has no currency text or an
+	/// empty one. Nil for other text, which the complete export would refuse, so its account or transaction is not migrated.
+	private static func currency(_ value: Any?, or fallback: String) -> String? {
+		switch Money.CurrencyField(value as? String) {
+		case .missing: fallback
+		case let .code(code): code
+		case .invalid: nil
+		}
+	}
+
+	/// The transactions with a currency that is no code that the report names one by one. One note counts the rest.
+	private static let listedTransactions = 10
 
 	/// Text in the shape of an IBAN whose check digits do not fit: after folding only ASCII letters and digits, the country
 	/// code of an IBAN country, two digits, and the length of an IBAN of that country. Text that merely starts with a

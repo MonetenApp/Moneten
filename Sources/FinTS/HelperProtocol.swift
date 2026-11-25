@@ -45,7 +45,8 @@ enum HelperMessage: Decodable {
 	case progress(done: Int, of: Int)
 	case notice(String)
 	case banks([BankDirectory.Entry])
-	case accounts([FinTSAccount])
+	/// The accounts of a login, and a notice for each listed account that stays out because its currency is no code.
+	case accounts([FinTSAccount], leftOut: [BankMessage])
 	/// A result that does not read fails only its account.
 	case result(account: String, Result<AccountResult, any Error>)
 	case accountFailed(account: String, HelperError)
@@ -85,7 +86,9 @@ enum HelperMessage: Decodable {
 		case "progress": self = .progress(done: try c.decode(Int.self, forKey: .done), of: try c.decode(Int.self, forKey: .of))
 		case "notice": self = .notice(try c.decode(String.self, forKey: .text))
 		case "banks": self = .banks(try c.decode([BankLine].self, forKey: .banks).map(\.entry))
-		case "accounts": self = .accounts(try c.decode([AccountLine].self, forKey: .accounts).map(\.account))
+		case "accounts":
+			let lines = try c.decode([AccountLine].self, forKey: .accounts)
+			self = .accounts(lines.compactMap(\.account), leftOut: lines.compactMap(\.leftOut))
 		case "result": self = .result(account: try c.decode(String.self, forKey: .account), Result { try AccountResult(from: decoder) })
 		case "accountFailed": self = .accountFailed(account: try c.decode(String.self, forKey: .account), try HelperError(from: decoder))
 		case "state": self = .state(try c.decode(Data.self, forKey: .data))
@@ -306,7 +309,8 @@ struct AccountResult: Decodable {
 
 	struct Balance: Decodable {
 		let amount: String
-		let currency: String
+		/// Nil when the bank sent no currency, so the balance is in the currency of the account. The helper leaves out an empty one.
+		let currency: String?
 		let date: String?
 	}
 
@@ -351,7 +355,7 @@ struct AccountResult: Decodable {
 		guard balance != nil || transactions != nil else {
 			return (.failed(shownError?.failure ?? .nothingSent), [])
 		}
-		let money = try balance.map { try Self.money($0.amount, $0.currency) }
+		let money = try balance.map { try Self.money($0.amount, try Self.currency($0.currency, String(localized: "balance currency")) ?? account.currency) }
 		let fetched = try transactions.map { t in
 			FetchedTransactions(rows: try t.rows.map { try $0.transaction(of: account) }, from: try t.from.map(Self.day))
 		}
@@ -369,10 +373,21 @@ struct AccountResult: Decodable {
 	}
 
 	/// An amount above `Money.maxMinorUnits` fails the account, so that no sum of stored amounts can overflow.
-	/// The code of the currency is upper case, as the rest of the app and the fingerprint of a transaction expect it.
+	/// `currency` is a code that `currency(_:_:)` read.
 	static func money(_ amount: String, _ currency: String) throws -> Money {
-		guard let money = Money(fitting: try decimal(amount), currency: currency.uppercased()) else { throw HelperFailure.tooLarge }
+		guard let money = Money(fitting: try decimal(amount), currency: currency) else { throw HelperFailure.tooLarge }
 		return money
+	}
+
+	/// The code in a currency of the bank, upper case as the rest of the app and the fingerprint of a transaction expect it,
+	/// or nil when the bank sent none or an empty one. Other text fails the account and names `field`, because the complete
+	/// export refuses a currency that is no code.
+	static func currency(_ text: String?, _ field: @autoclosure () -> String) throws -> String? {
+		switch Money.CurrencyField(text) {
+		case .missing: return nil
+		case let .code(code): return code
+		case .invalid: throw HelperFailure.notACurrencyCode(field())
+		}
 	}
 
 	/// A plain decimal text of the helper, as `BigDecimal.toPlainString` writes it, with every decimal place. The
@@ -426,13 +441,24 @@ extension AccountResult {
 		func holding(of account: AccountRequest, server: URL?) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let quantityValue = try AccountResult.decimal(quantity)
-			let value = try value.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) }
-			let exchangeRate = try rate.map { ExchangeRate(base: $0.base.uppercased(), quoted: $0.quoted.uppercased(), rate: try AccountResult.decimal($0.rate)) }
-			let nominalCurrency = nominal == true ? currency?.uppercased() : nil
+			let value = try value.map {
+				try AccountResult.money($0.amount, try AccountResult.currency($0.currency, String(localized: "value currency")) ?? account.currency)
+			}
+			let accrued = try accrued.map {
+				try AccountResult.money($0.amount, try AccountResult.currency($0.currency, String(localized: "accrued interest currency")) ?? account.currency)
+			}
+			let exchangeRate = try rate.map { rate in
+				let field = String(localized: "exchange rate currency")
+				guard let base = try AccountResult.currency(rate.base, field), let quoted = try AccountResult.currency(rate.quoted, field) else {
+					throw HelperFailure.notACurrencyCode(field)
+				}
+				return ExchangeRate(base: base, quoted: quoted, rate: try AccountResult.decimal(rate.rate))
+			}
+			let nominalCurrency = nominal == true ? try AccountResult.currency(currency, String(localized: "quantity currency")) : nil
 			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
 				quantity: quantityValue, isNominal: nominal == true, nominalCurrency: nominalCurrency,
-				quote: try price.map(Self.quote), marketValue: value, accruedInterest: try accrued.map { try AccountResult.money($0.amount, $0.currency ?? account.currency) },
-				purchasePrice: OLBGroup.purchasePrice(try purchase.map(Self.quote), quantity: quantityValue,
+				quote: try price.map { try Self.quote($0, String(localized: "price currency")) }, marketValue: value, accruedInterest: accrued,
+				purchasePrice: OLBGroup.purchasePrice(try purchase.map { try Self.quote($0, String(localized: "purchase price currency")) }, quantity: quantityValue,
 					isNominal: nominal == true, nominalCurrency: nominalCurrency, rate: exchangeRate, server: server),
 				exchangeRate: exchangeRate)
 			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
@@ -440,8 +466,9 @@ extension AccountResult {
 			return holding
 		}
 
-		private static func quote(_ a: Amount) throws -> Quote {
-			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency == "%" ? nil : a.currency?.uppercased(), day: try a.day.map(AccountResult.day))
+		/// A price, in percent of the nominal amount when its currency is "%".
+		private static func quote(_ a: Amount, _ field: String) throws -> Quote {
+			Quote(amount: try AccountResult.decimal(a.amount), currency: a.currency?.trimmingCharacters(in: .whitespaces) == "%" ? nil : try AccountResult.currency(a.currency, field), day: try a.day.map(AccountResult.day))
 		}
 	}
 }
@@ -449,7 +476,7 @@ extension AccountResult {
 extension AccountResult.Row {
 	func transaction(of account: AccountRequest) throws -> Transaction {
 		guard let booked else { throw HelperFailure.noBookingDate }
-		let money = try AccountResult.money(amount, currency ?? account.currency)
+		let money = try AccountResult.money(amount, try AccountResult.currency(currency, String(localized: "transaction currency")) ?? account.currency)
 		// An original amount that does not read or is beyond the limit is left out, because the booked amount does not depend
 		// on it. `Transaction.original` drops a currency that is no ISO 4217 code.
 		var original: Money?
@@ -475,9 +502,24 @@ private struct AccountLine: Decodable {
 	/// The helper knows a securities account also by its jobs, when the bank gives it no securities account type.
 	let securities: Bool?
 
-	var account: FinTSAccount {
-		FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
-			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: currency?.uppercased() ?? "EUR")
+	/// The account, in EUR when the bank gives no currency. Nil when its currency is no code, which no account can store,
+	/// so the other accounts of the login can still be added.
+	var account: FinTSAccount? {
+		let code: String
+		switch Money.CurrencyField(currency) {
+		case .missing: code = "EUR"
+		case let .code(read): code = read
+		case .invalid: return nil
+		}
+		return FinTSAccount(number: number, subnumber: subnumber, iban: iban, bic: bic, productName: product,
+			kind: securities == true ? .portfolio : FinTSAccount.kind(of: kind), owner: owner, currency: code)
+	}
+
+	/// The notice that names the account when its currency is no code and it stays out of the list.
+	var leftOut: BankMessage? {
+		guard Money.CurrencyField(currency) == .invalid else { return nil }
+		let numbered = subnumber.map { "\(number)/\($0)" } ?? number
+		return BankMessage(text: String(localized: "The bank listed the account \(numbered) with the currency \"\(currency ?? "")\", which is not a currency code, so Moneten leaves it out."))
 	}
 }
 
@@ -489,6 +531,11 @@ enum HelperFailure {
 	static let insecure = SyncFailure.unsupported(String(localized: "The bank offers no encrypted FinTS address."))
 	static let noBookingDate = SyncFailure.unsupported(String(localized: "The bank sent a transaction without a booking date, so nothing of this account was stored."))
 	static let tooLarge = SyncFailure.unsupported(String(localized: "The bank sent an amount that is too large, so nothing of this account was stored."))
+
+	/// A currency of the bank that is no code, with the field that holds it, such as "price currency".
+	static func notACurrencyCode(_ field: String) -> SyncFailure {
+		.unsupported(String(localized: "The \(field) that the bank sent is not a currency code, so nothing of this account was stored."))
+	}
 	static let clash = SyncFailure.unsupported(String(localized: "Two accounts of this access are the same account at the bank."))
 	static let damaged = SyncFailure.unsupported(String(localized: "The files of the FinTS helper do not match the signature of Moneten. Download Moneten again and replace this copy."))
 	static let timeout = SyncFailure.network(String(localized: "The connection to the FinTS server of the bank timed out. Try again later."))

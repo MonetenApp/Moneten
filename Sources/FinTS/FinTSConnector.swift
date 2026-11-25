@@ -156,7 +156,9 @@ public struct FinTSConnector: BankConnector {
 		do {
 			try await run(try command("accounts", access, state), session: session) { message in
 				switch message {
-				case let .accounts(list): accounts = list
+				case let .accounts(list, leftOut):
+					accounts = list
+					notices += leftOut
 				case let .state(data): newState = AccessState(data)
 				case let .notice(text): notices.append(BankMessage(text: text))
 				case let .failed(error): throw error.failure

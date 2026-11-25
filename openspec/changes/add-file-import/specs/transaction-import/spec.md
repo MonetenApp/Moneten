@@ -680,6 +680,27 @@ The app SHALL import camt.052 and camt.053 files with the booking date, the valu
 - **WHEN** the user imports a camt.053 file with 3 booked entries
 - **THEN** the account has 3 new booked transactions with their references in the details
 
+### Requirement: Currency codes of a bank file
+
+The app SHALL read the currency of a CAMT entry, the `Ccy` of its amount, and the currency of an MT940 opening balance as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty currency of a CAMT entry takes the currency of the account. Any other text fails the file with its line, and the app imports nothing from it.
+
+#### Scenario: CAMT code in lower case
+
+- **WHEN** a CAMT entry has the amount `<Amt Ccy="usd">20.00</Amt>`
+- **THEN** the transaction is in USD
+
+#### Scenario: CAMT currency that is no code
+
+- **WHEN** a CAMT entry that ends in line 31 has the amount `<Amt Ccy="€">20.00</Amt>`, or the currency "US$" or "1EU"
+- **THEN** the app reports 'Line 31: The currency "€" of the entry is not a currency code.'
+- **AND** the account has no new transaction from this file
+
+#### Scenario: MT940 currency that is no code
+
+- **WHEN** line 4 of an MT940 file is `:60F:C2610311EU1000,00`
+- **THEN** the app reports 'Line 4: The currency "1EU" of the opening balance is not a currency code.'
+- **AND** the account has no new transaction from this file
+
 ### Requirement: CAMT entry with several payments
 
 The app SHALL import a CAMT entry that bundles several payments as one transaction with the amount of the entry. When its transaction details name different counterparties, the transaction has no counterparty name, IBAN, or BIC, and no end-to-end reference, mandate reference, or creditor ID. Its purpose joins the purposes of all details.

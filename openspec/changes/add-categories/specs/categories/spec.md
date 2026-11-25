@@ -180,7 +180,7 @@ The app SHALL let the user choose an icon for each category in its settings, fro
 
 ### Requirement: Category currency
 
-The app SHALL give each category one currency, which is the euro unless the user changes it. The amount in the sidebar counts the transactions in that currency. Transactions in another currency stay in the category, and the status line of the category view sums them for each currency.
+The app SHALL give each category one currency, which is the euro unless the user changes it. The currency is a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. The amount in the sidebar counts the transactions in that currency. Transactions in another currency stay in the category, and the status line of the category view sums them for each currency.
 
 #### Scenario: Mixed currencies
 
@@ -188,6 +188,12 @@ The app SHALL give each category one currency, which is the euro unless the user
 - **WHEN** the user opens "Travel"
 - **THEN** the sidebar amount is -300,00 €
 - **AND** the status line shows the sums -300,00 € and -50,00 USD
+
+#### Scenario: Currency that is no code
+
+- **WHEN** the user enters the currency "€" in the settings of the category "Travel"
+- **THEN** the settings show "Enter a currency code such as EUR." and do not close with "OK"
+- **AND** the currency "btc" is accepted and stored as BTC
 
 ### Requirement: Amount in the sidebar
 

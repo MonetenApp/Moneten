@@ -52,6 +52,7 @@ None.
 
 ### Decided for Moneten
 
+- Each currency of a bank answer must be a code of 3 to 10 letters A to Z and digits that starts with a letter, the form that the complete export stores (#582). Any other text fails the account and names the field, as an amount beyond the limit does, so that no backup holds a currency that its import refuses. An empty currency counts as a missing one.
 - The app supports FinTS 3.0. It does not support the older HBCI 2.2. MoneyMoney supports both.
 - The user cannot enter a FinTS address by hand. The address comes from the bank directory. MoneyMoney's current behavior was not observed.
 - The first refresh after setup asks for the full history. When the bank wants a separate TAN for transactions older than 90 days and the user cancels that TAN, the app fetches the last 90 days. The plan in issue #13 names 90 days. MoneyMoney's behavior at setup was not observed.

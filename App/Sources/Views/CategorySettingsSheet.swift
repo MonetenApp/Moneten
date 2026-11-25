@@ -137,11 +137,11 @@ struct CategorySettingsSheet: View {
 		}
 	}
 
-	private static let isoCurrencies = Set(Locale.Currency.isoCurrencies.map(\.identifier))
+	/// The code in the currency field by the rule of every currency that the app stores, so a category can be in a token
+	/// such as BTC, as an offline account can. Nil for other text, which the complete export would refuse.
+	private var currencyCode: String? { category.flatMap { Money.currencyCode($0.currency) } }
 
-	private var currencyCode: String { category?.currency.trimmingCharacters(in: .whitespaces).uppercased() ?? "" }
-
-	private var currencyIsValid: Bool { Self.isoCurrencies.contains(currencyCode) }
+	private var currencyIsValid: Bool { currencyCode != nil }
 
 	private var isApplying: Bool { model.isApplyingRule }
 
@@ -207,7 +207,8 @@ struct CategorySettingsSheet: View {
 		guard var c = category else { return true }
 		guard let name = nameCheck?.acceptedName else { return false }
 		c.name = name
-		c.currency = currencyCode
+		guard let code = currencyCode else { return false }
+		c.currency = code
 		// A category keeps the inherited palette color until the user picks one.
 		if !c.isDefault, color.hex != originalColor.hex { c.color = color.hex }
 		let ruleChanged = c.rule != model.ledger.category(categoryID)?.rule

@@ -44,6 +44,7 @@ None.
 
 ### Decided for Moneten
 
+- A currency of the source must be a code of 3 to 10 letters A to Z and digits that starts with a letter, the form that the complete export stores (#577). One account or transaction with another currency text does not stop the migration, because a user who switches could then migrate nothing. The app leaves out such an account with its transactions, and such a transaction, and the report names each one, as it names what the export does not contain. It does not replace the text with another currency, because a wrong currency would change every sum without a word. A category with such a currency migrates in EUR with a note. Its currency only selects which transactions its sidebar amount counts, so the category keeps its rules and its transactions, and the note tells the user to set the currency again. An empty currency counts as a missing one. The source app was not observed with such a currency.
 - The whole capability is specific to Moneten. Its scope comes from issue #24.
 - The keys of the property lists are not documented on the website. Before the design starts, record a real export from a test database and fix the field mapping against it.
 - Issue #24 expects that rules cannot be migrated. The plan for this change expects that they can. The spec migrates a rule when the category export contains it and lists it in the report when it does not. A real export, checked on 2026-11-10, contains the rules.

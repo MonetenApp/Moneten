@@ -1234,10 +1234,10 @@ struct FinTSConnectorTests {
 		let result = try JSONDecoder().decode(AccountResult.self, from: Data(line.utf8))
 		let rows = try #require(result.transactions?.rows).map { try $0.transaction(of: Self.giro) }
 		#expect(rows.map(\.currency) == ["EUR", "EUR"])
-		#expect(try AccountResult.money("10.00", "eur").currency == "EUR")
+		#expect(try AccountResult.currency("eur", "balance currency") == "EUR")
 		// The account of an accounts line.
 		let accounts = #"{"type":"accounts","accounts":[{"number":"202051","iban":"DE02120300000000202051","kind":"1","currency":"usd"}]}"#
-		guard case let .accounts(found) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
+		guard case let .accounts(found, _) = try JSONDecoder().decode(HelperMessage.self, from: Data(accounts.utf8)) else { throw HelperFailure.unreadable }
 		#expect(found.map(\.currency) == ["USD"])
 		// 100,00 € plus 10,00 $ accrued interest at 1.25 USD for 1 EUR are 108,00 €.
 		let position = #"{"name":"Anleihe","quantity":"100","nominal":true,"currency":"eur","value":{"amount":"100.00","currency":"eur"},"accrued":{"amount":"10.00","currency":"usd"},"rate":{"base":"eur","quoted":"usd","rate":"1.25"}}"#
