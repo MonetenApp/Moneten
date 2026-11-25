@@ -11,8 +11,11 @@ import Testing
 
 /// A refresh of a catalog extension that starts before the first check of the index ends waits for it
 /// (issue #579). The limits run on a `ManualClock`, so no test measures how busy the machine is (issue #594).
+/// The limit of a minute ends a test whose wait a regression no longer ends: the cancel of the test task ends
+/// the wait, so the test fails instead of holding the CI job until its timeout.
 @IndexCheckActor
-@Suite struct IndexCheckTests {
+@Suite(.timeLimit(.minutes(1))) // time-ok: ends a hang, not a timing assertion
+struct IndexCheckTests {
 	/// A check of the index that ends only when the test opens it.
 	@IndexCheckActor final class Gate {
 		private(set) var runs = 0
@@ -60,6 +63,16 @@ import Testing
 		return task!
 	}
 
+	/// Waits for a task that `started` returned. The time limit of the suite cancels the test, and this passes
+	/// the cancel on to the task and moves `clock` past every limit, so a wait that a regression in the limit
+	/// or in the cancel no longer ends fails the test instead of hanging it.
+	private func ended(_ task: Task<Void, Never>, clock: ManualClock? = nil) async {
+		await withTaskCancellationHandler { await task.value } onCancel: {
+			task.cancel()
+			clock?.advance(by: .seconds(3600))
+		}
+	}
+
 	@Test func aRefreshWaitsUntilTheCheckEnds() async {
 		let check = IndexCheck(clock: ManualClock()), gate = Gate(), seen = Seen()
 		let launch = await started { await check.run { await gate.check() } }
@@ -69,8 +82,8 @@ import Testing
 		}
 		#expect(!seen.waited)
 		gate.open()
-		await refresh.value
-		await launch.value
+		await ended(refresh)
+		await ended(launch)
 		#expect(seen.waited)
 		#expect(gate.runs == 1)
 	}
@@ -81,8 +94,8 @@ import Testing
 		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
 		let other = await started { await check.run { await gate.check() } }
 		gate.open()
-		await refresh.value
-		await other.value
+		await ended(refresh)
+		await ended(other)
 		#expect(gate.runs == 1)
 		await check.run { await gate.check() }
 		#expect(gate.runs == 2)
@@ -98,11 +111,11 @@ import Testing
 		clock.advance(by: .seconds(29))
 		#expect(!seen.waited)
 		clock.advance(by: .seconds(1))
-		await refresh.value
+		await ended(refresh)
 		// The check goes on after the wait, so the next request joins it.
 		let other = await started { await check.run { await gate.check() } }
 		gate.open()
-		await other.value
+		await ended(other)
 		#expect(gate.runs == 1)
 	}
 
@@ -114,18 +127,19 @@ import Testing
 		let check = IndexCheck(clock: clock)
 		let first = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
 		clock.advance(by: .seconds(30))
-		await first.value
+		await ended(first)
 		await check.run({ await gate.check() }, atMost: .seconds(30))
 		#expect(gate.runs == 1)
 		gate.open()
 	}
 
-	/// The clock never moves, so only the cancel can end the wait.
+	/// The clock does not move, so only the cancel can end the wait, unless the time limit of the suite ends it.
 	@Test func aCanceledRefreshStopsWaiting() async {
-		let check = IndexCheck(clock: ManualClock()), gate = Gate()
+		let clock = ManualClock(), gate = Gate()
+		let check = IndexCheck(clock: clock)
 		let refresh = await started { await check.run({ await gate.check() }, atMost: .seconds(30)) }
 		refresh.cancel()
-		await refresh.value
+		await ended(refresh, clock: clock)
 		gate.open()
 	}
 
@@ -135,7 +149,7 @@ import Testing
 		let check = IndexCheck(clock: ManualClock()), first = Gate(), next = Gate(), seen = Seen()
 		let locked = await started { await check.run({ await first.check() }, atMost: .seconds(30)) }
 		check.cancel()
-		await locked.value
+		await ended(locked)
 		let refresh = await started {
 			await check.run({ await next.check() }, atMost: .seconds(30))
 			seen.waited = true
@@ -146,7 +160,7 @@ import Testing
 		try await Task.sleep(for: .milliseconds(200))
 		#expect(!seen.waited)
 		next.open()
-		await refresh.value
+		await ended(refresh)
 		#expect(seen.waited)
 		#expect(first.runs == 1)
 		#expect(next.runs == 1)
