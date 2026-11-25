@@ -213,9 +213,9 @@ import Testing
 		}
 	}
 
-	/// A currency is three letters after trimming and uppercasing. Anything else would be stored and then refused by the
-	/// import of the complete export.
-	@Test(arguments: ["US$", "EU", "EURO", "", "  ", "U5D", "€"])
+	/// A currency is 3 to 10 letters and digits that start with a letter, after trimming and uppercasing. Anything else
+	/// would be stored and then refused by the import of the complete export.
+	@Test(arguments: ["US$", "EU", "", "  ", "U$D", "1EU", "€", "ABCDEFGHIJK"])
 	func balancesWithoutACurrencyCode(code: String) {
 		#expect(throws: MappingError("An entry of balances is not a pair of amount and currency.")) {
 			try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, code)]), "transactions": .array([])])
@@ -324,11 +324,11 @@ import Testing
 	/// The account still refreshed, so the message is a notice and no failure.
 	@Test func priceInAnotherCurrencyWithoutARateAddsNothingToTheBalance() throws {
 		let (tokens, notices) = try mapped(["securities": .array([.object(["name": .string("Token A"), "quantity": .integer(10), "price": .number(2), "amount": .integer(20)]),
-			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USD")])])], of: depot)
+			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .number(110), "currencyOfPrice": .string("USDC")])])], of: depot)
 		#expect(tokens.balance == Money(minorUnits: 2000, currency: "EUR"))
-		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USD"))
+		#expect(tokens.holdings?.last?.value(in: "EUR") == Money(minorUnits: 110_000, currency: "USDC"))
 		#expect(tokens.transactionFailure == nil)
-		#expect(notices == ["The balance leaves out Token B, because its price is in USD and the extension gives no exchange rate."])
+		#expect(notices == ["The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."])
 	}
 
 	/// The gain compares the value at today's rate with the cost at the rate of the day of the purchase.
@@ -486,9 +486,9 @@ import Testing
 		}
 	}
 
-	/// The scenarios of "Currency codes of a result". A code that is not three letters A to Z would be stored and then
-	/// refused by the import of the complete export, so the backup could not be restored (#569).
-	static let invalidCodes = ["usdc", "EURO", "€", "US$", "U5D", "EU"]
+	/// The scenarios of "Currency codes of a result". A code that is not 3 to 10 letters and digits starting with a letter
+	/// would be stored and then refused by the import of the complete export, so the backup could not be restored (#569).
+	static let invalidCodes = ["€", "US$", "EU", "U$D", "1EU", "ABCDEFGHIJK"]
 
 	@Test(arguments: invalidCodes)
 	func accountCurrencyThatIsNoCode(code: String) {
@@ -528,6 +528,7 @@ import Testing
 	@Test func currencyCodesInLowerCaseAndEmptyOnes() throws {
 		#expect(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string(" usd ")]))?.currency == "USD")
 		#expect(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("")]))?.currency == "EUR")
+		#expect(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("usdc")]))?.currency == "USDC")
 		let rows = try result(["balance": .integer(0), "transactions": .array([
 			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string(" usd")]),
 			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string("")])])]).transactions?.rows
@@ -542,21 +543,25 @@ import Testing
 
 	/// Every currency that the mapping accepts, in any case, is one that the import of the complete export reads back.
 	@Test func acceptedCurrenciesRoundTripThroughTheCompleteExport() throws {
-		let listed = try #require(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("usd")])))
+		let listed = try #require(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("euro")])))
 		let giro = Account(position: 0, name: "Dollar", kind: .giro, source: .offline, currency: listed.currency)
 		let portfolio = Account(position: 1, name: "Depot", kind: .portfolio, source: .offline, currency: depot.currency)
 		let rows = try result(["balance": .integer(0), "transactions": .array([
-			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string("gbp")])])], of: listed).transactions?.rows ?? []
+			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string("gbp")]),
+			.object(["bookingDate": .integer(1794182400), "amount": .number(-20), "currency": .string(" usdc")])])], of: listed).transactions?.rows ?? []
 		let holdings = try result(["securities": .array([
+			.object(["name": .string("Token B"), "quantity": .integer(10), "price": .integer(110), "currencyOfPrice": .string("usdc")]),
 			.object(["name": .string("Muster Inc."), "quantity": .integer(10), "price": .integer(110), "currencyOfPrice": .string("usd"),
 				"exchangeRateOfPrice": .number(1.1), "purchasePrice": .integer(100), "currencyOfPurchasePrice": .string("chf")]),
-			.object(["name": .string("Anleihe"), "quantity": .integer(5000), "currencyOfQuantity": .string("usd"), "price": .integer(100),
+			.object(["name": .string("Anleihe"), "quantity": .integer(5000), "currencyOfQuantity": .string("usdt"), "price": .integer(100),
 				"exchangeRateOfPrice": .number(1.25)])])], of: depot).holdings ?? []
 		let data = AllData(exportedAt: Date(timeIntervalSince1970: 1_794_700_000), accounts: [giro, portfolio],
 			transactions: rows.map { var row = $0; row.accountID = giro.id; return row },
 			holdings: holdings.map { var holding = $0; holding.accountID = portfolio.id; return holding })
-		#expect(rows.map(\.currency) == ["GBP"])
-		#expect(holdings.map(\.quote?.currency) == ["USD", nil])
+		#expect(listed.currency == "EURO")
+		#expect(rows.map(\.currency) == ["GBP", "USDC"])
+		#expect(holdings.map(\.quote?.currency) == ["USDC", "USD", nil])
+		#expect(holdings.map(\.nominalCurrency) == [nil, nil, "USDT"])
 		// The file compares, because the time stamps of the rows keep only milliseconds in it.
 		let file = try data.json()
 		#expect(try AllData(json: file).json() == file)

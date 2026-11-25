@@ -994,12 +994,18 @@ The app SHALL read these transaction fields. `amount` and `bookingDate` are requ
 
 ### Requirement: Currency codes of a result
 
-The app SHALL read each currency that a script gives for an account, a transaction, or a security as a code of three letters A to Z, after it removes the spaces around the text and writes it in capitals. A missing or empty field takes the currency of the account, or EUR for an account. Any other text fails the account list or the account with a message that names the field, so the database never holds a currency that the import of the complete export refuses.
+The app SHALL read each currency of an account, a transaction, a pair of `balances`, or a security as a code of 3 to 10 letters A to Z and digits that starts with a letter, after trimming and capitals. A missing or empty field takes the currency of the account, or EUR for an account. Other text fails the account list or the account with a message that names the field.
 
 #### Scenario: Code in lower case
 
 - **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency=" usd"`
 - **THEN** the transaction is a withdrawal of 20,00 US dollars
+
+#### Scenario: Ticker of a token
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency="usdc"`
+- **THEN** the transaction is a withdrawal of 20,00 USDC
+- **AND** the complete export of the database imports again with this transaction
 
 #### Scenario: Empty code
 
@@ -1008,13 +1014,13 @@ The app SHALL read each currency that a script gives for an account, a transacti
 
 #### Scenario: Transaction currency that is no code
 
-- **WHEN** the first transaction of the result of a giro account has `currency="EURO"`, `currency="€"`, or `currency="USDC"`
+- **WHEN** the first transaction of the result of a giro account has `currency="€"`, `currency="US$"`, `currency="EU"`, `currency="1EU"`, or `currency="ABCDEFGHIJK"`
 - **THEN** the account shows the error "The currency of transaction 1 is not a currency code."
 - **AND** no transaction of this result is stored
 
-#### Scenario: Price currency of a token
+#### Scenario: Price currency that is no code
 
-- **WHEN** the first security of the result of a portfolio has `price=110` and `currencyOfPrice="USDC"`
+- **WHEN** the first security of the result of a portfolio has `price=110` and `currencyOfPrice="US$"`
 - **THEN** the portfolio shows the error "The price currency of security 1 is not a currency code."
 - **AND** the same applies to `currencyOfPurchasePrice` with the purchase price currency and to `currencyOfQuantity` with the quantity currency
 
@@ -1138,9 +1144,9 @@ The app SHALL keep the value of a security with a price in another currency and 
 #### Scenario: Price without a rate
 
 - **GIVEN** a portfolio in EUR
-- **WHEN** a result has `securities={{name="Token A", quantity=10, price=2}, {name="Token B", quantity=10, price=110, currencyOfPrice="USD"}}`
-- **THEN** "Token B" has the value 1.100,00 US dollars and the balance of the portfolio is 20,00 €
-- **AND** a notice says "The balance leaves out Token B, because its price is in USD and the extension gives no exchange rate."
+- **WHEN** a result has `securities={{name="Token A", quantity=10, price=2}, {name="Token B", quantity=10, price=110, currencyOfPrice="USDC"}}`
+- **THEN** "Token B" has the value 1.100,00 USDC and the balance of the portfolio is 20,00 €
+- **AND** a notice says "The balance leaves out Token B, because its price is in USDC and the extension gives no exchange rate."
 - **AND** the portfolio shows the time of this refresh as its last refresh
 
 ### Requirement: FetchStatements

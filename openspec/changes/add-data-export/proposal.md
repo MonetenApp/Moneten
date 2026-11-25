@@ -44,6 +44,7 @@ None.
 
 ### Decided for Moneten
 
+- A currency code in the complete export has 3 to 10 uppercase ASCII letters and digits and starts with a letter, a form wider than ISO 4217. Extensions for crypto services give tickers such as "USDC" or "DOGE" as the currency of a position, and the database keeps them. The export accepts every code that the app stores, so each database can be imported again. The bank files and FinTS keep their check for three letters.
 - Transaction import and CSV export run one at a time, including cancellation cleanup, so each operation keeps its progress and cancel control.
 - CSV text cells get an apostrophe before CSV quoting when they start with a tab, a carriage return, or a line feed, or when their first character after leading whitespace is `=`, `+`, `-`, `@`, or one of the full-width signs `＝`, `＋`, `－`, `＠`. Amounts and dates stay as they are. A CSV import of such a file keeps the apostrophe in the text fields. This formula-injection protection was not observed in MoneyMoney.
 - CSV dates and amounts use ASCII digits in every locale, including ar_EG. Date order and decimal marks follow the locale.

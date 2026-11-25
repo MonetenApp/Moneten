@@ -8,7 +8,7 @@ The specs in [openspec/changes](../openspec/changes/) define the behavior. Where
 
 | Type | Fields | Rules |
 |---|---|---|
-| `Money` | `minorUnits: Int64`, `currency: String` | Exact integer amounts in the smallest unit of the currency, for example cents. `Currency.exponent(of:)` gives the number of decimal places of an ISO 4217 code. `Money.isCurrencyCode(_:)` checks the form of a code, three letters A to Z, which the complete export accepts and an extension result must have. No `Double` stores an amount. |
+| `Money` | `minorUnits: Int64`, `currency: String` | Exact integer amounts in the smallest unit of the currency, for example cents. `Currency.exponent(of:)` gives the number of decimal places of an ISO 4217 code. `Money.isCurrencyCode(_:)` checks the form of a code, 3 to 10 letters A to Z and digits that start with a letter, which the complete export accepts and an extension result must have. It takes ISO 4217 codes and the tickers of crypto tokens, such as "USDC". No `Double` stores an amount. |
 | `MoneySums` | `byCurrency: [String: Int64]` | A sum across accounts or transactions keeps one total per currency and never converts. |
 | `Day` | `rawValue: Int` | A calendar day as the number yyyymmdd, without a time and without a time zone. Booking and value dates are days. |
 

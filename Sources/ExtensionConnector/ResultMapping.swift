@@ -281,8 +281,8 @@ enum ResultMapping {
 		return (balances[0], balances.dropFirst().filter { $0.minorUnits != 0 })
 	}
 
-	/// An ISO 4217 code, three letters A to Z after trimming and uppercasing, or nil. A code such as "US$" would reach the
-	/// complete export, whose import refuses it.
+	/// A currency code after trimming and uppercasing, by `Money.isCurrencyCode(_:)`, or nil. A code such as "US$" would
+	/// reach the complete export, whose import refuses it.
 	private static func currencyCode(_ text: String) -> String? {
 		let code = text.trimmingCharacters(in: .whitespaces).uppercased()
 		return Money.isCurrencyCode(code) ? code : nil

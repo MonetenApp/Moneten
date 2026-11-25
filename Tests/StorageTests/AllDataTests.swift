@@ -427,7 +427,7 @@ struct AllDataTests {
 	@Test("An export refuses an original amount above the limit of amounts, one without its currency, and a currency that is no code")
 	func originalAmountChecks() throws {
 		let file = try filledStore().exportAllData(at: exportedAt).json()
-		for change in [["originalAmount": "10000000000000.01", "originalCurrency": "USD"], ["originalAmount": "1.00"], ["originalAmount": "1.00", "originalCurrency": "US1"]] {
+		for change in [["originalAmount": "10000000000000.01", "originalCurrency": "USD"], ["originalAmount": "1.00"], ["originalAmount": "1.00", "originalCurrency": "U$1"]] {
 			var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
 			var rows = json["transactions"] as! [[String: Any]]
 			rows[0].merge(change) { $1 }
@@ -680,7 +680,7 @@ struct AllDataTests {
 		#expect(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted() == ["directory", "export.json", "source"])
 	}
 
-	@Test("Every currency code has exactly three uppercase ASCII letters")
+	@Test("Every currency code has 3 to 10 uppercase ASCII letters and digits and starts with a letter")
 	func currencyCodes() throws {
 		let original = try JSONSerialization.jsonObject(with: try filledStore().exportAllData(at: exportedAt).json()) as! [String: Any]
 		let target = try emptyStore("codes")
@@ -689,7 +689,7 @@ struct AllDataTests {
 			("holdings", ["price", "currency"]), ("holdings", ["marketValue", "currency"]), ("holdings", ["accruedInterest", "currency"]),
 			("holdings", ["purchasePrice", "currency"]), ("holdings", ["exchangeRate", "base"]), ("holdings", ["exchangeRate", "quoted"])]
 		for (key, path) in fields {
-			for code in ["not a currency", "eur", "EU1", "EURO", "EU", "ÉUR", ""] {
+			for code in ["not a currency", "eur", "EU", "1EU", "U$D", "ÉUR", "", "ABCDEFGHIJK"] {
 				var json = original
 				var rows = json[key] as! [[String: Any]]
 				if path.count == 1 {
@@ -700,14 +700,17 @@ struct AllDataTests {
 					rows[0][path[0]] = amount
 				}
 				json[key] = rows
-				#expect(throws: AllData.ReadError.damaged("at \(key)[0], \"\(code)\" is not a currency code in the form [A-Z]{3}")) {
+				#expect(throws: AllData.ReadError.damaged("at \(key)[0], \"\(code)\" is not a currency code in the form [A-Z][A-Z0-9]{2,9}")) {
 					try target.importAllData(try AllData(json: JSONSerialization.data(withJSONObject: json)))
 				}
 			}
 		}
 		#expect(try target.exportAllData(at: exportedAt) == AllData(exportedAt: exportedAt))
-		let syntacticallyValid = AllData(accounts: [Account(position: 0, name: "Test", kind: .cash, source: .offline, currency: "ZZZ")])
-		#expect(try AllData(json: syntacticallyValid.json()).accounts[0].currency == "ZZZ")
+		// An ISO 4217 code, the ticker of a crypto token that an extension gives, and any other code of this form (#569).
+		for code in ["ZZZ", "USDC", "EURO", "MATIC1"] {
+			let syntacticallyValid = AllData(accounts: [Account(position: 0, name: "Test", kind: .cash, source: .offline, currency: code)])
+			#expect(try AllData(json: syntacticallyValid.json()).accounts[0].currency == code)
+		}
 	}
 
 	@Test("Nonpositive format versions are refused", arguments: [0, -1])
