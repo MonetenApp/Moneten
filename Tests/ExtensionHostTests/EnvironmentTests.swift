@@ -120,7 +120,7 @@ import Testing
 	}
 
 	/// The reader keeps the open tables in a list instead of its own frames, so a value as deep as the
-	/// limit fits in the 512 KB of stack of a secondary thread, also under a sanitizer.
+	/// limit fits in 128 KB of stack. A reader that recursed would overflow it, also without a sanitizer.
 	@Test func deepTableOnASmallStack() async {
 		let script = "local t = {} local c = t for i = 2, %d do c.x = {} c = c.x end return t"
 		let (deepest, tooDeep) = await onSmallStack {

@@ -53,12 +53,12 @@ final class Run {
 	}
 }
 
-/// Runs `body` on a thread with 512 KB of stack, as much as a secondary thread has. Under
-/// AddressSanitizer, whose frames are larger, a recursion over 100 tables overflows it.
+/// Runs `body` on a thread with 128 KB of stack. A recursion over 100 tables overflows it in a
+/// Debug build, which crashes the test run.
 func onSmallStack<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
 	await withCheckedContinuation { continuation in
 		let thread = Thread { continuation.resume(returning: body()) }
-		thread.stackSize = 512 * 1024
+		thread.stackSize = 128 * 1024
 		thread.start()
 	}
 }

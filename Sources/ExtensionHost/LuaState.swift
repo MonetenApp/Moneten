@@ -308,8 +308,7 @@ struct LuaStack {
 				let last = walk.open.count - 1
 				// The key of the open table is on top. `lua_next` replaces it with the next key and value.
 				if lua_next(L, walk.open[last].index) != 0 {
-					guard let item = try read(at: lua_gettop(L), in: &walk) else { continue }
-					store(item, in: &walk.open[last])
+					if let item = try read(at: lua_gettop(L), in: &walk) { store(item, in: &walk.open[last]) }
 					continue
 				}
 				let table = walk.open.removeLast()
@@ -350,7 +349,7 @@ struct LuaStack {
 		}
 	}
 
-	/// Reads the value at `index`, or opens the table at `index`, pushes its first key, and returns nil.
+	/// Reads the value at `index`, or opens the table at `index`, pushes nil as the key before its first entry, and returns nil.
 	private func read(at index: Int32, in walk: inout Walk) throws(ScriptError) -> LuaValue? {
 		walk.budget -= 1
 		guard walk.budget >= 0 else { throw ScriptError("The value holds more than \(Self.maxValues) values.") }
