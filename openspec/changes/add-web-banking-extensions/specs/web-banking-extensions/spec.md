@@ -1033,7 +1033,7 @@ The app SHALL read each currency of an account, a transaction, a pair of `balanc
 
 ### Requirement: Decimal places of an amount
 
-The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result has more decimal places than its currency, and never round it. A currency that ISO 4217 does not name has two decimal places. The message names the field and the currency. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
+The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result is in a currency that ISO 4217 does not name and has more than two decimal places. The message names the field and the currency. An amount in an ISO 4217 currency rounds to the minor units of its currency, half away from zero. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
 
 #### Scenario: Balance in a token below a cent
 
@@ -1047,10 +1047,20 @@ The app SHALL fail an account when a balance, a pair of `balances`, or a transac
 - **THEN** the account shows the error "The amount of transaction 1 has more decimal places than the currency BTC allows."
 - **AND** no transaction of this result is stored
 
-#### Scenario: Sum of Lua numbers
+#### Scenario: Sum of Lua numbers in a token
 
-- **WHEN** a transaction has the amount `0.1 + 0.2`, which a Lua number holds as 0.30000000000000004
-- **THEN** the transaction has the amount 0,30 €
+- **WHEN** a transaction has `currency="USDC"` and the amount `0.1 + 0.2`, which a Lua number holds as 0.30000000000000004
+- **THEN** the transaction has the amount 0,30 USDC
+
+#### Scenario: Euro amount with a third decimal place
+
+- **WHEN** the result of a giro account in EUR has `balance=1234.56789` and a transaction with `amount=-10.005`
+- **THEN** the account shows the balance 1.234,57 € and a withdrawal of 10,01 €
+
+#### Scenario: Yen amount with a decimal place
+
+- **WHEN** a transaction of the result of a giro account in EUR has `amount=100.5` and `currency="JPY"`
+- **THEN** the transaction is a deposit of 101 yen
 
 ### Requirement: Amount limit of a result
 

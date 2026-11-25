@@ -578,7 +578,7 @@ import Testing
 
 	/// The scenarios of "Decimal places of an amount". Rounding 0.004 USDC to 0 lost the balance without a word, and a
 	/// fraction of a bitcoin became a booking of 0 (#569).
-	@Test func amountsWithMoreDecimalPlacesThanTheirCurrencyFail() {
+	@Test func amountsOutsideISO4217WithMoreThanTwoDecimalPlacesFail() {
 		#expect(throws: MappingError("The balance in USDC has more decimal places than the currency USDC allows.")) {
 			try result(["balance": .number(10), "balances": .array([pair(10.00, "EUR"), pair(0.004, "USDC")]), "transactions": .array([])])
 		}
@@ -586,20 +586,31 @@ import Testing
 			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(0.00012345),
 				"currency": .string("btc")])])])
 		}
-		#expect(throws: MappingError("The balance has more decimal places than the currency EUR allows.")) {
-			try result(["balance": .string("10.005"), "transactions": .array([])])
-		}
-		#expect(throws: MappingError("The amount of transaction 1 has more decimal places than the currency JPY allows.")) {
-			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .string("100.5"),
-				"currency": .string("JPY")])])])
+		#expect(throws: MappingError("The balance has more decimal places than the currency USDC allows.")) {
+			try result(["balance": .string("10.005"), "transactions": .array([])], of: try #require(try ListedAccount(.object(["accountNumber": .string("T-1"),
+				"currency": .string("USDC")]))))
 		}
 	}
 
-	/// A Lua number holds 0.1 + 0.2 as 0.30000000000000004. Its rounding error is no decimal place of the amount.
+	/// An amount in an ISO 4217 currency rounds half away from zero, as before: scripts compute balances such as
+	/// portfolio sums with more places, and the loss is at most half a minor unit.
+	@Test func amountsInISO4217CurrenciesRound() throws {
+		let rows = try result(["balance": .number(1234.56789), "balances": .array([pair(1234.56789, "EUR"), pair(0.125, "GBP")]),
+			"transactions": .array([
+			.object(["bookingDate": .integer(1794182400), "amount": .string("-10.005")]),
+			.object(["bookingDate": .integer(1794182400), "amount": .string("10.005")]),
+			.object(["bookingDate": .integer(1794182400), "amount": .string("100.5"), "currency": .string("JPY")])])])
+		#expect(rows.balance == Money(minorUnits: 123_457, currency: "EUR"))
+		#expect(rows.otherBalances == [Money(minorUnits: 13, currency: "GBP")])
+		#expect(rows.transactions?.rows.map(\.amount) == [Money(minorUnits: -1001, currency: "EUR"), Money(minorUnits: 1001, currency: "EUR"),
+			Money(minorUnits: 101, currency: "JPY")])
+	}
+
+	/// A Lua number holds 0.1 + 0.2 as 0.30000000000000004. Its rounding error is no decimal place of an amount in a token.
 	@Test func sumOfLuaNumbersReadsAsTheDecimalItMeans() throws {
-		let rows = try result(["balance": .number(0.1 + 0.2), "transactions": .array([.object(["bookingDate": .integer(1794182400),
-			"amount": .number(-(1.1 * 3))])])])
-		#expect(rows.balance == Money(minorUnits: 30, currency: "EUR"))
-		#expect(rows.transactions?.rows.map(\.amount) == [Money(minorUnits: -330, currency: "EUR")])
+		let rows = try result(["balance": .integer(0), "balances": .array([.array([.number(1.1 * 3), .string("BTC")])]),
+			"transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(0.1 + 0.2), "currency": .string("USDC")])])])
+		#expect(rows.otherBalances == [Money(minorUnits: 330, currency: "BTC")])
+		#expect(rows.transactions?.rows.map(\.amount) == [Money(minorUnits: 30, currency: "USDC")])
 	}
 }
