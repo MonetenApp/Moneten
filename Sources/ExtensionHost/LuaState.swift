@@ -116,7 +116,13 @@ final class LuaState {
 		}
 		for argument in arguments {
 			switch argument {
-			case let .value(value): stack.push(value)
+			case let .value(value):
+				do {
+					try stack.push(value)
+				} catch {
+					lua_settop(L, 0)
+					throw error
+				}
 			case let .function(function): clua_pushfunction(L, function)
 			}
 		}
@@ -204,7 +210,21 @@ struct LuaStack {
 		return Data(bytes: pointer, count: length)
 	}
 
-	func push(_ value: LuaValue) {
+	/// Pushes `value`, or pushes nothing and fails. Lua does not check its stack on a push, and a
+	/// value that the app stored, such as an account table, may nest as deep as `maxDepth` allows and
+	/// reach a new session whose stack has room for few levels. So each table reserves its slots
+	/// first, and a value that nests deeper than a script could return fails.
+	func push(_ value: LuaValue) throws(ScriptError) {
+		let top = lua_gettop(L)
+		do {
+			try push(value, depth: 0)
+		} catch {
+			lua_settop(L, top)
+			throw error
+		}
+	}
+
+	private func push(_ value: LuaValue, depth: Int) throws(ScriptError) {
 		switch value {
 		case .null: lua_pushnil(L)
 		case let .boolean(b): lua_pushboolean(L, b ? 1 : 0)
@@ -213,19 +233,31 @@ struct LuaStack {
 		case let .string(s): pushString(s)
 		case let .bytes(data): pushBytes(data)
 		case let .array(items):
+			try reserveTable(depth: depth + 1)
 			lua_createtable(L, Int32(items.count), 0)
 			for (i, item) in items.enumerated() {
-				push(item)
+				try push(item, depth: depth + 1)
 				lua_rawseti(L, -2, lua_Integer(i + 1))
 			}
 		case let .object(fields):
+			try reserveTable(depth: depth + 1)
 			lua_createtable(L, 0, Int32(fields.count))
 			for (key, item) in fields {
 				pushString(key)
-				push(item)
+				try push(item, depth: depth + 1)
 				lua_rawset(L, -3)
 			}
 		}
+	}
+
+	/// Reserves the slots of a table, a key, and a value: a table that holds a table reserves again.
+	private func reserveTable(depth: Int) throws(ScriptError) {
+		guard depth <= Self.maxDepth, lua_checkstack(L, 3) != 0 else { throw ScriptError("Tables nest deeper than \(Self.maxDepth) levels.") }
+	}
+
+	/// Pushes the text, or `nil`.
+	func pushText(_ text: String?) {
+		if let text { pushString(text) } else { lua_pushnil(L) }
 	}
 
 	func pushString(_ text: String) {

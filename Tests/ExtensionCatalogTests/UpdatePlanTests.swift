@@ -162,6 +162,13 @@ import Testing
 			== .outdated("Version 1.0 of Example Bank is no longer in the catalog. Open Extensions and install the update."))
 	}
 
+	/// Without an index that this build accepts, no catalog package runs (issue #563).
+	@Test func noAcceptedIndexStopsEveryCatalogPackage() {
+		let installed = InstalledPackage(id: "example", name: "Example Bank", version: "1.0", files: [])
+		#expect(Standing(of: installed, in: nil)
+			== .stopped("Moneten has no list of extensions that this version accepts, so Example Bank does not run."))
+	}
+
 	/// The catalog can go back to an older version. There is nothing to install then, so the text offers no update (issue #186).
 	@Test func olderVersionInTheIndexOffersNoUpdate() throws {
 		let index = try CatalogIndex.parse(TestCatalog.index(version: 2, [TestCatalog.Package()]))

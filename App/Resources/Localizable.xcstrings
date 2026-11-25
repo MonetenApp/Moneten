@@ -2048,6 +2048,17 @@
         }
       }
     },
+    "Moneten has no list of extensions that this version accepts, so %@ does not run." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten hat keine Liste von Erweiterungen, die diese Version annimmt, daher läuft %@ nicht."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "price currency" : {
       "localizations" : {
         "de" : {

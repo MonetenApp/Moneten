@@ -45,11 +45,14 @@ targets:
         buildPhase: resources
         excludes:
           - "CatalogKeys/**"
-      # The two public keys of the catalog, copies of keys/ in MonetenApp/moneten-extensions.
-      # ExtensionLibrary loads current.pub and next.pub from Contents/Resources.
+      # The two public keys of the catalog, copies of keys/ in MonetenApp/moneten-extensions, and the
+      # lowest index version that this build accepts, which each release raises (docs/releasing.md).
+      # ExtensionLibrary loads current.pub, next.pub, and lowest-index-version from Contents/Resources.
       - path: Resources/CatalogKeys/current.pub
         buildPhase: resources
       - path: Resources/CatalogKeys/next.pub
+        buildPhase: resources
+      - path: Resources/CatalogKeys/lowest-index-version
         buildPhase: resources
     dependencies:
       - package: MonetenKit
