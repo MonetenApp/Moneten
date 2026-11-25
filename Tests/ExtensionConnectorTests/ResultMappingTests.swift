@@ -215,7 +215,7 @@ import Testing
 
 	/// A currency is 3 to 10 letters and digits that start with a letter, after trimming and uppercasing. Anything else
 	/// would be stored and then refused by the import of the complete export.
-	@Test(arguments: ["US$", "EU", "", "  ", "U$D", "1EU", "€", "ABCDEFGHIJK"])
+	@Test(arguments: ["US$", "EU", "U$D", "1EU", "€", "ABCDEFGHIJK"])
 	func balancesWithoutACurrencyCode(code: String) {
 		#expect(throws: MappingError("An entry of balances is not a pair of amount and currency.")) {
 			try result(["balances": .array([pair(120.00, "EUR"), pair(35.00, code)]), "transactions": .array([])])
@@ -542,7 +542,7 @@ import Testing
 	}
 
 	/// Every currency that the mapping accepts, in any case, is one that the import of the complete export reads back.
-	@Test func acceptedCurrenciesRoundTripThroughTheCompleteExport() throws {
+	@Test func acceptedCurrenciesRoundTripThroughTheExportFormat() throws {
 		let listed = try #require(try ListedAccount(.object(["accountNumber": .string("W-1"), "currency": .string("euro")])))
 		let giro = Account(position: 0, name: "Dollar", kind: .giro, source: .offline, currency: listed.currency)
 		let portfolio = Account(position: 1, name: "Depot", kind: .portfolio, source: .offline, currency: depot.currency)
@@ -565,5 +565,41 @@ import Testing
 		// The file compares, because the time stamps of the rows keep only milliseconds in it.
 		let file = try data.json()
 		#expect(try AllData(json: file).json() == file)
+	}
+
+	/// An empty currency of a pair is the currency of the account, as an empty currency of a transaction is.
+	@Test func balanceWithAnEmptyCurrency() throws {
+		for code in ["", "  "] {
+			let balances = try result(["balances": .array([pair(35.00, code), pair(1.00, "USD")]), "transactions": .array([])])
+			#expect(balances.balance == Money(minorUnits: 3500, currency: "EUR"))
+			#expect(balances.otherBalances == [Money(minorUnits: 100, currency: "USD")])
+		}
+	}
+
+	/// The scenarios of "Decimal places of an amount". Rounding 0.004 USDC to 0 lost the balance without a word, and a
+	/// fraction of a bitcoin became a booking of 0 (#569).
+	@Test func amountsWithMoreDecimalPlacesThanTheirCurrencyFail() {
+		#expect(throws: MappingError("The balance in USDC has more decimal places than the currency USDC allows.")) {
+			try result(["balance": .number(10), "balances": .array([pair(10.00, "EUR"), pair(0.004, "USDC")]), "transactions": .array([])])
+		}
+		#expect(throws: MappingError("The amount of transaction 1 has more decimal places than the currency BTC allows.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .number(0.00012345),
+				"currency": .string("btc")])])])
+		}
+		#expect(throws: MappingError("The balance has more decimal places than the currency EUR allows.")) {
+			try result(["balance": .string("10.005"), "transactions": .array([])])
+		}
+		#expect(throws: MappingError("The amount of transaction 1 has more decimal places than the currency JPY allows.")) {
+			try result(["balance": .integer(0), "transactions": .array([.object(["bookingDate": .integer(1794182400), "amount": .string("100.5"),
+				"currency": .string("JPY")])])])
+		}
+	}
+
+	/// A Lua number holds 0.1 + 0.2 as 0.30000000000000004. Its rounding error is no decimal place of the amount.
+	@Test func sumOfLuaNumbersReadsAsTheDecimalItMeans() throws {
+		let rows = try result(["balance": .number(0.1 + 0.2), "transactions": .array([.object(["bookingDate": .integer(1794182400),
+			"amount": .number(-(1.1 * 3))])])])
+		#expect(rows.balance == Money(minorUnits: 30, currency: "EUR"))
+		#expect(rows.transactions?.rows.map(\.amount) == [Money(minorUnits: -330, currency: "EUR")])
 	}
 }

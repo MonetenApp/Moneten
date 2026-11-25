@@ -1011,6 +1011,7 @@ The app SHALL read each currency of an account, a transaction, a pair of `balanc
 
 - **WHEN** a transaction of the result of a giro account in EUR has `amount=-20.00` and `currency=""`
 - **THEN** the transaction is a withdrawal of 20,00 €
+- **AND** a result with `balances={{35.00, ""}}` for an account in EUR shows the balance 35,00 €
 
 #### Scenario: Transaction currency that is no code
 
@@ -1028,6 +1029,28 @@ The app SHALL read each currency of an account, a transaction, a pair of `balanc
 
 - **WHEN** `ListAccounts` returns an account with `accountNumber="4711"` and `currency="€"`
 - **THEN** the setup of the access fails with the error "The currency of account 4711 is not a currency code."
+- **AND** a refresh of an access that stored such an account fails the account with the same error
+
+### Requirement: Decimal places of an amount
+
+The app SHALL fail an account when a balance, a pair of `balances`, or a transaction amount of its result has more decimal places than its currency, and never round it. A currency that ISO 4217 does not name has two decimal places. The message names the field and the currency. The rounding error of a Lua number, at most 10^-15 of the amount, is no decimal place.
+
+#### Scenario: Balance in a token below a cent
+
+- **WHEN** the result of a giro account in EUR has `balance=10.00` and `balances={{10.00, "EUR"}, {0.004, "USDC"}}`
+- **THEN** the account shows the error "The balance in USDC has more decimal places than the currency USDC allows."
+- **AND** the stored balances stay as they were
+
+#### Scenario: Transaction of a fraction of a bitcoin
+
+- **WHEN** the first transaction of the result of a giro account has `amount=0.00012345` and `currency="btc"`
+- **THEN** the account shows the error "The amount of transaction 1 has more decimal places than the currency BTC allows."
+- **AND** no transaction of this result is stored
+
+#### Scenario: Sum of Lua numbers
+
+- **WHEN** a transaction has the amount `0.1 + 0.2`, which a Lua number holds as 0.30000000000000004
+- **THEN** the transaction has the amount 0,30 €
 
 ### Requirement: Amount limit of a result
 

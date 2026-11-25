@@ -182,6 +182,18 @@ enum ResultMapping {
 			bonusPoints: try bonusPoints(fields["bonusPoints"])), [])
 	}
 
+	/// An amount that the script gives for a balance or a transaction. It must fit the minor units of its currency,
+	/// because rounding would store 0.004 USDC as 0 and drop it without a word. Only the rounding error of a Lua number
+	/// is rounded away, such as the 0.30000000000000004 that 0.1 + 0.2 gives: a difference of at most 10^-15 of the amount,
+	/// a few steps of a double.
+	private static func exactMoney(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
+		let money = try money(decimal, currency, what)
+		guard (money.decimal - decimal).magnitude <= decimal.magnitude * Decimal(sign: .plus, exponent: -15, significand: 1) else {
+			throw MappingError(String(localized: "\(what) has more decimal places than the currency \(currency) allows."))
+		}
+		return money
+	}
+
 	/// An amount in the minor units of `currency`, or an error that names `what` when it is above `Money.maxMinorUnits`.
 	private static func money(_ decimal: Decimal, _ currency: String, _ what: String) throws(MappingError) -> Money {
 		guard let money = Money(fitting: decimal, currency: currency) else { throw MappingError(String(localized: "\(what) is out of range.")) }
@@ -261,16 +273,17 @@ enum ResultMapping {
 		guard !pairs.isEmpty else {
 			guard let amount = fields["balance"] else { return nil }
 			guard let decimal = amount.decimal else { throw MappingError(String(localized: "The balance is not a number.")) }
-			return (try money(decimal, currency, String(localized: "The balance")), [])
+			return (try exactMoney(decimal, currency, String(localized: "The balance")), [])
 		}
 		// The sums add up exactly, and only the sum of each currency has to be within the limit, as with the securities.
 		var sums: [(currency: String, total: Int128)] = [(currency, 0)]
 		for pair in pairs {
+			// An empty currency is the one of the account, as for a transaction.
 			guard case let .array(parts) = pair, parts.count == 2, let decimal = parts[0].decimal, case let .string(text) = parts[1],
-				let code = currencyCode(text) else {
+				let code = text.trimmingCharacters(in: .whitespaces).isEmpty ? currency : currencyCode(text) else {
 				throw MappingError(String(localized: "An entry of balances is not a pair of amount and currency."))
 			}
-			let value = try money(decimal, code, String(localized: "The balance in \(code)"))
+			let value = try exactMoney(decimal, code, String(localized: "The balance in \(code)"))
 			let index = sums.firstIndex { $0.currency == value.currency } ?? { sums.append((value.currency, 0)); return sums.count - 1 }()
 			sums[index].total += Int128(value.minorUnits)
 		}
@@ -325,7 +338,7 @@ enum ResultMapping {
 		let booked = fields["booked"] != .boolean(false)
 		return Transaction(accountID: UUID(), bookingDate: try day(rawBooking, String(localized: "booking date")), valueDate: try fields["valueDate"].map { value throws(MappingError) in
 			try day(value, String(localized: "value date"))
-		}, amountMinor: try money(amount, rowCurrency, String(localized: "The amount of transaction \(number)")).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
+		}, amountMinor: try exactMoney(amount, rowCurrency, String(localized: "The amount of transaction \(number)")).minorUnits, currency: rowCurrency, name: fields.text("name") ?? "",
 			purpose: fields.text("purpose") ?? "", counterpartyIBAN: fields.text("accountNumber").map(IBAN.electronicForm), counterpartyBIC: fields.text("bankCode"),
 			bookingText: fields.text("bookingText"), endToEndReference: fields.text("endToEndReference"), mandateReference: fields.text("mandateReference"),
 			creditorID: fields.text("creditorId"), isPending: !booked, sourceID: booked ? fields.text("transactionId") : nil)

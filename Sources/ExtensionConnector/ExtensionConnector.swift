@@ -91,9 +91,15 @@ public struct ExtensionConnector: BankConnector {
 			}
 			for (index, account) in request.accounts.enumerated() {
 				await session.report(.fetching(done: index, of: request.accounts.count))
-				guard let table = state.accounts[account.remoteID],
-					let listed = (try? ListedAccount(table))?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: scriptNow)
-				else {
+				let stored: ListedAccount?
+				do throws(MappingError) {
+					stored = try state.accounts[account.remoteID].flatMap { table throws(MappingError) in try ListedAccount(table) }
+				} catch {
+					// An earlier version stored the account with a currency that is no code. A new setup fails with the same error.
+					outcomes[account.accountID] = .failed(.unsupported(error.message))
+					continue
+				}
+				guard let listed = stored?.forRefresh(balance: account.balance, refreshedAt: account.refreshedAt, comment: account.comment, now: scriptNow) else {
 					outcomes[account.accountID] = .failed(.unsupported(String(localized: "\(package.name) does not know the account \(account.remoteID). Set up the access again.")))
 					continue
 				}

@@ -178,6 +178,17 @@
       },
       "extractionState" : "manual"
     },
+    "%@ has more decimal places than the currency %@ allows." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ hat mehr Nachkommastellen, als die Währung %2$@ erlaubt."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "%@ has no valid status." : {
       "localizations" : {
         "de" : {
