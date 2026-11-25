@@ -12466,6 +12466,28 @@
       },
       "extractionState" : "manual"
     },
+    "The rule is longer than 20,000 characters." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel ist länger als 20.000 Zeichen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The rule is longer than 80,000 bytes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel ist länger als 80.000 Bytes."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The rule matches %lld transactions." : {
       "localizations" : {
         "de" : {
@@ -12485,6 +12507,17 @@
           }
         }
       }
+    },
+    "The rule nests more than 100 parentheses and NOT operators." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Regel verschachtelt mehr als 100 Klammern und NOT-Operatoren."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The rule of \"%@\" cannot be read at position %lld: %@ \"%@\" receives no transaction through its rule until you correct the rule in its settings." : {
       "localizations" : {

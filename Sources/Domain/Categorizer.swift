@@ -347,12 +347,27 @@ extension Category {
 
 	/// The error of a saved rule that the app cannot parse, such as one that an older version accepted.
 	/// `Categorizer` leaves such a category out, so it gets no new transactions until the user fixes the rule.
+	///
+	/// A sidebar row reads it each time SwiftUI evaluates its body, and a long rule takes milliseconds to parse, so the
+	/// result of the last parse of each category is kept with its rule text. A string compares with the string it was
+	/// copied from without reading its characters, so a row whose rule did not change finds the result at once.
 	public var ruleError: RuleSyntaxError? {
+		guard !isDefault, !isGroup else { return nil }
+		if let kept = Self.parses.withLock({ $0[id] }), kept.rule == rule { return kept.error }
+		let error: RuleSyntaxError?
 		do {
 			_ = try savedRule()
-			return nil
-		} catch {
-			return error
+			error = nil
+		} catch let e {
+			error = e
 		}
+		Self.parses.withLock {
+			// Deleted categories leave their entries behind, which this bounds.
+			if $0.count >= 10_000 { $0.removeAll() }
+			$0[id] = (rule, error)
+		}
+		return error
 	}
+
+	private static let parses = Mutex<[UUID: (rule: String, error: RuleSyntaxError?)]>([:])
 }

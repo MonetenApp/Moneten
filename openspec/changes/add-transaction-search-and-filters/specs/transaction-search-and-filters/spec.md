@@ -119,6 +119,14 @@ The app SHALL accept every expression of the categorization rule language in the
 - **WHEN** the user types `"Stadtw`, `Stadtwerke OR`, `Stadtwerke or`, `Stadtwerke +`, `Name:Stadtwerke OR`, `name:="Stadtw`, or `Stadtwerke amount:=-`
 - **THEN** the list shows the transaction, because the app searches the plain words of the text
 
+#### Scenario: Text beyond the limits of a rule
+
+- **GIVEN** a transaction to "Stadtwerke Musterstadt" and one to "Miete Mai"
+- **WHEN** the user types 101 opening parentheses, `Stadtwerke`, and 101 closing parentheses
+- **THEN** the list shows only the transaction to "Stadtwerke Musterstadt", because the app searches the plain words of a text that nests deeper than a rule may
+- **WHEN** the user types `Miete` inside 101 nested parentheses that each start with `Stadtwerke OR`, as in `(Stadtwerke OR (Stadtwerke OR Miete))` with 101 levels
+- **THEN** the list shows no transaction, because the plain words "Stadtwerke" and "Miete" must both occur
+
 #### Scenario: A constant in rejected text
 
 - **GIVEN** a transaction to "Stadtwerke Musterstadt"

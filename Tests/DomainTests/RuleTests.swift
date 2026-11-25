@@ -50,6 +50,10 @@ struct RuleTests {
 		#expect(try matches(#""Lohn" OR "Gehalt""#, RuleSubject(purpose: "Gehalt Oktober")))
 		#expect(try !matches(#""EC-Karte" AND (NOT "Barauszahlung")"#, RuleSubject(purpose: "EC-Karte Barauszahlung")))
 		#expect(try matches(#""Bücher" OR "eBooks" OR ("Waren" AND "Versand")"#, RuleSubject(purpose: "Waren und Versand")))
+		// NOT binds closest, then AND, then OR.
+		#expect(try matches("true OR false AND false", RuleSubject()))
+		#expect(try matches("NOT true OR true", RuleSubject()))
+		#expect(try !matches("NOT (true OR true)", RuleSubject()))
 	}
 
 	@Test("Lower case operator")
@@ -353,6 +357,149 @@ struct RuleTests {
 			#expect(throws: RuleSyntaxError.self, "\(bad)") { try Rule(parsing: bad) }
 		}
 	}
+
+	@Test("A rule of 20,000 characters reads, and one more character is an error at position 20,001")
+	func lengthLimit() throws {
+		let atLimit = String(repeating: "Miete ", count: 3_333) + "Pa"
+		#expect(atLimit.count == 20_000)
+		#expect(try matches(atLimit, RuleSubject(purpose: "Miete Pa")))
+		#expect(throws: RuleSyntaxError(position: 20_000, message: "The rule is longer than 20,000 characters.")) { try Rule(parsing: atLimit + "x") }
+		// "Create Rule" joins its condition to a rule near the limit, and the joined rule does not read.
+		let created = Rule.adding(#"name:"Stadtwerke Musterstadt""#, to: String(repeating: "Miete ", count: 3_331) + "Pach")
+		#expect(created.count == 20_023)
+		#expect(throws: RuleSyntaxError(position: 20_000, message: "The rule is longer than 20,000 characters.")) { try Rule(parsing: created) }
+	}
+
+	@Test("A rule of 3 characters with 40,000 combining marks is longer than 80,000 bytes, and the check reads only that much", .timeLimit(.minutes(1)))
+	func byteLimit() throws {
+		let accents = "/a" + String(repeating: "\u{0301}", count: 40_000) + "/"
+		#expect(accents.count == 3 && accents.utf8.count == 80_003)
+		#expect(throws: RuleSyntaxError(position: 1, message: "The rule is longer than 80,000 bytes.")) { try Rule(parsing: accents) }
+		_ = try Rule(parsing: "/a" + String(repeating: "\u{0301}", count: 39_998) + "/")
+		// 20 MB in one character.
+		let huge = "/a" + String(repeating: "\u{0301}", count: 10_000_000) + "/"
+		let start = ContinuousClock.now
+		#expect(throws: RuleSyntaxError(position: 1, message: "The rule is longer than 80,000 bytes.")) { try Rule(parsing: huge) }
+		#expect(ContinuousClock.now - start < budget(.milliseconds(500)))
+		// 20,000 characters of four bytes each still read.
+		_ = try Rule(parsing: String(repeating: "😀", count: 20_000))
+	}
+
+	@Test("A rule nests at most 100 parentheses and NOT operators, and a field operator is no level")
+	func nestingLimit() throws {
+		let tooDeep = "The rule nests more than 100 parentheses and NOT operators."
+		let notSigns = String(repeating: "!", count: 100) + "Miete"
+		#expect(try matches(notSigns, RuleSubject(purpose: "Miete Mai")))
+		#expect(throws: RuleSyntaxError(position: 100, message: tooDeep)) { try Rule(parsing: "!" + notSigns) }
+		let parentheses = String(repeating: "(", count: 100) + "Miete" + String(repeating: ")", count: 100)
+		#expect(try matches(parentheses, RuleSubject(purpose: "Miete Mai")))
+		#expect(throws: RuleSyntaxError(position: 100, message: tooDeep)) { try Rule(parsing: "(" + parentheses + ")") }
+		// Both count together, and the error names the parenthesis that opens level 101.
+		let mixed = "-" + String(repeating: "NOT (", count: 50) + "Miete" + String(repeating: ")", count: 50)
+		#expect(throws: RuleSyntaxError(position: 1 + 49 * 5 + 4, message: tooDeep)) { try Rule(parsing: mixed) }
+		#expect(try matches(String(repeating: "!", count: 100) + "name!=Miete", RuleSubject(name: "Stadtwerke")))
+		let sideBySide = Array(repeating: "(Miete)", count: 1_000).joined(separator: " OR ")
+		#expect(try matches(sideBySide, RuleSubject(purpose: "Miete Mai")))
+	}
+
+	@Test("A rule far beyond a limit is an error, also on a thread with the stack of a detached task")
+	func farBeyondTheLimits() async {
+		func nested(_ levels: Int) -> String { String(repeating: "(", count: levels) + "Miete" + String(repeating: ")", count: levels) }
+		let texts: [String] = [String(repeating: "!", count: 1_000_000) + "Miete", String(repeating: "!", count: 19_000) + "Miete", nested(100_000), nested(6_000)]
+		let positions = await onSmallStack {
+			texts.map { text -> Int? in
+				do throws(RuleSyntaxError) {
+					_ = try Rule(parsing: text)
+					return nil
+				} catch {
+					return error.position
+				}
+			}
+		}
+		#expect(positions == [20_000, 100, 20_000, 100])
+	}
+
+	@Test("The tree of the largest rules within both limits stays shallow, and matching and the search run on the stack of a detached task")
+	func shallowTree() async throws {
+		// About 10,000 terms side by side, 100 levels with 98 terms before the next level, and 100 levels of an OR and an
+		// AND each, all within 20,000 characters.
+		let flat = String(repeating: "a ", count: 9_996) + "/Miete/"
+		let nested = (0..<100).reduce("/Miete/") { inner, _ in "(" + String(repeating: "a ", count: 98) + inner + ")" }
+		let orAnd = (0..<100).reduce("/Miete/") { inner, _ in "(b OR a " + inner + ")" }
+		#expect([flat, nested, orAnd].allSatisfy { $0.count <= 20_000 })
+		#expect(try [flat, nested, orAnd].map { depth(of: try Rule(parsing: $0).expression) } == [2, 101, 201])
+		let results = await onSmallStack {
+			[flat, nested, orAnd].flatMap { text in
+				let rule = try? Rule(parsing: text)
+				return [rule?.hasRegex == true, rule?.matches(RuleSubject(purpose: "a Miete")) == true]
+			}
+		}
+		#expect(results == Array(repeating: true, count: 6))
+		#expect(try !Rule(parsing: nested).matches(RuleSubject(purpose: "b Miete")))
+		// The search reads a text beyond the limit by its plain words.
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		let ledger = Ledger(accounts: [giro], transactions: [Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: -1_000, currency: "EUR", name: "a Miete")])
+		let found = await onSmallStack {
+			[flat, nested, orAnd, String(repeating: "a ", count: 20_000) + "Miete"].map { text in
+				var filter = TransactionFilter()
+				filter.searchText = text
+				return ledger.rows(in: .all, filter: filter).rows.count
+			}
+		}
+		#expect(found == [1, 1, 1, 1])
+	}
+
+	@Test("A search beyond the limits of a rule searches its plain words")
+	func searchBeyondTheLimits() {
+		let giro = Account(position: 0, name: "Giro", kind: .giro, source: .offline)
+		func row(_ name: String) -> Transaction {
+			Transaction(accountID: giro.id, bookingDate: Day(year: 2026, month: 10, day: 5), amountMinor: -1_000, currency: "EUR", name: name)
+		}
+		let ledger = Ledger(accounts: [giro], transactions: [row("Stadtwerke Musterstadt"), row("Miete Mai")])
+		var filter = TransactionFilter()
+		filter.searchText = String(repeating: "(", count: 101) + "Stadtwerke" + String(repeating: ")", count: 101)
+		#expect(ledger.rows(in: .all, filter: filter).rows.map(\.name) == ["Stadtwerke Musterstadt"])
+		filter.searchText = (0..<101).reduce("Miete") { inner, _ in "(Stadtwerke OR " + inner + ")" }
+		#expect(ledger.rows(in: .all, filter: filter).rows.isEmpty)
+	}
+
+	@Test("A rule with 800 regular expressions reads within a time limit, and an empty field takes the answer of each", .timeLimit(.minutes(1)))
+	func manyRegularExpressions() throws {
+		// The pattern takes about 1.5 ms on the empty text, so a parser that ran each on the empty text would take more than
+		// 1 second.
+		let text = Array(repeating: "/((a?){300}){300}$/", count: 800).joined(separator: " OR ")
+		let start = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+		let rule = try Rule(parsing: text)
+		#expect(.nanoseconds(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - start) < budget(.milliseconds(500)))
+		guard case let .or(terms) = rule.expression else { Issue.record("not one OR"); return }
+		#expect(terms.allSatisfy { if case let .regex(box, _) = $0 { box.matchesEmpty.known == nil } else { false } })
+		// The pattern matches the empty text. The first empty field finds that under the watch of the run, and keeps it.
+		#expect(rule.matches(RuleSubject()))
+		#expect(rule.stoppedRegexPosition == nil)
+		if case let .regex(box, _) = terms[0] { #expect(box.matchesEmpty.known == true) }
+		let empty = try Rule(parsing: "purpose:/^$/")
+		#expect(empty.matches(RuleSubject(name: "Stadtwerke")))
+		#expect(empty.matches(RuleSubject(name: "Telekom")))
+		#expect(!empty.matches(RuleSubject(purpose: "Miete Mai")))
+		#expect(empty.stoppedRegexPosition == nil)
+	}
+
+	private func depth(of e: RuleExpression) -> Int {
+		switch e {
+		case .phrase, .regex, .amount, .constant: 1
+		case let .not(a): 1 + depth(of: a)
+		case let .and(terms), let .or(terms): 1 + (terms.map { depth(of: $0) }.max() ?? 0)
+		}
+	}
+
+	/// Runs `body` on a thread with 512 KB of stack, as much as a detached task has, so a recursion over a deep rule crashes.
+	private func onSmallStack<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+		await withCheckedContinuation { continuation in
+			let thread = Thread { continuation.resume(returning: body()) }
+			thread.stackSize = 512 * 1024
+			thread.start()
+		}
+	}
 }
 
 @Suite("Categorizer")
@@ -426,6 +573,23 @@ struct CategorizerTests {
 		rent.rule = "amount<-1000"
 		#expect(rent.ruleError == nil)
 		#expect(Domain.Category(position: 1, name: "Groceries").ruleError == nil)
+	}
+
+	@Test("A sidebar row reads the error of a long saved rule again without parsing it, until the rule changes")
+	func ruleErrorIsKept() {
+		var rent = Domain.Category(position: 0, name: "Rent", rule: Array(repeating: "Miete", count: 2_000).joined(separator: " OR "))
+		#expect(rent.ruleError == nil)
+		// A parse of this rule takes about 60 ms in a debug build, so 1,000 parses would take a minute.
+		let start = ContinuousClock.now
+		#expect((0..<1_000).allSatisfy { _ in rent.ruleError == nil })
+		#expect(ContinuousClock.now - start < budget(.milliseconds(200)))
+		rent.rule = "amount<-1,000"
+		#expect(rent.ruleError?.position == 0)
+		rent.rule = String(repeating: "!", count: 1_000_000) + "Miete"
+		#expect(rent.ruleError == RuleSyntaxError(position: 20_000, message: "The rule is longer than 20,000 characters."))
+		#expect(Categorizer(ledger: Ledger(categories: [rent])).entries.isEmpty)
+		rent.rule = "amount<-1000"
+		#expect(rent.ruleError == nil)
 	}
 
 	@Test("A category group has no rule, so it shows no mark, takes no transaction, and leaves the transaction to a category below it")

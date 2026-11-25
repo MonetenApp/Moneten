@@ -256,7 +256,9 @@ public struct MoneyMoneyMigration: Sendable {
 	}
 
 	private static func ruleNotes(_ category: Domain.Category, accountNumbers: Set<String>) -> [String] {
-		guard !category.isGroup, !category.isDefault, let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
+		// A rule beyond the size of a rule has its note from `ruleError`, and tokenizing all of it would only cost time.
+		guard !category.isGroup, !category.isDefault, Rule.sizeError(of: category.rule) == nil,
+			let tokens = try? RuleToken.positioned(in: category.rule) else { return [] }
 		let chars = Array(category.rule)
 		let name = category.name
 		var notes: [String] = []
