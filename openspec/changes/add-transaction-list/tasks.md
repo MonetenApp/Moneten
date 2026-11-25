@@ -32,6 +32,10 @@ One task per requirement of the spec. A task is checked only when a test or a ch
 
 - [ ] 2.1 Check every scenario of the spec in a release build and record the result in the pull request. Checked in the Perf build on 18 November 2026 (owner decision), the edits with a scripted bank delivery and the new mark with the made-up bank of a Debug build: 54 passed, 4 failed, 5 not checkable. Failed: "Card payment abroad" and "Add a comment" (#470), "After a refresh" of the new mark (#472), and "From a category to the account" (#471). Not checkable in the harness: the triple click, a range with Shift and a row with Command (real clicks with modifier keys), "Move a future transaction from a file into the past" (needs a bank delivery of chosen rows), and the Services submenu (task 1.18; macOS lists no service for an app in the background). Open: the owner's walk-through in a Release build.
 
+## Characters that hide a formula sign in Copy (issue #580)
+
+- [x] Skip double quotes, control characters, and format characters before a formula sign in Copy, as the CSV export does. `SpreadsheetFormula.escaped` now looks for the sign with the rule of the export, so Copy and the export share one rule. TransactionCopyTests "A double quote, a control character, or a format character before the sign does not hide it" checks `"=1+1"`, "\u{FEFF}+1", "\u{0}=1", "\u{200B}@SUM(1)", and three mixed leads in the name, the purpose, the IBAN, and the BIC, and all seven cases failed before. "A tab or a line break before a hidden sign becomes a space, and the field still gets the apostrophe" failed before too. "Text with quotes or format characters before an ordinary character stays as it is", "Line breaks, tabs, and runs of spaces become one space, so a field never breaks the line or the columns", and every TransactionCSVTests and ExportRoundTripTests test passed before and after.
+
 ## Workflow follow-up
 
 - Archive the change with `openspec archive add-transaction-list` when every task is checked.
