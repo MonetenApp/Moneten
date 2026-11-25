@@ -141,6 +141,37 @@ import StorageTestSupport
 		#expect(try Installer.load(installed, from: folder).files.map(\.text) == [package.script])
 	}
 
+	/// The exception covers the Finder's file, not any item with its name (issue #589).
+	@Test(arguments: ["folder", "link"]) func itemNamedLikeFinderViewSettingsStopsThePackage(kind: String) async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let item = folder.appending(path: "example/.DS_Store")
+		if kind == "folder" {
+			try FileManager.default.createDirectory(at: item, withIntermediateDirectories: false)
+		} else {
+			try Data([0, 0, 0, 1]).write(to: root.appending(path: "settings"))
+			try FileManager.default.createSymbolicLink(at: item, withDestinationURL: root.appending(path: "settings"))
+		}
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	/// A file of another size is refused from `lstat`, so a large file put in its place is never read (issue #589).
+	/// The file cannot be read, so a read before the size check would throw instead of refusing it.
+	@Test func fileOfAnotherSizeIsRefusedBeforeItIsRead() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let directory = folder.appending(path: "example")
+		let license = try #require(installed.files.first { $0.path == "LICENSE" })
+		let url = directory.appending(path: license.path)
+		try (Data(contentsOf: url) + Data("more".utf8)).write(to: url)
+		try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) }
+		#expect(try license.data(in: directory) == nil)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
 	@Test func updateReplacesEveryFileTogether() async throws {
 		let old = TestCatalog.Package()
 		server.publish(old)
