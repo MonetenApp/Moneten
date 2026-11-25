@@ -55,7 +55,7 @@ let package = Package(
 		.testTarget(name: "ExtensionHostTests", dependencies: ["ExtensionHost", "MonetenExtensionHost", "TestSupport"]),
 		.testTarget(name: "ExtensionConnectorTests", dependencies: ["ExtensionConnector", "MonetenExtensionHost", "Storage", "StorageTestSupport", "Sync", "SyncTesting", "TestSupport"]),
 		// LocalBank holds the made-up bank on https://localhost that the tests of ext record start.
-		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost"], exclude: ["LocalBank"]),
+		.testTarget(name: "ExtToolTests", dependencies: ["ext", "ExtensionHost", "TestSupport"], exclude: ["LocalBank"]),
 		.testTarget(name: "ExtensionCatalogTests", dependencies: ["ExtensionCatalog", "Domain", "Storage", "StorageTestSupport", "TestSupport"]),
 		.testTarget(name: "FinTSTests", dependencies: ["FinTS", "TestSupport"], exclude: ["helper-lines.jsonl"]),
 	],
