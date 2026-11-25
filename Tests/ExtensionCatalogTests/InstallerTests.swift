@@ -141,6 +141,56 @@ import StorageTestSupport
 		#expect(try Installer.load(installed, from: folder).files.map(\.text) == [package.script])
 	}
 
+	/// The exception covers the Finder's file, not any item with its name (issue #589).
+	@Test(arguments: ["folder", "link"]) func itemNamedLikeFinderViewSettingsStopsThePackage(kind: String) async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let item = folder.appending(path: "example/.DS_Store")
+		if kind == "folder" {
+			try FileManager.default.createDirectory(at: item, withIntermediateDirectories: false)
+		} else {
+			try Data([0, 0, 0, 1]).write(to: root.appending(path: "settings"))
+			try FileManager.default.createSymbolicLink(at: item, withDestinationURL: root.appending(path: "settings"))
+		}
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	/// The size comes from the descriptor before the read, so a file that grew is refused (issue #589).
+	@Test func fileOfAnotherSizeIsRefused() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let directory = folder.appending(path: "example")
+		let license = try #require(installed.files.first { $0.path == "LICENSE" })
+		let url = directory.appending(path: license.path)
+		try (Data(contentsOf: url) + Data("more".utf8)).write(to: url)
+		#expect(try license.data(in: directory) == nil)
+	}
+
+	/// A pipe at the path of a listed file is refused at once. Opening it to read would wait for a writer (issue #589).
+	@Test func pipeAtTheListedPathIsRefusedWithoutWaiting() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let url = folder.appending(path: "example/LICENSE")
+		try FileManager.default.removeItem(at: url)
+		#expect(mkfifo(url.path, 0o600) == 0)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	/// A link at the path of a listed file is refused, although its target holds the listed bytes (issue #589).
+	@Test func linkAtTheListedPathIsRefused() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let url = folder.appending(path: "example/LICENSE")
+		let elsewhere = root.appending(path: "LICENSE")
+		try FileManager.default.moveItem(at: url, to: elsewhere)
+		try FileManager.default.createSymbolicLink(at: url, withDestinationURL: elsewhere)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
 	@Test func updateReplacesEveryFileTogether() async throws {
 		let old = TestCatalog.Package()
 		server.publish(old)

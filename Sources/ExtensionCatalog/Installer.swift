@@ -74,7 +74,7 @@ public struct Installer: Sendable {
 		for file in entry.files {
 			let data: Data
 			do { data = try await fetch("\(entry.id)/\(version)/\(file.path)", file.size) } catch { throw .download(entry.name) }
-			guard data.count == file.size, sha256Hex(data) == file.sha256 else { throw .damaged(file.path) }
+			guard file.matches(data) else { throw .damaged(file.path) }
 			// The host runs the downloaded manifest, and the update plan judged the manifest of the index.
 			if file.path == "manifest.json", (try? Manifest.parse(data, mode: .catalog)) != manifest { throw .damaged(file.path) }
 			do { try data.write(to: download.appending(path: file.path)) } catch { throw .download(entry.name) }
@@ -104,19 +104,20 @@ public struct Installer: Sendable {
 
 	/// Loads an installed package for a session. Every file of the record must be a regular file with the size and
 	/// the SHA-256 of the index, and the folder may hold no other item, so the session runs only from bytes that
-	/// the accepted index signs. The Finder's `.DS_Store` is the one exception, because the Finder writes it into a
-	/// folder that the user only looks at, and nothing runs it.
+	/// the accepted index signs. A regular file named `.DS_Store` is the one exception, because the Finder writes it
+	/// into a folder that the user only looks at, and nothing runs it.
 	public static func load(_ installed: InstalledPackage, from folder: URL) throws(CatalogError) -> ExtensionPackage {
 		let directory = folder.appending(path: installed.id)
 		var verified: [String: Data] = [:]
 		do {
-			let present = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0 != ".DS_Store" }
-			guard present.count == installed.files.count, Set(present) == Set(installed.files.map(\.path)) else { throw CatalogError.changed(installed.name) }
+			let listed = Set(installed.files.map(\.path))
+			let unlisted = try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { !listed.contains($0) }
+			guard try unlisted.allSatisfy({ try $0 == ".DS_Store" && isRegularFile(directory.appending(path: $0)) }) else {
+				throw CatalogError.changed(installed.name)
+			}
 			for file in installed.files {
-				let url = directory.appending(path: file.path)
-				let data = try FileInstall.readRegularFile(url)
-				guard data.count == file.size, sha256Hex(data) == file.sha256 else { throw CatalogError.changed(installed.name) }
-				verified[url.path] = data
+				guard let data = try file.data(in: directory) else { throw CatalogError.changed(installed.name) }
+				verified[directory.appending(path: file.path).path] = data
 			}
 			// The package is built from the checked bytes, so a file that changes after the check does not run.
 			return try ExtensionPackage.load(from: directory, mode: .catalog) { url in
@@ -131,6 +132,33 @@ public struct Installer: Sendable {
 	public func remove(_ id: String) throws {
 		try FileManager.default.removeItem(at: folder.appending(path: id))
 	}
+}
+
+extension PackageFile {
+	/// Whether `data` has the size and the SHA-256 that the index lists for this file.
+	func matches(_ data: Data) -> Bool {
+		data.count == size && sha256Hex(data) == sha256
+	}
+
+	/// The bytes of this file in `directory`, or nil when they do not match. The file is opened once without following a
+	/// link and without waiting for a pipe, and its type and size come from that descriptor. So a file that another
+	/// program puts in its place after the check is never read past the recorded size.
+	func data(in directory: URL) throws -> Data? {
+		let descriptor = open(directory.appending(path: path).path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+		guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+		var status = stat()
+		guard fstat(descriptor, &status) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		guard status.st_mode & S_IFMT == S_IFREG, Int(status.st_size) == size else { return nil }
+		// One byte more than the record shows a file that grew after the check.
+		let data = try handle.read(upToCount: size + 1) ?? Data()
+		return matches(data) ? data : nil
+	}
+}
+
+/// Whether the item at `url` is a regular file, and not a folder or a link.
+private func isRegularFile(_ url: URL) throws -> Bool {
+	try FileManager.default.attributesOfItem(atPath: url.path)[.type] as? FileAttributeType == .typeRegular
 }
 
 /// The SHA-256 of `data` in lower-case hex, as the index lists it.
