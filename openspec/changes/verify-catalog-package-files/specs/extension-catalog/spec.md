@@ -35,3 +35,10 @@ The app SHALL compare the SHA-256 digest of every file of a catalog package with
 - **GIVEN** the catalog extension "Broker" is installed and its files match the index
 - **WHEN** the Finder writes a `.DS_Store` file into the folder of "Broker" and a refresh starts
 - **THEN** "Broker" runs
+
+#### Scenario: Folder named like the Finder view settings
+
+- **GIVEN** the catalog extension "Broker" is installed and its files match the index
+- **WHEN** a program puts a folder or a link named `.DS_Store` into the folder of "Broker" and a refresh starts
+- **THEN** the script does not run
+- **AND** the accounts and the "Extensions" window show that "Broker" was changed and does not match the catalog

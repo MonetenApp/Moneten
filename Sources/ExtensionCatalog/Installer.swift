@@ -117,8 +117,7 @@ public struct Installer: Sendable {
 			}
 			for file in installed.files {
 				guard let data = try file.data(in: directory) else { throw CatalogError.changed(installed.name) }
-				// The package is built from the manifest and the Lua files. The other files only had to match.
-				if file.path == "manifest.json" || file.path.hasSuffix(".lua") { verified[directory.appending(path: file.path).path] = data }
+				verified[directory.appending(path: file.path).path] = data
 			}
 			// The package is built from the checked bytes, so a file that changes after the check does not run.
 			return try ExtensionPackage.load(from: directory, mode: .catalog) { url in
@@ -141,13 +140,18 @@ extension PackageFile {
 		data.count == size && sha256Hex(data) == sha256
 	}
 
-	/// The bytes of this file in `directory`, or nil when they do not match. The type and the size from `lstat` are
-	/// checked before the read, so a link is never followed and a large file put in its place is never read.
+	/// The bytes of this file in `directory`, or nil when they do not match. The file is opened once without following a
+	/// link and without waiting for a pipe, and its type and size come from that descriptor. So a file that another
+	/// program puts in its place after the check is never read past the recorded size.
 	func data(in directory: URL) throws -> Data? {
-		let url = directory.appending(path: path)
-		let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-		guard attributes[.type] as? FileAttributeType == .typeRegular, (attributes[.size] as? NSNumber)?.intValue == size else { return nil }
-		let data = try Data(contentsOf: url)
+		let descriptor = open(directory.appending(path: path).path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+		guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+		var status = stat()
+		guard fstat(descriptor, &status) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+		guard status.st_mode & S_IFMT == S_IFREG, Int(status.st_size) == size else { return nil }
+		// One byte more than the record shows a file that grew after the check.
+		let data = try handle.read(upToCount: size + 1) ?? Data()
 		return matches(data) ? data : nil
 	}
 }

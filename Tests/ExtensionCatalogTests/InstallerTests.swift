@@ -156,9 +156,8 @@ import StorageTestSupport
 		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
 	}
 
-	/// A file of another size is refused from `lstat`, so a large file put in its place is never read (issue #589).
-	/// The file cannot be read, so a read before the size check would throw instead of refusing it.
-	@Test func fileOfAnotherSizeIsRefusedBeforeItIsRead() async throws {
+	/// The size comes from the descriptor before the read, so a file that grew is refused (issue #589).
+	@Test func fileOfAnotherSizeIsRefused() async throws {
 		let package = TestCatalog.Package()
 		server.publish(package)
 		let installed = try await installer.install(entry(package))
@@ -166,9 +165,29 @@ import StorageTestSupport
 		let license = try #require(installed.files.first { $0.path == "LICENSE" })
 		let url = directory.appending(path: license.path)
 		try (Data(contentsOf: url) + Data("more".utf8)).write(to: url)
-		try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
-		defer { try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path) }
 		#expect(try license.data(in: directory) == nil)
+	}
+
+	/// A pipe at the path of a listed file is refused at once. Opening it to read would wait for a writer (issue #589).
+	@Test func pipeAtTheListedPathIsRefusedWithoutWaiting() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let url = folder.appending(path: "example/LICENSE")
+		try FileManager.default.removeItem(at: url)
+		#expect(mkfifo(url.path, 0o600) == 0)
+		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
+	}
+
+	/// A link at the path of a listed file is refused, although its target holds the listed bytes (issue #589).
+	@Test func linkAtTheListedPathIsRefused() async throws {
+		let package = TestCatalog.Package()
+		server.publish(package)
+		let installed = try await installer.install(entry(package))
+		let url = folder.appending(path: "example/LICENSE")
+		let elsewhere = root.appending(path: "LICENSE")
+		try FileManager.default.moveItem(at: url, to: elsewhere)
+		try FileManager.default.createSymbolicLink(at: url, withDestinationURL: elsewhere)
 		#expect(throws: CatalogError.changed("Example Bank")) { try Installer.load(installed, from: folder) }
 	}
 

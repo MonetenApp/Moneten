@@ -10,7 +10,7 @@ Before each run, the app checks every file of an installed catalog package and s
 
 - The requirement "Digest of every file" says that an item in the folder of an installed package that the index does not list stops the package, and that a regular file named `.DS_Store` does not.
 - A folder or a link named `.DS_Store` stops the package.
-- The app compares the type and the size of a file before it reads the file, so a file of another size is never read.
+- The app opens each file once without following a link, compares the type and the size of that open file, and reads at most one byte more than the recorded size.
 
 ## Capabilities
 
