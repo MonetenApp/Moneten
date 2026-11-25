@@ -35,6 +35,7 @@ MENTIONS = {
 	("App/Sources/PerfCheck.swift", "README.md", '"README.md", "manifest.json"].map'),
 	("Tests/ExtensionCatalogTests/FileInstallTests.swift", "README.md", '"README.md": "# Broker'),
 	("Tests/ExtensionCatalogTests/InstallerTests.swift", "README.md", '"LICENSE", "README.md", "manifest.json"])'),
+	("Tests/ExtensionCatalogTests/InstallerTests.swift", "README.md", '@Test(arguments: ["README.md", "LICENSE"])'),
 	("Tests/ExtensionCatalogTests/Support.swift", "README.md", '"README.md": Data("# Example Bank'),
 	# Error messages that send the reader to the page.
 	("scripts/build-app.sh", "docs/releasing.md", 'private key in the Keychain. See docs/releasing.md."'),
