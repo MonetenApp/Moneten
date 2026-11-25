@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Domain
 
-/// The requirements "Copy selected rows as text" and "Details from the bank" in
+/// The requirements "Copy selected rows as text", "Formula protection in copied rows", and "Details from the bank" in
 /// openspec/changes/add-transaction-list/specs/transaction-list/spec.md. The tests
 /// run without the string catalog of the app, so the labels are the English keys.
 @Suite("Copy rows and the details of a row")
@@ -96,6 +96,53 @@ struct TransactionCopyTests {
 		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
 		#expect(fields[1] == "Ref,+1+1")
 		#expect(fields[2] == "Ref,=HYPERLINK(1)")
+	}
+
+	/// A paste parser reads a quote at the start of a cell as an empty quoted text and can drop a NUL, a byte order mark,
+	/// or a zero-width space, so none of them hides the sign (issue #580). Copy and the CSV export share the rule.
+	@Test("A double quote, a control character, or a format character before the sign does not hide it", arguments: [
+		"\"=1+1\"", "\u{FEFF}+1", "\u{0000}=1", "\u{200B}@SUM(1)", "\"\u{200B}-1+1", "\u{0007}＝1+1", " \"\u{FEFF}+1",
+	])
+	func formulaAfterHidingCharacters(field: String) {
+		var t = debit
+		t.name = field
+		t.purpose = field
+		t.mandateReference = nil
+		t.counterpartyIBAN = field
+		t.counterpartyBIC = field
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		let expected = "'" + TransactionCopy.oneLine(field)
+		#expect(fields[1] == expected)
+		#expect(fields[2] == expected)
+		#expect(fields[3] == expected)
+		#expect(fields[4] == expected)
+		#expect(fields[5] == "-1.234,50")
+	}
+
+	@Test("Text with quotes or format characters before an ordinary character stays as it is", arguments: [
+		"\"Bäckerei Muster\" GmbH", "\u{FEFF}Bäckerei Muster", "\u{200B}Rate 100,-", "\"\"", "\u{0000}",
+	])
+	func ordinaryTextWithHidingCharacters(field: String) {
+		var t = debit
+		t.name = field
+		t.purpose = field
+		t.mandateReference = nil
+		let fields = TransactionCopy.text([t], locale: german).components(separatedBy: "\t")
+		#expect(fields[1] == field)
+		#expect(fields[2] == field)
+	}
+
+	@Test("A tab or a line break before a hidden sign becomes a space, and the field still gets the apostrophe")
+	func tabBeforeHiddenSign() {
+		var t = debit
+		t.name = "\t\u{FEFF}=1+1"
+		t.purpose = "Ref\t\"=1+1"
+		t.mandateReference = nil
+		let text = TransactionCopy.text([t], locale: german)
+		let fields = text.components(separatedBy: "\t")
+		#expect(fields.count == 6)
+		#expect(fields[1] == "'\u{FEFF}=1+1")
+		#expect(fields[2] == "Ref \"=1+1")
 	}
 
 	@Test("A full-width formula sign also gets the apostrophe, also after leading whitespace", arguments: ["＝", "＋", "－", "＠"])

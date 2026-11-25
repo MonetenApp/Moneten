@@ -162,7 +162,7 @@ The app SHALL let the user select text inside a row and copy it. A double click 
 
 ### Requirement: Copy selected rows as text
 
-The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose on one line with the details of the row, the IBAN, the BIC, and the amount. A text field that starts with `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠` gets an apostrophe in front, so that a spreadsheet does not read it as a formula.
+The app SHALL copy one line of text for each selected row, in the order of the list and with no header, when the user chooses Copy and no text is selected. A line holds six fields separated by tabs: the booking date, the counterparty name, the purpose on one line with the details of the row, the IBAN, the BIC, and the amount.
 
 #### Scenario: Copy a row
 
@@ -186,6 +186,23 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **THEN** the purpose field is "Comment: Paid twice?, Transaction type: Lastschrift, Return reason: AC04, End-to-end reference: E2E-9, Mandate reference: M-2026-0042, Creditor ID: DE98ZZZ09999999999"
 - **AND** the details follow in the order comment, transaction type, return reason, end-to-end reference, mandate reference, creditor ID, original amount, and deviating recipient or originator
 
+#### Scenario: Copy a card payment abroad
+
+- **GIVEN** the language of the app is German and the region of the Mac is Germany
+- **AND** a card payment of -11.400,00 € with the purpose "Kartenzahlung" and the original amount -12.345,00 US dollars
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "Kartenzahlung, Originalbetrag: -12.345,00 USD"
+
+#### Scenario: Account number and BIC
+
+- **GIVEN** a row with the account number "0000532013000" and the BIC "DEUTDEFFXXX"
+- **WHEN** the user copies the row
+- **THEN** the line holds "532013000" without the leading zeros and "DEUTDEFF" without the "XXX" of the head office
+
+### Requirement: Formula protection in copied rows
+
+The app SHALL put an apostrophe in front of a text field of a copied row when its first character after leading whitespace, double quotes, control characters, and format characters is `=`, `+`, `-`, `@`, `＝`, `＋`, `－`, or `＠`, so that a spreadsheet does not read it as a formula.
+
 #### Scenario: Text that a spreadsheet would read as a formula
 
 - **GIVEN** a row with the counterparty name "+Rabatt-"
@@ -199,18 +216,35 @@ The app SHALL copy one line of text for each selected row, in the order of the l
 - **WHEN** the user copies the row
 - **THEN** the purpose field is "'＝1+1"
 
-#### Scenario: Copy a card payment abroad
+#### Scenario: Characters that hide a formula sign
 
-- **GIVEN** the language of the app is German and the region of the Mac is Germany
-- **AND** a card payment of -11.400,00 € with the purpose "Kartenzahlung" and the original amount -12.345,00 US dollars
+- **GIVEN** a row with the counterparty name `"=1+1"`
 - **WHEN** the user copies the row
-- **THEN** the purpose field is "Kartenzahlung, Originalbetrag: -12.345,00 USD"
+- **THEN** the name field is `'"=1+1"`
 
-#### Scenario: Account number and BIC
+#### Scenario: Byte order mark before the sign
 
-- **GIVEN** a row with the account number "0000532013000" and the BIC "DEUTDEFFXXX"
+- **GIVEN** a row with the counterparty name "\u{FEFF}+1"
 - **WHEN** the user copies the row
-- **THEN** the line holds "532013000" without the leading zeros and "DEUTDEFF" without the "XXX" of the head office
+- **THEN** the name field is "'\u{FEFF}+1"
+
+#### Scenario: NUL before the sign
+
+- **GIVEN** a row with the purpose "\u{0}=1"
+- **WHEN** the user copies the row
+- **THEN** the purpose field is "'\u{0}=1"
+
+#### Scenario: Zero-width space before the sign
+
+- **GIVEN** a row with the counterparty name "\u{200B}@SUM(1)"
+- **WHEN** the user copies the row
+- **THEN** the name field is "'\u{200B}@SUM(1)"
+
+#### Scenario: Ordinary text with quotes
+
+- **GIVEN** a row with the counterparty name `"Bäckerei Muster" GmbH`
+- **WHEN** the user copies the row
+- **THEN** the name field is `"Bäckerei Muster" GmbH`
 
 ### Requirement: Several rows can be selected
 
