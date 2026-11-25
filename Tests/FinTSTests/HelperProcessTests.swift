@@ -2,6 +2,7 @@ import Domain
 import Foundation
 import Synchronization
 import Testing
+import TestSupport
 @testable import FinTS
 
 /// Tests that start many helpers or count the open files of the test process. They run one after the
@@ -197,63 +198,74 @@ struct HelperProcessTests {
 			+ #"printf '%s\n{"at":%s}\n' "$a" "$(date +%s)" > '\#(record.path)'"#
 	}
 
-	/// The line that the helper of `trustScript` got back, and the seconds from `start` until it got it.
-	func trustAnswer(_ record: URL, since start: Date) throws -> (type: String?, seconds: Double) {
+	/// The line that the helper of `trustScript` got back, and the time from `start` until it got it.
+	func trustAnswer(_ record: URL, since start: Date) throws -> (type: String?, after: Duration) {
 		let lines = try String(contentsOf: record, encoding: .utf8).split(separator: "\n")
 		let objects = lines.map { try? JSONSerialization.jsonObject(with: Data($0.utf8)) as? [String: Any] }
 		let at = try #require(objects.last??["at"] as? Double)
-		return (objects.first??["type"] as? String, at - start.timeIntervalSince1970)
+		return (objects.first??["type"] as? String, .seconds(at - start.timeIntervalSince1970))
 	}
 
 	@Test("A certificate check that never ends fails the run with a timeout after the inactivity, and its late verdict is dropped")
 	func certificateCheckTimesOut() async throws {
-		let gate = Gate()
+		let held = HeldCheck()
 		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
 		defer { try? FileManager.default.removeItem(at: record) }
 		let started = Date.now
 		await #expect(throws: SyncFailure.network("The connection to the FinTS server of the bank timed out. Try again later.")) {
-			_ = try await connector(Self.trustScript(record: record), inactivity: 1, trust: gate.check)
+			_ = try await connector(Self.trustScript(record: record), inactivity: 1, trust: held.check)
 				.listAccounts(of: Self.access, state: nil, session: Session())
 		}
-		// The gate holds the check for 20 seconds, so a run that waited for the verdict would have none here.
-		#expect(gate.waiting == 1)
+		held.note("run ended")
 		let answer = try trustAnswer(record, since: started)
 		#expect(answer.type == "cancel")
 		// About 1 second: the timer sends the cancel without a thread of Swift concurrency.
-		#expect(answer.seconds < 10) // time-ok: about 1 s by the clock of the helper, against the 20 s of the gate
+		#expect(answer.after < budget(.seconds(10)))
 		// The verdict after the end of the wait must not resume the run a second time.
-		gate.open()
-		for _ in 0..<500 where gate.waiting > 0 {
-			try await Task.sleep(for: .milliseconds(10))
-		}
-		#expect(gate.waiting == 0)
+		await held.release()
+		#expect(held.events == ["check", "run ended", "verdict"])
 	}
 
 	@Test("A cancel ends the wait for a certificate check at once")
 	func certificateCheckCanceled() async throws {
-		let gate = Gate()
+		let held = HeldCheck()
 		let record = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
 		defer { try? FileManager.default.removeItem(at: record) }
 		let task = Task {
-			try await connector(Self.trustScript(record: record), trust: gate.check).listAccounts(of: Self.access, state: nil, session: Session())
+			try await connector(Self.trustScript(record: record), trust: held.check).listAccounts(of: Self.access, state: nil, session: Session())
 		}
-		for _ in 0..<500 where gate.waiting == 0 {
-			try await Task.sleep(for: .milliseconds(10))
-		}
-		#expect(gate.waiting == 1)
+		await held.started()
 		let canceled = Date.now
 		task.cancel()
 		await #expect(throws: CancellationError.self) { try await task.value }
-		// The gate holds the check for 20 seconds, so a run that waited for the verdict would still be open.
-		#expect(gate.waiting == 1)
+		held.note("run ended")
 		let answer = try trustAnswer(record, since: canceled)
 		#expect(answer.type == "cancel")
-		#expect(answer.seconds < 10) // time-ok: at once by the clock of the helper, against the 20 s of the gate
-		gate.open()
-		for _ in 0..<500 where gate.waiting > 0 {
-			try await Task.sleep(for: .milliseconds(10))
+		#expect(answer.after < budget(.seconds(10)))
+		await held.release()
+		#expect(held.events == ["check", "run ended", "verdict"])
+	}
+
+	@Test("A helper that ends while a certificate check waits ends the run with how it ended, not with a timeout", arguments: [
+		("exit 3", "The FinTS helper stopped unexpectedly (status 3)."), ("exit 0", "The FinTS helper ended without an answer."),
+	])
+	func certificateCheckHelperEnds(end: String, reason: String) async throws {
+		let held = HeldCheck()
+		let signal = FileManager.default.temporaryDirectory.appending(path: "fints-\(UUID().uuidString).txt")
+		defer { try? FileManager.default.removeItem(at: signal) }
+		// The helper ends once the check is held, so its end comes while the run waits for the verdict.
+		let script = #"read cmd; echo '{"type":"trust","id":1,"host":"fints.example.com","chain":["AAAA"]}'; "#
+			+ #"while [ ! -e '\#(signal.path)' ]; do sleep 0.05; done; "# + end
+		let check: @Sendable (String, [Data]) -> String = { host, chain in
+			FileManager.default.createFile(atPath: signal.path, contents: nil)
+			return held.check(host: host, chain: chain)
 		}
-		#expect(gate.waiting == 0)
+		await #expect(throws: SyncFailure.network(reason)) {
+			_ = try await connector(script, trust: check).listAccounts(of: Self.access, state: nil, session: Session())
+		}
+		held.note("run ended")
+		await held.release()
+		#expect(held.events == ["check", "run ended", "verdict"])
 	}
 
 	@Test("A finished run releases the helper and its pipes")
@@ -293,5 +305,45 @@ private final class Gate: @unchecked Sendable {
 			isOpen = true
 			condition.broadcast()
 		}
+	}
+}
+
+/// Holds each certificate check that reaches it until the test releases it, and records the order of the
+/// checks, their verdicts, and the notes of the test.
+private final class HeldCheck: @unchecked Sendable {
+	/// Guards `log` and `isReleased`.
+	private let condition = NSCondition()
+	private var log: [String] = []
+	private var isReleased = false
+
+	var events: [String] { condition.withLock { log } }
+
+	func note(_ event: String) {
+		condition.withLock { log.append(event) }
+	}
+
+	@Sendable func check(host: String, chain: [Data]) -> String {
+		condition.withLock {
+			log.append("check")
+			// The deadline only keeps a run that waits for the verdict from holding the suite for good.
+			let deadline = Date.now + 300
+			while !isReleased, condition.wait(until: deadline) {}
+			log.append("verdict")
+			return "trusted"
+		}
+	}
+
+	/// Returns when a check is held.
+	func started() async {
+		while !events.contains("check") { try? await Task.sleep(for: .milliseconds(10)) }
+	}
+
+	/// Lets the checks through and returns when each has its verdict.
+	func release() async {
+		condition.withLock {
+			isReleased = true
+			condition.broadcast()
+		}
+		while events.filter({ $0 == "check" }).count != events.filter({ $0 == "verdict" }).count { try? await Task.sleep(for: .milliseconds(10)) }
 	}
 }
