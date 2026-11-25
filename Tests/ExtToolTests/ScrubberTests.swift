@@ -1,5 +1,6 @@
 import ExtensionHost
 import Foundation
+import TestSupport
 import Testing
 @testable import ext
 
@@ -129,7 +130,7 @@ extension ExtTool {
 				}
 				return [percent(base64, "%%%02X"), percent(base64, "%%%02x"), percent(url, "%%%02X"),
 					percent(base64.trimmingCharacters(in: CharacterSet(charactersIn: "=")), "%%%02X"),
-					base64.replacingOccurrences(of: "/", with: #"\/"#), base64.replacingOccurrences(of: "/", with: #"/"#)]
+					base64.replacingOccurrences(of: "/", with: #"\/"#), base64.replacingOccurrences(of: "/", with: #"\u002F"#)]
 					.map { (value, placeholder, $0) }
 			}
 		}()
@@ -141,6 +142,24 @@ extension ExtTool {
 			#expect(fixture.exchanges[0].request.body == "feld=\(placeholder)&next=1")
 			#expect(fixture.exchanges[0].response.body == "{\"echo\": \"\(placeholder)\"}")
 			#expect(!file.contains(String(Data(value.utf8).base64EncodedString().prefix(8))))
+		}
+
+		/// An escaped letter or digit right before or after the Base64 makes it part of a longer value, as a plain one does.
+		@Test(arguments: ["%59%51%42%43", #"YQ\u0042C"#, "&#66;YQ==", "%42%59%51%3D%3D"])
+		func base64InsideALongerValueStays(_ encoded: String) throws {
+			let (fixture, _, _) = try scrub([exchange("POST", "https://bank.example/login", body: "feld=\(encoded)&next=1")], login: ["a", "r0ter~Faden?"])
+			#expect(fixture.exchanges[0].request.body == "feld=\(encoded)&next=1")
+		}
+
+		/// A text that almost holds the value, escaped, takes no exponential time: each character has no two
+		/// alternatives that match the same text.
+		@Test(arguments: [String(repeating: "%59%57%46%68", count: 5) + "%59%57%46!", String(repeating: "%61", count: 17) + "!"])
+		func nearMatchIsFast(_ text: String) {
+			let matcher = Encodings.matcher(for: String(repeating: "a", count: 18), ignoringCase: true)
+			var count = -1
+			let elapsed = ContinuousClock().measure { count = Encodings.replace(matcher, with: "", in: text).1 }
+			#expect(count == 0)
+			#expect(elapsed < budget(.milliseconds(100)))
 		}
 
 		@Test func percentEncodedBase64OfThePasswordInTheURL() throws {

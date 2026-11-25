@@ -754,8 +754,9 @@ enum Encodings {
 	/// Each character of the value as itself, percent-encoded in UTF-8 or ISO-8859-1, form-encoded,
 	/// JSON-escaped, HTML-escaped, or as the bytes of UTF-8 read as ISO-8859-1, in any mix; or the whole
 	/// value in Base64 or Base64url, whose characters may stand in the same forms. The match stands
-	/// between characters that are not letters or digits, or `asWholeValue` between the start or the end
-	/// of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`, `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
+	/// between characters that are no letters or digits, also in none of these forms, such as `%42`, or
+	/// `asWholeValue` between the start or the end of the text, quotes, `=`, `&`, `?`, `#`, `:`, `,`,
+	/// `;`, brackets, braces, or white space. A slash is no delimiter, so `2025/10/10` holds the PIN
 	/// `2025` inside a longer value.
 	/// With `entire`, the pattern matches only a text that is the value as a whole, in one of its forms.
 	static func matcher(for value: String, ignoringCase: Bool, asWholeValue: Bool = false, entire: Bool = false) -> NSRegularExpression {
@@ -769,8 +770,17 @@ enum Encodings {
 		}
 		let first = value.unicodeScalars.first.map(isWordCharacter) ?? false
 		let last = value.unicodeScalars.last.map(isWordCharacter) ?? false
-		return try! NSRegularExpression(pattern: (first ? "(?<![A-Za-z0-9])" : "") + core + (last ? "(?![A-Za-z0-9])" : ""))
+		return try! NSRegularExpression(pattern: (first ? "(?<!" + wordCharacter + ")" : "") + core + (last ? "(?!" + wordCharacter + ")" : ""))
 	}
+
+	/// A letter or digit of the ASCII alphabet as itself, percent-encoded, JSON-escaped, or as a numeric
+	/// HTML entity, so that the Base64 `YQ` of the login `a` stays in `%59%51%42%43`. The leading zeros
+	/// of an entity are bounded, as a lookbehind needs.
+	private static let wordCharacter: String = {
+		let hex = "(?:3[0-9]|4[1-9A-Fa-f]|5[0-9Aa]|6[1-9A-Fa-f]|7[0-9Aa])"
+		let decimal = "(?:4[89]|5[0-7]|6[5-9]|[78][0-9]|9[07-9]|1[01][0-9]|12[0-2])"
+		return "(?:[A-Za-z0-9]|%" + hex + #"|\\[uU]00"# + hex + "|&#0{0,8}" + decimal + ";|&#[xX]0{0,8}" + hex + ";)"
+	}()
 
 	/// The value in Base64 or Base64url, with or without its padding. Each character of it may stand in
 	/// the forms of `encodedForms(of:)` as a character of the plain value may, such as `%2F` or `\/` for
@@ -781,7 +791,7 @@ enum Encodings {
 		let digits = base64.trimmingCharacters(in: CharacterSet(charactersIn: "="))
 		let alphabets: [Unicode.Scalar: [Unicode.Scalar]] = ["+": ["+", "-"], "/": ["/", "_"]]
 		let pattern = digits.unicodeScalars.map { digit in
-			"(?:" + (alphabets[digit] ?? [digit]).flatMap(encodedForms(of:)).joined(separator: "|") + ")"
+			"(?:" + unique((alphabets[digit] ?? [digit]).flatMap(encodedForms(of:))).joined(separator: "|") + ")"
 		}.joined()
 		let padding = base64.count - digits.count
 		return padding == 0 ? pattern : pattern + "(?:(?:" + encodedForms(of: "=").joined(separator: "|") + "){\(padding)})?"
@@ -803,8 +813,15 @@ enum Encodings {
 				variants.append(other.unicodeScalars.first!)
 			}
 		}
-		var seen = Set<Unicode.Scalar>()
-		return variants.filter { seen.insert($0).inserted }.flatMap(encodedForms(of:))
+		return unique(unique(variants).flatMap(encodedForms(of:)))
+	}
+
+	/// The items without repeats, in order. Two alternatives that match the same text, such as the
+	/// percent forms of UTF-8 and of ISO-8859-1 for `Y`, let a text that almost holds the value take
+	/// exponential time.
+	private static func unique<Item: Hashable>(_ items: [Item]) -> [Item] {
+		var seen = Set<Item>()
+		return items.filter { seen.insert($0).inserted }
 	}
 
 	/// The escapes of JSON other than `\uXXXX`, as patterns.
@@ -824,7 +841,7 @@ enum Encodings {
 		forms.append(String(format: "(?i:&#x0*%X;)", scalar.value))
 		if let name = entityNames[scalar.value] { forms.append("&\(name);") }
 		if !scalar.isASCII, let latin1 = String(data: Data(utf8), encoding: .isoLatin1) { forms.append(NSRegularExpression.escapedPattern(for: latin1)) }
-		return forms
+		return unique(forms)
 	}
 
 	/// The named HTML entities of ISO-8859-1 and of the characters that HTML escapes.
