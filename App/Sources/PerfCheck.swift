@@ -327,6 +327,29 @@ struct PerfScenario {
 					c.fail("the refresh removed a shown position in place")
 				}
 			}),
+		// A choice in the submenu "Asset Class" that takes a shown position out of the filter "Asset class" starts the table
+		// of positions over, as a refresh that drops a shown position does (issue #135).
+		PerfScenario(name: "asset-class-leaves-filter", budget: halfSecond,
+			setUp: { c in
+				await c.select("Perf Depot")
+				c.model.filter.assetClass = .others
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }),
+					let moved = c.model.ledger.holdings(of: [depot.id]).first else { return c.fail("the portfolio has no position") }
+				let table = c.harness.holdingsTables().first
+				if table == nil { c.fail("the portfolio shows no table of positions") }
+				c.model.setAssetClass(.stocks, of: [moved.id])
+				await c.settle()
+				if c.model.ledger.holdings(of: [depot.id]).first(where: { $0.id == moved.id })?.assetClass != .stocks { c.fail("the choice did not reach the ledger") }
+				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) {
+					c.fail("the choice removed a shown position in place")
+				}
+				c.model.filter.assetClass = nil
+				c.model.setAssetClass(nil, of: [moved.id])
+				await c.settle()
+			}),
 		// The last transaction of a portfolio goes: the view changes to its positions one drawing after the
 		// rows, never in the drawing that changes them (issue #151).
 		PerfScenario(name: "delete-last-transaction-of-portfolio", budget: halfSecond,

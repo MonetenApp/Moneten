@@ -921,6 +921,9 @@ public struct TransactionFilter: Hashable, Sendable {
 	public var categoryID: UUID?
 	/// Nil for "Show All".
 	public var account: AccountFilter?
+	/// The filter "Asset class" of the positions of a portfolio, nil for "Show All". Transactions have no asset class,
+	/// so it hides none of them.
+	public var assetClass: AssetClass?
 
 	public init() {}
 
@@ -930,7 +933,7 @@ public struct TransactionFilter: Hashable, Sendable {
 
 	/// A kind of filter that hides rows. The list shows one line for each active kind.
 	public enum Hint: Hashable, Sendable {
-		case period, status, amount, category, account
+		case period, status, amount, category, account, assetClass
 
 		public var text: String {
 			switch self {
@@ -939,6 +942,7 @@ public struct TransactionFilter: Hashable, Sendable {
 			case .amount: String(localized: "An amount filter is active; some entries might be hidden.")
 			case .category: String(localized: "A category filter is active; some entries might be hidden.")
 			case .account: String(localized: "An account filter is active; some entries might be hidden.")
+			case .assetClass: String(localized: "An asset class filter is active; some entries might be hidden.")
 			}
 		}
 	}
@@ -957,7 +961,11 @@ public struct TransactionFilter: Hashable, Sendable {
 	/// Sets the filter that the filter bar of `scope` has no menu for to "Show All": the account filter in an
 	/// account or a group, the category filter in a category. The list applies both filters in every view, so a
 	/// kept filter without its menu would hide rows with no control to clear it. A saved search shows both menus.
+	///
+	/// The filter "Asset class" goes back to "Show All" in every view, because the next view can lack its class, and its
+	/// menu lists only the classes of the view.
 	public mutating func resetHidden(in scope: LedgerScope) {
+		assetClass = nil
 		switch scope {
 		case .all: break
 		case .account, .accountGroup: account = nil

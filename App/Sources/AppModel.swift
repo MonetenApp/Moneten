@@ -1098,9 +1098,21 @@ final class AppModel {
 	}
 
 	/// The user's choice of an asset class for the positions `ids`, nil for "Automatic", which goes back to the class of
-	/// the source. It writes through the store first and changes the ledger only after the write succeeds.
+	/// the source. It writes through the store first and changes the ledger only after the write succeeds. A choice that
+	/// takes shown positions out of the filter "Asset class" removes rows, so it comes with a new table (issue #135), and
+	/// the ledger changes a drawing later.
 	func setAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
-		guard let store, !ids.isEmpty else { return }
+		guard store != nil, !ids.isEmpty else { return }
+		if let portfolios = tableKey.portfolios, let shown = tableKey.filter.assetClass,
+			ledger.holdings(of: portfolios).contains(where: { ids.contains($0.id) && (choice ?? $0.sourceAssetClass ?? .others) != shown }) {
+			Task { await replacingTable { storeAssetClass(choice, of: ids) } }
+		} else {
+			storeAssetClass(choice, of: ids)
+		}
+	}
+
+	private func storeAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
+		guard let store else { return }
 		do {
 			try store.setUserAssetClass(choice, ofHoldings: ids)
 			ledgerChange = "asset class"
@@ -2091,13 +2103,14 @@ final class AppModel {
 	}
 
 	/// The open table shows pending rows or split parts that a correction can remove, or a position of
-	/// the account that the delivered positions no longer hold.
+	/// the account that the delivered positions no longer hold, or that leaves the filters of the table, such as a
+	/// position whose bank sends another asset class than the one of the filter.
 	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
 		if let portfolios = tableKey.portfolios {
 			guard portfolios.contains(accountID), let delivered = result.holdings else { return false }
-			let shown = ledger.holdings(of: [accountID])
-			let kept = Set(Holding.identify(delivered, stored: shown).map(\.id))
-			return shown.contains { !kept.contains($0.id) }
+			let stored = ledger.holdings(of: [accountID])
+			let kept = Set(tableKey.filter.positions(of: Holding.identify(delivered, stored: stored)).map(\.id))
+			return tableKey.filter.positions(of: stored).contains { !kept.contains($0.id) }
 		}
 		let ledger = self.ledger
 		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }

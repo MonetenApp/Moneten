@@ -212,6 +212,12 @@ enum Palette {
 	/// Negative amounts and error messages. The system red reaches only 3.6:1 on white, so light mode
 	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
 	static let red = dynamic("textRed", light: rgb(0xC4262E), dark: .systemRed)
+	/// The profit of a position. The system green reaches only 2.2:1 on white, so light mode uses a darker green with
+	/// 5.1:1, and 8:1 with "Increase contrast". Dark mode keeps the system green, 8:1 on the dark window.
+	static let green = dynamic("textGreen", light: rgb(0x1A7F37), dark: .systemGreen, increasedContrast: rgb(0x0B5D1E))
+	/// A value that may be out of date, such as the day of an old quote. The system orange reaches only 2.1:1 on white,
+	/// so light mode uses a darker orange with 5.9:1, and 8:1 with "Increase contrast". Dark mode keeps the system orange.
+	static let warning = dynamic("textWarning", light: rgb(0x9A5200), dark: .systemOrange, increasedContrast: rgb(0x7A4300))
 
 	/// `increasedContrast` replaces `light` when the user turns on "Increase contrast".
 	private static func dynamic(_ name: String, light: NSColor, dark: NSColor, increasedContrast: NSColor? = nil) -> Color {
