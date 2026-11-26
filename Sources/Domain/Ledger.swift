@@ -727,7 +727,7 @@ public struct Ledger: Sendable {
 	/// choice, so each position shows the class of its source again. The order of the positions does not depend on it.
 	public mutating func setUserAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
 		for (account, positions) in holdingsByAccount where positions.contains(where: { ids.contains($0.id) }) {
-			holdingsByAccount[account] = positions.map { var holding = $0; if ids.contains(holding.id) { holding.userAssetClass = choice }; return holding }
+			holdingsByAccount[account] = Holding.settingUserAssetClass(choice, of: ids, in: positions)
 		}
 	}
 

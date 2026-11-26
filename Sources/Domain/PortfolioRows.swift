@@ -51,63 +51,24 @@ extension TransactionFilter {
 		}
 	}
 
+	/// Whether a change of the positions from `before` to `after` takes a position off the list that the filters show: a
+	/// refresh that drops a position or sends another class for it, or a choice in the submenu "Asset Class". Such a
+	/// change must start the table over instead of removing rows in place (#135, #151). A position that comes onto the
+	/// list, or that changes while the filters hide it, removes no row.
+	public func hidesShownPositions(before: [Holding], after: [Holding]) -> Bool {
+		let kept = Set(positions(of: after).map(\.id))
+		return positions(of: before).contains { !kept.contains($0.id) }
+	}
+
+	/// Sets the filter "Asset class" back to "Show All" when no position of `holdings`, those of the view, has its class
+	/// any more. Its menu lists only the classes of the view, so the bar would name a class that the menu lacks, over an
+	/// empty list.
+	public mutating func dropAssetClass(absentFrom holdings: [Holding]) {
+		if let shown = assetClass, !holdings.contains(where: { $0.assetClass == shown }) { assetClass = nil }
+	}
+
 	/// The lines below the list of positions. Only the filter "Asset class" hides positions, so only it gets a line.
 	public var positionHints: [Hint] {
 		assetClass == nil ? [] : [.assetClass]
-	}
-}
-
-extension Format {
-	/// The quantity of a position: a number of units without a word for the unit, such as "646" or "12,3456", or a
-	/// nominal amount such as "5.000,00 €" or "5.000,00 USDC", or "5.000,00" without a known currency. Each keeps
-	/// every decimal place of the source. The column header names the unit.
-	public static func quantity(_ h: Holding, locale: Locale = .autoupdatingCurrent) -> String {
-		let places = decimalPlaces(of: h.quantity)
-		guard h.isNominal else {
-			return minus(h.quantity.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(0...places))))
-		}
-		let nominalPlaces = 2...max(2, places)
-		guard let currency = h.nominalCurrency else {
-			return minus(h.quantity.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(nominalPlaces))))
-		}
-		return money(h.quantity, currency: currency, places: nominalPlaces, locale: locale)
-	}
-
-	/// The last quote: "25,00 €", "12,3456 €", "0,00000123 $", "0,004 USDC", or "98,50 %": at least two decimal places,
-	/// and those of the source up to six digits after the leading zeros. A price converted from another currency can have
-	/// 38 decimal places. A quote of 0 is no price, so it shows "–". A purchase price shows the places of its currency,
-	/// see `purchasePrice`.
-	public static func price(_ q: Quote, locale: Locale = .autoupdatingCurrent) -> String {
-		guard q.amount != 0 else { return "–" }
-		let places = 2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6))
-		guard let currency = q.currency else {
-			return minus(q.amount.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(places)))) + " %"
-		}
-		return money(q.amount, currency: currency, places: places, locale: locale)
-	}
-
-	/// The profit or loss of a position: "+200,00 €" for a profit and "−200,00 €" for a loss. The sign says which one it
-	/// is, so the row needs no word for it. Zero has no sign.
-	public static func gain(_ m: Money, locale: Locale = .autoupdatingCurrent) -> String {
-		(m.minorUnits > 0 ? "+" : "") + money(m, locale: locale)
-	}
-
-	/// The profit or loss in percent of the purchase value, with two decimal places: "+25,00 %" or "−20,00 %". A value that
-	/// rounds to zero shows "0,00 %" without a sign.
-	public static func gainPercent(_ value: Decimal, locale: Locale = .autoupdatingCurrent) -> String {
-		var exact = value
-		var rounded = Decimal()
-		NSDecimalRound(&rounded, &exact, 2, .plain)
-		let digits = rounded.magnitude.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(2)))
-		let sign = rounded > 0 ? "+" : rounded < 0 ? "\u{2212}" : ""
-		return sign + digits + " %"
-	}
-
-	private static func decimalPlaces(of value: Decimal) -> Int { max(0, -value.exponent) }
-
-	/// The zeros after the decimal point before the first digit that is not zero: 5 for 0.00000123, 0 for 18.18.
-	private static func leadingZeros(of value: Decimal) -> Int {
-		let digits = "\(value.significand.magnitude)".count
-		return max(0, -(value.exponent + digits))
 	}
 }

@@ -275,7 +275,7 @@ struct FilterBar: View {
 			.help("Save filter bar")
 			.accessibilityLabel("Save filter bar")
 			separator
-			filterMenu("Period:", title: periodTitle) {
+			FilterMenu("Period:", title: periodTitle) {
 				Button("Show All") { model.choose(period: .all) }
 				Divider()
 				Button("30 Days") { model.choose(period: .days30) }
@@ -301,14 +301,14 @@ struct FilterBar: View {
 			}
 			.popover(isPresented: $customPeriod) { CustomPeriodView() }
 			separator
-			filterMenu("Status:", title: statusTitle) {
+			FilterMenu("Status:", title: statusTitle) {
 				Button("Show All") { model.filter.status = .all }
 				Divider()
 				Button("Checked") { model.filter.status = .checked }
 				Button("Unchecked") { model.filter.status = .unchecked }
 			}
 			separator
-			filterMenu("Amount:", title: amountTitle) {
+			FilterMenu("Amount:", title: amountTitle) {
 				Button("Show All") { model.filter.amount = .all }
 				Divider()
 				Button("Deposits") { model.filter.amount = .deposits }
@@ -320,7 +320,7 @@ struct FilterBar: View {
 			separator
 			// A saved search shows both menus, so selecting it resets no filter.
 			if case .category = model.selection {} else {
-				filterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? String(localized: "Show All")) {
+				FilterMenu("Category:", title: model.filter.categoryID.map { model.ledger.categoryPath($0) } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.categoryID = nil }
 					Divider()
 					ForEach(model.ledger.categoriesInSidebarOrder) { c in Button(model.ledger.categoryPath(c.id)) { model.filter.categoryID = c.id } }
@@ -329,7 +329,7 @@ struct FilterBar: View {
 			if case .search = model.selection { separator }
 			switch model.selection {
 			case .category, .search:
-				filterMenu("Account:", title: model.filter.account.flatMap { model.ledger.name(of: $0) } ?? String(localized: "Show All")) {
+				FilterMenu("Account:", title: model.filter.account.flatMap { model.ledger.name(of: $0) } ?? String(localized: "Show All")) {
 					Button("Show All") { model.filter.account = nil }
 					Divider()
 					// The groups and accounts in the order of the sidebar. A menu item has no indentation of its own,
@@ -370,10 +370,6 @@ struct FilterBar: View {
 
 	private var separator: some View {
 		Rectangle().fill(Palette.filterSeparator).frame(width: 1, height: 16)
-	}
-
-	private func filterMenu<Content: View>(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) -> some View {
-		FilterMenu(label, title: title, content: content)
 	}
 
 	private var periodTitle: String {

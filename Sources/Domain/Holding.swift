@@ -193,6 +193,12 @@ extension Holding {
 		return fields.contains { $0.localizedCaseInsensitiveContains(text) }
 	}
 
+	/// The positions `holdings` with the user's choice of an asset class for those of `ids`, in the same order. Nil
+	/// removes the choice, so each of them shows the class of its source again.
+	public static func settingUserAssetClass(_ choice: AssetClass?, of ids: Set<UUID>, in holdings: [Holding]) -> [Holding] {
+		holdings.map { var holding = $0; if ids.contains(holding.id) { holding.userAssetClass = choice }; return holding }
+	}
+
 	/// Gives each delivered position the ID and the user's asset class of a stored one of the same security, so a position
 	/// keeps its identity and the user's choice across refreshes. A source never sends a choice of the user, so a position
 	/// without a stored one has none. Every position first takes the stored one with its ISIN. Then a position

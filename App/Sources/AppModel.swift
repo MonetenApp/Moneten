@@ -1103,12 +1103,15 @@ final class AppModel {
 	/// the ledger changes a drawing later.
 	func setAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
 		guard store != nil, !ids.isEmpty else { return }
-		if let portfolios = tableKey.portfolios, let shown = tableKey.filter.assetClass,
-			ledger.holdings(of: portfolios).contains(where: { ids.contains($0.id) && (choice ?? $0.sourceAssetClass ?? .others) != shown }) {
-			Task { await replacingTable { storeAssetClass(choice, of: ids) } }
-		} else {
-			storeAssetClass(choice, of: ids)
+		if let portfolios = tableKey.portfolios {
+			let before = ledger.holdings(of: portfolios)
+			let after = Holding.settingUserAssetClass(choice, of: ids, in: before)
+			if tableKey.filter.hidesShownPositions(before: before, after: after) {
+				Task { await replacingTable { storeAssetClass(choice, of: ids) } }
+				return
+			}
 		}
+		storeAssetClass(choice, of: ids)
 	}
 
 	private func storeAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
@@ -1117,9 +1120,18 @@ final class AppModel {
 			try store.setUserAssetClass(choice, ofHoldings: ids)
 			ledgerChange = "asset class"
 			ledger.setUserAssetClass(choice, of: ids)
+			dropEmptyAssetClass()
 		} catch {
 			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
 		}
+	}
+
+	/// Sets the filter "Asset class" back to "Show All" when the positions of the view no longer have its class. A change
+	/// that empties the class hides shown positions, so it runs inside `replacingTable`, and the new filter comes with
+	/// the same new table.
+	private func dropEmptyAssetClass() {
+		guard filter.assetClass != nil, let portfolios = selectedPortfolios else { return }
+		filter.dropAssetClass(absentFrom: ledger.holdings(of: portfolios))
 	}
 
 	/// What ⌘K does: the category picker for the selected rows on screen.
@@ -2098,8 +2110,15 @@ final class AppModel {
 		// one drawing (issue #151): the rows wait until SwiftUI drew the view.
 		if tableUndrawn { Trail.log("refresh waits for drawing") }
 		while tableUndrawn { await drawn() }
-		guard removesShownRows(result, of: accountID) else { return try merge(.refresh(result), into: accountID) }
-		return try await replacingTable { try merge(.refresh(result), into: accountID) }
+		guard removesShownRows(result, of: accountID) else { return try storeRefresh(result, into: accountID) }
+		return try await replacingTable { try storeRefresh(result, into: accountID) }
+	}
+
+	/// Stores a refresh, and sets the filter "Asset class" back when the refresh took the last position of its class.
+	private func storeRefresh(_ result: RefreshResult, into accountID: UUID) throws -> Reconciliation {
+		let reconciliation = try merge(.refresh(result), into: accountID)
+		dropEmptyAssetClass()
+		return reconciliation
 	}
 
 	/// The open table shows pending rows or split parts that a correction can remove, or a position of
@@ -2109,8 +2128,7 @@ final class AppModel {
 		if let portfolios = tableKey.portfolios {
 			guard portfolios.contains(accountID), let delivered = result.holdings else { return false }
 			let stored = ledger.holdings(of: [accountID])
-			let kept = Set(tableKey.filter.positions(of: Holding.identify(delivered, stored: stored)).map(\.id))
-			return tableKey.filter.positions(of: stored).contains { !kept.contains($0.id) }
+			return tableKey.filter.hidesShownPositions(before: stored, after: Holding.identify(delivered, stored: stored))
 		}
 		let ledger = self.ledger
 		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }

@@ -2788,8 +2788,9 @@ final class DebugHarness {
 		log("holdingmenu", ("items", .count(menu.items.count)), ("classes", .list(classes)), ("marked", .list(entries.map { .flag($0.state == .on) })))
 		guard parts.count >= 3 else { return }
 		let surface = table.window.map(surface(of:)) ?? .startWindow
-		guard HarnessRun.mayClick(parts[2], allowed: Self.assetClassTitles, on: surface),
-			let index = submenu.items.firstIndex(where: { $0.title == Self.localized(parts[2]) }) else { return log("holdingmenu refused") }
+		let title = Self.localized(parts[2])
+		guard HarnessRun.mayClick(title, allowed: Self.assetClassTitles, on: surface),
+			let index = submenu.items.firstIndex(where: { $0.title == title }) else { return log("holdingmenu refused") }
 		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
 		nonisolated(unsafe) let choose = { submenu.performActionForItem(at: index) }
 		RunLoop.main.perform(inModes: [.common]) {
@@ -2800,8 +2801,9 @@ final class DebugHarness {
 		}
 	}
 
-	/// The English titles of the submenu "Asset Class", which change only the class of positions in the database.
-	private static let assetClassTitles: Set<String> = ["Automatic", "Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", "Others"]
+	/// The titles of the submenu "Asset Class" in the language of the app, which change only the class of positions in the
+	/// database: "Automatic" and the names of the classes, which the submenu shows too.
+	private static var assetClassTitles: Set<String> { Set([localized("Automatic")] + AssetClass.allCases.map(\.name)) }
 
 	private func menuItem(_ argument: String) {
 		let parts = argument.components(separatedBy: "|")

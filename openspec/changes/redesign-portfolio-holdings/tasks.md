@@ -28,3 +28,9 @@ A task is checked only when a test or a check in the running app shows the behav
 - [x] 2.8 Day of an old quote: the day only when it is older than the newest quote day of the portfolio, in the warning color. PortfolioRowsTests "Only a quote older than the newest quote day of its own portfolio shows its day", and the screenshots.
 - [x] 2.9 Quote of zero: "–". PortfolioRowsTests "A quote of 0 shows a dash, any other quote its amount, and a percentage its sign".
 - [x] 2.10 Light and dark screenshots of the debug harness for the pull request, with the login "depot" of `scripts/fake-fints-helper.sh`.
+
+## 3. Follow-ups of the merge review (#608)
+
+- [x] 3.1 One rule for a change that takes shown positions off the list, for a refresh and for a choice in the submenu "Asset Class": `TransactionFilter.hidesShownPositions(before:after:)`. PortfolioRowsTests "A change hides shown positions only when a position that the filters show leaves the list"; the perf scenarios "asset-class-leaves-filter" and "refresh-moves-position-out-of-filter".
+- [x] 3.2 The filter "Asset class" goes back to "Show All" when its class loses its last position. PortfolioRowsTests "The filter Asset class goes back to Show All when no position of the view has its class any more"; the perf scenario "refresh-moves-position-out-of-filter".
+- [x] 3.3 An amount or a percentage that shows as zero has no color, so "0,00 %" below "+0,01 €" stays without green. FormatTests "The amount and the percentage of a profit or loss each take the sign of the value as it shows, and zero has none".
