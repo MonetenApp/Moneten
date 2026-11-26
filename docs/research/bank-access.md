@@ -72,14 +72,19 @@ Each run takes a few minutes and contacts only the bank under test. It uses a de
 1. Put the product registration number into the login Keychain, if it is not there: `security add-generic-password -s 'Moneten FinTS product ID' -a moneten -w` (it asks for the number).
 2. Build: `scripts/build-app.sh debug`. The build bundles the FinTS helper and the product ID.
 3. Quit every running Moneten, also one that runs from another folder, and check that none is left: `pgrep -x Moneten` must print nothing. A plain `open` brings a running instance to the front, and that instance keeps its own data folder, which can be the real one.
-4. Start a separate instance with a throwaway folder and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`. The run keeps its settings in `$RUN/data/Settings.plist`, so it does not change the settings of the installed Moneten:
+4. Start a separate instance with a throwaway folder, a throwaway keychain file, and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. A harness run without `MONETEN_DATA_DIR` or `MONETEN_KEYCHAIN_PATH` exits with status 2 at launch. The keychain file takes the place of the login keychain for every Keychain item of the app. `security create-keychain` on a path changes neither the default keychain nor the search list, as in `scripts/check-debug-log.sh`. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`. The run keeps its settings in `$RUN/data/Settings.plist`, so it does not change the settings of the installed Moneten:
 
    ```sh
    RUN=$(mktemp -d); mkdir "$RUN/debug"
-   MONETEN_DATA_DIR="$RUN/data" MONETEN_DEBUG_DIR="$RUN/debug" dist/Moneten.app/Contents/MacOS/Moneten 2>"$RUN/helper.log" &
+   KEYCHAIN="$RUN/bank-test.keychain-db"
+   security create-keychain -p bank-test "$KEYCHAIN"
+   security unlock-keychain -p bank-test "$KEYCHAIN"
+   security set-keychain-settings "$KEYCHAIN"
+   MONETEN_DATA_DIR="$RUN/data" MONETEN_DEBUG_DIR="$RUN/debug" MONETEN_KEYCHAIN_PATH="$KEYCHAIN" dist/Moneten.app/Contents/MacOS/Moneten 2>"$RUN/helper.log" &
+   PID=$!
    ```
 
-5. Make the command for the harness, as `scripts/check-debug-log.sh` does, and create the database with a password, so the run leaves no Keychain item:
+5. Make the command for the harness, as `scripts/check-debug-log.sh` does, and create the database with a password, so that the database needs no random key. Every Keychain item of the run goes into the keychain file of step 4, and the end of the runs removes it:
 
    ```sh
    cat > .build/notify.swift <<'EOF'
@@ -93,7 +98,7 @@ Each run takes a few minutes and contacts only the bank under test. It uses a de
    send create bank-test
    ```
 
-6. Before any step with the bank, check that the instance with the throwaway folder answered: `ls "$RUN/data/Database/Moneten.sqlite"` shows the new database, and `send status` writes lines into `$RUN/debug/debug.log`. If either is missing, stop, quit Moneten, and start again at step 3.
+6. Before any step with the bank, check that the instance with the throwaway folder answered: `ls "$RUN/data/Database/Moneten.sqlite"` shows the new database, and `send status` writes lines into `$RUN/debug/debug.log`. If either is missing, stop, run the commands of "End of the runs", and start again at step 3.
 
 After each step, `send status` writes one line per account into `$RUN/debug/debug.log`: its kind, the error, whether it has a balance, the number of rows, and `historyStart`. The log holds no amounts, so read the balance and the rows in the window. Copy the lines of the run into issue #11.
 
@@ -133,6 +138,16 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 2. Add the login with the 10-digit Direct Banking number and the PIN. Record whether the server takes that number as the login name, and any sentence the bank shows a new user, such as that only new transactions arrive.
 3. Refresh the giro account. Record whether the bank parameters allow CAMT (HKCAZ), or whether the bank sends MT940 and MT942. If it sends MT942, record one pending row and its booked version: is the entry date of the `:61:` line the day on which the bank books the row?
 4. Refresh a savings account in euros, such as "Sparkonto". If the bank sends CAMT, compare each entry with the website for the sign, the date, and the booking state, and record each entry that differs.
+
+### End of the runs
+
+Quit the instance and remove the keychain file as a plain file. Never use `security delete-keychain`, which edits the search list. Remove the folder of the run when its lines are in issue #11, because its database holds the data of the bank:
+
+```sh
+kill "$PID"; wait "$PID"
+rm -f "$KEYCHAIN"
+rm -rf "$RUN"
+```
 
 ### What each run records
 
