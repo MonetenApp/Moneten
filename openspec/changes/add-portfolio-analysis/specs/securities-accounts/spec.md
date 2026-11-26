@@ -4,14 +4,13 @@
 
 ### Requirement: The charts follow the asset class filter
 
-The app SHALL draw the charts of a portfolio view from the positions that the filter "Asset class" shows, and it SHALL show a hint that an asset class filter is active and that entries might be hidden while a class is selected.
+The app SHALL draw the charts of a portfolio view from the positions that the filter "Asset class" shows.
 
 #### Scenario: Pie chart of one class
 
 - **GIVEN** a portfolio with 2 positions of the class "Stocks" worth 3.000,00 € and 1 position of the class "Bonds" worth 1.000,00 €
 - **WHEN** the user selects "Stocks" in the filter "Asset class" and then "Pie Chart"
 - **THEN** the chart shows one slice "Stocks" with 3.000,00 € and 100 %
-- **AND** the view shows the hint that an asset class filter is active
 
 ### Requirement: Pie chart by asset class
 

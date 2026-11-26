@@ -79,7 +79,6 @@ The day below a quote shows when it is older than the newest quote day among the
 ## Risks / Trade-offs
 
 - The spec delta modifies requirements that the change `add-securities-accounts` adds, so `add-securities-accounts` must be archived first. OpenSpec refuses the archive of this change before that.
-
 - No recorded MT535 answer of a bank in the repository shows field 12C. Banks that send no code give every position "Others", which is the owner's rule. The bank test of issue #11 checks whether a bank sends it.
 - An earlier app version that reads a new export loses the user's choices without a warning, because it ignores unknown keys. This is the rule for optional keys of the export format.
 - The user's choice belongs to the position. A security that leaves the portfolio and comes back later starts with the class of the source again.

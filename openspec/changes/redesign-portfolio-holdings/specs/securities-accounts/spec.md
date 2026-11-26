@@ -31,7 +31,7 @@ The app SHALL take the asset class of a position from its source when the user c
 
 ### Requirement: Asset class of a FinTS position
 
-The app SHALL read the asset class of a FinTS position from the classification code of the security (CFI, ISO 10962) in the custody account balance: shares give "Stocks", exchange traded funds "ETFs", real estate investment trusts "Real estate", other investment funds "Funds", and bonds and other debt except structured products "Bonds". Any other code gives no class.
+The app SHALL read the asset class of a FinTS position from the classification code of the security (CFI, ISO 10962) in the custody account balance by its first two letters: ES, EP, EC, EF, ED, ER, and EV give "Stocks", CE "ETFs", CB "Real estate", EU, CI, CH, CS, CF, CP, and CM "Funds", and DB, DC, DW, DT, DY, DA, DG, DN, and DD "Bonds". Every other code gives no class, also DS, DE, and DM.
 
 #### Scenario: Codes of four securities
 
@@ -44,6 +44,12 @@ The app SHALL read the asset class of a FinTS position from the classification c
 - **GIVEN** the bank sends the code "RWSNCA" for the warrant "Optionsschein Muster"
 - **WHEN** the refresh ends
 - **THEN** the position has the class "Others"
+
+#### Scenario: Structured product and other debt
+
+- **GIVEN** the bank sends the code "DSXXXX" for "Garantiezertifikat Muster" and "DMXXXX" for "Schuldschein Muster"
+- **WHEN** the refresh ends
+- **THEN** both positions have the class "Others"
 
 ### Requirement: Choose an asset class
 
@@ -70,7 +76,7 @@ The app SHALL let the user choose the asset class of the selected positions with
 
 ### Requirement: The user's asset class survives a refresh
 
-The app SHALL keep the asset class that the user chose for a position when a refresh delivers the position again, also when the bank sends another class. A refresh updates the class of the source and never changes the user's choice.
+The app SHALL keep the asset class that the user chose for a position when a refresh delivers the position again, also when the bank sends another class. A refresh updates the class of the source and never changes the user's choice. A position that leaves the portfolio takes the choice with it.
 
 #### Scenario: Refresh after a choice
 
@@ -84,6 +90,13 @@ The app SHALL keep the asset class that the user chose for a position when a ref
 - **WHEN** a refresh delivers "Beispiel Fonds" with the class "Funds"
 - **THEN** the position has the class "Funds"
 
+#### Scenario: Sold and bought again
+
+- **GIVEN** the bank sends the class "Funds" for "Beispiel Fonds" and the user chose "ETFs"
+- **WHEN** a refresh delivers the portfolio without "Beispiel Fonds", and a later refresh delivers "Beispiel Fonds" again with the class "Funds"
+- **THEN** the position has the class "Funds"
+- **AND** a position without a class from the bank that comes back the same way has the class "Others"
+
 ### Requirement: Asset class tag
 
 The app SHALL show the asset class of a position as a small tag in the name column, in the line below the name, next to the ISIN.
@@ -96,7 +109,7 @@ The app SHALL show the asset class of a position as a small tag in the name colu
 
 ### Requirement: Filter by asset class
 
-The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class.
+The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class, and a line below the last row says "An asset class filter is active; some entries might be hidden."
 
 #### Scenario: Show one class
 
@@ -104,6 +117,19 @@ The app SHALL offer the filter "Asset class" in the filter bar above the positio
 - **WHEN** the user selects "Stocks" in the filter "Asset class"
 - **THEN** the list shows the 2 stock positions
 - **AND** the status line reads "2 Portfolio Items" with the sum 3.000,00 €
+
+#### Scenario: Hint below the list
+
+- **GIVEN** a portfolio with 3 positions of the class "ETFs" and 2 positions of the class "Stocks"
+- **WHEN** the user selects "ETFs" in the filter "Asset class"
+- **THEN** the list shows the 3 ETF positions
+- **AND** a line below the last row says "An asset class filter is active; some entries might be hidden."
+
+#### Scenario: No hint without a filter
+
+- **GIVEN** the same portfolio with the filter "Asset class" at "Show All"
+- **WHEN** the user opens the portfolio
+- **THEN** the list shows 5 positions and no line about a filter
 
 #### Scenario: Entries of the filter
 

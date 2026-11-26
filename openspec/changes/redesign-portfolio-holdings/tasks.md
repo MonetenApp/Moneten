@@ -20,7 +20,7 @@ A task is checked only when a test or a check in the running app shows the behav
 
 - [ ] 2.1 Asset classes: the localized names of the eight classes, with German values.
 - [ ] 2.2 Asset class tag: the tag next to the ISIN below the name.
-- [ ] 2.3 Filter by asset class: "Asset class" in the filter bar with "Show All" and the classes of the view; the list and the status line follow it.
+- [ ] 2.3 Filter by asset class: "Asset class" in the filter bar with "Show All" and the classes of the view; the list and the status line follow it, and the line "An asset class filter is active; some entries might be hidden." shows below the last row.
 - [ ] 2.4 Choose an asset class: the submenu "Asset Class" with the eight classes and "Automatic", with a mark at the current choice, for the selected positions.
 - [ ] 2.5 Position row content: the value in semibold, and the ISIN below the name.
 - [ ] 2.6 Quantities as units or as a nominal amount: "646" without "shares", and "5.000,00 €" for a nominal amount.

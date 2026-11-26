@@ -9,7 +9,7 @@ The list of positions shows every field, but a reader has to work to see what ma
 - Every position has one of eight asset classes: "Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", and "Others".
 - The class comes from the bank. A FinTS bank that sends the classification code of the security (CFI, ISO 10962) gives the class. A position without a class from its source is "Others". The app never guesses a class from the name.
 - The user can choose the class of a position with the submenu "Asset Class" in its context menu. The choice wins over the class of the source and survives every refresh. "Automatic" removes the choice.
-- The name column shows a small tag with the class next to the ISIN. The filter bar above the positions gets the filter "Asset class".
+- The name column shows a small tag with the class next to the ISIN. The filter bar above the positions gets the filter "Asset class", and a line below the list says when it hides positions.
 - The quantity shows as a plain number, such as "646". A nominal amount keeps its currency, such as "5.000,00 €".
 - The day of the last quote shows only when it is older than the newest quote day of the portfolio, in the warning color. A quote of 0 shows "–".
 - The value is semibold. The profit or loss shows a profit in green with "+" and a loss in red with "−", and the percentage below the amount, without the words "Profit" and "Loss" in the row. The header of the view keeps its text.
@@ -30,7 +30,7 @@ None.
 ## Impact
 
 - Milestone: v0.1
-- Issues: none yet.
+- Issues: #606, which tracks both parts.
 - Modules: `Domain` owns `AssetClass` and the class of a `Holding`. `FinTS` and `Tools/FinTSHelper` read the classification code of MT535 and map it to a class. `Storage` keeps the class of the source and the user's choice, and the complete export carries both. `App` owns the columns, the tag, the filter, and the context menu.
 - Depends on the change `add-securities-accounts` for positions and the portfolio view, `add-main-window` for the filter bar, and `add-data-export` for the complete export.
 - Decisions: [ADR 0014](../../../docs/decisions/0014-fints-through-hbci4java.md) for the FinTS helper, [ADR 0004](../../../docs/decisions/0004-moneymoney-compatible-extension-api.md) for the fields of an extension result.
@@ -43,7 +43,7 @@ None.
 - The asset classes are "Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", and "Others". The class for cryptocurrencies is predefined (version history, 2.4.6).
 - The context menu of a position has "Assign Asset Class". See [analysis](../../../docs/research/moneymoney-analysis.md#context-menus-u).
 - A position shows its fields in one line, with the quantity as a number of shares, the day of each quote, and the labels "Profit" and "Loss" (owner review, 26 November 2026, and strings).
-- Strings show "Unassigned" for a security without a class.
+- Strings show "Unassigned" for a security without a class, and "An asset class filter is active; some entries might be hidden."
 - The [web banking API](https://moneymoney.app/api/webbanking/) gives a security no asset class, so an extension cannot send one.
 
 ### Decided for Moneten

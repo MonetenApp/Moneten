@@ -24,7 +24,7 @@ The app SHALL let the user enter the purchase price of a position with "Add Purc
 
 - **GIVEN** a position of 40 units with the value 1.000,00 € and no purchase price
 - **WHEN** the user chooses "Add Purchase Price...", enters 20,00 under "Purchase price", and confirms
-- **THEN** the row shows the purchase price 20,00 € and "Profit" with 200,00 € and 25,00 %
+- **THEN** the row shows the purchase price 20,00 € and "+200,00 €" with "+25,00 %"
 
 #### Scenario: Enter a total amount
 
