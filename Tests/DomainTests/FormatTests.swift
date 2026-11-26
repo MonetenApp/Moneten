@@ -98,4 +98,36 @@ struct FormatTests {
 		#expect(Format.money(25, currency: "EUR", places: 2...2, locale: unitedStates) == "€25.00")
 		#expect(Format.money(Decimal(string: "0.00000123")!, currency: "USD", places: 2...8, locale: unitedStates) == "$0.00000123")
 	}
+
+	/// A bank sends an average purchase price with every place of its division, such as 156.146858 €. The row shows the
+	/// places of the currency, rounded half away from zero, and a price below 1 as many places as two significant digits
+	/// need (#600). The last quote keeps the places of its source.
+	@Test("A purchase price shows the places of its currency, rounded half away from zero, and two significant digits below 1")
+	func purchasePrices() {
+		func price(_ text: String, _ currency: String?, _ locale: Locale) -> String {
+			Format.purchasePrice(Quote(amount: Decimal(string: text, locale: Locale(identifier: "en_US_POSIX"))!, currency: currency), locale: locale)
+		}
+		#expect(price("156.146858", "EUR", germany) == "156,15\(nbsp)€")
+		#expect(price("6.324479", "EUR", germany) == "6,32\(nbsp)€")
+		#expect(price("20", "EUR", germany) == "20,00\(nbsp)€")
+		#expect(price("2.345", "EUR", germany) == "2,35\(nbsp)€")
+		#expect(price("-2.345", "EUR", germany) == "\(minus)2,35\(nbsp)€")
+		#expect(price("1234.5", "EUR", germany) == "1.234,50\(nbsp)€")
+		#expect(price("156.146858", "EUR", unitedStates) == "€156.15")
+		// Below 1, two significant digits, and never fewer places than the currency.
+		#expect(price("0.0042", "EUR", germany) == "0,0042\(nbsp)€")
+		#expect(price("0.004249", "EUR", germany) == "0,0042\(nbsp)€")
+		#expect(price("0.00425", "EUR", germany) == "0,0043\(nbsp)€")
+		#expect(price("0.5", "EUR", germany) == "0,50\(nbsp)€")
+		#expect(price("0.999", "EUR", germany) == "1,00\(nbsp)€")
+		// A percentage of a nominal amount has two places.
+		#expect(price("98.5", nil, germany) == "98,50 %")
+		#expect(price("98.456", nil, germany) == "98,46 %")
+		#expect(price("101.255", nil, unitedStates) == "101.26 %")
+		// A token keeps its code and shows the places it needs of its own, at least 2.
+		#expect(price("0.004", "USDC", germany) == "0,004\(nbsp)USDC")
+		#expect(price("1.23456789", "USDC", germany) == "1,234568\(nbsp)USDC")
+		#expect(price("1.5", "USDC", unitedStates) == "1.50\(nbsp)USDC")
+		#expect(price("156.146858", "JPY", germany) == "156\(nbsp)¥")
+	}
 }

@@ -12,6 +12,12 @@ public struct Security: Hashable, Sendable {
 		self.isin = isin
 		self.securityNumber = securityNumber
 	}
+
+	/// `name` without whitespace at its start and end and with each run of whitespace in it as one space. A bank fills
+	/// the name into fixed-width fields, so "MUSTER INC.        DL-,01" becomes "MUSTER INC. DL-,01" (#600).
+	public static func collapsingWhitespace(_ name: String) -> String {
+		name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+	}
 }
 
 /// A price of a security: an amount per unit in a currency, or a percentage of the nominal amount when
@@ -173,7 +179,8 @@ extension Holding {
 	/// Gives each delivered position the ID of a stored one of the same security, so a position keeps its
 	/// identity across refreshes. Every position first takes the stored one with its ISIN. Then a position
 	/// matches by its security number, or else by its name, but only when one of the two has no ISIN: two
-	/// different ISINs are two securities, whatever their names. Each stored position matches at most once.
+	/// different ISINs are two securities, whatever their names. Names match with their whitespace collapsed, because a
+	/// position stored before #600 keeps the padded name of the bank. Each stored position matches at most once.
 	public static func identify(_ delivered: [Holding], stored: [Holding]) -> [Holding] {
 		var free = stored
 		var result = delivered
@@ -185,7 +192,7 @@ extension Holding {
 				open.append(i)
 			}
 		}
-		let keys: [(Holding) -> String?] = [\.security.securityNumber, { $0.security.name }]
+		let keys: [(Holding) -> String?] = [\.security.securityNumber, { Security.collapsingWhitespace($0.security.name) }]
 		for i in open {
 			let holding = delivered[i]
 			for key in keys {
