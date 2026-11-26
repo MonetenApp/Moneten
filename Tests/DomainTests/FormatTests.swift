@@ -130,4 +130,60 @@ struct FormatTests {
 		#expect(price("1.5", "USDC", unitedStates) == "1.50\(nbsp)USDC")
 		#expect(price("156.146858", "JPY", germany) == "156\(nbsp)¥")
 	}
+
+	/// A position for the quantity tests. Only the quantity and its unit matter.
+	func position(_ name: String, quantity: Decimal, isNominal: Bool = false, nominalCurrency: String? = nil) -> Holding {
+		Holding(accountID: UUID(), security: Security(name: name), quantity: quantity, isNominal: isNominal, nominalCurrency: nominalCurrency)
+	}
+
+	@Test("A quantity of units shows without a word for the unit, a nominal amount with its currency")
+	func quantity() {
+		#expect(Format.quantity(position("Musterwerke AG", quantity: 646), locale: germany) == "646")
+		#expect(Format.quantity(position("Musterwerke AG", quantity: 1), locale: germany) == "1")
+		#expect(Format.quantity(position("Beispiel Fonds", quantity: Decimal(string: "12.3456")!), locale: germany) == "12,3456")
+		#expect(Format.quantity(position("Musterwerke AG", quantity: 1250), locale: unitedStates) == "1,250")
+		#expect(Format.quantity(position("Anleihe Musterland", quantity: 5000, isNominal: true, nominalCurrency: "EUR"), locale: germany) == "5.000,00\(nbsp)€")
+		#expect(Format.quantity(position("Anleihe Musterland", quantity: 5000, isNominal: true), locale: germany) == "5.000,00")
+	}
+
+	@Test("A quote of 0 shows a dash, any other quote its amount, and a percentage its sign")
+	func quote() {
+		#expect(Format.price(Quote(amount: 0, currency: "EUR"), locale: germany) == "–")
+		#expect(Format.price(Quote(amount: 0, currency: nil), locale: germany) == "–")
+		#expect(Format.price(Quote(amount: 25, currency: "EUR"), locale: germany) == "25,00\(nbsp)€")
+		#expect(Format.price(Quote(amount: Decimal(string: "98.5")!, currency: nil), locale: germany) == "98,50 %")
+		#expect(Format.price(Quote(amount: Decimal(string: "0.00000123")!, currency: "USD"), locale: unitedStates) == "$0.00000123")
+	}
+
+	@Test("A profit shows with a plus, a loss with the minus sign, and zero without a sign, in the amount and in the percentage")
+	func gainText() {
+		#expect(Format.gain(Money(minorUnits: 20_000, currency: "EUR"), locale: germany) == "+200,00\(nbsp)€")
+		#expect(Format.gain(Money(minorUnits: -20_000, currency: "EUR"), locale: germany) == "\(minus)200,00\(nbsp)€")
+		#expect(Format.gain(Money(minorUnits: 0, currency: "EUR"), locale: germany) == "0,00\(nbsp)€")
+		#expect(Format.gain(Money(minorUnits: 20_000, currency: "USD"), locale: unitedStates) == "+$200.00")
+		#expect(Format.gainPercent(25, locale: germany) == "+25,00 %")
+		#expect(Format.gainPercent(-20, locale: germany) == "\(minus)20,00 %")
+		#expect(Format.gainPercent(Decimal(string: "1.5228")!, locale: unitedStates) == "+1.52 %")
+		#expect(Format.gainPercent(0, locale: germany) == "0,00 %")
+		// A percentage that rounds to zero shows no sign, so the text never reads "+0,00 %" or "−0,00 %".
+		#expect(Format.gainPercent(Decimal(string: "-0.004")!, locale: germany) == "0,00 %")
+	}
+
+	/// The color of a profit or loss follows the sign of its text, so "+0,01 €" is green and the "0,00 %" below it has no
+	/// color.
+	@Test("The amount and the percentage of a profit or loss each take the sign of the value as it shows, and zero has none")
+	func gainSigns() {
+		#expect(Format.gainSign(Money(minorUnits: 1, currency: "EUR")) == .profit)
+		#expect(Format.gainSign(Money(minorUnits: -1, currency: "EUR")) == .loss)
+		#expect(Format.gainSign(Money(minorUnits: 0, currency: "EUR")) == nil)
+		#expect(Format.gainSign(percent: 25) == .profit)
+		#expect(Format.gainSign(percent: -20) == .loss)
+		#expect(Format.gainSign(percent: 0) == nil)
+		// 800,01 € for a purchase value of 800,00 €: a profit of one cent, 0.00125 %, which shows as "0,00 %".
+		let percent = Decimal(1) / Decimal(800)
+		#expect(Format.gainPercent(percent, locale: germany) == "0,00 %")
+		#expect(Format.gainSign(percent: percent) == nil)
+		#expect(Format.gainSign(percent: Decimal(string: "0.005")!) == .profit)
+		#expect(Format.gainSign(percent: Decimal(string: "-0.004")!) == nil)
+	}
 }

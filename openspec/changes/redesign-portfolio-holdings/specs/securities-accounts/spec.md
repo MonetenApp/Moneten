@@ -109,7 +109,7 @@ The app SHALL show the asset class of a position as a small tag in the name colu
 
 ### Requirement: Filter by asset class
 
-The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class, and a line below the last row says "An asset class filter is active; some entries might be hidden."
+The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class, and a line below the last row says "An asset class filter is active; some entries might be hidden." When no position of the view has the selected class any more, the filter goes back to "Show All".
 
 #### Scenario: Show one class
 
@@ -136,6 +136,13 @@ The app SHALL offer the filter "Asset class" in the filter bar above the positio
 - **GIVEN** the same portfolio
 - **WHEN** the user opens the filter "Asset class"
 - **THEN** it lists "Show All", "Stocks", and "Bonds"
+
+#### Scenario: The selected class loses its last position
+
+- **GIVEN** a portfolio with 1 position of the class "Bonds" and 2 positions of the class "Stocks", and the filter "Asset class" at "Bonds"
+- **WHEN** the user chooses "Stocks" in the submenu "Asset Class" of the bond position
+- **THEN** the filter "Asset class" reads "Show All"
+- **AND** the list shows 3 positions and no line about a filter
 
 ### Requirement: Day of an old quote
 
@@ -217,7 +224,7 @@ The app SHALL use the value in the account currency that the source delivers for
 
 ### Requirement: Profit or loss
 
-The app SHALL compute the profit or loss of a position as its value minus its purchase value, and the percentage as the profit or loss divided by the purchase value. A row shows a profit in green with "+" and a loss in red with "−", without a word. A position without a purchase price shows no profit or loss.
+The app SHALL compute the profit or loss of a position as its value minus its purchase value, and the percentage as the profit or loss divided by the purchase value. A row shows a profit in green with "+" and a loss in red with "−", without a word. An amount or a percentage that shows as zero has no sign and no color. A position without a purchase price shows no profit or loss.
 
 #### Scenario: Profit
 
@@ -231,6 +238,12 @@ The app SHALL compute the profit or loss of a position as its value minus its pu
 - **WHEN** the user opens the portfolio
 - **THEN** the row shows "−200,00 €" and "−20,00 %" in red
 - **AND** the row shows neither "Profit" nor "Loss"
+
+#### Scenario: Profit that rounds to zero percent
+
+- **GIVEN** a position with the value 800,01 € and the purchase value 800,00 €
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows "+0,01 €" in green and "0,00 %" without a color
 
 #### Scenario: No purchase price
 

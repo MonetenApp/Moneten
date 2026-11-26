@@ -331,12 +331,15 @@ struct PerfScenario {
 		// of positions over, as a refresh that drops a shown position does (issue #135).
 		PerfScenario(name: "asset-class-leaves-filter", budget: halfSecond,
 			setUp: { c in
-				await c.select("Perf Depot")
+				await c.model.addOfflineAccount(name: "Perf Class Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Class Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 3)))
+				await c.select("Perf Class Depot")
 				c.model.filter.assetClass = .others
 				await c.settle()
 			},
 			run: { c in
-				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }),
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Class Depot" }),
 					let moved = c.model.ledger.holdings(of: [depot.id]).first else { return c.fail("the portfolio has no position") }
 				let table = c.harness.holdingsTables().first
 				if table == nil { c.fail("the portfolio shows no table of positions") }
@@ -350,10 +353,48 @@ struct PerfScenario {
 				c.model.setAssetClass(nil, of: [moved.id])
 				await c.settle()
 			}),
+		// A refresh in which the bank sends another class for a shown position, while the filter "Asset class" is on, starts
+		// the table of positions over. When the class of the filter loses its last position, the filter goes back to "Show
+		// All" with the same new table.
+		PerfScenario(name: "refresh-moves-position-out-of-filter", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Refresh Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Refresh Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 3)))
+				await c.select("Perf Refresh Depot")
+				c.model.filter.assetClass = .others
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Refresh Depot" }) else { return c.fail("the portfolio is missing") }
+				@MainActor func refresh(etfs: Int) async {
+					let positions = PerfScenario.positions(depot.id, 3).enumerated().map { i, h in
+						var h = h
+						if i < etfs { h.sourceAssetClass = .etfs }
+						return h
+					}
+					try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: positions))
+					await c.settle()
+				}
+				// The tables stay referenced, so a new table cannot take the address of the old one.
+				let first = c.harness.holdingsTables().first
+				if first == nil { c.fail("the portfolio shows no table of positions") }
+				await refresh(etfs: 1)
+				if c.model.ledger.holdings(of: [depot.id]).filter({ $0.assetClass == .etfs }).count != 1 { c.fail("the refresh did not bring the new class") }
+				if c.model.filter.assetClass != .others { c.fail("the filter left a class that still has positions") }
+				let second = c.harness.holdingsTables().first
+				if second == nil || second === first { c.fail("the refresh removed a shown position in place") }
+				await refresh(etfs: 3)
+				if c.model.filter.assetClass != nil { c.fail("the filter kept a class without positions") }
+				if c.model.tableKey.filter.assetClass != nil { c.fail("the table kept the filter of a class without positions") }
+				let third = c.harness.holdingsTables().first
+				if third == nil || third === second { c.fail("the refresh removed the last shown position in place") }
+			}),
 		// The last transaction of a portfolio goes: the view changes to its positions one drawing after the
 		// rows, never in the drawing that changes them (issue #151).
 		PerfScenario(name: "delete-last-transaction-of-portfolio", budget: halfSecond,
 			setUp: { c in
+				await c.select("Perf Depot")
 				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Depot" }) else { return }
 				let row = Transaction(accountID: depot.id, bookingDate: Day.today(), amountMinor: -1_000, name: "Depot fee", purpose: "Perf")
 				await c.model.replacingTable { _ = try? c.model.merge(.file([row]), into: depot.id) }

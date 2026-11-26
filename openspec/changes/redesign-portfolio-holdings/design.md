@@ -76,6 +76,10 @@ Migration `v35` in `Sources/Storage/Schema.swift` adds the columns `holding.sour
 
 The day below a quote shows when it is older than the newest quote day among the positions of the same portfolio, so a group of two portfolios refreshed on different days compares each position with its own portfolio. The filter "Asset class" lists the classes that the positions of the view have, in the order of `AssetClass.allCases`. A choice in the submenu calls `AppModel.setAssetClass(_:of:)` with the selected positions.
 
+`TransactionFilter.hidesShownPositions(before:after:)` is the one rule for whether a change takes positions off the list: a refresh that drops a position or sends another class, and a choice in the submenu. Each such change starts the table over (#135, #151). After the change, `TransactionFilter.dropAssetClass(absentFrom:)` sets the filter back to "Show All" when no position of the view has its class any more, in the same new table, so the bar never names a class that its menu lacks.
+
+A profit or loss takes its sign and its color from the value as the row shows it: `Format.gainSign(_:)` of the amount, and `Format.gainSign(percent:)` of the percentage rounded to two places. So "+0,01 €" is green, and the "0,00 %" below it has no color.
+
 ## Risks / Trade-offs
 
 - The spec delta modifies requirements that the change `add-securities-accounts` adds, so `add-securities-accounts` must be archived first. OpenSpec refuses the archive of this change before that.

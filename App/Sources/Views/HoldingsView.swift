@@ -120,11 +120,13 @@ struct HoldingsTable: View {
 			.alignment(.trailing)
 			TableColumn("Profit/Loss") { h in
 				if let gain = h.gain(in: currency(of: h)) {
-					// The color and the sign say profit or loss, so the row needs no word for it. Zero has neither.
-					let tint = gain.amount.minorUnits > 0 ? Palette.green : gain.amount.minorUnits < 0 ? Palette.red : nil
+					// The color and the sign say profit or loss, so the row needs no word for it. A text that shows zero has
+					// neither, so "0,00 %" below "+0,01 €" has no color.
 					VStack(alignment: .trailing, spacing: 2) {
-						TintedText(text: Format.gain(gain.amount), tint: tint).monospacedDigit()
-						if let percent = gain.percent { TintedText(text: Format.gainPercent(percent), tint: tint).font(.callout).monospacedDigit() }
+						TintedText(text: Format.gain(gain.amount), tint: tint(Format.gainSign(gain.amount))).monospacedDigit()
+						if let percent = gain.percent {
+							TintedText(text: Format.gainPercent(percent), tint: tint(Format.gainSign(percent: percent))).font(.callout).monospacedDigit()
+						}
 					}
 				}
 			}
@@ -136,6 +138,14 @@ struct HoldingsTable: View {
 		.contextMenu(forSelectionType: UUID.self) { ids in
 			let positions = rows.filter { ids.contains($0.id) }
 			if !positions.isEmpty { AssetClassMenu(positions: positions) }
+		}
+	}
+
+	private func tint(_ sign: Format.GainSign?) -> Color? {
+		switch sign {
+		case .profit: Palette.green
+		case .loss: Palette.red
+		case nil: nil
 		}
 	}
 
