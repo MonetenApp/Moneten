@@ -32,6 +32,32 @@ public enum Format {
 		return minus(value.formatted(Decimal.FormatStyle.Currency(code: currency, locale: locale).precision(.fractionLength(places))))
 	}
 
+	/// A purchase price, such as the average price of a position that a bank computes to six places: "156,15 €" for
+	/// 156.146858 €. It shows the places of its currency, rounded half away from zero, those of a token only as far as it
+	/// needs them, and a percentage of a nominal amount two: "98,50 %". Below 1 it shows the places that two significant
+	/// digits need, so 0.0042 € stays "0,0042 €" and does not become "0,00 €".
+	public static func purchasePrice(_ q: Quote, locale: Locale = .autoupdatingCurrent) -> String {
+		let currencyPlaces = q.currency.map(Currency.exponent) ?? 2
+		let places = max(currencyPlaces, significantPlaces(of: q.amount))
+		var value = q.amount
+		var rounded = Decimal()
+		NSDecimalRound(&rounded, &value, places, .plain)
+		guard let currency = q.currency else {
+			return minus(rounded.formatted(Decimal.FormatStyle(locale: locale).precision(.fractionLength(places)))) + " %"
+		}
+		let lowest = Currency.tokenPlaces[currency] == nil ? currencyPlaces : 2
+		return money(rounded, currency: currency, places: lowest...places, locale: locale)
+	}
+
+	/// The decimal places that show two significant digits of a value below 1: 4 for 0.0042, 2 for 0.5. A value of 1 or
+	/// more needs none.
+	private static func significantPlaces(of value: Decimal) -> Int {
+		let magnitude = value.magnitude
+		guard magnitude < 1, magnitude > 0 else { return 0 }
+		let digits = "\(magnitude.significand)".count
+		return -(magnitude.exponent + digits) + 2
+	}
+
 	/// One amount for each currency, never added up, such as the sum of a group with euro and dollar accounts.
 	public static func sums(_ s: MoneySums, locale: Locale = .autoupdatingCurrent) -> String {
 		sums(s.amounts, locale: locale)

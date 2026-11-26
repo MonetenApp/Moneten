@@ -61,6 +61,38 @@ The app SHALL show for each position the name of the security, the value in the 
 - **WHEN** the user opens the portfolio
 - **THEN** the row shows "Musterwerke AG", the value 1.000,00 €, "40 shares", the purchase price 20,00 €, the last quote 25,00 €, and "Profit" with 200,00 € and 25,00 %
 
+### Requirement: Purchase price in the places of its currency
+
+The app SHALL show a purchase price with the decimal places of its currency, rounded half away from zero, and a purchase price below 1 with the places that two significant digits need. A purchase price in percent of a nominal amount shows two decimal places.
+
+#### Scenario: Average purchase price of the bank
+
+- **GIVEN** a position with the purchase price 156.146858 EUR from the bank
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows the purchase price 156,15 €
+
+#### Scenario: Purchase price below 1
+
+- **GIVEN** a position with the purchase price 0.0042 EUR
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows the purchase price 0,0042 €
+
+#### Scenario: Purchase price of a bond
+
+- **GIVEN** a bond with the purchase price 98.5 % of its nominal amount
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows the purchase price 98,50 %
+
+### Requirement: Security names without padding
+
+The app SHALL show the name of a security that a FinTS bank sends without spaces at its start and end, and with each run of whitespace in it as one space.
+
+#### Scenario: Name from fixed-width fields
+
+- **GIVEN** a FinTS bank sends a position with the name "MUSTER INC.        DL-,01"
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows the name "MUSTER INC. DL-,01"
+
 ### Requirement: Quantities as units or as a nominal amount
 
 The app SHALL show a quantity as a number of units with all decimal places that the source delivers, or as a nominal amount with its currency when the source marks the quantity as nominal.

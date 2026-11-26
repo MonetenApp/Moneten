@@ -1228,6 +1228,16 @@ struct FinTSConnectorTests {
 		}
 	}
 
+	/// A bank fills the name of a security into fixed-width fields of MT535, so it arrives with runs of spaces (#600).
+	@Test("A security name from the bank loses its padding: trimmed, and each run of whitespace one space")
+	func paddedSecurityName() async throws {
+		let depot = AccountRequest(accountID: UUID(), name: "Depot", remoteID: "7654321", currency: "EUR")
+		let line = #"{"type":"result","account":"7654321","balance":{"amount":"3000.00","currency":"EUR"},"errors":[],"securities":true,"holdings":[{"name":"  MUSTER INC.        DL-,01 ","quantity":"10","value":{"amount":"1000.00","currency":"EUR"}},{"name":"BEISPIEL\tWERKE   AG\n  NAMENS-AKTIEN","quantity":"10","value":{"amount":"1000.00","currency":"EUR"}},{"name":"   ","isin":"DE0001234567","quantity":"10","value":{"amount":"1000.00","currency":"EUR"}}]}"#
+		let report = try await refresh("read cmd; printf '%s\\n' '\(line)'", accounts: [depot])
+		guard case let .fetched(result) = report.outcomes[depot.accountID] else { Issue.record("depot not fetched"); return }
+		#expect(result.holdings?.map(\.security.name) == ["MUSTER INC. DL-,01", "BEISPIEL WERKE AG NAMENS-AKTIEN", "DE0001234567"])
+	}
+
 	@Test("A helper that writes its currencies in lower case gives upper-case codes to the rows, the balance, the account, and the exchange rate")
 	func lowerCaseCurrency() throws {
 		let line = #"{"type":"result","account":"DE02120300000000202051","balance":{"amount":"10.00","currency":"eur"},"transactions":{"rows":[{"type":"row","booked":"2026-11-03","amount":"-89","currency":"eur","purpose":"Abschlag November","pending":false},{"type":"row","booked":"2026-11-04","amount":"-5","purpose":"Kiosk","pending":false}]},"errors":[]}"#
