@@ -72,7 +72,7 @@ Each run takes a few minutes and contacts only the bank under test. It uses a de
 1. Put the product registration number into the login Keychain, if it is not there: `security add-generic-password -s 'Moneten FinTS product ID' -a moneten -w` (it asks for the number).
 2. Build: `scripts/build-app.sh debug`. The build bundles the FinTS helper and the product ID.
 3. Quit every running Moneten, also one that runs from another folder, and check that none is left: `pgrep -x Moneten` must print nothing. A plain `open` brings a running instance to the front, and that instance keeps its own data folder, which can be the real one.
-4. Start a separate instance with a throwaway folder, a throwaway keychain file, and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. A harness run without `MONETEN_DATA_DIR` or `MONETEN_KEYCHAIN_PATH` exits with status 2 at launch. The keychain file takes the place of the login keychain for every Keychain item of the app. `security create-keychain` on a path changes neither the default keychain nor the search list, as in `scripts/check-debug-log.sh`. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`. The run keeps its settings in `$RUN/data/Settings.plist`, so it does not change the settings of the installed Moneten:
+4. Start a separate instance with a throwaway folder, a throwaway keychain file, and the debug harness, without `MONETEN_FINTS_HELPER`, so the real helper runs. A harness run without `MONETEN_DATA_DIR` or `MONETEN_KEYCHAIN_PATH` exits with status 2 at launch. The keychain file takes the place of the login keychain for every Keychain item of the app. `security create-keychain` on a path changes neither the default keychain nor the search list, as in `scripts/check-debug-log.sh`. The binary started directly is always a new instance, and its stderr keeps the masked diagnostics of the FinTS helper in `$RUN/helper.log`. The run keeps its settings in `$RUN/data/Settings.plist`, so it does not change the settings of the installed Moneten. A harness run refreshes only the made-up bank, so that a check never reaches a real bank. `MONETEN_DEBUG_REAL_BANK=1` lets a refresh that you start in the window, and the automatic refresh, reach the real bank through FinTS, and `$RUN/debug/debug.log` then holds the line `harness real bank allowed`. With it, the harness takes only `create`, `unlock`, `lock`, `sheet`, and `status`, so you log in, type each PIN and TAN, and start each refresh yourself:
 
    ```sh
    RUN=$(mktemp -d); mkdir "$RUN/debug"
@@ -80,7 +80,7 @@ Each run takes a few minutes and contacts only the bank under test. It uses a de
    security create-keychain -p bank-test "$KEYCHAIN"
    security unlock-keychain -p bank-test "$KEYCHAIN"
    security set-keychain-settings "$KEYCHAIN"
-   MONETEN_DATA_DIR="$RUN/data" MONETEN_DEBUG_DIR="$RUN/debug" MONETEN_KEYCHAIN_PATH="$KEYCHAIN" dist/Moneten.app/Contents/MacOS/Moneten 2>"$RUN/helper.log" &
+   MONETEN_DATA_DIR="$RUN/data" MONETEN_DEBUG_DIR="$RUN/debug" MONETEN_KEYCHAIN_PATH="$KEYCHAIN" MONETEN_DEBUG_REAL_BANK=1 dist/Moneten.app/Contents/MacOS/Moneten 2>"$RUN/helper.log" &
    PID=$!
    ```
 
@@ -107,8 +107,8 @@ After each step, `send status` writes one line per account into `$RUN/debug/debu
 1. "Add Account..." (or `send sheet newAccount`), search the savings bank by its Bankleitzahl, enter the login name and the PIN. Approve the login in the pushTAN app.
 2. Expected: the dialog says "to allow the login", closes by itself after the approval, and the account list shows every account with its type. Record the types (giro, savings, credit card, portfolio) and whether a credit card is in the list.
 3. Add all accounts. The first refresh asks for the full history. When the bank asks for a second approval "to allow the download of transactions", approve it once and note whether the list then starts more than 90 days ago (`historyStart`).
-4. `send refreshenforced all`, and this time click "Cancel" in the dialog for the download. Expected: no error on the account, the last 90 days, and the note "Older transactions may be missing." Record whether the bank asked for the approval at all.
-5. `send refresh all` again within a few minutes. Expected: no dialog after the login, or only the login approval.
+4. Open the context menu of the giro account in the sidebar, hold the Option key, and choose "Refresh Account (enforced)". This time click "Cancel" in the dialog for the download. Expected: no error on the account, the last 90 days, and the note "Older transactions may be missing." Record whether the bank asked for the approval at all.
+5. Click "Refresh All Accounts" again within a few minutes. Expected: no dialog after the login, or only the login approval.
 6. Decline one login approval in the pushTAN app. Expected: "The required authorization was not carried out." Record the code that `send status` shows.
 
 ### Run 2: a direct bank with an approval in its app (DKB or Consorsbank)

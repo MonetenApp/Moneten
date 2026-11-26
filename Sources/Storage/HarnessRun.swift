@@ -113,6 +113,34 @@ public enum HarnessRun {
 		}
 	}
 
+	/// Who starts a refresh in a run of the harness.
+	public enum Origin: Sendable, Hashable {
+		/// A command of the harness, such as "refresh" or "menuitem".
+		case command
+		/// The window or the automatic refresh: a click by the person at the Mac, or the timer of the app.
+		case window
+	}
+
+	/// Whether a refresh that `origin` starts may reach `recipient`. A command reaches what `mayReach` lets it. `realBank`
+	/// is the opt-in `MONETEN_DEBUG_REAL_BANK=1` of a Debug build for the bank tests of issue #11: with it, a refresh of
+	/// the window or the automatic refresh reaches a real bank through FinTS too, so that a person can add and refresh
+	/// a real access while the harness writes "status". An extension of a real service stays refused.
+	public static func mayRefresh(reaching recipient: Recipient, from origin: Origin, fakeBank: Bool, realBank: Bool) -> Bool {
+		mayReach(recipient, fakeBank: fakeBank) || realBank && origin == .window && recipient == .fints
+	}
+
+	/// The commands that a run with the opt-in `MONETEN_DEBUG_REAL_BANK=1` takes. They reach no bank, and none presses a
+	/// control: a press or a key could start a refresh in the window, which `mayRefresh` then could not tell from a
+	/// click of the person. "sheet" opens a sheet, such as "Add Account", in which the person types the login.
+	static let realBankCommands: Set<String> = ["create", "unlock", "lock", "sheet", "status"]
+
+	/// Whether the harness runs `command`. Without the opt-in it runs every command, each under its own check. With
+	/// the opt-in only a command of `realBankCommands`, so that only the person at the Mac logs in, types a PIN or a
+	/// TAN, chooses a TAN method, and starts a refresh.
+	public static func mayRun(_ command: String, realBank: Bool) -> Bool {
+		!realBank || realBankCommands.contains(command)
+	}
+
 	/// Who receives what the harness sends to an extension. A fixture of the run replaces the network. Without one, an
 	/// extension that the run loaded from a file counts as local only under a name outside the catalog: for a catalog
 	/// name, a refresh and the session of an access run the installed package of the catalog in place of the file, so

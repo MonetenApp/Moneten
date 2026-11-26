@@ -457,3 +457,56 @@ struct HarnessExtensionTests {
 		#expect(screen() == .other)
 	}
 }
+
+/// The bank tests of issue #11 need the harness for "status" while a person adds a real FinTS access and refreshes it
+/// in the window. `MONETEN_DEBUG_REAL_BANK=1` lets such a refresh through and leaves every command of the harness
+/// without a way to a real bank.
+@Suite("Debug harness with a real bank")
+struct HarnessRealBankTests {
+	@Test("Without the opt-in, a refresh reaches FinTS only with the made-up bank, from the window as from a command")
+	func withoutOptIn() {
+		for origin in [HarnessRun.Origin.window, .command] {
+			#expect(!HarnessRun.mayRefresh(reaching: .fints, from: origin, fakeBank: false, realBank: false))
+			#expect(HarnessRun.mayRefresh(reaching: .fints, from: origin, fakeBank: true, realBank: false))
+			#expect(HarnessRun.mayRefresh(reaching: .local, from: origin, fakeBank: false, realBank: false))
+			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: true, realBank: false))
+		}
+	}
+
+	@Test("With the opt-in, a refresh of the window reaches a real bank through FinTS, and a command still does not")
+	func withOptIn() {
+		#expect(HarnessRun.mayRefresh(reaching: .fints, from: .window, fakeBank: false, realBank: true))
+		#expect(!HarnessRun.mayRefresh(reaching: .fints, from: .command, fakeBank: false, realBank: true))
+		#expect(HarnessRun.mayRefresh(reaching: .local, from: .command, fakeBank: false, realBank: true))
+	}
+
+	@Test("With the opt-in, an extension of a real service stays refused, also from the window")
+	func realServiceStaysRefused() {
+		for origin in [HarnessRun.Origin.window, .command] {
+			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: false, realBank: true))
+			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: true, realBank: true))
+		}
+	}
+
+	@Test("Without the opt-in, the harness runs every command, each under its own check")
+	func everyCommandWithoutOptIn() {
+		for command in ["status", "answer", "method", "medium", "setup", "refresh", "menubar", "key", "extlogin"] {
+			#expect(HarnessRun.mayRun(command, realBank: false))
+		}
+	}
+
+	@Test("With the opt-in, the harness runs only the commands of the bank test plan that reach no bank")
+	func onlyObservingCommandsWithOptIn() {
+		for command in ["create", "unlock", "lock", "sheet", "status"] {
+			#expect(HarnessRun.mayRun(command, realBank: true))
+		}
+		// Each would send a secret or a choice to a bank, start a refresh, or press a control that can start one.
+		let refused = ["answer", "method", "medium", "setup", "lookfornew", "editlogin", "connectmigrated", "refresh", "refreshenforced",
+			"extrefresh", "extaccess", "extlogin", "exttan", "extmethod", "extsavelogin", "extanswer", "extjs", "menuitem", "menubar",
+			"key", "namekey", "mainkey", "type", "button", "modal", "rowmenu", "controls", "alertbutton", "escape", "noticeclick", "network",
+			"present", "syncdemo", ""]
+		for command in refused {
+			#expect(!HarnessRun.mayRun(command, realBank: true))
+		}
+	}
+}
