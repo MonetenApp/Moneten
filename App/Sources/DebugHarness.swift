@@ -24,6 +24,17 @@ import WebKit
 final class DebugHarness {
 	static var shared: DebugHarness?
 
+	/// Whether the person at the Mac opted in to the bank tests of issue #11 with `MONETEN_DEBUG_REAL_BANK=1`
+	/// (HarnessRun.mayRun and HarnessRun.mayRefresh). Only a Debug build reads it, so a Perf build never reaches a real
+	/// bank from a harness run, and a Release build holds no name of it.
+	private var realBank: Bool {
+		#if DEBUG
+		ProcessInfo.processInfo.environment["MONETEN_DEBUG_REAL_BANK"] == "1"
+		#else
+		false
+		#endif
+	}
+
 	let folder: URL
 	weak var model: AppModel?
 	/// A number for each transaction table that "tables" has seen, so that a check sees when SwiftUI
@@ -108,6 +119,7 @@ final class DebugHarness {
 		let harness = DebugHarness(folder: URL(fileURLWithPath: path), model: model)
 		shared = harness
 		model.extensions.log = { [weak harness] line in harness?.log(line) }
+		if harness.realBank { harness.log("harness real bank allowed") }
 		DistributedNotificationCenter.default().addObserver(forName: Notification.Name("io.github.moneten.debug"), object: nil, queue: .main) { note in
 			if let target = note.object as? String, target != path { return }
 			let command = note.userInfo?["command"] as? String ?? ""
@@ -146,6 +158,7 @@ final class DebugHarness {
 
 	func run(_ command: String, _ argument: String) {
 		guard let model else { return }
+		guard HarnessRun.mayRun(command, realBank: realBank) else { return log("command refused", ("realBank", .flag(true))) }
 		switch command {
 		case "crashinject":
 			let parts = argument.split(separator: "|", omittingEmptySubsequences: false)
@@ -1795,12 +1808,14 @@ final class DebugHarness {
 			catalogName: model?.extensions.isCatalogName(id) ?? true)
 	}
 
-	/// Whether a refresh of `plan` reaches only the made-up bank or a local service. The commands "refresh",
-	/// "menuitem", and "extrefresh" ask before they start one, and `AppModel.refresh` asks for every other refresh of a
-	/// harness run, such as "Refresh All Accounts" in the popover of the menu bar icon and the automatic refresh.
+	/// Whether a refresh of `plan` may reach each of its accesses (HarnessRun.mayRefresh). The command "refresh" asks
+	/// before it starts one, and `AppModel.refresh` asks for every other refresh of a harness run, such as "Refresh All
+	/// Accounts" in the popover of the menu bar icon and the automatic refresh.
 	func mayRefresh(_ plan: [UUID: [AccountRequest]]) -> Bool {
 		guard let model else { return false }
-		return plan.keys.compactMap { model.accesses[$0] }.allSatisfy { HarnessRun.mayReach(recipient(of: $0), fakeBank: usesFakeBank) }
+		return plan.keys.compactMap { model.accesses[$0] }.allSatisfy {
+			HarnessRun.mayRefresh(reaching: recipient(of: $0), fakeBank: usesFakeBank, realBank: realBank)
+		}
 	}
 
 	/// Whether "answer", "method", "medium", and the answers of "ext..." may answer `prompt`.

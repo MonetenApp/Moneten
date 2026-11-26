@@ -113,6 +113,28 @@ public enum HarnessRun {
 		}
 	}
 
+	/// Whether a refresh of a harness run may reach `recipient`. Without `realBank` it reaches what `mayReach` lets it.
+	/// `realBank` is the opt-in `MONETEN_DEBUG_REAL_BANK=1` of a Debug build for the bank tests of issue #11: with it, a
+	/// refresh reaches a real bank through FinTS too, so that a person can add and refresh a real access while the
+	/// harness writes "status". `mayRun` then keeps every command from starting one. An extension of a real service
+	/// stays refused.
+	public static func mayRefresh(reaching recipient: Recipient, fakeBank: Bool, realBank: Bool) -> Bool {
+		mayReach(recipient, fakeBank: fakeBank) || realBank && recipient == .fints
+	}
+
+	/// The commands that a run with the opt-in `MONETEN_DEBUG_REAL_BANK=1` takes. None reaches a bank, presses a control,
+	/// or starts a refresh, which `mayRefresh` could not tell from a refresh of the person. "unlock" is missing, because
+	/// the unlock starts the automatic refresh of the accounts that are due. "create" makes a new database, which has no
+	/// access yet, and "sheet" opens a sheet, such as "Add Account", in which the person types the login.
+	private static let realBankCommands: Set<String> = ["create", "sheet", "status"]
+
+	/// Whether the harness runs `command`. Without the opt-in it runs every command, each under its own check. With
+	/// the opt-in only a command of `realBankCommands`, so that only the person at the Mac logs in, types a PIN or a
+	/// TAN, chooses a TAN method, and starts a refresh.
+	public static func mayRun(_ command: String, realBank: Bool) -> Bool {
+		!realBank || realBankCommands.contains(command)
+	}
+
 	/// Who receives what the harness sends to an extension. A fixture of the run replaces the network. Without one, an
 	/// extension that the run loaded from a file counts as local only under a name outside the catalog: for a catalog
 	/// name, a refresh and the session of an access run the installed package of the catalog in place of the file, so

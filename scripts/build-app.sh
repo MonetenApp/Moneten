@@ -162,7 +162,7 @@ check_hardened() {
 check_debug_only() {
 	find "$1/Contents" -type f | while read -r code; do
 		file -b "$code" | grep -q '^Mach-O' || continue
-		for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH; do
+		for name in MONETEN_DATA_DIR MONETEN_DEBUG_DIR MONETEN_KEYCHAIN_PATH MONETEN_DEBUG_REAL_BANK; do
 			if LC_ALL=C grep -a -q -F "$name" "$code"; then
 				echo "$code holds $name, which only Debug and Perf builds may read." >&2
 				exit 1
