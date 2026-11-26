@@ -69,7 +69,7 @@ struct HoldingsTable: View {
 			.width(min: 80, ideal: 110)
 			.alignment(.trailing)
 			TableColumn("Purchase price") { h in
-				Text(h.purchasePrice.map(Format.price) ?? "").monospacedDigit()
+				Text(h.purchasePrice.map { Format.purchasePrice($0) } ?? "").monospacedDigit()
 			}
 			.width(min: 80, ideal: 110)
 			.alignment(.trailing)
@@ -178,8 +178,9 @@ extension Format {
 		return h.quantity == 1 ? String(localized: "\(number) share") : String(localized: "\(number) shares")
 	}
 
-	/// "25,00 €", "12,3456 €", "0,00000123 $", "0,004 USDC", or "98,50 %": at least two decimal places, and those of
-	/// the source up to six digits after the leading zeros. A price converted from another currency can have 38 decimal places.
+	/// The last quote: "25,00 €", "12,3456 €", "0,00000123 $", "0,004 USDC", or "98,50 %": at least two decimal places,
+	/// and those of the source up to six digits after the leading zeros. A price converted from another currency can have
+	/// 38 decimal places. A purchase price shows the places of its currency, see `Format.purchasePrice`.
 	static func price(_ q: Quote) -> String {
 		let places = 2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6))
 		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(.fractionLength(places)))) + " %" }
