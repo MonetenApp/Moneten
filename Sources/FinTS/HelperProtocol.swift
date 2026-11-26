@@ -433,8 +433,7 @@ extension AccountResult {
 			let rate: String
 		}
 
-		/// The position in the app. Its name is the name of the bank, or else its ISIN or WKN. A bank fills the name into
-		/// fixed-width fields, so "MUSTER INC.        DL-,01" becomes "MUSTER INC. DL-,01" (#600). A nominal amount is in
+		/// The position in the app. Its name is the name of the bank with its whitespace collapsed, or else its ISIN or WKN. A nominal amount is in
 		/// the currency of the security. Without one its currency stays unknown: the value of the bank may already be
 		/// converted into another currency, so it does not tell the currency of the nominal amount.
 		/// OLB and Bankhaus Neelmeyer send the purchase value of the whole position as its purchase price, which
@@ -456,7 +455,7 @@ extension AccountResult {
 				return ExchangeRate(base: base, quoted: quoted, rate: try AccountResult.decimal(rate.rate))
 			}
 			let nominalCurrency = nominal == true ? try AccountResult.currency(currency, String(localized: "quantity currency")) : nil
-			let name = name.map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }.flatMap { $0.isEmpty ? nil : $0 }
+			let name = name.map(Security.collapsingWhitespace).flatMap { $0.isEmpty ? nil : $0 }
 			let holding = Holding(accountID: account.accountID, security: Security(name: name ?? isin ?? wkn ?? "", isin: isin, securityNumber: wkn),
 				quantity: quantityValue, isNominal: nominal == true, nominalCurrency: nominalCurrency,
 				quote: try price.map { try Self.quote($0, String(localized: "price currency")) }, marketValue: value, accruedInterest: accrued,
