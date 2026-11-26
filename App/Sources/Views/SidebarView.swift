@@ -44,18 +44,45 @@ struct SidebarView: View {
 				default: break
 				}
 			}
-			.safeAreaInset(edge: .bottom, spacing: 0) {
-				HStack(spacing: 4) {
-					AddMenuButton()
+			.bottomBar {
+				HStack(spacing: 0) {
 					RefreshAllButton()
 					Spacer()
+					AddMenuButton()
 				}
 				// The sidebar floats with corners of about 20 points. A round button of 24 points, 8 points
-				// from the bottom and the leading edge, sits concentric in the corner: 12 + 8 = 20.
-				.padding(.leading, 8)
+				// from the bottom and the side, sits concentric in its corner: 12 + 8 = 20.
+				.padding(.horizontal, 8)
 				.padding(.bottom, 8)
 				.padding(.top, 4)
 			}
+		}
+	}
+}
+
+private extension View {
+	/// The buttons below the sidebar, with no row drawn under them. The list scrolls under a plain safe area inset, so
+	/// the rows would show through the buttons. From macOS 26 on, the bar cuts the list off with the hard scroll edge
+	/// effect of the system. Before, the list ends above a divider and the bar, on the sidebar material.
+	@ViewBuilder func bottomBar(@ViewBuilder _ bar: () -> some View) -> some View {
+		// The SDK of macOS 15, which comes with Swift 6.1, has no safe area bar, so the name must not reach its compiler.
+		#if compiler(>=6.2)
+		if #available(macOS 26, *) {
+			safeAreaBar(edge: .bottom, spacing: 0) { bar() }
+				.scrollEdgeEffectStyle(.hard, for: .bottom)
+		} else {
+			listAbove(bar)
+		}
+		#else
+		listAbove(bar)
+		#endif
+	}
+
+	func listAbove(_ bar: () -> some View) -> some View {
+		VStack(spacing: 0) {
+			self
+			Divider()
+			bar()
 		}
 	}
 }
