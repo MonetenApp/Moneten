@@ -62,18 +62,27 @@ struct SidebarView: View {
 
 private extension View {
 	/// The buttons below the sidebar, with no row drawn under them. The list scrolls under a plain safe area inset, so
-	/// the rows would show through the buttons. From macOS 26 on, the bar gets the scroll edge effect of the system,
-	/// which fades the rows out under it. Before, the list ends above a divider and the bar, on the sidebar material.
+	/// the rows would show through the buttons. From macOS 26 on, the bar cuts the list off with the hard scroll edge
+	/// effect of the system. Before, the list ends above a divider and the bar, on the sidebar material.
 	@ViewBuilder func bottomBar(@ViewBuilder _ bar: () -> some View) -> some View {
+		// The SDK of macOS 15, which comes with Swift 6.1, has no safe area bar, so the name must not reach its compiler.
+		#if compiler(>=6.2)
 		if #available(macOS 26, *) {
 			safeAreaBar(edge: .bottom, spacing: 0) { bar() }
 				.scrollEdgeEffectStyle(.hard, for: .bottom)
 		} else {
-			VStack(spacing: 0) {
-				self
-				Divider()
-				bar()
-			}
+			listAbove(bar)
+		}
+		#else
+		listAbove(bar)
+		#endif
+	}
+
+	func listAbove(_ bar: () -> some View) -> some View {
+		VStack(spacing: 0) {
+			self
+			Divider()
+			bar()
 		}
 	}
 }
