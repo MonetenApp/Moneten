@@ -43,7 +43,7 @@ What hbci4java 4.1.17 keeps of a holding of MT535 (`GVRWPDepotList.Entry.Gattung
 | 70E, line 1, the kind of security ("Wertpapierart") | Yes, as `wptype` | No: the app has no code list for it that it could check, and no recorded answer of a bank shows one |
 | 35B, the name | Yes | Never: the app does not guess a class from a name |
 
-hbci4java keeps the raw MT535 text of the answer in its result data (`content.data535`), and the helper already pairs each holding of hbci4java with its holding in that text (`RawHolding.paired`, #241). `RawHolding` now also reads `:12C::CLAS//` and six letters A to Z, and `position` sends them as `cfi` in each position of the result line. This needs no change of hbci4java. When the raw text does not pair, for example because it has another number of holdings, no position sends a code, because the code of another holding is worse than none.
+hbci4java keeps the raw MT535 text of the answer in its result data, under the key content.data535, and the helper already pairs each holding of hbci4java with its holding in that text (`RawHolding.paired`, #241). `RawHolding` now also reads field 12C with the qualifier CLAS and its six letters A to Z, and `position` sends them as `cfi` in each position of the result line. This needs no change of hbci4java. When the raw text does not pair, for example because it has another number of holdings, no position sends a code, because the code of another holding is worse than none.
 
 `AccountResult.Position` in `Sources/FinTS/HelperProtocol.swift` decodes `cfi`, and `CFI.assetClass(of:)` in `Sources/FinTS/CFI.swift` maps it to `sourceAssetClass` with one table of the first two letters, the category and the group of ISO 10962:
 
