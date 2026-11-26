@@ -2,68 +2,20 @@
 
 ## ADDED Requirements
 
-### Requirement: Predefined asset classes
+### Requirement: The charts follow the asset class filter
 
-The app SHALL offer the asset classes "Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", and "Others". A security without a class counts as "Unassigned".
+The app SHALL draw the charts of a portfolio view from the positions that the filter "Asset class" shows, and it SHALL show a hint that an asset class filter is active and that entries might be hidden while a class is selected.
 
-#### Scenario: New position
-
-- **WHEN** a refresh delivers a security that the app has not seen before
-- **THEN** the position has no asset class and counts as "Unassigned"
-
-### Requirement: Assign an asset class
-
-The app SHALL let the user assign an asset class to one or more selected positions through "Assign Asset Class" in the context menu. The menu marks the current class and offers a way to remove the assignment.
-
-#### Scenario: Assign one position
-
-- **GIVEN** the position "Musterwerke AG" is "Unassigned"
-- **WHEN** the user opens its context menu and chooses "Assign Asset Class" and then "Stocks"
-- **THEN** the position has the class "Stocks"
-- **AND** the menu shows a checkmark at "Stocks" the next time it opens
-
-#### Scenario: Assign several positions
-
-- **GIVEN** three selected fund positions
-- **WHEN** the user chooses "Assign Asset Class" and then "ETFs"
-- **THEN** all three positions have the class "ETFs"
-
-### Requirement: The asset class belongs to the security
-
-The app SHALL keep the asset class with the security and not with the single position. The class survives every refresh and applies to the same security in every portfolio.
-
-#### Scenario: Refresh
-
-- **GIVEN** the security with the ISIN DE0001234567 has the class "Stocks"
-- **WHEN** a refresh delivers the position again with a new quote
-- **THEN** the position still has the class "Stocks"
-
-#### Scenario: Same security in a second portfolio
-
-- **GIVEN** the security with the ISIN DE0001234567 has the class "Stocks"
-- **WHEN** a second portfolio reports a position in the same security
-- **THEN** that position has the class "Stocks"
-
-### Requirement: Filter by asset class
-
-The app SHALL offer the filter "Asset class" in portfolio views with "Show All", one entry for each class that occurs, and "Unassigned". While a class is selected, the list, the status line, and the charts use only the matching positions, and a hint says that an asset class filter is active and that entries might be hidden.
-
-#### Scenario: Show one class
+#### Scenario: Pie chart of one class
 
 - **GIVEN** a portfolio with 2 positions of the class "Stocks" worth 3.000,00 € and 1 position of the class "Bonds" worth 1.000,00 €
-- **WHEN** the user selects "Stocks" in the filter "Asset class"
-- **THEN** the list shows the 2 stock positions
-- **AND** the status line reads "2 Portfolio Items" with the sum 3.000,00 €
+- **WHEN** the user selects "Stocks" in the filter "Asset class" and then "Pie Chart"
+- **THEN** the chart shows one slice "Stocks" with 3.000,00 € and 100 %
 - **AND** the view shows the hint that an asset class filter is active
-
-#### Scenario: Reset
-
-- **WHEN** the user selects "Show All"
-- **THEN** the list shows all positions and the hint disappears
 
 ### Requirement: Pie chart by asset class
 
-The app SHALL show a pie chart of the portfolio value by asset class when the user selects "Pie Chart" in a portfolio view. Each class has one slice with its name, its value, and its share. "Unassigned" positions form their own slice.
+The app SHALL show a pie chart of the portfolio value by asset class when the user selects "Pie Chart" in a portfolio view. Each class has one slice with its name, its value, and its share.
 
 #### Scenario: Two classes
 

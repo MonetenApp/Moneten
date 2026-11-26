@@ -68,4 +68,4 @@ The app SHALL let the user add a comment to a position with "Add Comment..." and
 
 - **GIVEN** the portfolio shows 40 units of "Musterwerke AG" with the comment "Sparplan"
 - **WHEN** a refresh delivers 45 units of the security with the same ISIN
-- **THEN** the row shows "45 shares" and still has the comment "Sparplan"
+- **THEN** the row shows the quantity "45" and still has the comment "Sparplan"

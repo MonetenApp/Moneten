@@ -65,6 +65,43 @@ struct HoldingStoreTests {
 		#expect(try store.loadLedger().holdings(of: [depot.id]) == after)
 	}
 
+	@Test("A refresh stores the class of the source, and the user's choice survives the next refresh, in the database and in the ledger")
+	func assetClassSurvivesARefresh() throws {
+		let store = try makeStore()
+		var ledger = try store.loadLedger()
+		var classified = fund
+		classified.sourceAssetClass = .funds
+		ledger.apply(try store.merge(refresh([classified, bond], value: 606_001), into: depot.id))
+		try store.setUserAssetClass(.etfs, ofHoldings: [fund.id])
+		ledger.setUserAssetClass(.etfs, of: [fund.id])
+		#expect(try store.loadLedger().holdings(of: [depot.id]).map(\.assetClass) == [.others, .etfs])
+
+		// The bank sends the bond as "Bonds" now and the fund as "Funds" again, never a choice of the user.
+		var bonds = bond
+		bonds.sourceAssetClass = .bonds
+		ledger.apply(try store.merge(refresh([classified, bonds], value: 606_001), into: depot.id))
+		let stored = try store.loadLedger().holdings(of: [depot.id])
+		#expect(stored.map(\.sourceAssetClass) == [.bonds, .funds])
+		#expect(stored.map(\.userAssetClass) == [nil, .etfs])
+		#expect(ledger.holdings(of: [depot.id]) == stored)
+
+		try store.setUserAssetClass(nil, ofHoldings: [fund.id])
+		#expect(try store.loadLedger().holdings(of: [depot.id]).map(\.assetClass) == [.bonds, .funds])
+	}
+
+	@Test("v35 leaves every stored position without a class, so it shows Others")
+	func storedPositionsHaveNoClass() throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v34")
+		try Store(queue: queue).save(depot)
+		try queue.write { db in try HoldingRecord(bond).insertOld(db) }
+		try Schema.migrator.migrate(queue)
+		let stored = try Store(queue: queue).loadLedger().holdings(of: [depot.id])
+		#expect(stored == [bond])
+		#expect(stored.map(\.assetClass) == [.others])
+	}
+
 	@Test("The positions go with their account")
 	func removedWithAccount() throws {
 		let store = try makeStore()

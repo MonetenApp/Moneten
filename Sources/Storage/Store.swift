@@ -391,6 +391,14 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	/// Stores the user's choice of an asset class for the positions `ids`. Nil removes the choice, so each position takes
+	/// the class of its source again. A refresh never writes this column; `Holding.identify` carries it over.
+	public func setUserAssetClass(_ choice: AssetClass?, ofHoldings ids: Set<UUID>) throws {
+		try write { db in
+			_ = try HoldingRecord.filter(ids.contains(Column("id"))).updateAll(db, Column("userAssetClass").set(to: choice?.rawValue))
+		}
+	}
+
 	/// Deletes an account. An access goes with its last account, together with its state and its saved PIN. Returns the
 	/// ID of that access.
 	@discardableResult

@@ -1760,13 +1760,16 @@ public class FinTSHelper {
 		List<Object> positions = new ArrayList<>();
 		for (GVRWPDepotList.Entry page : statement) {
 			if (page.total != null || page.getEntries().length == 0) {
-				for (GVRWPDepotList.Entry.Gattung g : page.getEntries()) positions.add(position(g, bondsAsUnits));
+				for (GVRWPDepotList.Entry.Gattung g : page.getEntries()) positions.add(position(g, bondsAsUnits, raw.get(g)));
 				pages.add(page.total != null ? page.total : zero);
 				continue;
 			}
 			List<Counted> counted = java.util.Arrays.stream(page.getEntries()).map(g -> counted(g, raw.get(g), zero.getCurr(), bondsAsUnits)).toList();
 			if (counted.contains(null)) throw new Failure("unsupported", null, "The bank sent no value for this securities account.");
-			for (int i = 0; i < counted.size(); i++) positions.add(position(page.getEntries()[i], bondsAsUnits, counted.get(i).value(), counted.get(i).accrued()));
+			for (int i = 0; i < counted.size(); i++) {
+				GVRWPDepotList.Entry.Gattung g = page.getEntries()[i];
+				positions.add(position(g, bondsAsUnits, counted.get(i).value(), counted.get(i).accrued(), raw.get(g)));
+			}
 			pages.add(sum(counted.stream().map(Counted::worth).toList()));
 		}
 		BigDecimalValue total = sum(pages);
@@ -1854,10 +1857,11 @@ public class FinTSHelper {
 		return value == null || value.getValue() == null ? value : new BigDecimalValue(value.getValue().divide(HUNDRED), value.getCurr());
 	}
 
-	/// The values (HOLD) and the accrued interest (ACRU) of one holding of raw MT535 text, each in the order of the text.
-	/// hbci4java keeps of each holding only its first value and its first accrued interest, and a bank can send a second
-	/// one in the currency of the account.
-	record RawHolding(List<BigDecimalValue> held, List<BigDecimalValue> accrued) {
+	/// The values (HOLD) and the accrued interest (ACRU) of one holding of raw MT535 text, each in the order of the text,
+	/// and its classification code. hbci4java keeps of each holding only its first value and its first accrued interest,
+	/// and a bank can send a second one in the currency of the account. It drops the financial instrument attributes, whose
+	/// field 12C with the qualifier CLAS holds the CFI code of ISO 10962, six letters A to Z; `cfi` is null without one.
+	record RawHolding(List<BigDecimalValue> held, List<BigDecimalValue> accrued, String cfi) {
 		/// The raw MT535 text of the answer, or null. hbci4java keeps the data of each answer segment of a job as "content",
 		/// "content_2", and so on, and reads one statement across them, as a statement can go on in the next segment (3040).
 		static String text(Properties data) {
@@ -1870,6 +1874,9 @@ public class FinTSHelper {
 		static final Pattern FIN = Pattern.compile(":16R:FIN\\r?\\n(.*?):16S:FIN", Pattern.DOTALL);
 		/// A field 19A with a value or accrued interest, with the mark of a negative amount, the currency, and the amount.
 		static final Pattern AMOUNT = Pattern.compile("(?m)^:19A::(HOLD|ACRU)//(N?)([A-Z]{3})([0-9]+(?:,[0-9]*)?)[ \\t]*$");
+		/// The CFI code of a holding: field 12C, format `:4!c//6!c`, with the qualifier CLAS. The fields 12A and 12B with
+		/// that qualifier carry text or a code of a data source scheme, which no public standard defines, so they are not read.
+		static final Pattern CLASSIFICATION = Pattern.compile("(?m)^:12C::CLAS//([A-Z]{6})[ \\t]*$");
 
 		/// Each holding of `statement` with its holding of the raw text `raw`, when the text has as many holdings and each
 		/// pair agrees on the first value and the first accrued interest that hbci4java read. Else none, because the value of
@@ -1896,7 +1903,8 @@ public class FinTSHelper {
 				BigDecimal amount = new BigDecimal(m.group(4).replace(',', '.'));
 				(m.group(1).equals("HOLD") ? held : accrued).add(new BigDecimalValue(m.group(2).isEmpty() ? amount : amount.negate(), m.group(3)));
 			}
-			return new RawHolding(held, accrued);
+			Matcher cfi = CLASSIFICATION.matcher(fin);
+			return new RawHolding(held, accrued, cfi.find() ? cfi.group(1) : null);
 		}
 
 		static boolean same(BigDecimalValue a, BigDecimalValue b) {
@@ -1912,22 +1920,25 @@ public class FinTSHelper {
 	/// (92B), in which one unit of the base costs the rate in the quoted currency. hbci4java keeps the rate as a
 	/// double, and `BigDecimal.valueOf` writes its shortest decimal text. A bond of a server of `BONDS_AS_UNITS` is a
 	/// nominal amount with its value and its accrued interest divided by 100. A position without a value gets none here,
-	/// because the app computes it from the quantity and the price as `computed` does. Nothing of a position goes to stderr.
-	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits) {
+	/// because the app computes it from the quantity and the price as `computed` does. `cfi` is the CFI code of `raw`, the
+	/// raw holding when the answer paired with the holdings of hbci4java, which the app maps to an asset class. The kind of
+	/// security in 70E, which hbci4java keeps as `wptype`, has no code list that the app could check, so it is not sent.
+	/// Nothing of a position goes to stderr.
+	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits, RawHolding raw) {
 		boolean unit = unitBond(g, bondsAsUnits);
-		return position(g, bondsAsUnits, unit ? hundredth(g.depotwert) : g.depotwert, unit ? hundredth(g.stueckzinsbetrag) : g.stueckzinsbetrag);
+		return position(g, bondsAsUnits, unit ? hundredth(g.depotwert) : g.depotwert, unit ? hundredth(g.stueckzinsbetrag) : g.stueckzinsbetrag, raw);
 	}
 
 	/// The position with the value and the accrued interest that the page counts, such as a second HOLD in the currency
 	/// of the account (`counted`), so that the row shows what the value of the account adds.
-	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits, BigDecimalValue value, BigDecimalValue accrued) {
+	static Map<String, Object> position(GVRWPDepotList.Entry.Gattung g, boolean bondsAsUnits, BigDecimalValue value, BigDecimalValue accrued, RawHolding raw) {
 		Map<String, Object> rate = present(g.xchg_cur1) && present(g.xchg_cur2) && g.xchg_kurs > 0
 			? message("rate", "base", g.xchg_cur1.trim(), "quoted", g.xchg_cur2.trim(), "rate", BigDecimal.valueOf(g.xchg_kurs).toPlainString()) : null;
 		return message("holding", "name", text(g.name), "isin", text(g.isin), "wkn", text(g.wkn),
 			"quantity", g.saldo == null ? null : g.saldo.getValue().toPlainString(),
 			"nominal", nominal(g, bondsAsUnits) ? true : null, "currency", text(g.curr),
 			"price", amount(g.price, g.timestamp_price), "value", amount(value, null), "accrued", amount(accrued, null),
-			"purchase", amount(g.einstandspreis, g.kauf), "rate", rate);
+			"purchase", amount(g.einstandspreis, g.kauf), "rate", rate, "cfi", raw == null ? null : raw.cfi());
 	}
 
 	static Map<String, Object> amount(BigDecimalValue value, Date day) {

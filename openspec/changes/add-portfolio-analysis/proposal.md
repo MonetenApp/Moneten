@@ -6,8 +6,8 @@ A list of positions answers what the user owns. It does not answer how the money
 
 ## What Changes
 
-- Each security can carry one of eight predefined asset classes. The user assigns the class.
-- The portfolio view gets a filter for the asset class and a pie chart of the value by asset class.
+- The portfolio view gets a pie chart of the value by asset class, and its charts follow the filter "Asset class".
+- The asset classes of a position, the user's choice of a class, and the filter "Asset class" moved to the change `redesign-portfolio-holdings` on 26 November 2026, with the owner's decisions: the class comes from the bank, or else is "Others", and it belongs to the position.
 - A bar chart shows the history of the portfolio value from the daily records.
 - The user can export positions as a CSV file.
 - An offline account of the type "Portfolio" can hold positions that the user enters or imports.
@@ -20,14 +20,14 @@ None.
 
 ### Modified Capabilities
 
-- `securities-accounts`: adds asset classes, the portfolio charts, the export of positions, and manual positions. The change `add-securities-accounts` introduces the capability.
+- `securities-accounts`: adds the portfolio charts, the export of positions, and manual positions. The change `add-securities-accounts` introduces the capability.
 
 ## Impact
 
 - Milestone: later
 - Issues: none yet
-- Modules: `Domain` owns asset classes and the history of the portfolio value. `Storage` keeps the class of each security. `App` owns the charts, the filter, and the export.
-- Depends on the change `add-securities-accounts` for positions and the daily record, `add-charts` for the view switch and the chart behavior that all views share, `add-main-window` for the filter bar and its pin, `add-offline-accounts` for accounts without a bank access, `add-printing` for "Print Portfolio Items...", and `add-applescript-automation` for the scripted export.
+- Modules: `Domain` owns the history of the portfolio value. `App` owns the charts and the export.
+- Depends on the change `add-securities-accounts` for positions and the daily record, `redesign-portfolio-holdings` for asset classes and their filter, `add-charts` for the view switch and the chart behavior that all views share, `add-main-window` for the filter bar and its pin, `add-offline-accounts` for accounts without a bank access, `add-printing` for "Print Portfolio Items...", and `add-applescript-automation` for the scripted export.
 - Decisions: none apply.
 
 ## Reference behavior
@@ -45,8 +45,6 @@ None.
 
 ### Decided for Moneten
 
-- A security has no asset class until the user assigns one. MoneyMoney may guess a class. That was not observed.
-- The assignment belongs to the security, identified by its ISIN, and applies to that security in every portfolio.
 - The chart menu offers "Account balance", "Absolute change", and "Relative change". Only "Account balance" was observed. The other two labels exist as strings.
 - The columns of the CSV export are defined here. MoneyMoney's columns were not observed.
 - Manual positions in an offline portfolio and the import of positions are inferred from two strings. The fields and the file format are defined here.

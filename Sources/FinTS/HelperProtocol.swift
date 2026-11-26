@@ -420,6 +420,8 @@ extension AccountResult {
 		let accrued: Amount?
 		let purchase: Amount?
 		let rate: Rate?
+		/// The CFI code of ISO 10962 that the bank sends for the security, which `CFI` maps to the asset class of the source.
+		let cfi: String?
 
 		struct Amount: Decodable {
 			let amount: String
@@ -437,7 +439,8 @@ extension AccountResult {
 		/// the currency of the security. Without one its currency stays unknown: the value of the bank may already be
 		/// converted into another currency, so it does not tell the currency of the nominal amount.
 		/// OLB and Bankhaus Neelmeyer send the purchase value of the whole position as its purchase price, which
-		/// `OLBGroup.purchasePrice` turns into the price of one unit, by the host of `server` (#237).
+		/// `OLBGroup.purchasePrice` turns into the price of one unit, by the host of `server` (#237). A CFI code that the table
+		/// does not list gives no class, because the class is optional and the rest of the position reads.
 		func holding(of account: AccountRequest, server: URL?) throws -> Holding {
 			guard let quantity else { throw HelperFailure.unreadable }
 			let quantityValue = try AccountResult.decimal(quantity)
@@ -460,7 +463,7 @@ extension AccountResult {
 				quote: try price.map { try Self.quote($0, String(localized: "price currency")) }, marketValue: value, accruedInterest: accrued,
 				purchasePrice: OLBGroup.purchasePrice(try purchase.map { try Self.quote($0, String(localized: "purchase price currency")) }, quantity: quantityValue,
 					isNominal: nominal == true, nominalCurrency: nominalCurrency, rate: exchangeRate, server: server),
-				exchangeRate: exchangeRate)
+				exchangeRate: exchangeRate, sourceAssetClass: cfi.flatMap(CFI.assetClass(of:)))
 			// A quantity times a price beyond the limit fails the account, as an amount beyond it does.
 			guard holding.amountsFit(in: account.currency) else { throw HelperFailure.tooLarge }
 			return holding

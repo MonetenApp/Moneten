@@ -22,7 +22,8 @@
 # The login "unterkonten" lists two subaccounts of the account number 9 in place of these accounts.
 # The login "depot" lists "Girokonto" and three securities accounts: "Depot", whose refresh brings its value
 # and four positions (a share with a purchase price, a fund without one, a share in US dollars with an
-# exchange rate, and a bond with a nominal amount and accrued interest), "Leeres Depot", which is empty, and
+# exchange rate, and a bond with a nominal amount and accrued interest; all but the share in US dollars with a CFI code
+# of their asset class), "Leeres Depot", which is empty, and
 # "Fondsdepot", which the bank does not offer through FinTS.
 # The login "langtext" lists only "Tagesgeld". Its refresh sends the transactions of "Tagesgeld" with the
 # error 9210 of the balance request, and then a notice of 100 lines. The refresh of the login "wartung" sends a
@@ -287,10 +288,10 @@ case "$cmd" in
 	;; esac
 	case "$cmd" in *'"id":"7654321"'*)
 		echo '{"type":"result","account":"7654321","balance":{"amount":"8879.16","currency":"EUR","date":"'"$(day 1)"'"},"errors":[],"securities":true,"holdings":['\
-'{"name":"Musterwerke AG","isin":"DE0001234567","wkn":"123456","quantity":"40","price":{"amount":"25.00","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1000.00","currency":"EUR"},"purchase":{"amount":"20.00","currency":"EUR","day":"2024-03-01"}},'\
-'{"name":"Beispiel Welt ETF","isin":"LU0000000002","quantity":"12.3456","price":{"amount":"101.25","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1249.99","currency":"EUR"}},'\
+'{"name":"Musterwerke AG","isin":"DE0001234567","wkn":"123456","quantity":"40","price":{"amount":"25.00","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1000.00","currency":"EUR"},"purchase":{"amount":"20.00","currency":"EUR","day":"2024-03-01"},"cfi":"ESVUFR"},'\
+'{"name":"Beispiel Welt ETF","isin":"LU0000000002","quantity":"12.3456","price":{"amount":"101.25","currency":"EUR","day":"'"$(day 1)"'"},"value":{"amount":"1249.99","currency":"EUR"},"cfi":"CEOGLS"},'\
 '{"name":"Muster Inc.","isin":"US0000000003","quantity":"15","currency":"USD","price":{"amount":"120.50","currency":"USD","day":"'"$(day 2)"'"},"value":{"amount":"1666.67","currency":"EUR"},"purchase":{"amount":"95.00","currency":"USD","day":"2023-06-15"},"rate":{"base":"EUR","quoted":"USD","rate":"1.0845"}},'\
-'{"name":"Anleihe Musterland 2030","isin":"DE0000000004","quantity":"5000","nominal":true,"currency":"EUR","price":{"amount":"98.5","currency":"%","day":"'"$(day 1)"'"},"value":{"amount":"4925.00","currency":"EUR"},"accrued":{"amount":"37.50","currency":"EUR"},"purchase":{"amount":"97","currency":"%"}}]}'
+'{"name":"Anleihe Musterland 2030","isin":"DE0000000004","quantity":"5000","nominal":true,"currency":"EUR","price":{"amount":"98.5","currency":"%","day":"'"$(day 1)"'"},"value":{"amount":"4925.00","currency":"EUR"},"accrued":{"amount":"37.50","currency":"EUR"},"purchase":{"amount":"97","currency":"%"},"cfi":"DBFTFB"}]}'
 	;; esac
 	case "$cmd" in *'"id":"7654325"'*)
 		echo '{"type":"result","account":"7654325","balance":{"amount":"0","currency":"EUR","date":"'"$(day 0)"'"},"errors":[],"securities":true,"holdings":[]}'
