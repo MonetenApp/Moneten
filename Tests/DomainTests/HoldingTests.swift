@@ -172,4 +172,16 @@ struct HoldingTests {
 		#expect(identified[4].id == delivered[4].id)
 		#expect(identified.map(\.security.name) == delivered.map(\.security.name))
 	}
+
+	/// A position stored before #600 keeps the padded name of the bank, and the same position now arrives with its
+	/// spaces collapsed. Without an ISIN and a security number, the name must still match.
+	@Test("A stored padded name and a delivered collapsed name, both without ISIN and security number, are one position")
+	func paddedStoredName() {
+		let stored = Holding(accountID: depot, security: Security(name: "MUSTER INC.        DL-,01"), quantity: 1)
+		let delivered = Holding(accountID: depot, security: Security(name: "MUSTER INC. DL-,01"), quantity: 1)
+		let identified = Holding.identify([delivered], stored: [stored])
+		#expect(identified.map(\.id) == [stored.id])
+		#expect(identified.map(\.security.name) == ["MUSTER INC. DL-,01"])
+		#expect(Security.collapsingWhitespace(" MUSTER\tINC.\n   DL-,01  ") == "MUSTER INC. DL-,01")
+	}
 }

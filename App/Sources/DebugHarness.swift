@@ -627,6 +627,9 @@ final class DebugHarness {
 			let shown = parts.last != "off"
 			if parts.first == "categories" { model.showsCategoriesSection = shown } else { model.showsAccountsSection = shown }
 			log("section", ("", .choice(String(parts.first ?? ""), of: ["accounts", "categories"])), ("shown", .flag(shown)))
+		// Scrolls the sidebar to its end as a scroll wheel does, and logs whether the last row lies fully above the bar
+		// with the add menu and the refresh button.
+		case "sidebarscroll": sidebarScrollToEnd()
 		// Moves the focus of the main window to the sidebar list, as a click on another sidebar row does.
 		case "namefocus":
 			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
@@ -1128,12 +1131,14 @@ final class DebugHarness {
 				model.save(account: account)
 			}
 		case "barsnapshot":
-			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago.
+			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago. "month:<name>"
+			// draws the monthly average with the pointer on its oldest bar, whose value does not fit beside a short row.
 			if case let .account(id) = model.selection, let account = model.ledger.account(id) {
-				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: false)
-				let hovered = bars.dropLast(7).last?.id
+				let monthly = argument.hasPrefix("month:")
+				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: monthly)
+				let hovered = monthly ? bars.first?.id : bars.dropLast(7).last?.id
 				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
-					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: argument, kind: "bars")
+					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: monthly ? String(argument.dropFirst(6)) : argument, kind: "bars")
 			}
 		case "history": Task { await DemoData.history(model); log("history done") }
 		case "bulk":
@@ -3212,6 +3217,24 @@ final class DebugHarness {
 		log("snapshot sidebarlist", ("width", .count(Int(size.width))), ("height", .count(Int(size.height))))
 	}
 	#endif
+
+	/// Sends scroll wheel events to the sidebar until it stops moving. The bar below the list is the bottom content inset
+	/// of its scroll view, so the last row is clear of the bar when its bottom lies at or above the top of that inset.
+	private func sidebarScrollToEnd() {
+		guard let list = sidebarList(), let scroll = list.enclosingScrollView else { return log("sidebarscroll no list") }
+		for _ in 0..<200 {
+			let before = scroll.contentView.bounds.origin.y
+			guard let wheel = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -200, wheel2: 0, wheel3: 0),
+				let event = NSEvent(cgEvent: wheel) else { return log("sidebarscroll no event") }
+			scroll.scrollWheel(with: event)
+			if scroll.contentView.bounds.origin.y == before { break }
+		}
+		let last = list.rect(ofRow: list.numberOfRows - 1)
+		let rowBottom = list.convert(last, to: nil).minY
+		let barTop = scroll.convert(scroll.bounds, to: nil).minY + scroll.contentInsets.bottom
+		log("sidebarscroll", ("rows", .count(list.numberOfRows)), ("inset", .count(Int(scroll.contentInsets.bottom))),
+			("rowBottom", .count(Int(rowBottom))), ("barTop", .count(Int(barTop))), ("clear", .flag(rowBottom >= barTop - 0.5)))
+	}
 
 	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
 	private func logSidebarRows() {

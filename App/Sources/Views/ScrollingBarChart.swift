@@ -69,20 +69,20 @@ struct ScrollingBarChart: View {
 				let chunks = Self.chunks(of: bars, style: style)
 				ScrollViewReader { proxy in
 					ScrollView(.horizontal) {
-						ZStack(alignment: .topLeading) {
-							LazyHStack(spacing: 0) {
-								ForEach(chunks) { chunk in
-									ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
-										positive: positive, negative: negative, hovered: hovered, height: geometry.size.height, select: select)
-								}
-							}
-							if let index = bars.firstIndex(where: { $0.id == hovered }) {
-								valueLabel(bars[index], index: index, chartHeight: geometry.size.height)
+						LazyHStack(spacing: 0) {
+							ForEach(chunks) { chunk in
+								ChunkView(chunk: chunk, style: style, barWidth: barWidth, gap: gap, scale: scale,
+									positive: positive, negative: negative, hovered: hovered, height: geometry.size.height, select: select)
 							}
 						}
-						// The row keeps the width of its bars, so a label wider than a short row cannot
-						// widen it under the pointer and move the bars away.
 						.frame(width: CGFloat(bars.count) * pitch, alignment: .leading)
+						// The value of the hovered bar lies over the row and leaves its width and place alone. In one stack
+						// with the bars, a label left of a short row widened the stack and pushed the bars out of view.
+						.overlay(alignment: .topLeading) {
+							if let index = bars.firstIndex(where: { $0.id == hovered }) {
+								valueLabel(bars[index], index: index, chartHeight: geometry.size.height, chartWidth: geometry.size.width)
+							}
+						}
 						.contentShape(Rectangle())
 						.onContinuousHover { phase in
 							if case let .active(location) = phase { hovered = bar(at: location.x)?.id } else { hovered = nil }
@@ -115,21 +115,27 @@ struct ScrollingBarChart: View {
 
 	/// As in MoneyMoney: the date and the amount of the bar under the pointer, below the bars and
 	/// just after the bar, or before it when the row ends there.
-	private func valueLabel(_ bar: StripBar, index: Int, chartHeight: CGFloat) -> some View {
+	private func valueLabel(_ bar: StripBar, index: Int, chartHeight: CGFloat, chartWidth: CGFloat) -> some View {
 		let left = CGFloat(index) * pitch + (style == .centered ? gap / 2 : 0)
 		let right = left + barWidth
 		let total = CGFloat(bars.count) * pitch
 		let limit = visible.width > 0 ? min(total, visible.maxX) : total
-		let start = visible.width > 0 ? visible.minX : 0
-		return VStack(alignment: .leading, spacing: 0) {
-			Text(bar.title)
-			Text(Format.money(bar.money)).fontWeight(.bold).monospacedDigit()
+		// A row shorter than the chart stands at its trailing edge, so the room before the row is free for the label.
+		let start = min(visible.width > 0 ? visible.minX : 0, total - chartWidth)
+		// The label is placed from `start`, the leftmost place it may take, so it never reaches before the leading
+		// edge of its stack, which the overlay aligns with the row.
+		return ZStack(alignment: .topLeading) {
+			Color.clear.frame(width: 0, height: 0)
+			VStack(alignment: .leading, spacing: 0) {
+				Text(bar.title)
+				Text(Format.money(bar.money)).fontWeight(.bold).monospacedDigit()
+			}
+			.font(.system(size: 13))
+			.foregroundStyle(Palette.onBand)
+			.fixedSize()
+			.alignmentGuide(.leading) { d in start - (right + 6 + d.width <= limit ? right + 6 : max(start, left - 6 - d.width)) }
 		}
-		.font(.system(size: 13))
-		.foregroundStyle(Palette.onBand)
-		.fixedSize()
-		.alignmentGuide(.leading) { d in right + 6 + d.width <= limit ? -(right + 6) : -max(start, left - 6 - d.width) }
-		.offset(y: chartHeight - Self.bottomInset + 6)
+		.offset(x: start, y: chartHeight - Self.bottomInset + 6)
 		.allowsHitTesting(false)
 	}
 
