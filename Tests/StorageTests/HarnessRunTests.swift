@@ -463,29 +463,24 @@ struct HarnessExtensionTests {
 /// without a way to a real bank.
 @Suite("Debug harness with a real bank")
 struct HarnessRealBankTests {
-	@Test("Without the opt-in, a refresh reaches FinTS only with the made-up bank, from the window as from a command")
+	@Test("Without the opt-in, a refresh reaches FinTS only with the made-up bank")
 	func withoutOptIn() {
-		for origin in [HarnessRun.Origin.window, .command] {
-			#expect(!HarnessRun.mayRefresh(reaching: .fints, from: origin, fakeBank: false, realBank: false))
-			#expect(HarnessRun.mayRefresh(reaching: .fints, from: origin, fakeBank: true, realBank: false))
-			#expect(HarnessRun.mayRefresh(reaching: .local, from: origin, fakeBank: false, realBank: false))
-			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: true, realBank: false))
-		}
+		#expect(!HarnessRun.mayRefresh(reaching: .fints, fakeBank: false, realBank: false))
+		#expect(HarnessRun.mayRefresh(reaching: .fints, fakeBank: true, realBank: false))
+		#expect(HarnessRun.mayRefresh(reaching: .local, fakeBank: false, realBank: false))
+		#expect(!HarnessRun.mayRefresh(reaching: .realService, fakeBank: true, realBank: false))
 	}
 
-	@Test("With the opt-in, a refresh of the window reaches a real bank through FinTS, and a command still does not")
+	@Test("With the opt-in, a refresh reaches a real bank through FinTS")
 	func withOptIn() {
-		#expect(HarnessRun.mayRefresh(reaching: .fints, from: .window, fakeBank: false, realBank: true))
-		#expect(!HarnessRun.mayRefresh(reaching: .fints, from: .command, fakeBank: false, realBank: true))
-		#expect(HarnessRun.mayRefresh(reaching: .local, from: .command, fakeBank: false, realBank: true))
+		#expect(HarnessRun.mayRefresh(reaching: .fints, fakeBank: false, realBank: true))
+		#expect(HarnessRun.mayRefresh(reaching: .local, fakeBank: false, realBank: true))
 	}
 
-	@Test("With the opt-in, an extension of a real service stays refused, also from the window")
+	@Test("With the opt-in, an extension of a real service stays refused")
 	func realServiceStaysRefused() {
-		for origin in [HarnessRun.Origin.window, .command] {
-			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: false, realBank: true))
-			#expect(!HarnessRun.mayRefresh(reaching: .realService, from: origin, fakeBank: true, realBank: true))
-		}
+		#expect(!HarnessRun.mayRefresh(reaching: .realService, fakeBank: false, realBank: true))
+		#expect(!HarnessRun.mayRefresh(reaching: .realService, fakeBank: true, realBank: true))
 	}
 
 	@Test("Without the opt-in, the harness runs every command, each under its own check")
@@ -497,11 +492,12 @@ struct HarnessRealBankTests {
 
 	@Test("With the opt-in, the harness runs only the commands of the bank test plan that reach no bank")
 	func onlyObservingCommandsWithOptIn() {
-		for command in ["create", "unlock", "lock", "sheet", "status"] {
+		for command in ["create", "sheet", "status"] {
 			#expect(HarnessRun.mayRun(command, realBank: true))
 		}
-		// Each would send a secret or a choice to a bank, start a refresh, or press a control that can start one.
-		let refused = ["answer", "method", "medium", "setup", "lookfornew", "editlogin", "connectmigrated", "refresh", "refreshenforced",
+		// Each would send a secret or a choice to a bank, start a refresh, or press a control that can start one. An
+		// unlock starts the automatic refresh of the accounts that are due, and "lock" serves only a later "unlock".
+		let refused = ["unlock", "lock", "answer", "method", "medium", "setup", "lookfornew", "editlogin", "connectmigrated", "refresh", "refreshenforced",
 			"extrefresh", "extaccess", "extlogin", "exttan", "extmethod", "extsavelogin", "extanswer", "extjs", "menuitem", "menubar",
 			"key", "namekey", "mainkey", "type", "button", "modal", "rowmenu", "controls", "alertbutton", "escape", "noticeclick", "network",
 			"present", "syncdemo", ""]

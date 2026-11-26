@@ -113,26 +113,20 @@ public enum HarnessRun {
 		}
 	}
 
-	/// Who starts a refresh in a run of the harness.
-	public enum Origin: Sendable, Hashable {
-		/// A command of the harness, such as "refresh" or "menuitem".
-		case command
-		/// The window or the automatic refresh: a click by the person at the Mac, or the timer of the app.
-		case window
+	/// Whether a refresh of a harness run may reach `recipient`. Without `realBank` it reaches what `mayReach` lets it.
+	/// `realBank` is the opt-in `MONETEN_DEBUG_REAL_BANK=1` of a Debug build for the bank tests of issue #11: with it, a
+	/// refresh reaches a real bank through FinTS too, so that a person can add and refresh a real access while the
+	/// harness writes "status". `mayRun` then keeps every command from starting one. An extension of a real service
+	/// stays refused.
+	public static func mayRefresh(reaching recipient: Recipient, fakeBank: Bool, realBank: Bool) -> Bool {
+		mayReach(recipient, fakeBank: fakeBank) || realBank && recipient == .fints
 	}
 
-	/// Whether a refresh that `origin` starts may reach `recipient`. A command reaches what `mayReach` lets it. `realBank`
-	/// is the opt-in `MONETEN_DEBUG_REAL_BANK=1` of a Debug build for the bank tests of issue #11: with it, a refresh of
-	/// the window or the automatic refresh reaches a real bank through FinTS too, so that a person can add and refresh
-	/// a real access while the harness writes "status". An extension of a real service stays refused.
-	public static func mayRefresh(reaching recipient: Recipient, from origin: Origin, fakeBank: Bool, realBank: Bool) -> Bool {
-		mayReach(recipient, fakeBank: fakeBank) || realBank && origin == .window && recipient == .fints
-	}
-
-	/// The commands that a run with the opt-in `MONETEN_DEBUG_REAL_BANK=1` takes. They reach no bank, and none presses a
-	/// control: a press or a key could start a refresh in the window, which `mayRefresh` then could not tell from a
-	/// click of the person. "sheet" opens a sheet, such as "Add Account", in which the person types the login.
-	static let realBankCommands: Set<String> = ["create", "unlock", "lock", "sheet", "status"]
+	/// The commands that a run with the opt-in `MONETEN_DEBUG_REAL_BANK=1` takes. None reaches a bank, presses a control,
+	/// or starts a refresh, which `mayRefresh` could not tell from a refresh of the person. "unlock" is missing, because
+	/// the unlock starts the automatic refresh of the accounts that are due. "create" makes a new database, which has no
+	/// access yet, and "sheet" opens a sheet, such as "Add Account", in which the person types the login.
+	private static let realBankCommands: Set<String> = ["create", "sheet", "status"]
 
 	/// Whether the harness runs `command`. Without the opt-in it runs every command, each under its own check. With
 	/// the opt-in only a command of `realBankCommands`, so that only the person at the Mac logs in, types a PIN or a

@@ -1763,9 +1763,10 @@ final class AppModel {
 		#if DEBUG || PERF_HARNESS
 		// A run of the debug harness reaches only the made-up bank and local services, also from a button that no command
 		// checks, such as "Refresh All Accounts" in the popover of the menu bar icon (issue #498). With the opt-in of the
-		// bank tests, a refresh here reaches a real bank through FinTS too: the harness then presses no control, so only
-		// the person at the Mac or the automatic refresh starts it.
-		if let harness = DebugHarness.shared, !harness.mayRefresh(plan, from: .window) {
+		// bank tests, a refresh here reaches a real bank through FinTS too. HarnessRun.mayRun is then the guard: the
+		// harness takes no command that presses a control, unlocks, or refreshes, so only the person at the Mac or the
+		// automatic refresh starts one.
+		if let harness = DebugHarness.shared, !harness.mayRefresh(plan) {
 			return harness.log("refresh refused", ("attended", .flag(attended)))
 		}
 		#endif
