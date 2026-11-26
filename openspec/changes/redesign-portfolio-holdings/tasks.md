@@ -18,13 +18,13 @@ A task is checked only when a test or a check in the running app shows the behav
 
 ## 2. Part 2: view
 
-- [ ] 2.1 Asset classes: the localized names of the eight classes, with German values.
-- [ ] 2.2 Asset class tag: the tag next to the ISIN below the name.
-- [ ] 2.3 Filter by asset class: "Asset class" in the filter bar with "Show All" and the classes of the view; the list and the status line follow it, and the line "An asset class filter is active; some entries might be hidden." shows below the last row.
-- [ ] 2.4 Choose an asset class: the submenu "Asset Class" with the eight classes and "Automatic", with a mark at the current choice, for the selected positions.
-- [ ] 2.5 Position row content: the value in semibold, and the ISIN below the name.
-- [ ] 2.6 Quantities as units or as a nominal amount: "646" without "shares", and "5.000,00 €" for a nominal amount.
-- [ ] 2.7 Profit or loss: green with "+" and red with "−", the percentage below the amount, no word in the row. The header keeps "Profit" and "Loss".
-- [ ] 2.8 Day of an old quote: the day only when it is older than the newest quote day of the portfolio, in the warning color.
-- [ ] 2.9 Quote of zero: "–".
-- [ ] 2.10 Light and dark screenshots of the debug harness for the pull request, with the login "depot" of `scripts/fake-fints-helper.sh`.
+- [x] 2.1 Asset classes: the localized names of the eight classes, with German values. PortfolioRowsTests "Each class has its own name", and `scripts/check-localization.py`.
+- [x] 2.2 Asset class tag: the tag next to the ISIN below the name. Harness screenshots with the login "depot".
+- [x] 2.3 Filter by asset class: "Asset class" in the filter bar with "Show All" and the classes of the view; the list and the status line follow it, and the line "An asset class filter is active; some entries might be hidden." shows below the last row. PortfolioRowsTests "The filter lists the classes of the view in the order of the menu, once each", "A class filter shows the positions of the class only, with their sum, and the line about the filter", and "Every view change sets the filter Asset class back to Show All"; the harness command `filterbar assetclass` and its screenshots.
+- [x] 2.4 Choose an asset class: the submenu "Asset Class" with the eight classes and "Automatic", with a mark at the current choice, for the selected positions. The harness command `holdingmenu` reads the marks and chooses an entry for one and for three positions; the perf scenario "asset-class-leaves-filter" checks that a choice that leaves the filter starts the table over.
+- [x] 2.5 Position row content: the value in semibold, and the ISIN below the name. Harness screenshots.
+- [x] 2.6 Quantities as units or as a nominal amount: "646" without "shares", and "5.000,00 €" for a nominal amount. PortfolioRowsTests "A quantity of units shows without a word for the unit, a nominal amount with its currency".
+- [x] 2.7 Profit or loss: green with "+" and red with "−", the percentage below the amount, no word in the row. The header keeps "Profit" and "Loss". PortfolioRowsTests "A profit shows with a plus, a loss with the minus sign, and zero without a sign, in the amount and in the percentage", and the screenshots.
+- [x] 2.8 Day of an old quote: the day only when it is older than the newest quote day of the portfolio, in the warning color. PortfolioRowsTests "Only a quote older than the newest quote day of its own portfolio shows its day", and the screenshots.
+- [x] 2.9 Quote of zero: "–". PortfolioRowsTests "A quote of 0 shows a dash, any other quote its amount, and a percentage its sign".
+- [x] 2.10 Light and dark screenshots of the debug harness for the pull request, with the login "depot" of `scripts/fake-fints-helper.sh`.

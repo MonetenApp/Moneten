@@ -1611,7 +1611,8 @@ final class DebugHarness {
 		// whether each copy is the IBAN, or the part of it, without spaces. It changes the general pasteboard.
 		case "ibancopy": ibanCopy()
 		// What the menus and the pin of the filter bar do: "status unchecked", "amount withdrawals", "category <name>",
-		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", or "pin on" and "pin off".
+		// "account <name>", "custom <yyyymmdd> <yyyymmdd>", "pin on" and "pin off", or "assetclass <raw value>" and
+		// "assetclass all" in the filter bar of a portfolio.
 		case "filterbar": filterBar(argument)
 		// The sidebar section "Searches": "save <name>", "open <name>", "rename <old>|<new>", "remove <name>", "sheet"
 		// for the sheet of "Save Search...", or "back" and "forward" as the toolbar buttons.
@@ -1628,6 +1629,11 @@ final class DebugHarness {
 		// "<row>|<count>|<item>|<n>" the item number n of its submenu. It logs each item and submenu item by its hash and
 		// whether it is enabled.
 		case "rowmenu": rowMenu(argument)
+		// "<row>|<count>" opens the context menu of row <row> of the table of positions as a right click does, after it selects
+		// the first <count> rows. It logs the items of the submenu "Asset Class" with the class of each and whether it has the
+		// mark. "<row>|<count>|<item>" also chooses the item of the submenu with that English title, "Automatic" or the name of a
+		// class, which changes only the database. Then "assetclass" with an empty argument reads the classes.
+		case "holdingmenu": holdingMenu(argument)
 		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
 		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
 		// it clicks only "Cancel".
@@ -2639,9 +2645,12 @@ final class DebugHarness {
 			guard days.count == 2, let period = PeriodChoice.custom(from: days[0], to: days[1]) else { return log("filterbar rejected") }
 			model.choose(period: period)
 		case "pin": model.isFilterBarPinned = value == "on"
+		// The filter "Asset class" of a portfolio: the raw value of `AssetClass`, or anything else for "Show All".
+		case "assetclass": model.filter.assetClass = AssetClass(rawValue: value)
 		default: return log("filterbar rejected")
 		}
-		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "group", "custom", "pin"]))] + Self.filterTargets(model)))
+		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "group", "custom", "pin", "assetclass"]))]
+			+ Self.filterTargets(model) + [("assetClass", .state(model.filter.assetClass as Any))]))
 	}
 
 	private func savedSearch(_ argument: String) {
@@ -2760,6 +2769,39 @@ final class DebugHarness {
 			}
 		}
 	}
+
+	private func holdingMenu(_ argument: String) {
+		guard let table = holdingsTables().first else { return log("holdingmenu no table") }
+		let parts = argument.components(separatedBy: "|")
+		guard parts.count >= 2, let row = Int(parts[0]), let count = Int(parts[1]) else { return log("holdingmenu refused") }
+		table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false)
+		guard let menu = contextMenu(row: row, sidebar: false, in: table) else { return log("holdingmenu no menu") }
+		menu.update()
+		guard let item = menu.items.first(where: { $0.title == Self.localized("Asset Class") }), let submenu = item.submenu else {
+			return log("holdingmenu no submenu", ("items", .count(menu.items.count)))
+		}
+		submenu.update()
+		let entries = submenu.items.filter { !$0.isSeparatorItem }
+		let classes: [LogValue] = entries.map { entry in
+			entry.title == Self.localized("Automatic") ? .word("automatic") : .state(AssetClass.allCases.first { $0.name == entry.title } as Any)
+		}
+		log("holdingmenu", ("items", .count(menu.items.count)), ("classes", .list(classes)), ("marked", .list(entries.map { .flag($0.state == .on) })))
+		guard parts.count >= 3 else { return }
+		let surface = table.window.map(surface(of:)) ?? .startWindow
+		guard HarnessRun.mayClick(parts[2], allowed: Self.assetClassTitles, on: surface),
+			let index = submenu.items.firstIndex(where: { $0.title == Self.localized(parts[2]) }) else { return log("holdingmenu refused") }
+		// RunLoop.perform takes a Sendable block, and the block runs on the main thread, as the menu needs.
+		nonisolated(unsafe) let choose = { submenu.performActionForItem(at: index) }
+		RunLoop.main.perform(inModes: [.common]) {
+			MainActor.assumeIsolated {
+				choose()
+				self.log("holdingmenu done")
+			}
+		}
+	}
+
+	/// The English titles of the submenu "Asset Class", which change only the class of positions in the database.
+	private static let assetClassTitles: Set<String> = ["Automatic", "Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", "Others"]
 
 	private func menuItem(_ argument: String) {
 		let parts = argument.components(separatedBy: "|")
@@ -3104,10 +3146,10 @@ final class DebugHarness {
 
 	/// The context menu of a row of the sidebar or of the transaction table, as a right click builds it. "Option" shows
 	/// the items that the Option key shows.
-	private func contextMenu(row index: Int, sidebar: Bool, modifiers: NSEvent.ModifierFlags = []) -> NSMenu? {
+	private func contextMenu(row index: Int, sidebar: Bool, in table: NSTableView? = nil, modifiers: NSEvent.ModifierFlags = []) -> NSMenu? {
 		guard let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }),
 			let content = window.contentView else { return nil }
-		let list: NSTableView? = sidebar ? sidebarList() : transactionTables().first
+		let list: NSTableView? = table ?? (sidebar ? sidebarList() : transactionTables().first)
 		guard let list, index < list.numberOfRows else { return nil }
 		list.scrollRowToVisible(index)
 		let row = list.rect(ofRow: index)

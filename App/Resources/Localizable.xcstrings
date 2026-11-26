@@ -443,26 +443,6 @@
         }
       }
     },
-    "%@ share" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ Stück"
-          }
-        }
-      }
-    },
-    "%@ shares" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ Stück"
-          }
-        }
-      }
-    },
     "%@ to %@" : {
       "localizations" : {
         "de" : {
@@ -2051,143 +2031,6 @@
         }
       }
     },
-    "Could not remove the rejected login data." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die abgelehnten Zugangsdaten konnten nicht entfernt werden."
-          }
-        }
-      }
-    },
-    "Could not remove the saved login data." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gespeicherten Zugangsdaten konnten nicht entfernt werden."
-          }
-        }
-      }
-    },
-    "Could not save the login data." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Zugangsdaten konnten nicht gespeichert werden."
-          }
-        }
-      }
-    },
-    "Moneten has no list of extensions that this version accepts, so %@ does not run." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Moneten hat keine Liste von Erweiterungen, die diese Version annimmt, daher läuft %@ nicht."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "price currency" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kurswährung"
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "purchase price currency" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Währung des Kaufpreises"
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "quantity currency" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Währung der Anzahl"
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "Remove saved %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ nicht mehr speichern"
-          }
-        }
-      }
-    },
-    "Remove the saved login data of “%@”?" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die gespeicherten Zugangsdaten von „%@“ entfernen?"
-          }
-        }
-      }
-    },
-    "The %@ of security %lld is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Feld „%1$@“ von Wertpapier %2$lld ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "The currency of account %@ is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung von Konto %@ ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "The currency of transaction %lld is not a currency code." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Währung von Umsatz %lld ist kein Währungscode."
-          }
-        }
-      },
-      "extractionState" : "manual"
-    },
-    "The login data is removed for every account of this access. The next refresh asks for it." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Zugangsdaten werden für jedes Konto dieses Zugangs entfernt. Die nächste Aktualisierung fragt danach."
-          }
-        }
-      }
-    },
     "amount" : {
       "localizations" : {
         "de" : {
@@ -2280,6 +2123,17 @@
           }
         }
       }
+    },
+    "An asset class filter is active; some entries might be hidden." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anlageklassenfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "An authorization is needed. Choose “Refresh Account” to give it." : {
       "localizations" : {
@@ -2511,6 +2365,26 @@
         }
       }
     },
+    "Asset Class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse"
+          }
+        }
+      }
+    },
+    "Asset class:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse:"
+          }
+        }
+      }
+    },
     "Assign" : {
       "localizations" : {
         "de" : {
@@ -2581,6 +2455,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Automatic" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatisch"
+          }
+        }
+      }
     },
     "Automatically refresh accounts" : {
       "localizations" : {
@@ -2857,6 +2741,17 @@
           }
         }
       }
+    },
+    "Bonds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anleihen"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Bonus points: %@" : {
       "localizations" : {
@@ -3465,6 +3360,17 @@
         }
       }
     },
+    "Commodities" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rohstoffe"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Comparing transactions" : {
       "localizations" : {
         "de" : {
@@ -3840,6 +3746,16 @@
         }
       }
     },
+    "Could not remove the rejected login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die abgelehnten Zugangsdaten konnten nicht entfernt werden."
+          }
+        }
+      }
+    },
     "Could not remove the rejected PIN." : {
       "localizations" : {
         "de" : {
@@ -3857,6 +3773,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Der gespeicherte Absturzbericht konnte nicht entfernt werden. Versuchen Sie es erneut."
+          }
+        }
+      }
+    },
+    "Could not remove the saved login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Zugangsdaten konnten nicht entfernt werden."
           }
         }
       }
@@ -3947,6 +3873,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Das CSV-Profil konnte nicht gesichert werden. %@"
+          }
+        }
+      }
+    },
+    "Could not save the login data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zugangsdaten konnten nicht gespeichert werden."
           }
         }
       }
@@ -4103,6 +4039,17 @@
           }
         }
       }
+    },
+    "Cryptocurrencies" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kryptowährungen"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "CSV, CAMT (camt.052, camt.053), and MT940 files are supported." : {
       "localizations" : {
@@ -4882,6 +4829,17 @@
         }
       }
     },
+    "ETFs" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ETFs"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Euro" : {
       "localizations" : {
         "de" : {
@@ -5260,6 +5218,17 @@
           }
         }
       }
+    },
+    "Funds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fonds"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Furniture" : {
       "localizations" : {
@@ -6768,6 +6737,17 @@
         }
       }
     },
+    "Moneten has no list of extensions that this version accepts, so %@ does not run." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moneten hat keine Liste von Erweiterungen, die diese Version annimmt, daher läuft %@ nicht."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Moneten has written nothing to the database since then. Load the database again. When it asks for the database password, enter the new password, and when that does not open it, the earlier one." : {
       "localizations" : {
         "de" : {
@@ -8138,6 +8118,17 @@
         }
       }
     },
+    "Others" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonstige"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Parcel" : {
       "localizations" : {
         "de" : {
@@ -8445,6 +8436,17 @@
       },
       "extractionState" : "manual"
     },
+    "price currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurswährung"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Profile" : {
       "localizations" : {
         "de" : {
@@ -8506,6 +8508,17 @@
       },
       "extractionState" : "manual"
     },
+    "purchase price currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung des Kaufpreises"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Purpose" : {
       "localizations" : {
         "de" : {
@@ -8552,6 +8565,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Anzahl"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "quantity currency" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Währung der Anzahl"
           }
         }
       },
@@ -8616,6 +8640,17 @@
           }
         }
       }
+    },
+    "Real estate" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Immobilien"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Reduce" : {
       "localizations" : {
@@ -8757,16 +8792,6 @@
         }
       }
     },
-    "Remove Account..." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Konto entfernen..."
-          }
-        }
-      }
-    },
     "Remove Account Group..." : {
       "localizations" : {
         "de" : {
@@ -8777,12 +8802,12 @@
         }
       }
     },
-    "Remove Category..." : {
+    "Remove Account..." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kategorie entfernen..."
+            "value" : "Konto entfernen..."
           }
         }
       }
@@ -8797,12 +8822,42 @@
         }
       }
     },
+    "Remove Category..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kategorie entfernen..."
+          }
+        }
+      }
+    },
+    "Remove saved %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nicht mehr speichern"
+          }
+        }
+      }
+    },
     "Remove saved PIN" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gespeicherte PIN entfernen"
+          }
+        }
+      }
+    },
+    "Remove the saved login data of “%@”?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Zugangsdaten von „%@“ entfernen?"
           }
         }
       }
@@ -9920,6 +9975,17 @@
         }
       }
     },
+    "Stocks" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktien"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "Stopped" : {
       "localizations" : {
         "de" : {
@@ -10330,6 +10396,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die %@ darf nur aus Ziffern bestehen."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "The %@ of security %lld is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Feld „%1$@“ von Wertpapier %2$lld ist kein Währungscode."
           }
         }
       },
@@ -11248,6 +11325,17 @@
       },
       "extractionState" : "manual"
     },
+    "The currency of account %@ is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung von Konto %@ ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "The currency of the transaction changed, so the kept splits were removed. Enter them again." : {
       "localizations" : {
         "de" : {
@@ -11257,6 +11345,17 @@
           }
         }
       }
+    },
+    "The currency of transaction %lld is not a currency code." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Währung von Umsatz %lld ist kein Währungscode."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "The database contains unreadable data: %@." : {
       "localizations" : {
@@ -12302,6 +12401,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "The login data is removed for every account of this access. The next refresh asks for it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Zugangsdaten werden für jedes Konto dieses Zugangs entfernt. Die nächste Aktualisierung fragt danach."
+          }
+        }
+      }
     },
     "The login ended without a code." : {
       "localizations" : {

@@ -233,6 +233,29 @@ struct HeaderIcon: View {
 	}
 }
 
+/// A menu of a filter bar: its label, and the menu with the chosen entry as its title.
+struct FilterMenu<Content: View>: View {
+	let label: LocalizedStringKey
+	let title: String
+	let content: Content
+
+	init(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) {
+		self.label = label
+		self.title = title
+		self.content = content()
+	}
+
+	var body: some View {
+		HStack(spacing: 4) {
+			Text(label).foregroundStyle(Palette.detail).fixedSize()
+			Menu(title) { content }
+				.menuStyle(.borderlessButton)
+				.fixedSize()
+		}
+		.hoverHighlight()
+	}
+}
+
 struct FilterBar: View {
 	@Environment(AppModel.self) private var model
 	@State private var customPeriod = false
@@ -350,13 +373,7 @@ struct FilterBar: View {
 	}
 
 	private func filterMenu<Content: View>(_ label: LocalizedStringKey, title: String, @ViewBuilder content: () -> Content) -> some View {
-		HStack(spacing: 4) {
-			Text(label).foregroundStyle(Palette.detail).fixedSize()
-			Menu(title, content: content)
-				.menuStyle(.borderlessButton)
-				.fixedSize()
-		}
-		.hoverHighlight()
+		FilterMenu(label, title: title, content: content)
 	}
 
 	private var periodTitle: String {

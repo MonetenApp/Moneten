@@ -14,11 +14,11 @@ struct HoldingsView: View {
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
-		// The search of the key, as for the transaction table. The parent starts this view over for a new
-		// search, instead of removing shown rows in place.
-		let search = key.filter.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-		let rows = search.isEmpty ? all : all.filter { $0.matches(search) }
+		// The search and the filter "Asset class" of the key, as for the transaction table. The parent starts this view
+		// over for a new search or class, instead of removing shown rows in place.
+		let rows = key.filter.positions(of: all)
 		VStack(spacing: 0) {
+			HoldingsFilterBar(entries: AssetClass.entries(of: all))
 			// The table stays also without rows, with the empty state on top. The rows keep their IDs across a
 			// refresh, so a refresh updates them in place. A refresh that drops a shown position starts the table
 			// over (#135, #151), with the placeholder of `AppModel.replacingTable` in between.
@@ -26,7 +26,10 @@ struct HoldingsView: View {
 				if holds {
 					Color.clear
 				} else {
-					HoldingsTable(rows: rows, selection: guardedSelection)
+					// The days compare with every position of the portfolio, also those that the filters hide.
+					HoldingsTable(rows: rows, oldQuoteDays: Holding.oldQuoteDays(in: all), selection: guardedSelection)
+						// One line below the last row while the filter "Asset class" hides positions, on the table and not on its rows.
+						.background(FilterHintsFooter(hints: key.filter.positionHints, rowCount: rows.count))
 				}
 			}
 			.overlay {
@@ -47,9 +50,35 @@ struct HoldingsView: View {
 	}
 }
 
+/// The filter bar above the positions, built like the one of the transactions: "Asset class" with "Show All" and the
+/// classes that the positions of the view have.
+struct HoldingsFilterBar: View {
+	@Environment(AppModel.self) private var model
+	let entries: [AssetClass]
+
+	var body: some View {
+		HStack(spacing: 6) {
+			FilterMenu("Asset class:", title: model.filter.assetClass?.name ?? String(localized: "Show All")) {
+				Button("Show All") { model.filter.assetClass = nil }
+				Divider()
+				ForEach(entries, id: \.self) { c in Button(c.name) { model.filter.assetClass = c } }
+			}
+			Spacer()
+		}
+		// As high as the filter bar of the transactions, whose pin is 22 points high, so the list does not move.
+		.frame(minHeight: 22)
+		.font(.callout)
+		.padding(.horizontal, 10)
+		.padding(.vertical, 6)
+		.background(Palette.filterBar)
+	}
+}
+
 struct HoldingsTable: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Holding]
+	/// The day of each quote that is older than the newest of its portfolio: `Holding.oldQuoteDays(in:)`.
+	let oldQuoteDays: [UUID: Day]
 	@Binding var selection: Set<UUID>
 
 	var body: some View {
@@ -57,8 +86,11 @@ struct HoldingsTable: View {
 			TableColumn("Name") { h in
 				VStack(alignment: .leading, spacing: 2) {
 					Text(h.security.name).lineLimit(1)
-					if let number = h.security.isin ?? h.security.securityNumber {
-						Text(number).font(.callout).foregroundStyle(Palette.detail)
+					HStack(spacing: 6) {
+						if let number = h.security.isin ?? h.security.securityNumber {
+							Text(number).font(.callout).foregroundStyle(Palette.detail)
+						}
+						AssetClassTag(assetClass: h.assetClass)
 					}
 				}
 			}
@@ -75,23 +107,24 @@ struct HoldingsTable: View {
 			.alignment(.trailing)
 			TableColumn("Last quote") { h in
 				VStack(alignment: .trailing, spacing: 2) {
-					Text(h.quote.map(Format.price) ?? "").monospacedDigit()
-					if let day = h.quote?.day { Text(Format.day(day)).font(.callout).foregroundStyle(Palette.detail) }
+					Text(h.quote.map { Format.price($0) } ?? "").monospacedDigit()
+					if let day = oldQuoteDays[h.id] { TintedText(text: Format.day(day), tint: Palette.warning).font(.callout) }
 				}
 			}
 			.width(min: 80, ideal: 110)
 			.alignment(.trailing)
 			TableColumn("Value") { h in
-				if let value = h.value(in: currency(of: h)) { AmountText(money: value) }
+				if let value = h.value(in: currency(of: h)) { AmountText(money: value).fontWeight(.semibold) }
 			}
 			.width(min: 90, ideal: 120)
 			.alignment(.trailing)
 			TableColumn("Profit/Loss") { h in
 				if let gain = h.gain(in: currency(of: h)) {
+					// The color and the sign say profit or loss, so the row needs no word for it. Zero has neither.
+					let tint = gain.amount.minorUnits > 0 ? Palette.green : gain.amount.minorUnits < 0 ? Palette.red : nil
 					VStack(alignment: .trailing, spacing: 2) {
-						AmountText(money: gain.amount)
-						Text([gain.amount.isNegative ? String(localized: "Loss") : String(localized: "Profit"), gain.percent.map(Format.percent)].compactMap { $0 }.joined(separator: " "))
-							.font(.callout).monospacedDigit().foregroundStyle(Palette.detail)
+						TintedText(text: Format.gain(gain.amount), tint: tint).monospacedDigit()
+						if let percent = gain.percent { TintedText(text: Format.gainPercent(percent), tint: tint).font(.callout).monospacedDigit() }
 					}
 				}
 			}
@@ -99,10 +132,68 @@ struct HoldingsTable: View {
 			.alignment(.trailing)
 		}
 		.tableStyle(.bordered(alternatesRowBackgrounds: false))
+		// On the table and not on its rows. The table hands over the clicked or selected positions.
+		.contextMenu(forSelectionType: UUID.self) { ids in
+			let positions = rows.filter { ids.contains($0.id) }
+			if !positions.isEmpty { AssetClassMenu(positions: positions) }
+		}
 	}
 
 	private func currency(of h: Holding) -> String {
 		model.ledger.account(h.accountID)?.currency ?? h.marketValue?.currency ?? "EUR"
+	}
+}
+
+/// The asset class of a position as a small tag next to its ISIN.
+struct AssetClassTag: View {
+	let assetClass: AssetClass
+
+	var body: some View {
+		Text(assetClass.name)
+			.font(.caption)
+			.foregroundStyle(Palette.detail)
+			.padding(.horizontal, 5)
+			.padding(.vertical, 1)
+			.background(.quaternary, in: .capsule)
+			.fixedSize()
+	}
+}
+
+/// A text in a color of its own, such as a profit in green. A selected table row shows it in the color of the row text,
+/// where the color would be hard to read on the accent color, as `AmountText` does with a negative amount.
+struct TintedText: View {
+	let text: String
+	let tint: Color?
+	@Environment(\.backgroundProminence) private var prominence
+
+	var body: some View {
+		Text(text).foregroundStyle(tint.flatMap { prominence == .increased ? nil : AnyShapeStyle($0) } ?? AnyShapeStyle(.primary))
+	}
+}
+
+/// The submenu "Asset Class" of the selected positions: "Automatic" and the eight classes, with a mark at the user's
+/// choice that all of them share, or at "Automatic" when none of them has a choice.
+struct AssetClassMenu: View {
+	@Environment(AppModel.self) private var model
+	let positions: [Holding]
+
+	var body: some View {
+		let ids = Set(positions.map(\.id))
+		let choices = Set(positions.map(\.userAssetClass))
+		// Nil when the positions differ, so no entry has a mark.
+		let shared: AssetClass?? = choices.count == 1 ? choices.first : nil
+		Menu("Asset Class") {
+			Toggle("Automatic", isOn: chosen(shared == .some(nil)) { model.setAssetClass(nil, of: ids) })
+			Divider()
+			ForEach(AssetClass.allCases, id: \.self) { c in
+				Toggle(c.name, isOn: chosen(shared == .some(c)) { model.setAssetClass(c, of: ids) })
+			}
+		}
+	}
+
+	/// A mark that chooses its entry on every click, also on a marked one, as a menu item does.
+	private func chosen(_ isMarked: Bool, choose: @escaping () -> Void) -> Binding<Bool> {
+		Binding(get: { isMarked }, set: { _ in choose() })
 	}
 }
 
@@ -161,46 +252,5 @@ struct TotalGainText: View {
 			let label = amounts.allSatisfy { !$0.isNegative } ? String(localized: "Profit") : amounts.allSatisfy(\.isNegative) ? String(localized: "Loss") : String(localized: "Profit/Loss")
 			Text("\(label): \(Format.sums(gain))").font(.subheadline).monospacedDigit().foregroundStyle(Palette.detail)
 		}
-	}
-}
-
-extension Format {
-	/// "40 shares", "12,3456 shares", "1 share", or a nominal amount such as "5.000,00 €" or "5.000,00 USDC", or
-	/// "5.000,00" without a known currency, with every decimal place of the source.
-	static func quantity(_ h: Holding) -> String {
-		let places = decimalPlaces(of: h.quantity)
-		if h.isNominal {
-			let nominalPlaces = 2...max(2, places)
-			guard let currency = h.nominalCurrency else { return signed(h.quantity.formatted(.number.precision(.fractionLength(nominalPlaces)))) }
-			return money(h.quantity, currency: currency, places: nominalPlaces)
-		}
-		let number = signed(h.quantity.formatted(.number.precision(.fractionLength(0...places))))
-		return h.quantity == 1 ? String(localized: "\(number) share") : String(localized: "\(number) shares")
-	}
-
-	/// The last quote: "25,00 €", "12,3456 €", "0,00000123 $", "0,004 USDC", or "98,50 %": at least two decimal places,
-	/// and those of the source up to six digits after the leading zeros. A price converted from another currency can have
-	/// 38 decimal places. A purchase price shows the places of its currency, see `Format.purchasePrice`.
-	static func price(_ q: Quote) -> String {
-		let places = 2...max(2, min(decimalPlaces(of: q.amount), leadingZeros(of: q.amount) + 6))
-		guard let currency = q.currency else { return signed(q.amount.formatted(.number.precision(.fractionLength(places)))) + " %" }
-		return money(q.amount, currency: currency, places: places)
-	}
-
-	/// "25,00 %" or "−20,00 %".
-	static func percent(_ value: Decimal) -> String {
-		signed(value.formatted(.number.precision(.fractionLength(2)))) + " %"
-	}
-
-	private static func decimalPlaces(of value: Decimal) -> Int { max(0, -value.exponent) }
-
-	/// The zeros after the decimal point before the first digit that is not zero: 5 for 0.00000123, 0 for 18.18.
-	private static func leadingZeros(of value: Decimal) -> Int {
-		let digits = "\(value.significand.magnitude)".count
-		return max(0, -(value.exponent + digits))
-	}
-
-	private static func signed(_ text: String) -> String {
-		text.replacingOccurrences(of: "-", with: "\u{2212}")
 	}
 }
