@@ -436,6 +436,20 @@ final class DebugHarness {
 			model.save(account: Account(position: model.ledger.nextTreePosition(in: nil), name: argument, kind: .portfolio, source: .migrated,
 				iban: IBAN("DE02120300000000202051"), accountNumber: "202051", bankCode: "12030000"))
 		#endif
+		// "<class> <name>": what a class in the submenu "Asset Class" does for every position of the security <name>, with the raw
+		// value of `AssetClass` or "automatic"; an empty argument changes nothing. Then one line for each position of all
+		// portfolios, in the order of the list, with the class that it shows, the class of its source, and the user's choice.
+		case "assetclass":
+			let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+			if parts.count == 2, parts[0] == "automatic" || AssetClass(rawValue: parts[0]) != nil {
+				let portfolios = model.ledger.accounts.filter { $0.kind == .portfolio }.map(\.id)
+				let ids = model.ledger.holdings(of: portfolios).filter { $0.security.name == parts[1] }.map(\.id)
+				model.setAssetClass(AssetClass(rawValue: parts[0]), of: Set(ids))
+			}
+			for (position, h) in model.ledger.holdings(of: model.ledger.accounts.filter { $0.kind == .portfolio }.map(\.id)).enumerated() {
+				log("assetclass", ("position", .position(position)), ("name", .hash(h.security.name)), ("class", .state(h.assetClass)),
+					("source", .state(h.sourceAssetClass)), ("user", .state(h.userAssetClass)))
+			}
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }

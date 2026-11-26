@@ -45,7 +45,7 @@ All arithmetic is `Decimal`. Only the final value, purchase value, and gain roun
 
 `FinTSHelper.value` adds `holdings` to the result line of a securities account, one object for each position of every page, from the fields that hbci4java parses: `name`, `isin`, `wkn`, `quantity` and `nominal` (true for FAMT), `currency` (70E), `price` with `amount` and `currency` (`%` for PRCT) and `day`, `value` (HOLD), `accrued` (ACRU), `purchase` (70E line 2, `%` for a percentage) with `day` (the purchase date of 70E), and `rate` (92B) with `base`, `quoted`, and `rate`. Amounts travel as plain decimal text. hbci4java keeps the exchange rate as a `double`, and the helper writes it with `BigDecimal.valueOf`, which gives the shortest decimal text of that double. The balance stays as #112 computes it. The helper writes nothing about a position to stderr.
 
-hbci4java drops some fields of MT535 that the spec names: the time of a quote that has only a date, the market as a name, and the asset class. The market (94B) is kept by hbci4java and is not sent yet, because only the details of a position show it.
+hbci4java drops some fields of MT535 that the spec names: the time of a quote that has only a date, the market as a name, and the asset class. The market (94B) is kept by hbci4java and is not sent yet, because only the details of a position show it. The change `redesign-portfolio-holdings` reads the asset class from the CFI code (12C) of the raw MT535 text.
 
 ### The connector maps the positions
 

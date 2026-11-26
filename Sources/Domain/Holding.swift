@@ -77,9 +77,18 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	public var purchasePrice: Quote?
 	/// The rate that converts the quote or the purchase price into the currency of the value.
 	public var exchangeRate: ExchangeRate?
+	/// The asset class that the source of the position sends, nil when it sends none. Each refresh replaces it.
+	public var sourceAssetClass: AssetClass?
+	/// The asset class that the user chose, nil while the user chose none. No refresh changes it.
+	///
+	/// The two are separate facts, and every pair of them is a valid state, so no pair needs a rule. The class that the
+	/// position shows is never stored: `assetClass` derives it, so it cannot disagree with them. Keeping the class of the
+	/// source next to the choice lets a refresh update it while the choice holds, and lets "Automatic" go back to it at once.
+	public var userAssetClass: AssetClass?
 
 	public init(id: UUID = UUID(), accountID: UUID, security: Security, quantity: Decimal, isNominal: Bool = false, nominalCurrency: String? = nil, quote: Quote? = nil,
-		marketValue: Money? = nil, accruedInterest: Money? = nil, purchasePrice: Quote? = nil, exchangeRate: ExchangeRate? = nil) {
+		marketValue: Money? = nil, accruedInterest: Money? = nil, purchasePrice: Quote? = nil, exchangeRate: ExchangeRate? = nil,
+		sourceAssetClass: AssetClass? = nil, userAssetClass: AssetClass? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.security = security
@@ -91,6 +100,14 @@ public struct Holding: Identifiable, Hashable, Sendable {
 		self.accruedInterest = accruedInterest
 		self.purchasePrice = purchasePrice
 		self.exchangeRate = exchangeRate
+		self.sourceAssetClass = sourceAssetClass
+		self.userAssetClass = userAssetClass
+	}
+
+	/// The class that the position shows: the user's choice, or else the class of the source, or else "Others". The app
+	/// never guesses a class from the name of the security.
+	public var assetClass: AssetClass {
+		userAssetClass ?? sourceAssetClass ?? .others
 	}
 
 	/// The profit or loss of a position: the amount, and its share of the purchase value in percent.
@@ -176,18 +193,24 @@ extension Holding {
 		return fields.contains { $0.localizedCaseInsensitiveContains(text) }
 	}
 
-	/// Gives each delivered position the ID of a stored one of the same security, so a position keeps its
-	/// identity across refreshes. Every position first takes the stored one with its ISIN. Then a position
+	/// Gives each delivered position the ID and the user's asset class of a stored one of the same security, so a position
+	/// keeps its identity and the user's choice across refreshes. A source never sends a choice of the user, so a position
+	/// without a stored one has none. Every position first takes the stored one with its ISIN. Then a position
 	/// matches by its security number, or else by its name, but only when one of the two has no ISIN: two
 	/// different ISINs are two securities, whatever their names. Names match with their whitespace collapsed, because a
 	/// position stored before #600 keeps the padded name of the bank. Each stored position matches at most once.
 	public static func identify(_ delivered: [Holding], stored: [Holding]) -> [Holding] {
 		var free = stored
-		var result = delivered
+		var result = delivered.map { var holding = $0; holding.userAssetClass = nil; return holding }
+		func take(_ j: Int, for i: Int) {
+			let match = free.remove(at: j)
+			result[i].id = match.id
+			result[i].userAssetClass = match.userAssetClass
+		}
 		var open: [Int] = []
 		for (i, holding) in delivered.enumerated() {
 			if let isin = holding.security.isin, let j = free.firstIndex(where: { $0.security.isin == isin }) {
-				result[i].id = free.remove(at: j).id
+				take(j, for: i)
 			} else {
 				open.append(i)
 			}
@@ -198,7 +221,7 @@ extension Holding {
 			for key in keys {
 				guard let wanted = key(holding), !wanted.isEmpty,
 					let j = free.firstIndex(where: { key($0) == wanted && (holding.security.isin == nil || $0.security.isin == nil) }) else { continue }
-				result[i].id = free.remove(at: j).id
+				take(j, for: i)
 				break
 			}
 		}

@@ -24,7 +24,7 @@ The app SHALL let the user enter the purchase price of a position with "Add Purc
 
 - **GIVEN** a position of 40 units with the value 1.000,00 € and no purchase price
 - **WHEN** the user chooses "Add Purchase Price...", enters 20,00 under "Purchase price", and confirms
-- **THEN** the row shows the purchase price 20,00 € and "Profit" with 200,00 € and 25,00 %
+- **THEN** the row shows the purchase price 20,00 € and "+200,00 €" with "+25,00 %"
 
 #### Scenario: Enter a total amount
 
@@ -68,4 +68,4 @@ The app SHALL let the user add a comment to a position with "Add Comment..." and
 
 - **GIVEN** the portfolio shows 40 units of "Musterwerke AG" with the comment "Sparplan"
 - **WHEN** a refresh delivers 45 units of the security with the same ISIN
-- **THEN** the row shows "45 shares" and still has the comment "Sparplan"
+- **THEN** the row shows the quantity "45" and still has the comment "Sparplan"

@@ -277,7 +277,7 @@ struct AllDataTests {
 			try HoldingRecord(Holding(accountID: portfolio.id, security: Security(name: "Beispiel Welt ETF", isin: "DE0000000001"), quantity: Decimal(string: "12.345")!,
 				quote: Quote(amount: Decimal(string: "81.2")!, currency: "EUR", day: Day(year: 2026, month: 11, day: 13)),
 				marketValue: Money(minorUnits: 100_241, currency: "EUR"), purchasePrice: Quote(amount: 70, currency: "EUR"),
-				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!))).insert(db)
+				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!), sourceAssetClass: .funds, userAssetClass: .etfs)).insert(db)
 		}
 		var power = TransactionFilter()
 		power.searchText = "name:Stadtwerke"
@@ -869,6 +869,21 @@ struct AllDataTests {
 		#expect(accounts[index]["currency"] as? String == "EUR")
 		accounts[index]["otherBankBalances"] = balances
 		json["accounts"] = accounts
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
+	}
+
+	@Test("The asset classes of a holding travel with their stored names, a file without them reads with none, and an unknown name is refused")
+	func holdingAssetClasses() throws {
+		var json = try JSONSerialization.jsonObject(with: try filledStore().exportAllData().json()) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		#expect(rows[0]["sourceAssetClass"] as? String == "funds" && rows[0]["userAssetClass"] as? String == "etfs")
+		rows[0]["sourceAssetClass"] = nil
+		rows[0]["userAssetClass"] = nil
+		json["holdings"] = rows
+		let earlier = try AllData(json: JSONSerialization.data(withJSONObject: json))
+		#expect(earlier.holdings[0].sourceAssetClass == nil && earlier.holdings[0].userAssetClass == nil && earlier.holdings[0].assetClass == .others)
+		rows[0]["userAssetClass"] = "Aktien"
+		json["holdings"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
 	}
 

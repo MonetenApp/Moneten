@@ -212,6 +212,8 @@ A position of a portfolio, as its bank reported it last.
 | `marketValue`, `accruedInterest` | Market value and accrued interest, each with `amount` and `currency` |
 | `purchasePrice` | The purchase price, with `amount`, `currency`, and `day` like `price` |
 | `exchangeRate` | The rate between two currencies, with `base`, `quoted`, and `rate` (decimal text, units of `quoted` for one unit of `base`) |
+| `sourceAssetClass` | Optional asset class that the bank or source sent: `stocks`, `funds`, `bonds`, `realEstate`, `commodities`, `etfs`, `cryptocurrencies`, or `others`. Left out when the source sent none. |
+| `userAssetClass` | Optional asset class that the user chose, with the same words. It wins over `sourceAssetClass`. Left out when the user chose none. A holding with neither shows "Others". |
 
 ## Split part
 

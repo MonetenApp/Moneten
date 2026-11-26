@@ -703,7 +703,7 @@ struct FinTSConnectorTests {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.
 		let lines = URL(filePath: #filePath).deletingLastPathComponent().appending(path: "helper-lines.jsonl")
 		let card = AccountRequest(accountID: UUID(), name: "Card", remoteID: "4711", currency: "EUR")
-		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326", "7654328", "7654329", "7654330", "7654331"]
+		let depots = ["7654321", "7654322", "7654323", "7654324", "7654325", "7654326", "7654328", "7654329", "7654330", "7654331", "7654332"]
 			.map { AccountRequest(accountID: UUID(), name: "Depot", remoteID: $0, currency: "EUR") }
 		let creditCard = AccountRequest(accountID: UUID(), name: "Visa", remoteID: "1234567890123456", since: Day(year: 2026, month: 10, day: 1), currency: "EUR")
 		let report = try await refresh("read cmd; cat '\(lines.path)'", accounts: [Self.giro, Self.savings, card, creditCard] + depots)
@@ -768,6 +768,12 @@ struct FinTSConnectorTests {
 		#expect(interest.holdings?.first?.marketValue == Money(minorUnits: 92_000, currency: "EUR"))
 		#expect(interest.holdings?.first?.accruedInterest == Money(minorUnits: 920, currency: "EUR"))
 		#expect(interest.holdings?.map { $0.value(in: "EUR") } == [Money(minorUnits: 92_920, currency: "EUR"), Money(minorUnits: 50_000, currency: "EUR")])
+		// The CFI code of the bank gives the class of the source: a share is "Stocks", and a holding without a code has none.
+		guard case let .fetched(classified) = report.outcomes[depots[10].accountID] else { Issue.record("depot with CFI codes not fetched"); return }
+		#expect(classified.holdings?.map(\.sourceAssetClass) == [.stocks, nil, nil])
+		#expect(classified.holdings?.map(\.userAssetClass) == [nil, nil, nil])
+		// The positions of the other depots have no CFI code.
+		#expect(positions.holdings?.map(\.sourceAssetClass) == [nil, nil])
 		// On a page without a total, the balance is the sum of the values that the rows show.
 		for result in [computed, converted, fractions, interest] {
 			let rows = (result.holdings ?? []).compactMap { $0.value(in: "EUR")?.minorUnits }

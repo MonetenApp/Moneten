@@ -478,6 +478,15 @@ enum Schema {
 		// with 2, so each stored amount in these codes keeps its value with the new places. No release stored such rows,
 		// only development databases. It comes after v33.
 		m.registerMigration("v34") { db in try TokenPlacesAtV34.migrate(db) }
+		// The asset class of a position (redesign-portfolio-holdings): the class that its source sends and the class that
+		// the user chose, each the raw value of `AssetClass`. Both are empty for every stored position, so each one shows
+		// "Others" until the next refresh brings the class of the bank. It comes after v34.
+		m.registerMigration("v35") { db in
+			try db.alter(table: "holding") { t in
+				t.add(column: "sourceAssetClass", .text)
+				t.add(column: "userAssetClass", .text)
+			}
+		}
 		return m
 	}
 

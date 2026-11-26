@@ -753,7 +753,7 @@ final class SelfTest {
 		GVRWPDepotList.Entry.Gattung unnamed = holding("10.00", "EUR");
 		unnamed.price = new BigDecimalValue(new BigDecimal("10"), "EUR");
 		unnamed.xchg_kurs = 1.1;
-		expect("a position without a name, a price day, and a pair of currencies sends no rate", FinTSHelper.Json.write(FinTSHelper.position(unnamed, false)),
+		expect("a position without a name, a price day, and a pair of currencies sends no rate", FinTSHelper.Json.write(FinTSHelper.position(unnamed, false, null)),
 			"{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"price\":{\"type\":\"amount\",\"amount\":\"10\",\"currency\":\"EUR\"},"
 				+ "\"value\":{\"type\":\"amount\",\"amount\":\"10.00\",\"currency\":\"EUR\"}}");
 
@@ -956,7 +956,7 @@ final class SelfTest {
 		expect("a server that sends bonds as units: the accrued interest of the bond counts divided by 100", balance(holdings("2026-11-12", null, unitBondInterest), true),
 			"{type=balance, amount=995.00, currency=EUR, date=2026-11-12}");
 		expect("a server that sends bonds as units: the row of the bond shows its accrued interest divided by 100", FinTSHelper.Json.write(
-			FinTSHelper.position(unitBondInterest, true).get("accrued")), "{\"type\":\"amount\",\"amount\":\"15.00\",\"currency\":\"EUR\"}");
+			FinTSHelper.position(unitBondInterest, true, null).get("accrued")), "{\"type\":\"amount\",\"amount\":\"15.00\",\"currency\":\"EUR\"}");
 		expect("no server sends bonds as units until a bank test shows one", FinTSHelper.bondsAsUnits("brokerage-hbci.consorsbank.de/hbci") + " "
 			+ FinTSHelper.bondsAsUnits("fints.musterbank.example/fints") + " " + FinTSHelper.bondsAsUnits(null), "false false false");
 
@@ -1010,6 +1010,31 @@ final class SelfTest {
 		expect("a server that sends bonds as units divides each value of the bond", balance(rawHoldings(mt535(fin("US0001234567", ":19A::HOLD//USD100000,00",
 			":19A::HOLD//EUR92000,00"), fin("DE0001234567", ":19A::HOLD//EUR500,00")), percent(holding("100000.00", "USD")), holding("500.00", "EUR")), true),
 			"{type=balance, amount=1420.00, currency=EUR, date=2026-11-12}");
+
+		// The classification code (CFI, ISO 10962) of a holding, which the financial instrument attributes of MT535 carry in
+		// field 12C with the qualifier CLAS. hbci4java drops it, so it comes from the raw holding, and the app maps it to an
+		// asset class. A holding without the field, or with 12A, whose text has no standard, sends none.
+		String classified = FinTSHelper.Json.write(FinTSHelper.alone("7654332", () -> FinTSHelper.value("7654332", rawHoldings(mt535(
+			fin("DE0001234567", ":19A::HOLD//EUR1000,00", ":16R:FIA", ":12C::CLAS//ESVUFR", ":16S:FIA"),
+			fin("DE0001234567", ":19A::HOLD//EUR500,00", ":16R:FIA", ":12A::CLAS/ISIT/Investmentfonds", ":16S:FIA"),
+			fin("DE0001234567", ":19A::HOLD//EUR250,00")), holding("1000.00", "EUR"), holding("500.00", "EUR"), holding("250.00", "EUR")), false, "EUR", false)));
+		fixture.add(classified);
+		expect("each holding sends the CFI code of its raw holding", classified,
+			"{\"type\":\"result\",\"account\":\"7654332\",\"balance\":{\"type\":\"balance\",\"amount\":\"1750.00\",\"currency\":\"EUR\",\"date\":\"2026-11-12\"},\"errors\":[],\"securities\":true,"
+				+ "\"holdings\":[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"1000.00\",\"currency\":\"EUR\"},\"cfi\":\"ESVUFR\"},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"500.00\",\"currency\":\"EUR\"}},"
+				+ "{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"250.00\",\"currency\":\"EUR\"}}]}");
+		GVRWPDepotList totalled = holdings("2026-11-12", new BigDecimalValue(new BigDecimal("1000.00"), "EUR"), holding("1000.00", "EUR"));
+		totalled.storeResult("content.data535", mt535(fin("DE0001234567", ":19A::HOLD//EUR1000,00", ":16R:FIA", ":12C::CLAS//CEOGLS", ":16S:FIA")));
+		expect("a page with a total sends the CFI code too", FinTSHelper.Json.write(FinTSHelper.value("7654332", totalled, false, "EUR", false).get("holdings")),
+			"[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"1000.00\",\"currency\":\"EUR\"},\"cfi\":\"CEOGLS\"}]");
+		expect("a CFI code in lower case, of another length, or with a digit is not sent", String.join(" ", java.util.stream.Stream.of(
+			":12C::CLAS//esvufr", ":12C::CLAS//ESVUF", ":12C::CLAS//ESVUFRX", ":12C::CLAS//ESVUF1").map(field -> String.valueOf(FinTSHelper.Json.write(FinTSHelper.value("7654332",
+				rawHoldings(mt535(fin("DE0001234567", ":19A::HOLD//EUR1000,00", ":16R:FIA", field, ":16S:FIA")), holding("1000.00", "EUR")), false, "EUR", false)
+				.get("holdings")).contains("cfi"))).toList()), "false false false false");
+		expect("a raw answer that does not pair sends no CFI code", FinTSHelper.Json.write(FinTSHelper.value("7654332", rawHoldings(mt535(
+			fin("DE0001234567", ":19A::HOLD//EUR999,00", ":16R:FIA", ":12C::CLAS//ESVUFR", ":16S:FIA")), holding("1000.00", "EUR")), false, "EUR", false).get("holdings")),
+			"[{\"type\":\"holding\",\"isin\":\"DE0001234567\",\"quantity\":\"1\",\"value\":{\"type\":\"amount\",\"amount\":\"1000.00\",\"currency\":\"EUR\"}}]");
 	}
 
 	/// The balance that `value` gives for `list` of a euro account.

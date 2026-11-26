@@ -37,7 +37,11 @@ extension SchemaTests {
 			accruedInterest: Money(minorUnits: 7, currency: "ETH"))
 		let old = AllData(exportedAt: at, accounts: [closed, euros, depot], transactions: [bought, euro, closing], deletedTransactions: [deleted],
 			portfolioValues: [PortfolioValue(accountID: depot.id, day: day, minorUnits: 300)], holdings: [holding], splitParts: parts)
-		try store.importAllData(old)
+		// The holding as v33 stores it, without the columns that later migrations add.
+		var withoutHolding = old
+		withoutHolding.holdings = []
+		try store.importAllData(withoutHolding)
+		try queue.write { db in try HoldingRecord(holding).insertOld(db) }
 
 		try Schema.migrator.migrate(queue)
 		let migrated = try store.exportAllData(at: at)

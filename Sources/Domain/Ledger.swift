@@ -723,6 +723,14 @@ public struct Ledger: Sendable {
 		newTransactionCounts[id] = nil
 	}
 
+	/// Takes over the user's choice of an asset class for the positions `ids`, which the database stored. Nil removes the
+	/// choice, so each position shows the class of its source again. The order of the positions does not depend on it.
+	public mutating func setUserAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
+		for (account, positions) in holdingsByAccount where positions.contains(where: { ids.contains($0.id) }) {
+			holdingsByAccount[account] = positions.map { var holding = $0; if ids.contains(holding.id) { holding.userAssetClass = choice }; return holding }
+		}
+	}
+
 	/// Takes over a merge that the database stored: removes the dropped rows, upserts the others and
 	/// the account, and records the value of a portfolio.
 	public mutating func apply(_ r: Reconciliation) {

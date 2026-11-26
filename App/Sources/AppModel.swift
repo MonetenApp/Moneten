@@ -1097,6 +1097,19 @@ final class AppModel {
 		}
 	}
 
+	/// The user's choice of an asset class for the positions `ids`, nil for "Automatic", which goes back to the class of
+	/// the source. It writes through the store first and changes the ledger only after the write succeeds.
+	func setAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
+		guard let store, !ids.isEmpty else { return }
+		do {
+			try store.setUserAssetClass(choice, ofHoldings: ids)
+			ledgerChange = "asset class"
+			ledger.setUserAssetClass(choice, of: ids)
+		} catch {
+			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
+		}
+	}
+
 	/// What ⌘K does: the category picker for the selected rows on screen.
 	func openCategoryPicker() {
 		let ids = visibleSelection
