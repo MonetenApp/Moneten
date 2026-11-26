@@ -1117,12 +1117,14 @@ final class DebugHarness {
 				model.save(account: account)
 			}
 		case "barsnapshot":
-			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago.
+			// The daily balance of the selected account on the band, with the pointer on the bar of a week ago. "month:<name>"
+			// draws the monthly average with the pointer on its oldest bar, whose value does not fit beside a short row.
 			if case let .account(id) = model.selection, let account = model.ledger.account(id) {
-				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: false)
-				let hovered = bars.dropLast(7).last?.id
+				let monthly = argument.hasPrefix("month:")
+				let bars = BalanceChart.stripBars(model.ledger, ids: [id], range: .all, currency: account.currency, monthly: monthly)
+				let hovered = monthly ? bars.first?.id : bars.dropLast(7).last?.id
 				offscreenSnapshot(ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red,
-					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: argument, kind: "bars")
+					hovered: hovered) { _ in }.frame(height: 230).background(Palette.band).environment(model), width: 520, name: monthly ? String(argument.dropFirst(6)) : argument, kind: "bars")
 			}
 		case "history": Task { await DemoData.history(model); log("history done") }
 		case "bulk":
