@@ -613,6 +613,9 @@ final class DebugHarness {
 			let shown = parts.last != "off"
 			if parts.first == "categories" { model.showsCategoriesSection = shown } else { model.showsAccountsSection = shown }
 			log("section", ("", .choice(String(parts.first ?? ""), of: ["accounts", "categories"])), ("shown", .flag(shown)))
+		// Scrolls the sidebar to its end as a scroll wheel does, and logs whether the last row lies fully above the bar
+		// with the add menu and the refresh button.
+		case "sidebarscroll": sidebarScrollToEnd()
 		// Moves the focus of the main window to the sidebar list, as a click on another sidebar row does.
 		case "namefocus":
 			guard let list = sidebarList(), let window = list.window else { return log("namefocus no list") }
@@ -3198,6 +3201,24 @@ final class DebugHarness {
 		log("snapshot sidebarlist", ("width", .count(Int(size.width))), ("height", .count(Int(size.height))))
 	}
 	#endif
+
+	/// Sends scroll wheel events to the sidebar until it stops moving. The bar below the list is the bottom content inset
+	/// of its scroll view, so the last row is clear of the bar when its bottom lies at or above the top of that inset.
+	private func sidebarScrollToEnd() {
+		guard let list = sidebarList(), let scroll = list.enclosingScrollView else { return log("sidebarscroll no list") }
+		for _ in 0..<200 {
+			let before = scroll.contentView.bounds.origin.y
+			guard let wheel = CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -200, wheel2: 0, wheel3: 0),
+				let event = NSEvent(cgEvent: wheel) else { return log("sidebarscroll no event") }
+			scroll.scrollWheel(with: event)
+			if scroll.contentView.bounds.origin.y == before { break }
+		}
+		let last = list.rect(ofRow: list.numberOfRows - 1)
+		let rowBottom = list.convert(last, to: nil).minY
+		let barTop = scroll.convert(scroll.bounds, to: nil).minY + scroll.contentInsets.bottom
+		log("sidebarscroll", ("rows", .count(list.numberOfRows)), ("inset", .count(Int(scroll.contentInsets.bottom))),
+			("rowBottom", .count(Int(rowBottom))), ("barTop", .count(Int(barTop))), ("clear", .flag(rowBottom >= barTop - 0.5)))
+	}
 
 	/// The frame of each sidebar row on the screen, with the origin at the top left as mouse events have it.
 	private func logSidebarRows() {
