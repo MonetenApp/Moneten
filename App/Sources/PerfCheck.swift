@@ -376,17 +376,19 @@ struct PerfScenario {
 					try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: positions))
 					await c.settle()
 				}
-				var table = c.harness.holdingsTables().first.map(ObjectIdentifier.init)
-				if table == nil { c.fail("the portfolio shows no table of positions") }
+				// The tables stay referenced, so a new table cannot take the address of the old one.
+				let first = c.harness.holdingsTables().first
+				if first == nil { c.fail("the portfolio shows no table of positions") }
 				await refresh(etfs: 1)
 				if c.model.ledger.holdings(of: [depot.id]).filter({ $0.assetClass == .etfs }).count != 1 { c.fail("the refresh did not bring the new class") }
 				if c.model.filter.assetClass != .others { c.fail("the filter left a class that still has positions") }
-				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == table { c.fail("the refresh removed a shown position in place") }
-				table = c.harness.holdingsTables().first.map(ObjectIdentifier.init)
+				let second = c.harness.holdingsTables().first
+				if second == nil || second === first { c.fail("the refresh removed a shown position in place") }
 				await refresh(etfs: 3)
 				if c.model.filter.assetClass != nil { c.fail("the filter kept a class without positions") }
 				if c.model.tableKey.filter.assetClass != nil { c.fail("the table kept the filter of a class without positions") }
-				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == table { c.fail("the refresh removed the last shown position in place") }
+				let third = c.harness.holdingsTables().first
+				if third == nil || third === second { c.fail("the refresh removed the last shown position in place") }
 			}),
 		// The last transaction of a portfolio goes: the view changes to its positions one drawing after the
 		// rows, never in the drawing that changes them (issue #151).
