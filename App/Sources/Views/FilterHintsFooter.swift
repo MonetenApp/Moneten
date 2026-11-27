@@ -14,7 +14,7 @@ struct FilterHintLines: View {
 			}
 		}
 		.font(.system(size: 11))
-		.foregroundStyle(.secondary)
+		.foregroundStyle(Palette.secondaryText)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, 16)
 		.padding(.vertical, 8)

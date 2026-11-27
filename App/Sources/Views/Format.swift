@@ -159,49 +159,53 @@ extension View {
 }
 
 extension EnvironmentValues {
-	/// The red of negative amounts. The band sets a red that is clear on its slate.
+	/// The red of negative amounts. The band sets a red that is clear on its gray.
 	@Entry var negativeRed = Palette.red
 }
 
-/// The colors of the app, each for light and dark mode, measured in the windows of MoneyMoney as sRGB.
-/// `.secondary` is 50 % black, about 3.9:1 on white, too faint for amounts, purposes, and counts, so
-/// data uses these colors. Labels and empty states keep `.secondary`.
+/// The colors of the app, each for light and dark mode, as sRGB.
+/// The content of the window, from the band at the top to the status line, uses fixed neutral grays (issue #614).
+/// macOS 26 tints the system background colors, such as the control background of a table, with the desktop
+/// picture, which made the dark list read as dark blue. These colors are plain sRGB values, which macOS draws as
+/// they are. The sidebar, the toolbar, and the window keep the system materials (ADR 0012).
+/// `.secondary` is 50 % black, about 3.9:1 on white, too faint for body text, so the content uses these colors.
 enum Palette {
-	// Measured in MoneyMoney: light from a screenshot, dark from a window capture corrected by the
-	// offset that the same reading showed against the screenshot. The dark ones are not checked
-	// against a dark screenshot.
-	/// The slate band behind the title of the view and its chart. With "Increase contrast" the band
-	/// turns dark, so that its white bars reach 7:1.
-	static let band = dynamic("band", light: rgb(0xAFBAC3), dark: rgb(0x292B31), increasedContrast: rgb(0x4E5964))
-	/// Title, IBAN, balance, and icon on the band. MoneyMoney writes white on the light slate, which
-	/// reaches only 2:1, so light mode writes dark slate with 8:1.
-	static let onBand = dynamic("onBand", light: rgb(0x1C2329), dark: .white, increasedContrast: .white)
-	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart.
-	/// At least 4.5:1 on the band in every mode.
-	static let bandLabel = dynamic("bandLabel", light: rgb(0x3D4650), dark: rgb(0x9A9BA0), increasedContrast: rgb(0xD5DBE0))
-	/// Negative amounts on the band, at least 4.5:1 on it. The red of the window reaches only 2.9:1
-	/// on the light slate.
-	static let bandRed = dynamic("bandRed", light: rgb(0x8A1017), dark: rgb(0xFF6961), increasedContrast: rgb(0xFFC4BF))
+	/// The background of the content: the list, the empty space below the rows, and the status line.
+	static let list = dynamic("list", light: .white, dark: rgb(0x161618))
+	/// The band behind the title of the view and its chart, one step lighter than the list in dark mode and one
+	/// step darker in light mode.
+	static let band = dynamic("band", light: rgb(0xF5F5F7), dark: rgb(0x1D1D1F))
+	/// Title, IBAN, balance, and icon on the band: 15:1 in light mode and 14:1 in dark mode.
+	static let onBand = dynamic("onBand", light: rgb(0x1D1D1F), dark: rgb(0xECECEE), increasedContrast: .black)
+	/// The months, years, and periods of the charts, and the amounts at the edge of a category chart: 4.7:1 on the
+	/// band in light mode, 10:1 with "Increase contrast", and 6.5:1 in dark mode.
+	static let bandLabel = dynamic("bandLabel", light: rgb(0x6E6E73), dark: rgb(0xA1A1A6), increasedContrast: rgb(0x3A3A3C))
+	/// Negative amounts on the band: 5.3:1 on it in light mode, 8.9:1 with "Increase contrast", and 5.9:1 in dark mode.
+	static let bandRed = dynamic("bandRed", light: rgb(0xC4262E), dark: rgb(0xF2706A), increasedContrast: rgb(0x8A1017))
 	/// The line where a month or a year starts in the balance chart.
-	static let bandLine = dynamic("bandLine", light: rgb(0xA1ABB4), dark: rgb(0x3B3C40))
-	/// The bars of the balance chart.
-	static let bandBar = dynamic("bandBar", light: .white, dark: rgb(0xC9CACB))
-	/// The column behind the bar under the pointer: white at 18% on the band, measured in MoneyMoney.
-	static let bandHover = Color.white.opacity(0.18)
+	static let bandLine = dynamic("bandLine", light: rgb(0xD2D2D7), dark: rgb(0x3A3A3C), increasedContrast: rgb(0x8E8E93))
+	/// The bars of the balance chart. With "Increase contrast" they reach 4.7:1 on the band.
+	static let bandBar = dynamic("bandBar", light: rgb(0xB9BEC4), dark: rgb(0xC9C9CC), increasedContrast: rgb(0x6E6E73))
+	/// The column behind the bar under the pointer.
+	static let bandHover = dynamic("bandHover", light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.12))
 	/// The dashed line at zero behind the bars of the balance chart.
-	static let bandZero = dynamic("bandZero", light: .white, dark: NSColor(white: 1, alpha: 0.25))
-	/// The rim around a pie, measured in MoneyMoney in dark mode. The light one is estimated, a bit
-	/// lighter than the light slate.
-	static let pieRim = dynamic("pieRim", light: rgb(0xC5CDD4), dark: rgb(0x5A5A5F))
+	static let bandZero = dynamic("bandZero", light: NSColor(white: 0, alpha: 0.25), dark: NSColor(white: 1, alpha: 0.25))
+	/// The rim around a pie, a bit darker than the band in light mode and lighter in dark mode.
+	static let pieRim = dynamic("pieRim", light: rgb(0xD8D8DC), dark: rgb(0x5A5A5F))
 	/// The mode switch of a chart: the chosen segment dark with white text, the others light.
-	static let switchChosen = dynamic("switchChosen", light: rgb(0x575C61), dark: rgb(0x5E6066))
+	static let switchChosen = dynamic("switchChosen", light: rgb(0x636366), dark: rgb(0x5E5E62))
 	static let switchChosenText = Color.white
-	static let switchBackground = dynamic("switchBackground", light: rgb(0xF8F8F8), dark: rgb(0xBDBEC0))
-	static let switchText = dynamic("switchText", light: rgb(0x4A4A4A), dark: rgb(0x2A2A2C))
-	static let switchBorder = dynamic("switchBorder", light: rgb(0x9099A0), dark: rgb(0x1E1F23))
-	static let filterBar = dynamic("filterBar", light: rgb(0xF1F1F1), dark: NSColor(white: 1, alpha: 0.04))
+	static let switchBackground = dynamic("switchBackground", light: .white, dark: rgb(0xBDBDC0))
+	static let switchText = dynamic("switchText", light: rgb(0x3A3A3C), dark: rgb(0x2A2A2C))
+	static let switchBorder = dynamic("switchBorder", light: rgb(0xA1A1A6), dark: rgb(0x0E0E10))
+	static let filterBar = dynamic("filterBar", light: rgb(0xFAFAFA), dark: rgb(0x1A1A1C))
 	/// The line between the filters of the filter bar.
 	static let filterSeparator = dynamic("filterSeparator", light: rgb(0xA3A3A3), dark: NSColor(white: 1, alpha: 0.15))
+	/// The line below each row of a list.
+	static let separator = dynamic("separator", light: rgb(0xEBEBED), dark: rgb(0x2C2C2E), increasedContrast: rgb(0xC7C7CC))
+	/// Labels, empty states, and other text that steps back: 5.1:1 on the list in light mode, 9:1 with "Increase
+	/// contrast", and 7:1 in dark mode. Also at least 4.5:1 on the band, the filter bar, and a pending row.
+	static let secondaryText = dynamic("secondaryText", light: rgb(0x6E6E73), dark: rgb(0xA1A1A6), increasedContrast: rgb(0x48484A))
 	/// The box of an unchecked transaction, opaque so that it stays clear on hatched rows.
 	static let checkBox = dynamic("checkBox", light: .white, dark: NSColor(white: 0.36, alpha: 1))
 	static let checkBoxBorder = dynamic("checkBoxBorder", light: rgb(0xBFBFBF), dark: .clear)
@@ -210,10 +214,10 @@ enum Palette {
 	/// style, so it turns light on a selected table row like the system colors do.
 	static var detail: AnyShapeStyle { AnyShapeStyle(.primary.opacity(0.82)) }
 	/// Negative amounts and error messages. The system red reaches only 3.6:1 on white, so light mode
-	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 4.9:1 on the dark window.
+	/// uses a darker red with 5.7:1. Dark mode keeps the system red, 5.3:1 on the dark list.
 	static let red = dynamic("textRed", light: rgb(0xC4262E), dark: .systemRed)
 	/// The profit of a position. The system green reaches only 2.2:1 on white, so light mode uses a darker green with
-	/// 5.1:1, and 8:1 with "Increase contrast". Dark mode keeps the system green, 8:1 on the dark window.
+	/// 5.1:1, and 8:1 with "Increase contrast". Dark mode keeps the system green, 8.9:1 on the dark list.
 	static let green = dynamic("textGreen", light: rgb(0x1A7F37), dark: .systemGreen, increasedContrast: rgb(0x0B5D1E))
 	/// A value that may be out of date, such as the day of an old quote. The system orange reaches only 2.1:1 on white,
 	/// so light mode uses a darker orange with 5.9:1, and 8:1 with "Increase contrast". Dark mode keeps the system orange.
