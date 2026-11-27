@@ -11,6 +11,8 @@ struct HoldingsView: View {
 	let holds: Bool
 	let accountIDs: [UUID]
 	@State private var selection: Set<UUID> = []
+	/// The width that a classic scroll bar takes from the table, which the header leaves free at its right end.
+	@State private var scrollerInset: CGFloat = 0
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
@@ -19,10 +21,10 @@ struct HoldingsView: View {
 		// table over too: `AppModel.sortPositions(by:)`.
 		let filtered = key.filter.positions(of: all)
 		let ledger = model.ledger
-		let rows = model.portfolioSort?.sorted(filtered) { ledger.currency(of: $0) } ?? filtered
+		let rows = model.portfolioSort?.sorted(filtered) { ledger.positionCurrency(of: $0) } ?? filtered
 		VStack(spacing: 0) {
 			HoldingsFilterBar(entries: AssetClass.entries(of: all))
-			HoldingsHeader()
+			HoldingsHeader(trailingInset: scrollerInset)
 			// The table stays also without rows, with the empty state on top. The rows keep their IDs across a
 			// refresh, so a refresh updates them in place. A refresh that drops a shown position starts the table
 			// over (#135, #151), with the placeholder of `AppModel.replacingTable` in between.
@@ -31,7 +33,9 @@ struct HoldingsView: View {
 					Color.clear
 				} else {
 					// The days compare with every position of the portfolio, also those that the filters hide.
-					HoldingsTable(key: key, rows: rows, oldQuoteDays: Holding.oldQuoteDays(in: all), selection: guardedSelection)
+					HoldingsTable(key: key, rows: rows, oldQuoteDays: Holding.oldQuoteDays(in: all), selection: guardedSelection) { width in
+						if scrollerInset != width { scrollerInset = width }
+					}
 						// One line below the last row while the filter "Asset class" hides positions, on the table and not on its rows.
 						.background(FilterHintsFooter(hints: key.filter.positionHints, rowCount: rows.count))
 				}
@@ -108,6 +112,8 @@ enum PositionColumns {
 /// list by its value, a second click reverses it, and the line shows the direction.
 struct HoldingsHeader: View {
 	@Environment(AppModel.self) private var model
+	/// The width of a classic scroll bar, which the table loses at its right end and the header must lose too.
+	let trailingInset: CGFloat
 
 	var body: some View {
 		HStack(alignment: .top, spacing: PositionColumns.gap) {
@@ -132,6 +138,7 @@ struct HoldingsHeader: View {
 		}
 		.font(.system(size: 10.5))
 		.padding(.horizontal, PositionColumns.cellInset)
+		.padding(.trailing, trailingInset)
 		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity)
 		// The table draws the line below the header. The header stands on the background of the table.
@@ -179,6 +186,8 @@ struct HoldingsTable: View {
 	/// The day of each quote that is older than the newest of its portfolio: `Holding.oldQuoteDays(in:)`.
 	let oldQuoteDays: [UUID: Day]
 	@Binding var selection: Set<UUID>
+	/// Takes the width of a classic scroll bar for the header.
+	let scrollerWidth: @MainActor (CGFloat) -> Void
 
 	var body: some View {
 		let ledger = model.ledger
@@ -208,7 +217,7 @@ struct HoldingsTable: View {
 			}
 			.width(PositionColumns.prices)
 			TableColumn("Value") { h in
-				ValueCell(value: h.value(in: ledger.currency(of: h)), gain: h.gain(in: ledger.currency(of: h)))
+				ValueCell(value: h.value(in: ledger.positionCurrency(of: h)), gain: h.gain(in: ledger.positionCurrency(of: h)))
 					.padding(.trailing, PositionColumns.trailing)
 					.positionCell(alignment: .topTrailing)
 			}
@@ -222,9 +231,9 @@ struct HoldingsTable: View {
 			if !positions.isEmpty { AssetClassMenu(positions: positions) }
 		}
 		// A plain click opens a position and a second one closes it, behind the table and not on its rows.
-		.background(PositionClicks { [model, key, rows] row in
+		.background(PositionClicks(click: { [model, key, rows] row in
 			if rows.indices.contains(row) { model.clickPosition(rows[row].id, in: key) }
-		})
+		}, scrollerWidth: scrollerWidth))
 	}
 }
 
@@ -281,7 +290,7 @@ struct NameCell: View {
 	private func number(_ label: LocalizedStringKey, _ value: String) -> some View {
 		HStack(spacing: 3) {
 			Text(label).foregroundStyle(.secondary)
-			Text(value).foregroundStyle(Palette.detail).textSelection(.enabled)
+			Text(value).foregroundStyle(Palette.detail)
 		}
 		.fixedSize()
 	}
@@ -342,21 +351,23 @@ struct AssetClassRibbon: View {
 }
 
 extension Ledger {
-	/// The currency in which a position shows its value and its profit or loss: the currency of its account.
-	fileprivate func currency(of h: Holding) -> String {
+	/// The currency in which a position shows its value and its profit or loss, and by which it sorts: the currency of its account.
+	func positionCurrency(of h: Holding) -> String {
 		account(h.accountID)?.currency ?? h.marketValue?.currency ?? "EUR"
 	}
 }
 
-/// Hands each plain click on a row of the table next to it to `click`, with the row. The table reports no click on a row
-/// that is selected already, which a second click on an open position is, so `PositionClickWatcher` reads the clicks of
-/// the window before the table gets them.
+/// Hands each plain click on a row of the table next to it to `click`, with the row, and the width that a classic scroll
+/// bar takes from the table to `scrollerWidth`. The table reports no click on a row that is selected already, which a
+/// second click on an open position is, so `PositionClickWatcher` reads the clicks of the window before the table gets them.
 struct PositionClicks: NSViewRepresentable {
 	let click: @MainActor (Int) -> Void
+	let scrollerWidth: @MainActor (CGFloat) -> Void
 
 	func makeNSView(context: Context) -> PositionClickWatcher {
 		let watcher = PositionClickWatcher()
 		watcher.click = click
+		watcher.scrollerWidth = scrollerWidth
 		watcher.monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak watcher] event in
 			MainActor.assumeIsolated { watcher?.handle(event) }
 			return event
@@ -364,28 +375,87 @@ struct PositionClicks: NSViewRepresentable {
 		return watcher
 	}
 
-	func updateNSView(_ watcher: PositionClickWatcher, context: Context) { watcher.click = click }
-
-	static func dismantleNSView(_ watcher: PositionClickWatcher, coordinator: ()) {
-		if let monitor = watcher.monitor { NSEvent.removeMonitor(monitor) }
+	func updateNSView(_ watcher: PositionClickWatcher, context: Context) {
+		watcher.click = click
+		watcher.scrollerWidth = scrollerWidth
 	}
+
+	static func dismantleNSView(_ watcher: PositionClickWatcher, coordinator: ()) { watcher.stop() }
 }
 
-/// A view without content behind the table of positions that watches the clicks of its window. The debug harness finds it
-/// by its class and hands it its click, because a click that the harness sends never passes the monitor of the window.
+/// A view without content behind the table of positions, with the frame of the table. It watches the clicks of its window
+/// and the scroll bar of its table. The debug harness finds it by its class and hands it its click, because a click that
+/// the harness sends never passes the monitor of the window.
 final class PositionClickWatcher: NSView {
 	var click: @MainActor (Int) -> Void = { _ in }
+	var scrollerWidth: @MainActor (CGFloat) -> Void = { _ in }
 	var monitor: Any?
+	/// Found once, so a click costs no search through the views of the window.
+	private weak var table: NSTableView?
+	private var observers: [NSObjectProtocol] = []
+	private var reportedWidth: CGFloat?
 
-	/// A click with ⌘, ⇧, ⌃, or ⌥ changes only the selection or opens the context menu, so it opens nothing, and neither
-	/// does a double click.
+	/// A plain click inside the table opens or closes the position of its row. A click with ⌘, ⇧, ⌃, or ⌥ changes only the
+	/// selection or opens the context menu, so it opens nothing, and neither does a double click or a click on a scroll bar.
 	func handle(_ event: NSEvent) {
 		guard event.window === window, event.clickCount == 1, event.modifierFlags.intersection([.command, .shift, .control, .option]).isEmpty,
-			let table = Self.table(near: self) else { return }
+			bounds.contains(convert(event.locationInWindow, from: nil)), let table = tableView() else { return }
+		var hit = window?.contentView?.hitTest(event.locationInWindow)
+		while let view = hit {
+			if view is NSScroller { return }
+			hit = view.superview
+		}
 		let point = table.convert(event.locationInWindow, from: nil)
 		guard table.visibleRect.contains(point) else { return }
 		let row = table.row(at: point)
 		if row >= 0 { click(row) }
+	}
+
+	override func viewDidMoveToWindow() {
+		super.viewDidMoveToWindow()
+		// SwiftUI adds the table next to this view in the same update, so it is there a turn later.
+		DispatchQueue.main.async { [weak self] in self?.watchScroller() }
+	}
+
+	override func setFrameSize(_ newSize: NSSize) {
+		super.setFrameSize(newSize)
+		reportScroller()
+	}
+
+	func stop() {
+		if let monitor { NSEvent.removeMonitor(monitor) }
+		monitor = nil
+		observers.forEach(NotificationCenter.default.removeObserver)
+		observers = []
+	}
+
+	/// A classic scroll bar, which a Mac with a mouse shows by default, comes and goes with the rows and narrows the clip
+	/// view of the table, and the user can change the style of the scroll bars at any time.
+	private func watchScroller() {
+		guard window != nil, observers.isEmpty, let clip = tableView()?.enclosingScrollView?.contentView else { return }
+		clip.postsFrameChangedNotifications = true
+		let report: @Sendable (Notification) -> Void = { [weak self] _ in MainActor.assumeIsolated { self?.reportScroller() } }
+		observers = [
+			NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: clip, queue: .main, using: report),
+			NotificationCenter.default.addObserver(forName: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil, queue: .main, using: report),
+		]
+		reportScroller()
+	}
+
+	/// The width that the scroll bar takes from the table: the scroll view less its clip view, 0 for an overlay scroll bar.
+	private func reportScroller() {
+		guard let scroll = table?.enclosingScrollView else { return }
+		let width = max(0, scroll.frame.width - scroll.contentView.frame.width - 2 * scroll.contentView.frame.minX)
+		guard width != reportedWidth else { return }
+		reportedWidth = width
+		// After the layout of AppKit, not inside it, because the width changes the state of a SwiftUI view.
+		DispatchQueue.main.async { [weak self] in self?.scrollerWidth(width) }
+	}
+
+	private func tableView() -> NSTableView? {
+		if let table { return table }
+		table = Self.table(near: self)
+		return table
 	}
 
 	/// The table of the positions: the table whose scroll view covers the middle of this view, which stands behind the

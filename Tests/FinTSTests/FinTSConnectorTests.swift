@@ -698,6 +698,17 @@ struct FinTSConnectorTests {
 		#expect(!plain.olderTransactions)
 	}
 
+	/// hbci4java keeps the first number of a security without an ISIN as its WKN, whatever its country: "/US/123456789" gives
+	/// "123456789". The app shows what the source sends and derives nothing (design of `refine-portfolio-view`).
+	@Test("A security number of the bank stays as the helper sends it, also a foreign one without an ISIN")
+	func foreignSecurityNumber() async throws {
+		let depot = AccountRequest(accountID: UUID(), name: "Depot", remoteID: "7654333", currency: "EUR")
+		let line = #"{"type":"result","account":"7654333","balance":{"type":"balance","amount":"100.00","currency":"EUR","date":"2026-11-27"},"errors":[],"securities":true,"holdings":[{"type":"holding","name":"Muster Inc.","wkn":"123456789","quantity":"10","value":{"type":"amount","amount":"100.00","currency":"EUR"}}]}"#
+		let report = try await refresh("read cmd; echo '\(line)'", accounts: [depot])
+		guard case let .fetched(result) = report.outcomes[depot.accountID] else { Issue.record("depot not fetched"); return }
+		#expect(result.holdings?.map(\.security) == [Security(name: "Muster Inc.", securityNumber: "123456789")])
+	}
+
 	@Test("Reads the lines that the helper writes for an MT940 statement, a camt.052 report, securities accounts, and accounts that fail")
 	func helperLines() async throws {
 		// The self-test of the helper writes this file: scripts/build-fints-helper.sh.

@@ -75,9 +75,9 @@ extension TransactionFilter {
 
 /// The order that a click on a line of the header of the positions chooses: the value of that line and a direction.
 /// Nil in its place is the order by name of `Holding.isOrdered`.
-public struct PortfolioSort: Hashable, Sendable {
+public struct PortfolioSort: Equatable, Sendable {
 	/// The seven lines of the header, each with a value of its own, so "Purchase price" and "Last quote" sort apart.
-	public enum Key: Hashable, Sendable {
+	public enum Key: Equatable, Sendable {
 		case quoteDay, name, quantity, purchasePrice, lastQuote, value, gain
 	}
 
@@ -99,12 +99,13 @@ public struct PortfolioSort: Hashable, Sendable {
 	/// `holdings` by the value of the key as the row shows it, with the value and the profit or loss in `currency`, the
 	/// currency of the account of each position. A position without the value comes last in both directions, because a
 	/// reversed list would otherwise open with empty rows. Equal values keep the order by name in both directions, so the
-	/// order never depends on the order of the database. Numbers in different currencies, and a percentage of a nominal
-	/// amount next to a price, compare as plain numbers, as in any table of mixed rows.
+	/// order never depends on the order of the database. The sort is stable, so two positions with the same name, such as
+	/// one share in two portfolios, keep their order in both directions. A quote of 0 is the number 0. Numbers in different
+	/// currencies, and a percentage of a nominal amount next to a price, compare as plain numbers, as in any table of mixed
+	/// rows.
 	public func sorted(_ holdings: [Holding], currency: (Holding) -> String) -> [Holding] {
 		if key == .name {
-			let byName = holdings.sorted(by: Holding.isOrdered)
-			return isAscending ? byName : byName.reversed()
+			return isAscending ? holdings.sorted(by: Holding.isOrdered) : holdings.sorted { Holding.isOrdered($1, $0) }
 		}
 		let keyed = holdings.map { (holding: $0, value: value(of: $0, currency: currency($0))) }
 		return keyed.sorted { a, b in
@@ -128,5 +129,19 @@ public struct PortfolioSort: Hashable, Sendable {
 		case .value: h.value(in: currency)?.decimal
 		case .gain: h.gain(in: currency)?.amount.decimal
 		}
+	}
+}
+
+extension TransactionFilter {
+	/// Whether a change from `before` to `after`, such as a refresh with new quotes, puts the positions that the list shows
+	/// under `sort` in another order. Only the positions that the list shows before and after count: one that comes or
+	/// goes is the business of `hidesShownPositions(before:after:)`. In place, SwiftUI turns a new order into moves of rows
+	/// and measures each moved row, which took seconds for hundreds of positions, so such a change starts the table over.
+	/// The order by name, nil, changes only with a name.
+	public func movesShownPositions(before: [Holding], after: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> Bool {
+		let old = (sort?.sorted(positions(of: before), currency: currency) ?? positions(of: before).sorted(by: Holding.isOrdered)).map(\.id)
+		let new = (sort?.sorted(positions(of: after), currency: currency) ?? positions(of: after).sorted(by: Holding.isOrdered)).map(\.id)
+		let both = Set(old).intersection(new)
+		return old.filter(both.contains) != new.filter(both.contains)
 	}
 }

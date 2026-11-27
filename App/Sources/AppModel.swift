@@ -362,9 +362,9 @@ final class AppModel {
 	/// A click on a line of the header of the positions, or nil for the order by name. The new order starts the table over,
 	/// with the placeholder of `replacingTable`: in place, SwiftUI turns a new order into moves of rows and measures each
 	/// moved row, which took 2.4 seconds for 500 positions. A new table measures only the rows on screen.
+	/// The order follows from the order that holds when the change runs, so a second click right after the first builds on it.
 	func sortPositions(by key: PortfolioSort.Key?) async {
-		let sort = key.map { PortfolioSort.after(clicking: $0, on: portfolioSort) }
-		await replacingTable { portfolioSort = sort }
+		await replacingTable { portfolioSort = key.map { PortfolioSort.after(clicking: $0, on: portfolioSort) } }
 	}
 
 	/// A plain click on a position: it opens the position, or closes it when it is open. Opening one closes the other.
@@ -2143,12 +2143,18 @@ final class AppModel {
 
 	/// The open table shows pending rows or split parts that a correction can remove, or a position of
 	/// the account that the delivered positions no longer hold, or that leaves the filters of the table, such as a
-	/// position whose bank sends another asset class than the one of the filter.
+	/// position whose bank sends another asset class than the one of the filter. A sorted list of positions whose order
+	/// the refresh changes, such as new quotes in a list sorted by quote, starts over too: in place, SwiftUI moves every row.
 	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
 		if let portfolios = tableKey.portfolios {
 			guard portfolios.contains(accountID), let delivered = result.holdings else { return false }
 			let stored = ledger.holdings(of: [accountID])
-			return tableKey.filter.hidesShownPositions(before: stored, after: Holding.identify(delivered, stored: stored))
+			let identified = Holding.identify(delivered, stored: stored)
+			if tableKey.filter.hidesShownPositions(before: stored, after: identified) { return true }
+			// The positions of the refreshed portfolio can move among those of the others of a group.
+			let others = ledger.holdings(of: portfolios.filter { $0 != accountID })
+			let ledger = self.ledger
+			return tableKey.filter.movesShownPositions(before: others + stored, after: others + identified, sort: portfolioSort) { ledger.positionCurrency(of: $0) }
 		}
 		let ledger = self.ledger
 		return visibleTransactions.contains { $0.accountID == accountID && ($0.isPending || ledger.part($0.id) != nil) }

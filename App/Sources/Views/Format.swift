@@ -220,7 +220,7 @@ enum Palette {
 	static let warning = dynamic("textWarning", light: rgb(0x9A5200), dark: .systemOrange, increasedContrast: rgb(0x7A4300))
 
 	/// `increasedContrast` replaces `light` when the user turns on "Increase contrast".
-	fileprivate static func dynamic(_ name: String, light: NSColor, dark: NSColor, increasedContrast: NSColor? = nil) -> Color {
+	private static func dynamic(_ name: String, light: NSColor, dark: NSColor, increasedContrast: NSColor? = nil) -> Color {
 		Color(nsColor: NSColor(name: name) { appearance in
 			let match = appearance.bestMatch(from: [.aqua, .darkAqua, .accessibilityHighContrastAqua, .accessibilityHighContrastDarkAqua])
 			if match == .darkAqua || match == .accessibilityHighContrastDarkAqua { return dark }
@@ -233,31 +233,24 @@ enum Palette {
 	}
 }
 
-/// The color of each asset class, for its ribbon. The light and the dark value of stocks, ETFs, bonds, and others are
-/// those of the draft that the owner approved on 27 November 2026, and the other four have the same lightness, so that
-/// white text reads on each (design of `refine-portfolio-view`).
+/// The color of each asset class, for its ribbon: one color for light and dark mode, as a color that the user chooses is,
+/// on which white text of the ribbon reaches 4.5:1. Stocks, funds, real estate, and cryptocurrencies keep the light color
+/// of the draft that the owner approved on 27 November 2026, and the others are darkened at their hue until white text
+/// reaches 4.6:1 (design of `refine-portfolio-view`).
 enum AssetClassColors {
 	static func color(of assetClass: AssetClass) -> Color {
-		switch assetClass {
-		case .stocks: stocks
-		case .funds: funds
-		case .bonds: bonds
-		case .realEstate: realEstate
-		case .commodities: commodities
-		case .etfs: etfs
-		case .cryptocurrencies: cryptocurrencies
-		case .others: others
+		let hex = switch assetClass {
+		case .stocks: 0x2F6FD6
+		case .funds: 0x7B4FC4
+		case .bonds: 0x996C10
+		case .realEstate: 0xB0553A
+		case .commodities: 0x588027
+		case .etfs: 0x168377
+		case .cryptocurrencies: 0xB8407A
+		case .others: 0x747479
 		}
+		return Color(nsColor: Palette.rgb(hex))
 	}
-
-	private static let stocks = Palette.dynamic("assetStocks", light: Palette.rgb(0x2F6FD6), dark: Palette.rgb(0x3F7FE0))
-	private static let funds = Palette.dynamic("assetFunds", light: Palette.rgb(0x7B4FC4), dark: Palette.rgb(0x8B62D6))
-	private static let bonds = Palette.dynamic("assetBonds", light: Palette.rgb(0xB07C12), dark: Palette.rgb(0xC08A1E))
-	private static let realEstate = Palette.dynamic("assetRealEstate", light: Palette.rgb(0xB0553A), dark: Palette.rgb(0xC4664A))
-	private static let commodities = Palette.dynamic("assetCommodities", light: Palette.rgb(0x5F8A2A), dark: Palette.rgb(0x6F9C34))
-	private static let etfs = Palette.dynamic("assetETFs", light: Palette.rgb(0x178A7D), dark: Palette.rgb(0x1F9C8E))
-	private static let cryptocurrencies = Palette.dynamic("assetCryptocurrencies", light: Palette.rgb(0xB8407A), dark: Palette.rgb(0xCC5590))
-	private static let others = Palette.dynamic("assetOthers", light: Palette.rgb(0x7A7A80), dark: Palette.rgb(0x6E6E74))
 }
 
 /// The color of a category: its own color, else the color of its top-level category from a fixed

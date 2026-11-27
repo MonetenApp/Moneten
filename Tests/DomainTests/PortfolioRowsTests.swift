@@ -199,6 +199,44 @@ struct PortfolioRowsTests {
 			== ["Anleihe Musterland", "Beispiel Chemie AG", "Musterwerke AG"])
 	}
 
+	@Test("Two positions with the same name keep their order in both directions of the order by name")
+	func sortEqualNames() {
+		// One share in two portfolios of a group: the order of the ledger stays in both directions.
+		let first = position("Musterwerke AG", in: depot)
+		let second = position("Musterwerke AG", in: other)
+		let fund = position("Beispiel Fonds")
+		let all = [first, second, fund]
+		#expect(PortfolioSort(key: .name).sorted(all) { _ in "EUR" }.map(\.id) == [fund.id, first.id, second.id])
+		#expect(PortfolioSort(key: .name, isAscending: false).sorted(all) { _ in "EUR" }.map(\.id) == [first.id, second.id, fund.id])
+	}
+
+	@Test("A refresh of a sorted list moves shown positions only when the positions that stay come in another order")
+	func movesShownPositions() {
+		let day = Day(year: 2026, month: 11, day: 27)
+		let a = position("Musterwerke AG", quote: euros(10, on: day))
+		let b = position("Beispiel Fonds", quote: euros(20, on: day))
+		let c = position("Anleihe Musterland", quote: euros(30, on: day))
+		func quoted(_ h: Holding, _ amount: Decimal) -> Holding { var h = h; h.quote = euros(amount, on: day); return h }
+		let byQuote = PortfolioSort(key: .lastQuote)
+		let filter = TransactionFilter()
+		func moves(_ after: [Holding], sort: PortfolioSort? = PortfolioSort(key: .lastQuote)) -> Bool {
+			filter.movesShownPositions(before: [a, b, c], after: after, sort: sort) { _ in "EUR" }
+		}
+		// New quotes in the same order, and new quotes that swap two rows.
+		#expect(!moves([quoted(a, 11), quoted(b, 21), quoted(c, 31)]))
+		#expect(moves([quoted(a, 25), b, c]))
+		// The order by name does not follow the quotes.
+		#expect(!moves([quoted(a, 25), b, c], sort: nil))
+		// A position that goes, or a new one between two others, moves no position that stays.
+		#expect(!moves([a, c]))
+		#expect(!moves([a, position("Neue Aktie", quote: euros(15, on: day)), b, c]))
+		// A position that the filters hide counts neither before nor after.
+		var stocks = TransactionFilter()
+		stocks.assetClass = .stocks
+		let hidden = [quoted(a, 25), b, c]
+		#expect(!stocks.movesShownPositions(before: [a, b, c], after: hidden, sort: byQuote) { _ in "EUR" })
+	}
+
 	@Test("A click on a header line sorts ascending, a second click on it descending, and a click on another line ascending")
 	func sortClicks() {
 		let first = PortfolioSort.after(clicking: .value, on: nil)
