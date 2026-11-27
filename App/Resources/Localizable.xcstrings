@@ -1906,6 +1906,26 @@
         }
       }
     },
+    "Allocation by Asset Class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung nach Anlageklasse"
+          }
+        }
+      }
+    },
+    "Allocation by asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung nach Anlageklasse"
+          }
+        }
+      }
+    },
     "Allow" : {
       "localizations" : {
         "de" : {
@@ -2410,6 +2430,36 @@
         }
       }
     },
+    "Asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse"
+          }
+        }
+      }
+    },
+    "Asset Class Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen der Anlageklassen"
+          }
+        }
+      }
+    },
+    "Asset Class Settings..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen der Anlageklassen..."
+          }
+        }
+      }
+    },
     "Asset class:" : {
       "localizations" : {
         "de" : {
@@ -2436,6 +2486,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordnen Sie %@ eine Spalte zu."
+          }
+        }
+      }
+    },
+    "Assign Asset Class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse zuweisen"
+          }
+        }
+      }
+    },
+    "Assign Asset Class..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse zuweisen..."
           }
         }
       }
@@ -5406,6 +5476,16 @@
         }
       }
     },
+    "Group by asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Anlageklasse gruppieren"
+          }
+        }
+      }
+    },
     "Group transactions by account" : {
       "localizations" : {
         "de" : {
@@ -7469,6 +7549,16 @@
         }
       }
     },
+    "No asset class matches" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Anlageklasse passt"
+          }
+        }
+      }
+    },
     "No bank matches “%@”." : {
       "localizations" : {
         "de" : {
@@ -7658,6 +7748,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Depotpositionen gefunden."
+          }
+        }
+      }
+    },
+    "No portfolio items." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Depotpositionen."
           }
         }
       }
@@ -9211,6 +9311,16 @@
         }
       }
     },
+    "Restore Default Colors" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardfarben wiederherstellen"
+          }
+        }
+      }
+    },
     "Restrict to" : {
       "localizations" : {
         "de" : {
@@ -9784,6 +9894,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Über neue Versionen von Moneten benachrichtigen"
+          }
+        }
+      }
+    },
+    "Show only %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur %@ anzeigen"
           }
         }
       }
@@ -13891,6 +14011,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Tippen, um eine Kategorie zu finden"
+          }
+        }
+      }
+    },
+    "Type to find an asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippen, um eine Anlageklasse zu finden"
           }
         }
       }

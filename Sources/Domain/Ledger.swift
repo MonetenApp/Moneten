@@ -32,9 +32,13 @@ public struct Ledger: Sendable {
 	public private(set) var newTransactionCounts: [UUID: Int] = [:]
 	/// The accounts that have at least one transaction.
 	public private(set) var accountsWithTransactions: Set<UUID> = []
+	/// The colors that the user chose for asset classes, as hex text such as "#2E7D32". A class without an entry shows its
+	/// default color, which the app holds.
+	public private(set) var assetClassColors: [AssetClass: String] = [:]
 
 	public init(groups: [AccountGroup] = [], accounts: [Account] = [], categories: [Category] = [], transactions: [Transaction] = [],
-		portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], parts: [SplitPart] = []) {
+		portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], parts: [SplitPart] = [], assetClassColors: [AssetClass: String] = [:]) {
+		self.assetClassColors = assetClassColors
 		self.groups = groups
 		self.accounts = accounts
 		self.categories = categories
@@ -739,6 +743,12 @@ public struct Ledger: Sendable {
 
 	/// Takes over the comment of the position `id`, which the database stored. Nil removes it. The order of the positions
 	/// does not depend on it.
+	/// The colors of the asset class settings, which replace every earlier choice. An empty list gives every class its
+	/// default color again.
+	public mutating func setAssetClassColors(_ colors: [AssetClass: String]) {
+		assetClassColors = colors
+	}
+
 	public mutating func setComment(_ comment: String?, of id: UUID) {
 		for (account, positions) in holdingsByAccount {
 			guard let i = positions.firstIndex(where: { $0.id == id }) else { continue }
@@ -944,6 +954,9 @@ public struct TransactionFilter: Hashable, Sendable {
 	public var gain = GainFilter.all
 	/// The filter "Quote" of the positions of a portfolio. Transactions have no quote, so it hides none of them.
 	public var quote = QuoteFilter.all
+	/// "Group by asset class" of the filter bar of a portfolio, which puts the positions under a heading for each class. It
+	/// hides nothing, so it is no filter of `isActive`, and it stays between portfolios as the two filters above do.
+	public var groupsByAssetClass = false
 
 	public enum GainFilter: String, Hashable, Sendable, Codable { case all, gains, losses }
 	public enum QuoteFilter: String, Hashable, Sendable, Codable { case all, outdated }

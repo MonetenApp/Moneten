@@ -41,4 +41,20 @@ struct ViewModesTests {
 		#expect(again[.accounts] == .barChart)
 		#expect(again[.categories] == .pieChart)
 	}
+
+	@Test("A portfolio view shows the bar chart while the account views keep the pie chart, and refuses the pie chart itself")
+	func portfolios() {
+		var defaults: [String: String] = [:]
+		var modes = ViewModes(stored: { defaults[$0] }, store: { defaults[$0] = $1 })
+		modes.set(.pieChart, for: .accounts) { defaults[$0] = $1 }
+		#expect(modes[.portfolios] == .barChart)
+		#expect(modes[.accounts] == .pieChart)
+		modes.set(.pieChart, for: .portfolios) { defaults[$0] = $1 }
+		#expect(modes[.accounts] == .pieChart && defaults["viewMode"] == "pieChart")
+		modes.set(.list, for: .portfolios) { defaults[$0] = $1 }
+		#expect(modes[.portfolios] == .list && modes[.accounts] == .list)
+		modes.set(.barChart, for: .portfolios) { defaults[$0] = $1 }
+		#expect(modes[.portfolios] == .barChart && modes[.accounts] == .barChart)
+		#expect(ViewModes.key(of: .portfolios) == ViewModes.key(of: .accounts))
+	}
 }

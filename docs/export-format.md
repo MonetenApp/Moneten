@@ -10,7 +10,7 @@
 - An identifier is a UUID as text. Objects refer to each other by these identifiers.
 - An optional key without a value is left out, and a reader takes a missing optional key as empty. Every other key is always written, also an empty list or an empty text such as `purpose`.
 - A currency code has 3 to 10 uppercase ASCII letters and digits and starts with a letter, `[A-Z][A-Z0-9]{2,9}`. This also applies to optional currencies of holdings and both currencies of an exchange rate. An ISO 4217 code such as `EUR` has this form, and so does the ticker of a crypto token such as `USDC`, which an extension can give as the currency of a position. BTC has 8 decimal places, ETH 9, USDC and USDT 6, and every other code that is not in ISO 4217 has 2, so 0.00012345 BTC is `"0.00012345"` and 20 USDC is `"20.000000"`. An extension amount with more decimal places than its code, such as 0.004 DOGE, fails its account, so the database never holds it rounded.
-- Adding an optional key does not change the format version. A reader treats a missing `csvProfiles` or `savedSearches` key as an empty list.
+- Adding an optional key does not change the format version. A reader treats a missing `csvProfiles`, `savedSearches`, or `assetClassColors` key as an empty list.
 - A change that a reader of an earlier version cannot read raises the format version: a new required key, a required key that is removed or renamed, and a new value of a fixed word such as `reason` in `failure` or `review`. A reader of the earlier version then refuses the file as needing a newer app, and not as damaged.
 - The lists keep the order of the database.
 - A category or account group cannot contain itself, directly or through its parents. The reader refuses a loop and names its position.
@@ -34,6 +34,7 @@
 | `holdings` | List of positions of portfolios |
 | `csvProfiles` | Optional list of saved CSV profiles, including unreadable versions. Left out when there are none. |
 | `savedSearches` | Optional list of saved searches of the sidebar section "Searches". Left out when there are none. |
+| `assetClassColors` | Optional list of the colors that the user chose for asset classes, in the order of the submenu "Asset Class". Left out when every class has its default color. |
 
 ## CSV profile
 
@@ -215,6 +216,15 @@ A position of a portfolio, as its bank reported it last.
 | `sourceAssetClass` | Optional asset class that the bank or source sent: `stocks`, `funds`, `bonds`, `realEstate`, `commodities`, `etfs`, `cryptocurrencies`, or `others`. Left out when the source sent none. |
 | `userAssetClass` | Optional asset class that the user chose, with the same words. It wins over `sourceAssetClass`. Left out when the user chose none. A holding with neither shows "Others". |
 | `comment` | Optional comment of the user. Left out when the holding has none. |
+
+## Asset class color
+
+The color that the user chose for one asset class in the asset class settings. A class without an entry shows its default color.
+
+| Key | Content |
+|---|---|
+| `assetClass` | The asset class, with the words of `sourceAssetClass` |
+| `color` | Color, `#` and six hexadecimal digits, such as `"#2E7D32"`. The reader refuses another form and a class with two colors. |
 
 ## Split part
 

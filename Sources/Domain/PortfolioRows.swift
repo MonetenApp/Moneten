@@ -90,12 +90,13 @@ extension TransactionFilter {
 		return hints
 	}
 
-	/// `self` with the filters "Profit/Loss" and "Quote" of `current`. A saved search holds neither, because it shows
-	/// transactions, so opening it keeps those of the filter bar for the next portfolio.
+	/// `self` with the filters "Profit/Loss" and "Quote" and "Group by asset class" of `current`. A saved search holds none
+	/// of them, because it shows transactions, so opening it keeps those of the filter bar for the next portfolio.
 	public func keepingPositionFilters(of current: TransactionFilter) -> TransactionFilter {
 		var f = self
 		f.gain = current.gain
 		f.quote = current.quote
+		f.groupsByAssetClass = current.groupsByAssetClass
 		return f
 	}
 }
@@ -166,11 +167,112 @@ extension TransactionFilter {
 	/// and measures each moved row, which took seconds for hundreds of positions, so such a change starts the table over.
 	/// The order by name, nil, changes only with a name.
 	public func movesShownPositions(before: [Holding], after: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> Bool {
-		let shownBefore = positions(of: before, currency: currency)
-		let shownAfter = positions(of: after, currency: currency)
-		let old = (sort?.sorted(shownBefore, currency: currency) ?? shownBefore.sorted(by: Holding.isOrdered)).map(\.id)
-		let new = (sort?.sorted(shownAfter, currency: currency) ?? shownAfter.sorted(by: Holding.isOrdered)).map(\.id)
+		let old = shownPositions(of: before.sorted(by: Holding.isOrdered), sort: sort, currency: currency).map(\.id)
+		let new = shownPositions(of: after.sorted(by: Holding.isOrdered), sort: sort, currency: currency).map(\.id)
 		let both = Set(old).intersection(new)
 		return old.filter(both.contains) != new.filter(both.contains)
+	}
+
+	/// The rows of the list in their order: the positions of `holdings` that the filters show, in the order of `sort`, or
+	/// in the order of `holdings` for nil, and under "Group by asset class" by class in the order of the menu, each class in
+	/// that order. A new class of a shown position then moves it into another section.
+	public func shownPositions(of holdings: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> [Holding] {
+		let shown = positions(of: holdings, currency: currency)
+		let sorted = sort?.sorted(shown, currency: currency) ?? shown
+		return groupsByAssetClass ? PortfolioSections(sorted, currency: currency).holdings : sorted
+	}
+}
+
+/// The rows of "Group by asset class": the positions of each class in the order of the submenu "Asset Class", with a
+/// heading above the first position of each class. The heading belongs to that row and is no row of its own, as the
+/// heading of "Group transactions by account" (`GroupedTransactions`, #519), so the table keeps one row for each position.
+public struct PortfolioSections: Sendable {
+	public struct Heading: Equatable, Sendable {
+		public let assetClass: AssetClass
+		/// The number of positions of the class that the list shows.
+		public let count: Int
+		/// The sums of their values and of their profits or losses, one for each currency, never converted. A position
+		/// without a purchase price adds only to the value.
+		public let value: MoneySums
+		public let gain: MoneySums
+		/// The heading at the top. The others stand apart from the rows above them.
+		public let isFirst: Bool
+	}
+
+	/// The positions in the order of the table.
+	public let holdings: [Holding]
+	/// The heading above a position, by the ID of the first position of each class.
+	public let headings: [UUID: Heading]
+
+	/// The positions of `holdings` by class, each class in the order of `holdings`. `currency` gives the currency of the
+	/// account of a position, in which its row shows its value and its profit or loss.
+	public init(_ holdings: [Holding], currency: (Holding) -> String) {
+		let byClass = Dictionary(grouping: holdings, by: \.assetClass)
+		var ordered: [Holding] = []
+		ordered.reserveCapacity(holdings.count)
+		var headings: [UUID: Heading] = [:]
+		for assetClass in AssetClass.allCases {
+			guard let rows = byClass[assetClass], let first = rows.first else { continue }
+			var value = MoneySums(), gain = MoneySums()
+			for h in rows {
+				let c = currency(h)
+				if let v = h.value(in: c) { value.add(v) }
+				if let g = h.gain(in: c) { gain.add(g.amount) }
+			}
+			headings[first.id] = Heading(assetClass: assetClass, count: rows.count, value: value, gain: gain, isFirst: ordered.isEmpty)
+			ordered += rows
+		}
+		self.holdings = ordered
+		self.headings = headings
+	}
+}
+
+/// The split of the value of a portfolio view by asset class, for the allocation popover. It counts every position of the
+/// view, whatever the filters and the search show, because it is an overview of the whole portfolio. It never converts a
+/// currency, so each currency of the values has a bar of its own.
+public struct Allocation: Equatable, Sendable {
+	/// One class of a bar: its value and its share of the total in percent, rounded half away from zero to two places.
+	public struct Share: Equatable, Sendable {
+		public let assetClass: AssetClass
+		public let value: Money
+		public let percent: Decimal
+	}
+
+	/// The classes of one currency, in the order of the submenu "Asset Class", with their total.
+	public struct Bar: Equatable, Sendable {
+		public let currency: String
+		public let total: Money
+		public let shares: [Share]
+	}
+
+	/// The bars by currency code. Empty when no position has a value.
+	public let bars: [Bar]
+
+	/// `holdings` are all positions of the view. `currency` gives the currency of the account of a position, in which its
+	/// row shows its value. A position without a value has nothing to share.
+	public init(_ holdings: [Holding], currency: (Holding) -> String) {
+		var sums: [String: [AssetClass: Int128]] = [:]
+		for h in holdings {
+			guard let value = h.value(in: currency(h)) else { continue }
+			sums[value.currency, default: [:]][h.assetClass, default: 0] += Int128(value.minorUnits)
+		}
+		bars = sums.keys.sorted().map { code in
+			let classes = sums[code] ?? [:]
+			let total = classes.values.reduce(Int128(0), +)
+			let shares = AssetClass.allCases.compactMap { c -> Share? in
+				guard let minor = classes[c] else { return nil }
+				return Share(assetClass: c, value: Money(minorUnits: Int64(clampingSum: minor), currency: code), percent: Self.percent(minor, of: total))
+			}
+			return Bar(currency: code, total: Money(minorUnits: Int64(clampingSum: total), currency: code), shares: shares)
+		}
+	}
+
+	/// `part` of `total` in percent, rounded half away from zero to two places, and 0 of a total of 0.
+	private static func percent(_ part: Int128, of total: Int128) -> Decimal {
+		guard total != 0 else { return 0 }
+		var exact = Decimal(string: String(part))! / Decimal(string: String(total))! * 100
+		var rounded = Decimal()
+		NSDecimalRound(&rounded, &exact, 2, .plain)
+		return rounded
 	}
 }

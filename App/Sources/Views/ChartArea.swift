@@ -56,10 +56,14 @@ struct BalanceChart: View {
 			}
 			HStack(alignment: .bottom, spacing: 8) {
 				bars(ids: Set(shown.map(\.id)), currency: currency, monthly: monthly)
-				ChartModeSwitch(selection: $model.balanceMode, options: [
-					.init(value: .daily, label: String(localized: "D", comment: "The switch to the daily balance"), help: String(localized: "Daily balance")),
-					.init(value: .monthlyAverage, label: String(localized: "M", comment: "The switch to the monthly average balance or the monthly view"), help: String(localized: "Monthly average balance")),
-				])
+				VStack(spacing: 6) {
+					// The allocation of a portfolio view shows only after a click, so the history chart keeps its place.
+					if let portfolios = model.selectedPortfolios { AllocationButton(accountIDs: portfolios) }
+					ChartModeSwitch(selection: $model.balanceMode, options: [
+						.init(value: .daily, label: String(localized: "D", comment: "The switch to the daily balance"), help: String(localized: "Daily balance")),
+						.init(value: .monthlyAverage, label: String(localized: "M", comment: "The switch to the monthly average balance or the monthly view"), help: String(localized: "Monthly average balance")),
+					])
+				}
 			}
 		}
 	}
@@ -527,5 +531,122 @@ struct ChartModeSwitch<Value: Hashable>: View {
 		.overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.switchBorder, lineWidth: 0.5))
 		.padding(.bottom, ScrollingBarChart.bottomInset)
 		.accessibilityElement(children: .contain)
+	}
+}
+
+/// The button above "D" and "M" of a portfolio view that opens the allocation of its positions by asset class.
+struct AllocationButton: View {
+	@Environment(AppModel.self) private var model
+	let accountIDs: [UUID]
+	@State private var isOpen = false
+
+	var body: some View {
+		Button { isOpen.toggle() } label: {
+			Image(systemName: "chart.pie")
+				.font(.system(size: 12, weight: .medium))
+				.foregroundStyle(isOpen ? Palette.switchChosenText : Palette.switchText)
+				.frame(width: 22, height: 22)
+				.background(isOpen ? Palette.switchChosen : Palette.switchBackground)
+				.clipShape(RoundedRectangle(cornerRadius: 4))
+				.overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Palette.switchBorder, lineWidth: 0.5))
+				.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.help("Allocation by asset class")
+		.accessibilityLabel("Allocation by asset class")
+		.popover(isPresented: $isOpen, arrowEdge: .leading) {
+			AllocationPopover(model: model, accountIDs: accountIDs) { isOpen = false }
+		}
+	}
+}
+
+/// The allocation of every position of the view by asset class, whatever the filters show: a stacked bar and one line
+/// for each class for each currency of the values. A click on a line sets the filter "Asset class" to its class.
+struct AllocationPopover: View {
+	let model: AppModel
+	let accountIDs: [UUID]
+	let close: () -> Void
+
+	var body: some View {
+		let ledger = model.ledger
+		let allocation = Allocation(ledger.holdings(of: accountIDs)) { ledger.positionCurrency(of: $0) }
+		let colors = ledger.assetClassColors
+		VStack(alignment: .leading, spacing: 16) {
+			Text("Allocation by Asset Class").font(.headline)
+			if allocation.bars.isEmpty {
+				Text("No portfolio items.").foregroundStyle(Palette.secondaryText)
+			}
+			ForEach(allocation.bars, id: \.currency) { bar in
+				VStack(alignment: .leading, spacing: 8) {
+					if allocation.bars.count > 1 {
+						Text(Format.money(bar.total)).font(.subheadline.weight(.semibold)).monospacedDigit()
+					}
+					AllocationBar(bar: bar, colors: colors)
+					VStack(spacing: 2) {
+						ForEach(bar.shares, id: \.assetClass) { share in line(share, colors: colors) }
+					}
+				}
+			}
+		}
+		.padding(16)
+		.frame(width: 340)
+	}
+
+	private func line(_ share: Allocation.Share, colors: [AssetClass: String]) -> some View {
+		Button {
+			close()
+			model.filter.assetClass = share.assetClass
+		} label: {
+			HStack(spacing: 8) {
+				RoundedRectangle(cornerRadius: 2)
+					.fill(AssetClassColors.color(of: share.assetClass, chosen: colors))
+					.frame(width: 10, height: 10)
+				Text(share.assetClass.name).lineLimit(1)
+				Spacer(minLength: 12)
+				Text(Format.share(share.percent)).monospacedDigit().foregroundStyle(Palette.detail)
+				Text(Format.money(share.value)).monospacedDigit().frame(minWidth: 96, alignment: .trailing)
+			}
+			.padding(.vertical, 3)
+			.padding(.horizontal, 4)
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(AllocationLineStyle())
+		.help("Show only \(share.assetClass.name)")
+		.accessibilityElement(children: .combine)
+	}
+}
+
+/// A line of the allocation, lit under the pointer as an entry of a list.
+private struct AllocationLineStyle: ButtonStyle {
+	@State private var hovered = false
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.background(RoundedRectangle(cornerRadius: 5).fill(.primary.opacity(configuration.isPressed ? 0.12 : hovered ? 0.06 : 0)))
+			.onHover { hovered = $0 }
+	}
+}
+
+/// One stacked bar of the allocation, each class as wide as its share. A share below 0 takes no width.
+struct AllocationBar: View {
+	let bar: Allocation.Bar
+	let colors: [AssetClass: String]
+
+	var body: some View {
+		let shares = bar.shares.filter { $0.percent > 0 }
+		let total = shares.reduce(Decimal(0)) { $0 + $1.percent }
+		GeometryReader { geometry in
+			HStack(spacing: 1) {
+				ForEach(shares, id: \.assetClass) { share in
+					let fraction = total > 0 ? CGFloat(truncating: (share.percent / total) as NSDecimalNumber) : 0
+					AssetClassColors.color(of: share.assetClass, chosen: colors)
+						.frame(width: max(1, (geometry.size.width - CGFloat(max(0, shares.count - 1))) * fraction))
+				}
+			}
+		}
+		.frame(height: 14)
+		.background(Palette.switchBackground)
+		.clipShape(RoundedRectangle(cornerRadius: 4))
+		.accessibilityHidden(true)
 	}
 }

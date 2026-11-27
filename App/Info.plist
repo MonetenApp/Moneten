@@ -95,6 +95,16 @@
 				<string>public.data</string>
 			</array>
 		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>io.github.moneten.positions</string>
+			<key>UTTypeDescription</key>
+			<string>Moneten portfolio items</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

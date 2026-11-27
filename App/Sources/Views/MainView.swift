@@ -34,7 +34,9 @@ struct MainView: View {
 				Picker("View", selection: $model.viewMode) {
 					Image(systemName: "list.bullet").help("Show list only").accessibilityLabel("Show list only").tag(ViewMode.list)
 					Image(systemName: "chart.bar").help("Show bar chart").accessibilityLabel("Show bar chart").tag(ViewMode.barChart)
+					// A portfolio view has no pie chart: the allocation popover shows the split by class.
 					Image(systemName: "chart.pie").help("Show pie chart").accessibilityLabel("Show pie chart").tag(ViewMode.pieChart)
+						.selectionDisabled(model.isPortfolioView)
 				}
 				.pickerStyle(.segmented)
 				.help("View")
@@ -101,6 +103,8 @@ struct SheetView: View {
 		case let .undoSplit(id): UndoSplitSheet(rowID: id)
 		case let .comment(ids): CommentSheet(target: .transactions(ids))
 		case let .positionComment(id): CommentSheet(target: .position(id))
+		case let .assignAssetClass(ids): AssetClassPickerSheet(ids: ids)
+		case .assetClassSettings: AssetClassSettingsSheet()
 		case .migration: MigrationSheet()
 		case .exportAllData: ExportAllDataSheet()
 		case let .fileImport(run): FileImportSheet(run: run)

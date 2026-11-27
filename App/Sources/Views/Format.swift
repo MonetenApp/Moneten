@@ -241,12 +241,19 @@ enum Palette {
 	}
 }
 
-/// The color of each asset class, for its ribbon: one color for light and dark mode, as a color that the user chooses is,
-/// on which white text of the ribbon reaches 4.5:1. Stocks, funds, real estate, and cryptocurrencies keep the light color
-/// of the draft that the owner approved on 27 November 2026, and the others are darkened at their hue until white text
-/// reaches 4.6:1 (design of `refine-portfolio-view`).
+/// The color of each asset class, for its ribbon, its heading, and the allocation: the color that the user chose in the
+/// asset class settings, else the default of the class. A default is one color for light and dark mode, as a chosen color
+/// is, on which white text of the ribbon reaches 4.5:1. Stocks, funds, real estate, and cryptocurrencies keep the light
+/// color of the draft that the owner approved on 27 November 2026, and the others are darkened at their hue until white
+/// text reaches 4.6:1 (design of `refine-portfolio-view`). The settings check no contrast of a chosen color, as the
+/// category settings check none.
 enum AssetClassColors {
-	static func color(of assetClass: AssetClass) -> Color {
+	/// The chosen color of `chosen`, `Ledger.assetClassColors`, or the default when there is none or it cannot be read.
+	static func color(of assetClass: AssetClass, chosen: [AssetClass: String]) -> Color {
+		Color(hex: chosen[assetClass]) ?? defaultColor(of: assetClass)
+	}
+
+	static func defaultColor(of assetClass: AssetClass) -> Color {
 		let hex = switch assetClass {
 		case .stocks: 0x2F6FD6
 		case .funds: 0x7B4FC4

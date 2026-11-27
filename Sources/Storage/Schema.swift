@@ -492,6 +492,15 @@ enum Schema {
 		m.registerMigration("v36") { db in
 			try db.alter(table: "holding") { t in t.add(column: "comment", .text) }
 		}
+		// The colors that the user chose for asset classes (refine-portfolio-view, #613): the raw value of `AssetClass` and
+		// the color as hex text, such as "#2E7D32". The table starts empty, so every class shows its default color, which the
+		// app holds. It comes after v36.
+		m.registerMigration("v37") { db in
+			try db.create(table: "assetClassColor") { t in
+				t.column("assetClass", .text).primaryKey()
+				t.column("color", .text).notNull()
+			}
+		}
 		return m
 	}
 

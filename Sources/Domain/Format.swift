@@ -109,6 +109,11 @@ public enum Format {
 		return sign + number(rounded(value, places: 2).magnitude, places: 2...2, locale: locale) + " %"
 	}
 
+	/// A share of the allocation in percent with two decimal places and no sign, such as "59,97 %".
+	public static func share(_ value: Decimal, locale: Locale = .autoupdatingCurrent) -> String {
+		number(rounded(value, places: 2), places: 2...2, locale: locale) + " %"
+	}
+
 	/// A quote in its currency, or without a currency a percentage of a nominal amount, such as "98,50 %".
 	private static func quote(_ value: Decimal, currency: String?, places: ClosedRange<Int>, locale: Locale) -> String {
 		guard let currency else { return number(value, places: places, locale: locale) + " %" }

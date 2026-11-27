@@ -326,9 +326,13 @@ final class AppModel {
 	private var viewKind: ViewModes.Kind {
 		switch selection {
 		case .category?, .search?: .categories
-		case .account?, .group?, nil: .accounts
+		case .account?, .group?: selectedPortfolios == nil ? .accounts : .portfolios
+		case nil: .accounts
 		}
 	}
+
+	/// Whether the selected view shows positions, where "Pie Chart" is disabled: the allocation popover shows the split by class.
+	var isPortfolioView: Bool { viewKind == .portfolios }
 	var balanceMode: BalanceMode = BalanceMode(rawValue: AppSettings.defaults.string(forKey: Preference.balanceMode) ?? "") ?? .daily {
 		didSet { AppSettings.defaults.set(balanceMode.rawValue, forKey: Preference.balanceMode) }
 	}
@@ -1128,7 +1132,11 @@ final class AppModel {
 			let ledger = self.ledger
 			let before = ledger.holdings(of: portfolios)
 			let after = Holding.settingUserAssetClass(choice, of: ids, in: before)
-			if tableKey.filter.hidesShownPositions(before: before, after: after, currency: { ledger.positionCurrency(of: $0) }) {
+			let currency = { (h: Holding) in ledger.positionCurrency(of: h) }
+			// Under "Group by asset class" a new class moves a shown position into another section, which SwiftUI would turn
+			// into moves of rows.
+			if tableKey.filter.hidesShownPositions(before: before, after: after, currency: currency)
+				|| tableKey.filter.movesShownPositions(before: before, after: after, sort: portfolioSort, currency: currency) {
 				Task { await replacingTable { storeAssetClass(choice, of: ids) } }
 				return
 			}
@@ -1178,6 +1186,19 @@ final class AppModel {
 		}
 	}
 
+	/// The colors of the asset class settings, which replace every earlier choice; an empty list restores every default.
+	/// It writes through the store first and changes the ledger only after the write succeeds.
+	func setAssetClassColors(_ colors: [AssetClass: String]) {
+		guard let store, colors != ledger.assetClassColors else { return }
+		do {
+			try store.setAssetClassColors(colors)
+			ledgerChange = "asset class colors"
+			ledger.setAssetClassColors(colors)
+		} catch {
+			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
+		}
+	}
+
 	/// Sets the filter "Asset class" back to "Show All" when the positions of the view no longer have its class. A change
 	/// that empties the class hides shown positions, so it runs inside `replacingTable`, and the new filter comes with
 	/// the same new table.
@@ -1186,10 +1207,27 @@ final class AppModel {
 		filter.dropAssetClass(absentFrom: ledger.holdings(of: portfolios))
 	}
 
-	/// What ⌘K does: the category picker for the selected rows on screen.
+	/// What ⌘K does: the category picker for the selected rows on screen, or in a portfolio view the picker of the asset
+	/// classes for the selected positions.
 	func openCategoryPicker() {
+		if let portfolios = selectedPortfolios {
+			let shown = Set(ledger.holdings(of: portfolios).map(\.id))
+			let ids = selectedPositions.intersection(shown)
+			if !ids.isEmpty { sheet = .assignAssetClass(ids) }
+			return
+		}
 		let ids = visibleSelection
 		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
+	}
+
+	/// The title of the command of ⌘K, which assigns the asset class of the selected positions in a portfolio view.
+	var assignTitle: String {
+		selectedPortfolios != nil ? String(localized: "Assign Asset Class...") : String(localized: "Assign Category...")
+	}
+
+	/// Whether ⌘K has something to assign: a selected position in a portfolio view, else a selected transaction.
+	var canAssign: Bool {
+		selectedPortfolios != nil ? !selectedPositions.isEmpty : !selectedTransactions.isEmpty
 	}
 
 	/// Whether ⇧⌘K has something to comment on: one selected position in a portfolio view, else a selected transaction.
@@ -1239,11 +1277,42 @@ final class AppModel {
 		return ledger.changes(from: changed)
 	}
 
-	/// What a drag from this app carries: rows of the transaction list, a category, or a group or an account of the sidebar.
+	/// What a drag from this app carries: rows of the transaction list, a category, a group or an account of the sidebar,
+	/// or positions on their way to a heading of "Group by asset class".
 	enum Drag {
 		case transactions(Set<UUID>)
 		case category(UUID)
 		case treeItem(UUID)
+		case positions(Set<UUID>)
+	}
+
+	/// The number of drags of positions that started, which `PositionClickWatcher` compares, so a drag opens no position.
+	@ObservationIgnored private(set) var positionDrags = 0
+	/// The class whose heading a drag of positions is over, which lights up.
+	private(set) var positionDropTarget: AssetClass?
+
+	func startDrag(positions ids: Set<UUID>) -> DraggedPositions {
+		drag = .positions(ids)
+		positionDrags += 1
+		return DraggedPositions(ids: ids)
+	}
+
+	/// A drag of positions came over the heading of `assetClass`, or left it.
+	func dropTarget(_ assetClass: AssetClass, isOver: Bool) {
+		if isOver { positionDropTarget = assetClass } else if positionDropTarget == assetClass { positionDropTarget = nil }
+	}
+
+	/// A drop of positions on the heading of `assetClass`: the same as the choice of that class in the submenu "Asset Class".
+	/// Only positions of the open view count, so data of an older drag changes nothing else.
+	@discardableResult
+	func drop(positions ids: Set<UUID>, on assetClass: AssetClass) -> Bool {
+		positionDropTarget = nil
+		drag = nil
+		guard let portfolios = tableKey.portfolios else { return false }
+		let shown = ids.intersection(ledger.holdings(of: portfolios).map(\.id))
+		guard !shown.isEmpty else { return false }
+		setAssetClass(assetClass, of: shown)
+		return true
 	}
 
 	/// The drag in progress. SwiftUI hands the dragged data to a drop target only on the drop, so a category
@@ -1293,7 +1362,7 @@ final class AppModel {
 		switch drag {
 		case let .transactions(ids): canDrop(ids, on: category)
 		case let .category(id): canDrop(category: id, on: category)
-		case .treeItem, nil: false
+		case .treeItem, .positions, nil: false
 		}
 	}
 
@@ -2364,6 +2433,10 @@ enum SheetKind: Identifiable, Equatable {
 	case comment(Set<UUID>)
 	/// The comment of one position, in the sheet of the comment of a transaction.
 	case positionComment(UUID)
+	/// The picker of the asset classes of ⌘K for these positions.
+	case assignAssetClass(Set<UUID>)
+	/// The colors of the asset classes, from the end of the submenu "Asset Class".
+	case assetClassSettings
 	case migration
 	case exportAllData
 	case fileImport(FileImport)
