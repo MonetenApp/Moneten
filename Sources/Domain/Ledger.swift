@@ -731,6 +731,22 @@ public struct Ledger: Sendable {
 		}
 	}
 
+	/// The position `id` in any portfolio, nil when no portfolio holds it.
+	public func holding(_ id: UUID) -> Holding? {
+		for positions in holdingsByAccount.values { if let h = positions.first(where: { $0.id == id }) { return h } }
+		return nil
+	}
+
+	/// Takes over the comment of the position `id`, which the database stored. Nil removes it. The order of the positions
+	/// does not depend on it.
+	public mutating func setComment(_ comment: String?, of id: UUID) {
+		for (account, positions) in holdingsByAccount {
+			guard let i = positions.firstIndex(where: { $0.id == id }) else { continue }
+			holdingsByAccount[account]![i].comment = comment
+			return
+		}
+	}
+
 	/// Takes over a merge that the database stored: removes the dropped rows, upserts the others and
 	/// the account, and records the value of a portfolio.
 	public mutating func apply(_ r: Reconciliation) {

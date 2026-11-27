@@ -399,6 +399,14 @@ public final class Store: SavedPINStore {
 		}
 	}
 
+	/// Stores the comment of the position `id`. Nil removes it. A refresh never writes this column; `Holding.identify`
+	/// carries it over.
+	public func setComment(_ comment: String?, ofHolding id: UUID) throws {
+		try write { db in
+			_ = try HoldingRecord.filter(Column("id") == id).updateAll(db, Column("comment").set(to: comment))
+		}
+	}
+
 	/// Deletes an account. An access goes with its last account, together with its state and its saved PIN. Returns the
 	/// ID of that access.
 	@discardableResult

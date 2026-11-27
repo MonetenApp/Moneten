@@ -277,7 +277,8 @@ struct AllDataTests {
 			try HoldingRecord(Holding(accountID: portfolio.id, security: Security(name: "Beispiel Welt ETF", isin: "DE0000000001"), quantity: Decimal(string: "12.345")!,
 				quote: Quote(amount: Decimal(string: "81.2")!, currency: "EUR", day: Day(year: 2026, month: 11, day: 13)),
 				marketValue: Money(minorUnits: 100_241, currency: "EUR"), purchasePrice: Quote(amount: 70, currency: "EUR"),
-				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!), sourceAssetClass: .funds, userAssetClass: .etfs)).insert(db)
+				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!), sourceAssetClass: .funds, userAssetClass: .etfs,
+				comment: "Nachkaufen unter 70 €.")).insert(db)
 		}
 		var power = TransactionFilter()
 		power.searchText = "name:Stadtwerke"
@@ -885,6 +886,23 @@ struct AllDataTests {
 		rows[0]["userAssetClass"] = "Aktien"
 		json["holdings"] = rows
 		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
+	}
+
+	@Test("The comment of a holding travels with the file, and a file without it reads with none")
+	func holdingComment() throws {
+		let source = try filledStore()
+		let file = try source.exportAllData().json()
+		var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
+		var rows = json["holdings"] as! [[String: Any]]
+		#expect(rows[0]["comment"] as? String == "Nachkaufen unter 70 €.")
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: file))
+		let after = try target.loadLedger()
+		#expect(after.holdings(of: after.accounts.map(\.id)).map(\.comment) == ["Nachkaufen unter 70 €."])
+		rows[0]["comment"] = nil
+		json["holdings"] = rows
+		let earlier = try AllData(json: JSONSerialization.data(withJSONObject: json))
+		#expect(earlier.holdings[0].comment == nil)
 	}
 
 	@Test("An import refuses a holding value in a code that is no currency")

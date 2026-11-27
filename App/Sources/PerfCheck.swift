@@ -504,7 +504,7 @@ struct PerfScenario {
 				if !c.model.selectedTransactions.isEmpty { c.fail("a table that went changed the selection") }
 				c.harness.holdingsTables().first?.selectRowIndexes(IndexSet(0..<2), byExtendingSelection: false)
 				await c.settle()
-				if c.model.selectedPositions != 2 { c.fail("the trail counts the wrong number of selected positions", ("selected", .count(c.model.selectedPositions)), ("expected", .count(2))) }
+				if c.model.selectedPositions.count != 2 { c.fail("the trail counts the wrong number of selected positions", ("selected", .count(c.model.selectedPositions.count)), ("expected", .count(2))) }
 				await c.select("Account 1")
 				if c.model.tableKey.portfolios != nil || c.harness.transactionTables().isEmpty { c.fail("the view did not change back to the transactions") }
 			}),

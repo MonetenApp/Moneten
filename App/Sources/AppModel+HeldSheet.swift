@@ -52,6 +52,7 @@ extension AppModel {
 			} ?? false
 		case let .split(row): ledger.row(row.id) != nil
 		case let .comment(ids): ids.contains { ledger.row($0) != nil }
+		case let .positionComment(id): ledger.holding(id) != nil
 		case let .renameSearch(id): savedSearches.contains { $0.id == id }
 		default: true
 		}
