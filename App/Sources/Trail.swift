@@ -61,7 +61,7 @@ extension TransactionFilter {
 	/// The kinds of the active filters, without their values. The trail and `debug.log` both use them.
 	var activeKinds: [StaticString] {
 		let kinds: [(Bool, StaticString)] = [(!searchText.isEmpty, "search"), (period != .all, "period"), (status != .all, "status"), (amount != .all, "amount"),
-			(categoryID != nil, "category"), (account != nil, "account")]
+			(categoryID != nil, "category"), (account != nil, "account"), (gain != .all, "gain"), (quote != .all, "quote")]
 		return kinds.filter(\.0).map(\.1)
 	}
 

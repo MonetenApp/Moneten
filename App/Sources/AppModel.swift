@@ -1124,9 +1124,10 @@ final class AppModel {
 	func setAssetClass(_ choice: AssetClass?, of ids: Set<UUID>) {
 		guard store != nil, !ids.isEmpty else { return }
 		if let portfolios = tableKey.portfolios {
+			let ledger = self.ledger
 			let before = ledger.holdings(of: portfolios)
 			let after = Holding.settingUserAssetClass(choice, of: ids, in: before)
-			if tableKey.filter.hidesShownPositions(before: before, after: after) {
+			if tableKey.filter.hidesShownPositions(before: before, after: after, currency: { ledger.positionCurrency(of: $0) }) {
 				Task { await replacingTable { storeAssetClass(choice, of: ids) } }
 				return
 			}
@@ -2143,17 +2144,18 @@ final class AppModel {
 
 	/// The open table shows pending rows or split parts that a correction can remove, or a position of
 	/// the account that the delivered positions no longer hold, or that leaves the filters of the table, such as a
-	/// position whose bank sends another asset class than the one of the filter. A sorted list of positions whose order
+	/// position whose bank sends another asset class than the one of the filter, or whose profit turns into a loss
+	/// under "Gains". A sorted list of positions whose order
 	/// the refresh changes, such as new quotes in a list sorted by quote, starts over too: in place, SwiftUI moves every row.
 	private func removesShownRows(_ result: RefreshResult, of accountID: UUID) -> Bool {
 		if let portfolios = tableKey.portfolios {
 			guard portfolios.contains(accountID), let delivered = result.holdings else { return false }
+			let ledger = self.ledger
 			let stored = ledger.holdings(of: [accountID])
 			let identified = Holding.identify(delivered, stored: stored)
-			if tableKey.filter.hidesShownPositions(before: stored, after: identified) { return true }
+			if tableKey.filter.hidesShownPositions(before: stored, after: identified, currency: { ledger.positionCurrency(of: $0) }) { return true }
 			// The positions of the refreshed portfolio can move among those of the others of a group.
 			let others = ledger.holdings(of: portfolios.filter { $0 != accountID })
-			let ledger = self.ledger
 			return tableKey.filter.movesShownPositions(before: others + stored, after: others + identified, sort: portfolioSort) { ledger.positionCurrency(of: $0) }
 		}
 		let ledger = self.ledger

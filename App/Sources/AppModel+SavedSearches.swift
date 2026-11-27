@@ -46,6 +46,7 @@ extension AppModel {
 	func applySavedSearch(_ id: UUID) {
 		guard let saved = savedSearches.first(where: { $0.id == id }) else { return }
 		choose(period: saved.bar.period)
-		filter = saved.filter(in: ledger)
+		// A saved search holds no filter of the positions, so the next portfolio shows those of the bar.
+		filter = saved.filter(in: ledger).keepingPositionFilters(of: filter)
 	}
 }
