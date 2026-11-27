@@ -141,9 +141,9 @@ struct HoldingsHeader: View {
 		.padding(.trailing, trailingInset)
 		.padding(.vertical, 5)
 		.frame(maxWidth: .infinity)
-		// The table draws the line below the header. The header stands on the background of the table.
-		.background(Color(nsColor: .controlBackgroundColor))
-		.overlay(alignment: .top) { RowChrome.separator.frame(height: 1) }
+		// The table draws the line below the header. The header stands on the neutral background of the list (#614).
+		.background(Palette.list)
+		.overlay(alignment: .top) { Palette.separator.frame(height: 1) }
 	}
 
 	/// One line of the header: the first line of a column in the color of the second lines of the rows, the second one
@@ -157,7 +157,7 @@ struct HoldingsHeader: View {
 		} label: {
 			Text(title)
 				.fontWeight(primary ? .medium : .regular)
-				.foregroundStyle(primary ? Palette.detail : AnyShapeStyle(.secondary))
+				.foregroundStyle(primary ? Palette.detail : AnyShapeStyle(Palette.secondaryText))
 				.lineLimit(1)
 				.fixedSize()
 				.overlay(alignment: .trailing) {
@@ -203,7 +203,7 @@ struct HoldingsTable: View {
 			TableColumn("Quantity") { h in
 				VStack(alignment: .trailing, spacing: PositionColumns.lineGap) {
 					Text(Format.quantity(h)).monospacedDigit().lineLimit(1)
-					Text(Format.quantityUnit(h)).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+					Text(Format.quantityUnit(h)).font(.system(size: 10.5)).foregroundStyle(Palette.secondaryText).lineLimit(1)
 				}
 				.positionCell(alignment: .topTrailing)
 			}
@@ -289,7 +289,7 @@ struct NameCell: View {
 
 	private func number(_ label: LocalizedStringKey, _ value: String) -> some View {
 		HStack(spacing: 3) {
-			Text(label).foregroundStyle(.secondary)
+			Text(label).foregroundStyle(Palette.secondaryText)
 			Text(value).foregroundStyle(Palette.detail)
 		}
 		.fixedSize()
@@ -309,7 +309,7 @@ struct ValueCell: View {
 				HStack(spacing: 0) {
 					TintedText(text: Format.gain(gain.amount), tint: Self.tint(Format.gainSign(gain.amount)))
 					if let percent = gain.percent {
-						Text(verbatim: " · ").foregroundStyle(.secondary)
+						Text(verbatim: " · ").foregroundStyle(Palette.secondaryText)
 						TintedText(text: Format.gainPercent(percent), tint: Self.tint(Format.gainSign(percent: percent)))
 					}
 				}
