@@ -15,7 +15,7 @@ struct TransactionsView: View {
 		let result = model.rows(for: key)
 		let rows = result.rows
 		VStack(spacing: 0) {
-			// As in MoneyMoney: one slate band behind the title and the chart.
+			// As in MoneyMoney: one band behind the title and the chart, here in a neutral gray (issue #614).
 			VStack(spacing: 0) {
 				HeaderView(rows: rows)
 				if model.viewMode != .list {
@@ -40,6 +40,10 @@ struct TransactionsView: View {
 				StatusLine(rows: rows, gaveUp: result.gaveUp)
 			}
 		}
+		// The neutral background of the content, also behind the tables, whose own background macOS 26 tints with the
+		// desktop picture (issue #614). The hidden content background reaches every table below.
+		.scrollContentBackground(.hidden)
+		.background(Palette.list)
 		.background(DrawProbe())
 		.searchable(text: $model.filter.searchText, placement: .toolbar, prompt: "Search")
 		.searchFocused($searchFocused)
@@ -141,7 +145,7 @@ struct HeaderView: View {
 
 /// The notice of an open migrated account without a bank access. After a migration every account is in this
 /// state, so "Connect..." is the first thing a switching user needs: a button of the normal size in the blue of the
-/// system, which stands out on the slate band in light and dark, unlike the small gray one before (issue #531).
+/// system, which stands out on the band in light and dark, unlike the small gray one before (issue #531).
 /// The assistant finds the account at its bank and offers to connect it.
 struct ConnectNotice: View {
 	@Environment(AppModel.self) private var model
@@ -507,11 +511,11 @@ struct TransactionTable: View {
 			VStack {
 				Spacer()
 				Text(emptyText)
-					.foregroundStyle(.secondary)
+					.foregroundStyle(Palette.secondaryText)
 				FilterHintLines(hints: key.filter.hints).fixedSize()
 				if let a = model.selectedAccount, a.isOffline, !model.ledger.accountsWithTransactions.contains(a.id) {
 					Text(a.kind == .loan ? String(localized: "Add at least the initial payout with “Add Transaction”.") : String(localized: "Add at least the initial deposit with “Add Transaction”."))
-						.foregroundStyle(.secondary)
+						.foregroundStyle(Palette.secondaryText)
 					Button("Add Transaction...") { model.sheet = .transaction(nil) }.padding(.top, 6)
 				}
 				Spacer()
@@ -749,7 +753,7 @@ struct AccountHeading<Content: View>: View {
 								// the heading this column's background would cover after the width of the date (#526).
 								Text(heading.account.name)
 									.font(.system(size: 11, weight: .semibold))
-									.foregroundStyle(.secondary)
+									.foregroundStyle(Palette.secondaryText)
 									.lineLimit(1)
 									.truncationMode(.tail)
 									.frame(maxWidth: .infinity, alignment: .leading)
@@ -763,7 +767,7 @@ struct AccountHeading<Content: View>: View {
 						.frame(height: 4)
 						.overlay(alignment: .bottom) {
 							if !isSelected {
-								Color(nsColor: .separatorColor)
+								Palette.separator
 									.frame(height: 1)
 									.padding(.leading, column == .first ? 0 : -RowChrome.halfGap)
 									.padding(.trailing, column == .last ? 0 : -RowChrome.halfGap)
@@ -773,7 +777,7 @@ struct AccountHeading<Content: View>: View {
 				}
 				// Across the gaps between the cells and up to the top of the row.
 				.background {
-					Color(nsColor: .controlBackgroundColor)
+					Palette.list
 						.padding(.horizontal, -RowChrome.halfGap)
 						.padding(.top, -RowChrome.inset)
 				}
@@ -1039,9 +1043,6 @@ struct RowChrome: View {
 	static let band = Color(nsColor: NSColor(name: "pendingBand") { appearance in
 		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 1, alpha: 0.06) : NSColor(white: 0, alpha: 0.05)
 	})
-	static let separator = Color(nsColor: NSColor(name: "rowSeparator") { appearance in
-		appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0.07, alpha: 1) : NSColor(white: 0.88, alpha: 1)
-	})
 
 	let pending: Bool
 	@Environment(\.backgroundProminence) private var prominence
@@ -1051,7 +1052,7 @@ struct RowChrome: View {
 		ZStack(alignment: .bottom) {
 			// Only pending rows need the window position, so the others skip the geometry reader.
 			if pending { bands(selected: selected) }
-			if !selected { Self.separator.frame(height: 1) }
+			if !selected { Palette.separator.frame(height: 1) }
 		}
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
 		.padding(.horizontal, -Self.halfGap)
@@ -1391,7 +1392,7 @@ struct StatusLine: View {
 							ProgressView().controlSize(.mini)
 							Text(status).lineLimit(1)
 						}
-						.foregroundStyle(.secondary)
+						.foregroundStyle(Palette.secondaryText)
 					} else if let problem = model.backgroundProblem {
 						BackgroundProblemButton(problem: problem)
 					}

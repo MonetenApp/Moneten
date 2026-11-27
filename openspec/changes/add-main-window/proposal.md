@@ -57,6 +57,7 @@ None.
 
 - The sidebar keeps the system material of macOS instead of the opaque gray of MoneyMoney (ADR 0012).
 - Selections and controls use a muted slate blue. MoneyMoney uses the system blue.
+- The content view uses neutral grays in the light and the dark appearance, from the approved draft of the owner (issue #614). MoneyMoney draws a slate band and a light gray filter bar. macOS 26 tints the system background of a list with the desktop picture, so the app does not use it for the content.
 - A sidebar row and a toolbar control appear only when their feature is part of the installed version. Version 0.1 has no "Dashboard", "Payments", or "Documents" row.
 - The number of new transactions next to an account in the sidebar comes from names in the program file. How MoneyMoney draws it was not observed.
 - The change `add-transaction-search-and-filters` decides which filters stay when the view changes and what the pin does. This change keeps no copy of those rules.

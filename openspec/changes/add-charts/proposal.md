@@ -51,8 +51,8 @@ None.
 
 ### Decided for Moneten
 
-- Bars, pies, the slate band, and the hover column follow the look measured in MoneyMoney's window.
-- Text on the light slate band is dark with at least 4.5:1. MoneyMoney writes white on it, which reaches only 2:1.
+- Bars, pies, and the hover column follow the shapes measured in MoneyMoney's window. The band behind the title and the chart is a neutral gray from the approved draft of the owner, not MoneyMoney's slate (issue #614), so the balance bars are light gray and not white.
+- Text on the light gray band is dark with at least 4.5:1. MoneyMoney writes white on its light slate band, which reaches only 2:1.
 - The pies stand 300 points apart instead of MoneyMoney's 225, so the names between them have room.
 - The pie chart area shows one pie for withdrawals and one for deposits. The version history speaks of pie charts in the plural, but the drawing was not observed.
 - A group with accounts in several currencies gets one bar chart for each currency. Issue #21 asks for one series per currency, and the app converts no currencies.

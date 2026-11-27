@@ -35,7 +35,7 @@ struct HoldingsView: View {
 			.overlay {
 				if rows.isEmpty, !holds {
 					Text(all.isEmpty ? "No portfolio items found." : "No matching portfolio items found.")
-						.foregroundStyle(.secondary)
+						.foregroundStyle(Palette.secondaryText)
 				}
 			}
 			HoldingsStatusLine(rows: rows, selection: selection)
@@ -228,7 +228,7 @@ struct HoldingsStatusLine: View {
 						ProgressView().controlSize(.mini)
 						Text(status).lineLimit(1)
 					}
-					.foregroundStyle(.secondary)
+					.foregroundStyle(Palette.secondaryText)
 				} else if let problem = model.backgroundProblem {
 					BackgroundProblemButton(problem: problem)
 				}
