@@ -247,6 +247,24 @@ struct PortfolioRowsTests {
 		#expect(PortfolioSort.after(clicking: .lastQuote, on: second) == PortfolioSort(key: .lastQuote, isAscending: true))
 	}
 
+	@Test("The search finds a position by its comment, and a new comment can take a shown position off the list")
+	func searchByComment() {
+		var plan = position("Weltindex UCITS ETF")
+		plan.comment = "Sparplan 500 € am 1."
+		let share = position("Musterwerke AG")
+		var filter = TransactionFilter()
+		filter.searchText = "sparplan"
+		#expect(filter.positions(of: [plan, share]) == [plan])
+		filter.searchText = "xyz"
+		#expect(filter.positions(of: [plan, share]).isEmpty)
+		// A position that the search shows by its comment leaves the list when the comment changes, so the table starts over.
+		filter.searchText = "sparplan"
+		var changed = plan
+		changed.comment = "Ziel 2.000 Anteile"
+		#expect(filter.hidesShownPositions(before: [plan, share], after: [changed, share]))
+		#expect(!TransactionFilter().hidesShownPositions(before: [plan, share], after: [changed, share]))
+	}
+
 	@Test("Each class has its own name")
 	func names() {
 		#expect(AssetClass.allCases.map(\.name) == ["Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", "Others"])

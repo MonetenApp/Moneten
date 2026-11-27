@@ -85,10 +85,13 @@ public struct Holding: Identifiable, Hashable, Sendable {
 	/// position shows is never stored: `assetClass` derives it, so it cannot disagree with them. Keeping the class of the
 	/// source next to the choice lets a refresh update it while the choice holds, and lets "Automatic" go back to it at once.
 	public var userAssetClass: AssetClass?
+	/// The user's comment, nil without one. It belongs to the position, as the user's asset class does: no source sends
+	/// one, so no refresh changes it, and it goes with the position when the position leaves the portfolio.
+	public var comment: String?
 
 	public init(id: UUID = UUID(), accountID: UUID, security: Security, quantity: Decimal, isNominal: Bool = false, nominalCurrency: String? = nil, quote: Quote? = nil,
 		marketValue: Money? = nil, accruedInterest: Money? = nil, purchasePrice: Quote? = nil, exchangeRate: ExchangeRate? = nil,
-		sourceAssetClass: AssetClass? = nil, userAssetClass: AssetClass? = nil) {
+		sourceAssetClass: AssetClass? = nil, userAssetClass: AssetClass? = nil, comment: String? = nil) {
 		self.id = id
 		self.accountID = accountID
 		self.security = security
@@ -102,6 +105,7 @@ public struct Holding: Identifiable, Hashable, Sendable {
 		self.exchangeRate = exchangeRate
 		self.sourceAssetClass = sourceAssetClass
 		self.userAssetClass = userAssetClass
+		self.comment = comment
 	}
 
 	/// The class that the position shows: the user's choice, or else the class of the source, or else "Others". The app
@@ -187,9 +191,9 @@ extension Holding {
 		a.security.name.localizedCaseInsensitiveCompare(b.security.name) == .orderedAscending
 	}
 
-	/// Whether `text` occurs in the name, the ISIN, or the security number, without regard to case.
+	/// Whether `text` occurs in the name, the ISIN, the security number, or the comment, without regard to case.
 	public func matches(_ text: String) -> Bool {
-		let fields = [security.name, security.isin, security.securityNumber].compactMap { $0 }
+		let fields = [security.name, security.isin, security.securityNumber, comment].compactMap { $0 }
 		return fields.contains { $0.localizedCaseInsensitiveContains(text) }
 	}
 
@@ -199,19 +203,20 @@ extension Holding {
 		holdings.map { var holding = $0; if ids.contains(holding.id) { holding.userAssetClass = choice }; return holding }
 	}
 
-	/// Gives each delivered position the ID and the user's asset class of a stored one of the same security, so a position
-	/// keeps its identity and the user's choice across refreshes. A source never sends a choice of the user, so a position
-	/// without a stored one has none. Every position first takes the stored one with its ISIN. Then a position
+	/// Gives each delivered position the ID, the user's asset class, and the comment of a stored one of the same security,
+	/// so a position keeps its identity, the user's choice, and the comment across refreshes, also with another quantity. A
+	/// source never sends a choice or a comment of the user, so a position without a stored one has neither. Every position first takes the stored one with its ISIN. Then a position
 	/// matches by its security number, or else by its name, but only when one of the two has no ISIN: two
 	/// different ISINs are two securities, whatever their names. Names match with their whitespace collapsed, because a
 	/// position stored before #600 keeps the padded name of the bank. Each stored position matches at most once.
 	public static func identify(_ delivered: [Holding], stored: [Holding]) -> [Holding] {
 		var free = stored
-		var result = delivered.map { var holding = $0; holding.userAssetClass = nil; return holding }
+		var result = delivered.map { var holding = $0; holding.userAssetClass = nil; holding.comment = nil; return holding }
 		func take(_ j: Int, for i: Int) {
 			let match = free.remove(at: j)
 			result[i].id = match.id
 			result[i].userAssetClass = match.userAssetClass
+			result[i].comment = match.comment
 		}
 		var open: [Int] = []
 		for (i, holding) in delivered.enumerated() {

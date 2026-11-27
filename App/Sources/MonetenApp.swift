@@ -201,7 +201,7 @@ struct AppCommands: Commands {
 				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
 			Button("Add Comment...") { model.openCommentSheet() }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
-				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
+				.disabled(!unlocked || !model.canComment || model.sheet != nil || model.sync.broker.sheet != nil)
 			Divider()
 			Button("Import Transactions...") { Task { await model.importFile() } }
 				.disabled(!unlocked || !(model.selectedAccount?.takesImportedTransactions ?? false) || model.isTransferringTransactions || model.sheet != nil)

@@ -30,6 +30,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 	var rate: String?
 	var sourceAssetClass: AssetClass?
 	var userAssetClass: AssetClass?
+	var comment: String?
 
 	init(_ h: Holding) {
 		id = h.id
@@ -55,6 +56,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 		rate = h.exchangeRate?.rate.description
 		sourceAssetClass = h.sourceAssetClass
 		userAssetClass = h.userAssetClass
+		comment = h.comment
 	}
 
 	/// The position, or nil when a decimal does not read, which only a foreign writer of the table causes.
@@ -69,7 +71,7 @@ struct HoldingRecord: Codable, FetchableRecord, PersistableRecord, TableRecord {
 			isNominal: isNominal, nominalCurrency: nominalCurrency, quote: price.flatMap(Self.decimal).map { Quote(amount: $0, currency: priceCurrency, day: priceDay) },
 			marketValue: money(marketValueMinor, marketValueCurrency), accruedInterest: money(accruedInterestMinor, accruedInterestCurrency),
 			purchasePrice: purchasePrice.flatMap(Self.decimal).map { Quote(amount: $0, currency: purchasePriceCurrency, day: purchaseDay) },
-			exchangeRate: exchangeRate, sourceAssetClass: sourceAssetClass, userAssetClass: userAssetClass)
+			exchangeRate: exchangeRate, sourceAssetClass: sourceAssetClass, userAssetClass: userAssetClass, comment: comment)
 	}
 
 	/// `Decimal.description` writes a plain number with a point, which this reads back exactly.

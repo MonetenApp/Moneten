@@ -222,6 +222,9 @@ enum Palette {
 	/// A value that may be out of date, such as the day of an old quote. The system orange reaches only 2.1:1 on white,
 	/// so light mode uses a darker orange with 5.9:1, and 8:1 with "Increase contrast". Dark mode keeps the system orange.
 	static let warning = dynamic("textWarning", light: rgb(0x9A5200), dark: .systemOrange, increasedContrast: rgb(0x7A4300))
+	/// The speech bubble of a position with a comment, the note color of the draft that the owner approved on 27 November
+	/// 2026: 3.2:1 on the list in light mode and 10:1 in dark mode, above the 3:1 of a symbol. The comment itself is body text.
+	static let note = dynamic("note", light: rgb(0xB7860B), dark: rgb(0xE8C25A), increasedContrast: rgb(0x7A5900))
 
 	/// `increasedContrast` replaces `light` when the user turns on "Increase contrast".
 	private static func dynamic(_ name: String, light: NSColor, dark: NSColor, increasedContrast: NSColor? = nil) -> Color {

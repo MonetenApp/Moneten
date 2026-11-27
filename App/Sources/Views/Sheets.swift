@@ -490,14 +490,23 @@ struct GroupSettingsSheet: View {
 	}
 }
 
+/// The comment of transactions or of one position, in the same sheet.
 struct CommentSheet: View {
+	enum Target {
+		case transactions(Set<UUID>)
+		case position(UUID)
+	}
+
 	@Environment(AppModel.self) private var model
-	let ids: Set<UUID>
+	let target: Target
 	@State private var text = ""
 
 	var body: some View {
-		SheetFrame(title: ids.count == 1 ? "Comment" : "Comment for \(ids.count) transactions", onConfirm: {
-			model.setComment(text, for: ids)
+		SheetFrame(title: title, onConfirm: {
+			switch target {
+			case let .transactions(ids): model.setComment(text, for: ids)
+			case let .position(id): model.setComment(text, ofPosition: id)
+			}
 			return true
 		}) {
 			Section {
@@ -506,10 +515,25 @@ struct CommentSheet: View {
 					.lineLimit(5...10)
 			}
 		}
-		.keepsInput(text, of: .comment(ids))
+		.keepsInput(text, of: kind)
 		.onAppear {
-			text = ids.first.flatMap { model.ledger.row($0)?.comment } ?? ""
-			if let held: String = model.heldInput(for: .comment(ids)) { text = held }
+			text = switch target {
+			case let .transactions(ids): ids.first.flatMap { model.ledger.row($0)?.comment } ?? ""
+			case let .position(id): model.ledger.holding(id)?.comment ?? ""
+			}
+			if let held: String = model.heldInput(for: kind) { text = held }
+		}
+	}
+
+	private var title: LocalizedStringKey {
+		if case let .transactions(ids) = target, ids.count != 1 { return "Comment for \(ids.count) transactions" }
+		return "Comment"
+	}
+
+	private var kind: SheetKind {
+		switch target {
+		case let .transactions(ids): .comment(ids)
+		case let .position(id): .positionComment(id)
 		}
 	}
 }

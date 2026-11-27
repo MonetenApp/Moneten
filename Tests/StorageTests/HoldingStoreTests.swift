@@ -102,6 +102,38 @@ struct HoldingStoreTests {
 		#expect(stored.map(\.assetClass) == [.others])
 	}
 
+	@Test("A comment survives the next refresh with another quantity, in the database and in the ledger, and nil removes it")
+	func commentSurvivesARefresh() throws {
+		let store = try makeStore()
+		var ledger = try store.loadLedger()
+		ledger.apply(try store.merge(refresh([fund, bond], value: 606_001), into: depot.id))
+		try store.setComment("Nachkaufen unter 70 €.", ofHolding: fund.id)
+		ledger.setComment("Nachkaufen unter 70 €.", of: fund.id)
+		#expect(try store.loadLedger().holdings(of: [depot.id]).map(\.comment) == [nil, "Nachkaufen unter 70 €."])
+
+		var bought = fund
+		bought.quantity = 45
+		ledger.apply(try store.merge(refresh([bought, bond], value: 606_001), into: depot.id))
+		let stored = try store.loadLedger().holdings(of: [depot.id])
+		#expect(stored.map(\.comment) == [nil, "Nachkaufen unter 70 €."])
+		#expect(stored.last?.quantity == 45)
+		#expect(ledger.holdings(of: [depot.id]) == stored)
+
+		try store.setComment(nil, ofHolding: fund.id)
+		#expect(try store.loadLedger().holdings(of: [depot.id]).map(\.comment) == [nil, nil])
+	}
+
+	@Test("v36 leaves every stored position without a comment")
+	func storedPositionsHaveNoComment() throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v35")
+		try Store(queue: queue).save(depot)
+		try queue.write { db in try HoldingRecord(bond).insertOld(db) }
+		try Schema.migrator.migrate(queue)
+		#expect(try Store(queue: queue).loadLedger().holdings(of: [depot.id]).map(\.comment) == [nil])
+	}
+
 	@Test("The positions go with their account")
 	func removedWithAccount() throws {
 		let store = try makeStore()

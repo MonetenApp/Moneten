@@ -450,6 +450,19 @@ final class DebugHarness {
 				log("assetclass", ("position", .position(position)), ("name", .hash(h.security.name)), ("class", .state(h.assetClass)),
 					("source", .state(h.sourceAssetClass)), ("user", .state(h.userAssetClass)))
 			}
+		// "<name>|<comment>": what the comment sheet of a position saves for every position of the security <name>; an empty
+		// comment removes it. Then one line for each position of all portfolios, in the order of the list, with whether it
+		// has a comment and the hash of the comment, never the text.
+		case "holdingcomment":
+			let parts = argument.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+			let portfolios = model.ledger.accounts.filter { $0.kind == .portfolio }.map(\.id)
+			if parts.count == 2 {
+				for h in model.ledger.holdings(of: portfolios) where h.security.name == parts[0] { model.setComment(parts[1], ofPosition: h.id) }
+			}
+			for (position, h) in model.ledger.holdings(of: portfolios).enumerated() {
+				log("holdingcomment", ("position", .position(position)), ("name", .hash(h.security.name)), ("comment", .flag(h.comment != nil)),
+					("text", h.comment.map { .hash($0) } ?? .word("-")))
+			}
 		// "<name>": what "Remove" in the context menu of a group does.
 		case "removegroup":
 			if let g = model.ledger.groups.first(where: { $0.name == argument }) { Task { await model.remove(group: g.id) } }
@@ -1631,8 +1644,10 @@ final class DebugHarness {
 		case "rowmenu": rowMenu(argument)
 		// "<row>|<count>" opens the context menu of row <row> of the table of positions as a right click does, after it selects
 		// the first <count> rows. It logs the items of the submenu "Asset Class" with the class of each and whether it has the
-		// mark. "<row>|<count>|<item>" also chooses the item of the submenu with that English title, "Automatic" or the name of a
-		// class, which changes only the database. Then "assetclass" with an empty argument reads the classes.
+		// mark, and the comment item of the menu, "add", "edit", or "none". "<row>|<count>|<item>" also chooses the item of the
+		// submenu with that English title, "Automatic" or the name of a class, which changes only the database. Then
+		// "assetclass" with an empty argument reads the classes. "Add Comment..." or "Edit Comment..." as <item> chooses that
+		// item of the menu and logs whether the comment sheet of a position opened.
 		case "holdingmenu": holdingMenu(argument)
 		// "<row>": a plain click on row <row> of the table of positions, handed to the watcher of the clicks and to the window
 		// as the mouse sends it: it opens the position of the row, or closes it when it is open. Then it logs whether a
@@ -2800,9 +2815,26 @@ final class DebugHarness {
 		let classes: [LogValue] = entries.map { entry in
 			entry.title == Self.localized("Automatic") ? .word("automatic") : .state(AssetClass.allCases.first { $0.name == entry.title } as Any)
 		}
-		log("holdingmenu", ("items", .count(menu.items.count)), ("classes", .list(classes)), ("marked", .list(entries.map { .flag($0.state == .on) })))
+		let commentTitles = ["Add Comment...", "Edit Comment..."]
+		let commentItem = commentTitles.firstIndex { title in menu.items.contains { $0.title == Self.localized(title) } }
+		log("holdingmenu", ("items", .count(menu.items.count)), ("classes", .list(classes)), ("marked", .list(entries.map { .flag($0.state == .on) })),
+			("comment", .word(commentItem.map { ["add", "edit"][$0] } ?? "none")))
 		guard parts.count >= 3 else { return }
 		let surface = table.window.map(surface(of:)) ?? .startWindow
+		if commentTitles.contains(parts[2]) {
+			guard HarnessRun.mayClick(parts[2], allowed: HarnessRun.rowMenuTitles(searching: []), on: surface),
+				let index = menu.items.firstIndex(where: { $0.title == Self.localized(parts[2]) }) else { return log("holdingmenu refused") }
+			nonisolated(unsafe) let choose = { menu.performActionForItem(at: index) }
+			RunLoop.main.perform(inModes: [.common]) {
+				MainActor.assumeIsolated {
+					choose()
+					var opened = false
+					if case .positionComment = self.model?.sheet { opened = true }
+					self.log("holdingmenu done", ("sheet", .flag(opened)))
+				}
+			}
+			return
+		}
 		let title = Self.localized(parts[2])
 		guard HarnessRun.mayClick(title, allowed: Self.assetClassTitles, on: surface),
 			let index = submenu.items.firstIndex(where: { $0.title == title }) else { return log("holdingmenu refused") }
@@ -3156,9 +3188,11 @@ final class DebugHarness {
 		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
 			guard let model = self?.model else { return }
 			var ids: Set<UUID> = []
+			var position = false
 			if case let .comment(s) = model.sheet { ids = s }
-			self?.log("comment", ("", .choice(argument, of: ["menu", "row"])), ("enabled", .flag(enabled)), ("sheet", .flag(!ids.isEmpty)),
-				("rows", .count(ids.count)), ("hidden", .count(ids.count - model.shown(ids).count)))
+			if case .positionComment = model.sheet { position = true }
+			self?.log("comment", ("", .choice(argument, of: ["menu", "row"])), ("enabled", .flag(enabled)), ("sheet", .flag(!ids.isEmpty || position)),
+				("rows", .count(ids.count)), ("hidden", .count(ids.count - model.shown(ids).count)), ("position", .flag(position)))
 		}
 	}
 

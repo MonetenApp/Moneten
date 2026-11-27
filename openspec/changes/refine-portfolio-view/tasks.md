@@ -18,12 +18,12 @@ A task is checked only when a test or a check in the running app shows the behav
 
 ## 2. Part 2: comments (#611)
 
-- [ ] 2.1 Test first, then `Holding.identify`: a refresh keeps the comment of the stored position, also with another quantity, and a security that comes back has none. AssetClassTests or a new suite.
-- [ ] 2.2 `Storage`: migration `v36`, `HoldingRecord`, `Store.setComment(_:ofHolding:)`, and `Ledger.setComment(_:of:)`. HoldingStoreTests.
-- [ ] 2.3 The complete export carries the comment, and `docs/export-format.md` describes it. AllDataTests.
-- [ ] 2.4 The search finds a position by its comment. PortfolioRowsTests.
-- [ ] 2.5 "Add Comment..." and "Edit Comment..." in the context menu and ⇧⌘K, with the sheet of a transaction. A harness check.
-- [ ] 2.6 The comment mark after the name with its tooltip, and the comment line of an open position. Screenshots of an open row.
+- [x] 2.1 Test first, then `Holding.identify`: a refresh keeps the comment of the stored position, also with another quantity, and a security that comes back has none. AssetClassTests or a new suite. HoldingCommentTests "A refresh keeps the comment of the stored position, with a new quote and with another quantity", "A position matched by its name without an ISIN keeps its comment, and a new position has none", "No source sets a comment: a delivered comment is dropped, also when the stored position has none", "A security that leaves the portfolio takes its comment with it, and when it comes back it has none", and "The ledger changes the comment of one position only, and nil removes it".
+- [x] 2.2 `Storage`: migration `v36`, `HoldingRecord`, `Store.setComment(_:ofHolding:)`, and `Ledger.setComment(_:of:)`. HoldingStoreTests. HoldingStoreTests "A comment survives the next refresh with another quantity, in the database and in the ledger, and nil removes it" and "v36 leaves every stored position without a comment".
+- [x] 2.3 The complete export carries the comment, and `docs/export-format.md` describes it. AllDataTests. AllDataTests "The comment of a holding travels with the file, and a file without it reads with none", and the round trip of "A complete export imports into an empty database, and its export equals the first file apart from the export date" with a commented holding.
+- [x] 2.4 The search finds a position by its comment. PortfolioRowsTests. PortfolioRowsTests "The search finds a position by its comment, and a new comment can take a shown position off the list".
+- [x] 2.5 "Add Comment..." and "Edit Comment..." in the context menu and ⇧⌘K, with the sheet of a transaction. A harness check. `holdingmenu` logs `comment=add` for a position without a comment, `comment=edit` with one, and `comment=none` for two selected positions. `holdingmenu 0|1|Add Comment...` opens the sheet (`sheet=true`), a typed text and Return store it (`holdingcomment` shows its hash). `comment menu` opens the sheet of the one selected position with its comment (`position=true`) and nothing with two selected. `holdingcomment <name>|` removes a comment as an empty sheet does.
+- [x] 2.6 The comment mark after the name with its tooltip, and the comment line of an open position. Screenshots of an open row. The screenshots in light and dark mode show the bubble after "Beispiel Welt ETF" and "Musterwerke AG" and the open row of "Musterwerke AG". A comment longer than the row wraps to a second line, and the row grows. The tooltip is `.help` with the comment; no harness command rests a pointer on it.
 
 ## 3. Part 3: filters (#612)
 

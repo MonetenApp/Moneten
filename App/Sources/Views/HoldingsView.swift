@@ -2,7 +2,7 @@ import Domain
 import SwiftUI
 
 /// The positions of the selected portfolios, in place of the filter bar, the transaction list, and its status
-/// line. The search field of the window filters them by name, ISIN, and security number.
+/// line. The search field of the window filters them by name, ISIN, security number, and comment.
 struct HoldingsView: View {
 	@Environment(AppModel.self) private var model
 	/// `AppModel.tableKey`, from the parent, as for `TransactionTable` (issue #135).
@@ -13,6 +13,7 @@ struct HoldingsView: View {
 	@State private var selection: Set<UUID> = []
 	/// The width that a classic scroll bar takes from the table, which the header leaves free at its right end.
 	@State private var scrollerInset: CGFloat = 0
+	@State private var commentLine = CommentLine()
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
@@ -33,12 +34,16 @@ struct HoldingsView: View {
 					Color.clear
 				} else {
 					// The days compare with every position of the portfolio, also those that the filters hide.
-					HoldingsTable(key: key, rows: rows, oldQuoteDays: Holding.oldQuoteDays(in: all), selection: guardedSelection) { width in
+					HoldingsTable(key: key, rows: rows, oldQuoteDays: Holding.oldQuoteDays(in: all), selection: guardedSelection, commentLine: commentLine) { width in
 						if scrollerInset != width { scrollerInset = width }
+						if commentLine.scroller != width { commentLine.scroller = width }
 					}
 						// One line below the last row while the filter "Asset class" hides positions, on the table and not on its rows.
 						.background(FilterHintsFooter(hints: key.filter.positionHints, rowCount: rows.count))
 				}
+			}
+			.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { [commentLine] width in
+				if commentLine.table != width { commentLine.table = width }
 			}
 			.overlay {
 				if rows.isEmpty, !holds {
@@ -48,7 +53,7 @@ struct HoldingsView: View {
 			}
 			HoldingsStatusLine(rows: rows, selection: selection)
 		}
-		.onChange(of: selection.count, initial: true) { _, count in model.selectedPositions = count }
+		.onChange(of: selection, initial: true) { _, ids in if model.selectedPositions != ids { model.selectedPositions = ids } }
 	}
 
 	/// The selection, as long as the model shows this view: see `AppModel.shows(_:)`.
@@ -186,6 +191,7 @@ struct HoldingsTable: View {
 	/// The day of each quote that is older than the newest of its portfolio: `Holding.oldQuoteDays(in:)`.
 	let oldQuoteDays: [UUID: Day]
 	@Binding var selection: Set<UUID>
+	let commentLine: CommentLine
 	/// Takes the width of a classic scroll bar for the header.
 	let scrollerWidth: @MainActor (CGFloat) -> Void
 
@@ -197,7 +203,7 @@ struct HoldingsTable: View {
 			}
 			.width(PositionColumns.quoteDay)
 			TableColumn("Name") { h in
-				NameCell(security: h.security).positionCell(alignment: .topLeading)
+				NameCell(model: model, key: key, holding: h, line: commentLine).positionCell(alignment: .topLeading)
 			}
 			.width(min: 160, ideal: 360)
 			TableColumn("Quantity") { h in
@@ -229,6 +235,10 @@ struct HoldingsTable: View {
 		.contextMenu(forSelectionType: UUID.self) { ids in
 			let positions = rows.filter { ids.contains($0.id) }
 			if !positions.isEmpty { AssetClassMenu(positions: positions) }
+			// One position at a time, as `Store.setComment(_:ofHolding:)` stores it.
+			if positions.count == 1, let position = positions.first {
+				Button(position.comment == nil ? "Add Comment..." : "Edit Comment...") { model.sheet = .positionComment(position.id) }
+			}
 		}
 		// A plain click opens a position and a second one closes it, behind the table and not on its rows.
 		.background(PositionClicks(click: { [model, key, rows] row in
@@ -268,22 +278,50 @@ struct QuoteDayCell: View {
 	}
 }
 
-/// The name in bold over the ISIN and the WKN, each only when the source sends it.
+/// The name in bold with the speech bubble of a comment, over the ISIN and the WKN, each only when the source sends it.
 ///
-/// The comment line of an open position goes below these two lines (#611, design of `refine-portfolio-view`): after a
-/// gap of 7 points, a speech bubble and the comment, with a negative trailing padding as wide as the columns to the right
-/// of this one, so the text runs to the end of the row. `AppModel.openedPosition` says which position is open.
+/// An open position shows its comment below these two lines (design of `refine-portfolio-view`): after a gap of 7 points,
+/// the speech bubble and the whole comment, from the start of the name to the end of the value, over the columns to the
+/// right of this one. The table measures the higher row from its cells. The cell reads `AppModel.openedPosition` itself,
+/// so a click redraws only the name cells and not the table.
 struct NameCell: View {
-	let security: Security
+	let model: AppModel
+	let key: TableKey
+	let holding: Holding
+	let line: CommentLine
 
 	var body: some View {
+		let security = holding.security
+		let opened = model.openedPosition
 		VStack(alignment: .leading, spacing: PositionColumns.lineGap) {
-			Text(security.name).font(.system(size: 12.5, weight: .bold)).lineLimit(1)
+			HStack(spacing: 6) {
+				Text(security.name).font(.system(size: 12.5, weight: .bold)).lineLimit(1)
+				if let comment = holding.comment {
+					CommentMark()
+						.help(comment)
+						.accessibilityLabel("Comment: \(comment)")
+				}
+			}
 			HStack(spacing: 10) {
 				if let isin = security.isin { number("ISIN", isin) }
 				if let wkn = security.securityNumber { number("WKN", wkn) }
 			}
 			.lineLimit(1)
+			if let comment = holding.comment, opened?.id == holding.id, opened?.key == key {
+				HStack(alignment: .firstTextBaseline, spacing: 7) {
+					CommentMark().accessibilityHidden(true)
+					// A cell of a table shows one line unless it says otherwise.
+					Text(comment)
+						.lineLimit(nil)
+						.lineSpacing(2)
+						.fixedSize(horizontal: false, vertical: true)
+						.frame(maxWidth: .infinity, alignment: .leading)
+				}
+				// A width of its own: the table measures a row with the ideal width of its cells, which gives the text one line.
+				.frame(width: line.width, alignment: .leading)
+				.frame(maxWidth: .infinity, alignment: .leading)
+				.padding(.top, 7 - PositionColumns.lineGap)
+			}
 		}
 	}
 
@@ -293,6 +331,31 @@ struct NameCell: View {
 			Text(value).foregroundStyle(Palette.detail)
 		}
 		.fixedSize()
+	}
+}
+
+/// The width of the comment line of an open position, from the start of the name to the end of the value: the width of
+/// the rows less the fixed columns and insets. Only the open row reads it, so a new width of the window redraws that row
+/// and not the table.
+@MainActor @Observable
+final class CommentLine {
+	/// The width of the table and of a classic scroll bar, which the rows lose.
+	var table: CGFloat = 0
+	var scroller: CGFloat = 0
+
+	var width: CGFloat {
+		let before = 2 * PositionColumns.cellInset + PositionColumns.quoteDay + PositionColumns.gap + PositionColumns.trailing
+		return max(0, table - scroller - before)
+	}
+}
+
+/// The speech bubble of a comment, in the note color.
+struct CommentMark: View {
+	var body: some View {
+		Image(systemName: "ellipsis.bubble.fill")
+			.font(.system(size: 10.5))
+			.foregroundStyle(Palette.note)
+			.fixedSize()
 	}
 }
 

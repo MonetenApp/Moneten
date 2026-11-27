@@ -487,6 +487,11 @@ enum Schema {
 				t.add(column: "userAssetClass", .text)
 			}
 		}
+		// The comment of a position (refine-portfolio-view, #611). It is empty for every stored position. No refresh writes
+		// it; `Holding.identify` carries it over. It comes after v35.
+		m.registerMigration("v36") { db in
+			try db.alter(table: "holding") { t in t.add(column: "comment", .text) }
+		}
 		return m
 	}
 

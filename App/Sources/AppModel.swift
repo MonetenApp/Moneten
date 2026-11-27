@@ -350,8 +350,9 @@ final class AppModel {
 	/// same row apart.
 	private(set) var revealedRow: RevealedRow?
 	@ObservationIgnored private var revealCount = 0
-	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
-	@ObservationIgnored var selectedPositions = 0
+	/// The selected rows of the table of positions, for ⇧⌘K and the trail. The selection lives in that view, which writes
+	/// it here only when it changes. The menu bar reads it, so it is observed.
+	var selectedPositions: Set<UUID> = []
 	/// The order that the header of the positions chose, nil for the order by name. It stays while the user moves between
 	/// portfolios and is not saved, so the app starts with the order by name. `sortPositions(by:)` changes it.
 	var portfolioSort: PortfolioSort?
@@ -972,7 +973,7 @@ final class AppModel {
 
 	func select(_ s: SidebarSelection?) {
 		guard s != selection else { return }
-		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions)")
+		Trail.log("view change from=\(tableKey.trailKind) selected=\(tableKey.portfolios == nil ? selectedTransactions.count : selectedPositions.count)")
 		selection = s
 		// The rows change after SwiftUI drew the new view: changing them while the list handles the
 		// selection change upsets the table view.
@@ -1146,6 +1147,36 @@ final class AppModel {
 		}
 	}
 
+	/// The comment of the position `id`, which an empty text removes, as for a transaction. It writes through the store first
+	/// and changes the ledger only after the write succeeds. A new comment can take a position out of a search that found
+	/// it by its old comment, which removes a row, so such a change comes with a new table (issue #135).
+	func setComment(_ comment: String, ofPosition id: UUID) {
+		guard store != nil, let position = ledger.holding(id) else { return }
+		let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
+		let value = trimmed.isEmpty ? nil : trimmed
+		guard value != position.comment else { return }
+		if let portfolios = tableKey.portfolios {
+			let before = ledger.holdings(of: portfolios)
+			let after = before.map { h in var h = h; if h.id == id { h.comment = value }; return h }
+			if tableKey.filter.hidesShownPositions(before: before, after: after) {
+				Task { await replacingTable { storeComment(value, ofPosition: id) } }
+				return
+			}
+		}
+		storeComment(value, ofPosition: id)
+	}
+
+	private func storeComment(_ comment: String?, ofPosition id: UUID) {
+		guard let store else { return }
+		do {
+			try store.setComment(comment, ofHolding: id)
+			ledgerChange = "position comment"
+			ledger.setComment(comment, of: id)
+		} catch {
+			alert = AlertMessage(title: String(localized: "Could not save the change."), message: String(describing: error))
+		}
+	}
+
 	/// Sets the filter "Asset class" back to "Show All" when the positions of the view no longer have its class. A change
 	/// that empties the class hides shown positions, so it runs inside `replacingTable`, and the new filter comes with
 	/// the same new table.
@@ -1160,8 +1191,17 @@ final class AppModel {
 		if !ids.isEmpty { sheet = .assignCategory(ids, accounts: ledger.accountIDs(ofTransactions: ids)) }
 	}
 
-	/// What ⌘⇧K does: the comment of the selected rows on screen.
+	/// Whether ⇧⌘K has something to comment on: one selected position in a portfolio view, else a selected transaction.
+	var canComment: Bool {
+		selectedPortfolios != nil ? selectedPositions.count == 1 : !selectedTransactions.isEmpty
+	}
+
+	/// What ⌘⇧K does: the comment of the selected rows on screen, or in a portfolio view of the one selected position.
 	func openCommentSheet() {
+		if selectedPortfolios != nil {
+			if selectedPositions.count == 1, let id = selectedPositions.first, ledger.holding(id) != nil { sheet = .positionComment(id) }
+			return
+		}
 		let ids = visibleSelection
 		if !ids.isEmpty { sheet = .comment(ids) }
 	}
@@ -2320,6 +2360,8 @@ enum SheetKind: Identifiable, Equatable {
 	case split(Transaction)
 	case undoSplit(UUID)
 	case comment(Set<UUID>)
+	/// The comment of one position, in the sheet of the comment of a transaction.
+	case positionComment(UUID)
 	case migration
 	case exportAllData
 	case fileImport(FileImport)

@@ -731,6 +731,8 @@ private struct HoldingEntry: Codable {
 	/// Optional, so a file of an earlier version reads. A name that is not a case of `AssetClass` is refused.
 	var sourceAssetClass: AssetClass?
 	var userAssetClass: AssetClass?
+	/// Optional, so a file of an earlier version reads.
+	var comment: String?
 
 	init(_ h: Holding) {
 		id = h.id
@@ -748,6 +750,7 @@ private struct HoldingEntry: Codable {
 		exchangeRate = h.exchangeRate.map(RateEntry.init)
 		sourceAssetClass = h.sourceAssetClass
 		userAssetClass = h.userAssetClass
+		comment = h.comment
 	}
 
 	func holding() throws -> Holding {
@@ -757,7 +760,7 @@ private struct HoldingEntry: Codable {
 		return Holding(id: id, accountID: accountID, security: Security(name: name, isin: isin, securityNumber: securityNumber),
 			quantity: try AmountText.decimal(quantity), isNominal: isNominal, nominalCurrency: nominalCurrency, quote: try price?.quote(),
 			marketValue: try marketValue?.money(), accruedInterest: try accruedInterest?.money(), purchasePrice: try purchasePrice?.quote(),
-			exchangeRate: try exchangeRate?.exchangeRate(), sourceAssetClass: sourceAssetClass, userAssetClass: userAssetClass)
+			exchangeRate: try exchangeRate?.exchangeRate(), sourceAssetClass: sourceAssetClass, userAssetClass: userAssetClass, comment: comment)
 	}
 }
 
