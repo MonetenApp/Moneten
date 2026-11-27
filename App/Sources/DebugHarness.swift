@@ -1644,10 +1644,11 @@ final class DebugHarness {
 		case "holdingsort":
 			let keys: [String: PortfolioSort.Key] = ["quoteDay": .quoteDay, "name": .name, "quantity": .quantity, "purchasePrice": .purchasePrice,
 				"lastQuote": .lastQuote, "value": .value, "gain": .gain]
-			if argument.isEmpty { model.portfolioSort = nil } else if let key = keys[argument] {
-				model.portfolioSort = PortfolioSort.after(clicking: key, on: model.portfolioSort)
-			} else { return log("holdingsort refused") }
-			log("holdingsort", ("key", .state(model.portfolioSort?.key as Any)), ("ascending", .flag(model.portfolioSort?.isAscending ?? true)))
+			guard argument.isEmpty || keys[argument] != nil else { return log("holdingsort refused") }
+			Task {
+				await model.sortPositions(by: keys[argument])
+				log("holdingsort", ("key", .state(model.portfolioSort?.key as Any)), ("ascending", .flag(model.portfolioSort?.isAscending ?? true)))
+			}
 		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
 		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
 		// it clicks only "Cancel".
@@ -2835,9 +2836,12 @@ final class DebugHarness {
 		window.sendEvent(down)
 		Task { @MainActor in
 			try? await Task.sleep(for: .milliseconds(300))
-			// The open position by the hash of its name, never by the name.
+			// The open position of the table on screen, by the hash of its name, never by the name. A position that a click
+			// opened in another view does not count.
 			let portfolios = model.ledger.accounts.filter { $0.kind == .portfolio }.map(\.id)
-			let open = model.openedPosition.flatMap { opened in model.ledger.holdings(of: portfolios).first { $0.id == opened.id } }
+			let open = model.openedPosition.flatMap { opened in
+				opened.key == model.tableKey ? model.ledger.holdings(of: portfolios).first { $0.id == opened.id } : nil
+			}
 			self.log("holdingclick", ("open", .flag(open != nil)), ("name", open.map { .hash($0.security.name) } ?? .word("-")),
 				("selected", .list(table.selectedRowIndexes.map { .position($0) })))
 		}

@@ -353,11 +353,19 @@ final class AppModel {
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
 	/// The order that the header of the positions chose, nil for the order by name. It stays while the user moves between
-	/// portfolios and is not saved, so the app starts with the order by name.
+	/// portfolios and is not saved, so the app starts with the order by name. `sortPositions(by:)` changes it.
 	var portfolioSort: PortfolioSort?
 	/// The position that a click opened, with the view of its table, so that a position of another view never shows as
 	/// open and nothing has to clear it when the view changes, as `revealedRow` keeps its view.
 	private(set) var openedPosition: OpenedPosition?
+
+	/// A click on a line of the header of the positions, or nil for the order by name. The new order starts the table over,
+	/// with the placeholder of `replacingTable`: in place, SwiftUI turns a new order into moves of rows and measures each
+	/// moved row, which took 2.4 seconds for 500 positions. A new table measures only the rows on screen.
+	func sortPositions(by key: PortfolioSort.Key?) async {
+		let sort = key.map { PortfolioSort.after(clicking: $0, on: portfolioSort) }
+		await replacingTable { portfolioSort = sort }
+	}
 
 	/// A plain click on a position: it opens the position, or closes it when it is open. Opening one closes the other.
 	func clickPosition(_ id: UUID, in key: TableKey) {

@@ -15,8 +15,8 @@ struct HoldingsView: View {
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
 		// The search and the filter "Asset class" of the key, as for the transaction table. The parent starts this view
-		// over for a new search or class, instead of removing shown rows in place. A new order of the header moves the rows
-		// inside the same table, because no row leaves it.
+		// over for a new search or class, instead of removing shown rows in place. A new order of the header starts the
+		// table over too: `AppModel.sortPositions(by:)`.
 		let filtered = key.filter.positions(of: all)
 		let ledger = model.ledger
 		let rows = model.portfolioSort?.sorted(filtered) { ledger.currency(of: $0) } ?? filtered
@@ -146,7 +146,7 @@ struct HoldingsHeader: View {
 		let sort = model.portfolioSort
 		let marked = sort?.key == key
 		return Button {
-			model.portfolioSort = PortfolioSort.after(clicking: key, on: sort)
+			Task { await model.sortPositions(by: key) }
 		} label: {
 			Text(title)
 				.fontWeight(primary ? .medium : .regular)

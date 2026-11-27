@@ -327,8 +327,8 @@ struct PerfScenario {
 					c.fail("the refresh removed a shown position in place")
 				}
 			}),
-		// A click on a line of the header sorts 500 positions. The rows move inside the same table, because none leaves it,
-		// and the next click reverses the order (refine-portfolio-view, #610).
+		// A click on a line of the header sorts 500 positions, and the next click reverses the order. Each new order starts
+		// the table over: in place, SwiftUI moved every row and the reversal took 2.4 seconds (refine-portfolio-view, #610).
 		PerfScenario(name: "sort-many-positions", budget: halfSecond,
 			setUp: { c in
 				await c.model.addOfflineAccount(name: "Perf Sort Depot", kind: .portfolio, currency: "EUR", groupID: nil)
@@ -339,15 +339,15 @@ struct PerfScenario {
 			run: { c in
 				let table = c.harness.holdingsTables().first
 				if table?.numberOfRows != 500 { c.fail("the portfolio does not show its 500 positions") }
-				c.model.portfolioSort = PortfolioSort.after(clicking: .value, on: c.model.portfolioSort)
+				await c.model.sortPositions(by: .value)
 				await c.settle()
-				c.model.portfolioSort = PortfolioSort.after(clicking: .value, on: c.model.portfolioSort)
+				await c.model.sortPositions(by: .value)
 				await c.settle()
 				if c.model.portfolioSort != PortfolioSort(key: .value, isAscending: false) { c.fail("the second click did not reverse the order") }
-				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) != table.map(ObjectIdentifier.init) || table?.numberOfRows != 500 {
-					c.fail("a new order started the table over")
-				}
-				c.model.portfolioSort = nil
+				let sorted = c.harness.holdingsTables().first
+				if sorted.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) { c.fail("a new order moved the rows in place") }
+				if sorted?.numberOfRows != 500 { c.fail("the sorted table misses positions") }
+				await c.model.sortPositions(by: nil)
 				await c.settle()
 			}),
 		// A choice in the submenu "Asset Class" that takes a shown position out of the filter "Asset class" starts the table

@@ -70,7 +70,7 @@ The helper sends `wkn` as hbci4java gives it (`position` in `Tools/FinTSHelper/F
 
 `PortfolioSort` in `Sources/Domain/PortfolioRows.swift` is a key and a direction. The keys are the seven header lines: the day of the quote, the name, the quantity, the purchase price, the last quote, the value, and the profit or loss. `PortfolioSort.sorted(_:currency:)` sorts the positions by the number of the key as the row shows it, with the value and the profit or loss in the currency of the account, and with nil for a missing value. Positions with nil come last in both directions, and equal values keep the order of `Holding.isOrdered`, so the order never depends on the order in the database. Numbers in different currencies, and a percentage of a nominal amount next to a price, sort by their plain numbers, as a table of mixed rows does. Nil for the key means the order by name.
 
-`AppModel.portfolioSort` keeps the choice while the user moves between portfolios. It is not saved, so the app starts with the order by name. A new order moves rows inside the same table and does not start the table over, because no row leaves it.
+`AppModel.portfolioSort` keeps the choice while the user moves between portfolios. It is not saved, so the app starts with the order by name. `AppModel.sortPositions(by:)` starts the table over for a new order, with the placeholder of `AppModel.replacingTable`. In place, SwiftUI turns a new order into moves of rows and measures each moved row: the perf scenario "sort-many-positions" took 2.4 seconds to reverse 500 positions that way. A new table measures only the rows on screen.
 
 ### Opening a position (part 1, the comment line in part 2)
 
