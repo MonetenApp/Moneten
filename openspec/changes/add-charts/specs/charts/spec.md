@@ -49,7 +49,13 @@ The app SHALL draw the balance of an account over time as a bar chart, with one 
 
 ### Requirement: Look of the balance chart
 
-The app SHALL draw the balance chart with every bar 4 points wide with a gap of 2 points, light gray on the gray band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+The app SHALL draw the balance chart with every bar 4 points wide with a gap of 2 points, gray on the gray band behind the title with a contrast of at least 3:1 against the band in the light and the dark appearance, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+
+#### Scenario: Bars in the light appearance
+
+- **GIVEN** the light appearance and the daily balance chart of "Giro"
+- **WHEN** the user looks at the chart
+- **THEN** the bars above zero are gray with at least 3:1 against the band
 
 #### Scenario: Month lines
 
