@@ -10,7 +10,7 @@ One task per requirement of the spec, and two tasks of the FinTS connector witho
 - [ ] 1.4 Position details. Moved from task 1.5 of `add-securities-accounts`: "Deferred: needs the market (94B) and the time of the quote from the helper, and a details view."
 - [ ] 1.5 Enter and edit the purchase price. Moved from task 1.11 of `add-securities-accounts`: "Deferred: needs a stored manual purchase price beside the one of the bank, the sheet, and the context menu."
 - [ ] 1.6 A purchase price from the user survives a refresh. Moved from task 1.12 of `add-securities-accounts`: "Deferred, with 1.11. `Holding.identify` keeps the ID of a position across refreshes, which the manual price will hang on."
-- [ ] 1.7 Comment on a position, also the scenario "Quantity changed". Moved from task 1.13 of `add-securities-accounts`: "Deferred. The stable ID of 1.12 prepares it."
+- [x] 1.7 Comment on a position, also the scenario "Quantity changed": moved to the change `refine-portfolio-view` on 27 November 2026 (part 2, #611), which builds it.
 
 ## 2. FinTS connector
 

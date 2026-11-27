@@ -30,24 +30,36 @@ The app SHALL show the day of the last quote of a position in the first line of 
 
 - **GIVEN** a portfolio with two positions quoted on 27.11.2026 and the position "Ostsee Rohstoff ADR" quoted on 03.03.2022
 - **WHEN** the user opens the portfolio
-- **THEN** the two positions show "27.11.2026" in the color of the text
+- **THEN** the two positions show "27.11.2026" in the color of the second lines
 - **AND** "Ostsee Rohstoff ADR" shows "03.03.2022" and its last quote in the warning color
+
+#### Scenario: Quote without a day
+
+- **GIVEN** an extension returns the security "Bitcoin" with the price 60000 and no day of the price
+- **WHEN** the user opens the portfolio
+- **THEN** the first line of the row of "Bitcoin" is empty, and the ribbon stands at its place below it
 
 ### Requirement: Security numbers below the name
 
-The app SHALL show below the name of a position its ISIN after the label "ISIN" and its WKN after the label "WKN". Each number shows only when the source sends it. The app never derives a WKN from an ISIN.
+The app SHALL show below the name of a position its ISIN after the label "ISIN", and its security number after the label "WKN". Each shows only when the source sends it. The security number is the national number that the source sends, and the app never derives it from an ISIN.
 
-#### Scenario: ISIN and WKN from the bank
+#### Scenario: ISIN and security number from the bank
 
-- **GIVEN** the bank sends the position "Musterwerke AG" with the ISIN DE000MUST001 and the WKN MUST00
+- **GIVEN** the bank sends the position "Musterwerke AG" with the ISIN DE000MUST001 and the security number MUST00
 - **WHEN** the user opens the portfolio
 - **THEN** the line below the name reads "ISIN DE000MUST001  WKN MUST00"
 
 #### Scenario: Only an ISIN
 
-- **GIVEN** the bank sends the position "Weltindex UCITS ETF" with the ISIN IE00WELT0003 and no WKN
+- **GIVEN** the bank sends the position "Weltindex UCITS ETF" with the ISIN IE00WELT0003 and no security number
 - **WHEN** the user opens the portfolio
-- **THEN** the line below the name reads "ISIN IE00WELT0003" and shows no WKN
+- **THEN** the line below the name reads "ISIN IE00WELT0003" and shows no "WKN"
+
+#### Scenario: Foreign number without an ISIN
+
+- **GIVEN** the bank sends the position "Muster Inc." without an ISIN and with the line "/US/123456789" as its number
+- **WHEN** the user opens the portfolio
+- **THEN** the line below the name reads "WKN 123456789"
 
 #### Scenario: Extension with a security number
 
@@ -65,9 +77,9 @@ The app SHALL show above the positions a header that names each column: "Quote d
 - **WHEN** the user opens the portfolio
 - **THEN** the header reads "Quote date", "Name", "Quantity", "Purchase price" with "Last quote" below, and "Value" with "Profit/Loss" below
 
-### Requirement: Sort positions
+### Requirement: Sort positions by a header line
 
-The app SHALL sort the positions by the value of a header line when the user clicks it, in ascending order, and in descending order on the next click. The header marks the line and the direction. A position without the value comes last in both directions, and positions with the same value keep the order by name. The order stays while the user moves between portfolio views.
+The app SHALL sort the positions by the value of a header line when the user clicks it, in ascending order, and in descending order on the next click on the same line. The header marks the line and the direction.
 
 #### Scenario: Sort by value
 
@@ -89,11 +101,43 @@ The app SHALL sort the positions by the value of a header line when the user cli
 - **THEN** "Musterwerke AG" comes first
 - **AND** the header marks "Last quote" and not "Purchase price"
 
+### Requirement: Missing and equal values in a sorted list
+
+The app SHALL put a position without the value of the sorted line last, in both directions, and keep positions with the same value in the order by name, in both directions. A last quote of 0, which the row shows as "–", sorts as 0.
+
 #### Scenario: Position without a purchase price
 
 - **GIVEN** a portfolio with a position without a purchase price and two positions with purchase prices
 - **WHEN** the user clicks "Purchase price" once and then again
 - **THEN** the position without a purchase price is the last row both times
+
+#### Scenario: Same day of the quote
+
+- **GIVEN** "Anleihe Musterland", "Beispiel Chemie AG", and "Musterwerke AG", all quoted on 27.11.2026
+- **WHEN** the user clicks "Quote date" once and then again
+- **THEN** the rows show "Anleihe Musterland", "Beispiel Chemie AG", and "Musterwerke AG" both times
+
+#### Scenario: Quote of zero
+
+- **GIVEN** "Ostsee Rohstoff ADR" quoted at 0,00 € and "Musterwerke AG" quoted at 77,60 €
+- **WHEN** the user clicks "Last quote"
+- **THEN** "Ostsee Rohstoff ADR" with "–" comes first
+
+### Requirement: The order of the positions stays across views
+
+The app SHALL keep the order that the user chose in the header while the user opens other portfolios and other views, until the app quits. After a start the positions show in the order by name.
+
+#### Scenario: Another portfolio
+
+- **GIVEN** the user sorted the portfolio "Depot" by "Value" in descending order
+- **WHEN** the user opens the portfolio "Zweitdepot"
+- **THEN** its positions show by value in descending order, and the header marks "Value"
+
+#### Scenario: Restart
+
+- **GIVEN** the user sorted the positions by "Value"
+- **WHEN** the user quits the app and opens it again
+- **THEN** the positions show in the order by name, and no header line is marked
 
 ### Requirement: Open a position
 
@@ -142,13 +186,19 @@ The app SHALL show a speech bubble in the color of a note right after the name o
 
 ### Requirement: A comment survives a refresh
 
-The app SHALL keep the comment of a position when a refresh delivers the position again. A position that leaves the portfolio takes its comment with it, and a security that comes back later has no comment.
+The app SHALL keep the comment of a position when a refresh delivers the position again, also with another quantity. A position that leaves the portfolio takes its comment with it, and a security that comes back later has no comment.
 
 #### Scenario: Refresh with a new quote
 
 - **GIVEN** the position "Musterwerke AG" has the comment "Nachkaufen unter 70 €."
 - **WHEN** a refresh delivers "Musterwerke AG" with a new quote
 - **THEN** the position still has the comment "Nachkaufen unter 70 €."
+
+#### Scenario: Quantity changed
+
+- **GIVEN** the portfolio shows 40 units of "Musterwerke AG" with the comment "Sparplan"
+- **WHEN** a refresh delivers 45 units of the security with the same ISIN
+- **THEN** the row shows the quantity "45" and still has the comment "Sparplan"
 
 #### Scenario: Sold and bought again
 
@@ -168,14 +218,13 @@ The app SHALL write the comment of each position into the complete export and re
 
 ### Requirement: Filter by profit or loss
 
-The app SHALL offer the filter "Profit/Loss" in the filter bar of a portfolio view with "Show All", "Gains", and "Losses". "Gains" shows the positions with a profit above 0, and "Losses" those with a loss. A position with a profit or loss of 0, or without one, shows with neither. While "Gains" or "Losses" is selected, a line below the last row says "A profit/loss filter is active; some entries might be hidden."
+The app SHALL offer the filter "Profit/Loss" in the filter bar of a portfolio view with "Show All", "Gains", and "Losses". "Gains" shows the positions with a profit above 0, and "Losses" those with a loss. A position with a profit or loss that shows as 0,00, or without a purchase price, shows with neither.
 
 #### Scenario: Gains
 
 - **GIVEN** a portfolio with three positions in profit, one with a loss, and one without a purchase price
 - **WHEN** the user selects "Gains" in the filter "Profit/Loss"
 - **THEN** the list shows the three positions in profit
-- **AND** a line below the last row says "A profit/loss filter is active; some entries might be hidden."
 
 #### Scenario: Profit of zero
 
@@ -185,14 +234,29 @@ The app SHALL offer the filter "Profit/Loss" in the filter bar of a portfolio vi
 
 ### Requirement: Filter by quote
 
-The app SHALL offer the filter "Quote" in the filter bar of a portfolio view with "Show All" and "Outdated". "Outdated" shows the positions whose day of the last quote is older than the newest quote day of their portfolio, and the positions with a quote of 0. While "Outdated" is selected, a line below the last row says "A quote filter is active; some entries might be hidden."
+The app SHALL offer the filter "Quote" in the filter bar of a portfolio view with "Show All" and "Outdated". "Outdated" shows the positions whose day of the last quote is older than the newest quote day of their portfolio, and the positions with a quote of 0.
 
 #### Scenario: Old quote and quote of zero
 
 - **GIVEN** a portfolio with three positions quoted on 27.11.2026, one quoted on 03.03.2022, and one quoted at 0,00 € on 27.11.2026
 - **WHEN** the user selects "Outdated" in the filter "Quote"
 - **THEN** the list shows the position quoted on 03.03.2022 and the position quoted at 0,00 €
-- **AND** a line below the last row says "A quote filter is active; some entries might be hidden."
+
+### Requirement: Lines about the portfolio filters
+
+The app SHALL show one line below the last position for each active portfolio filter, in the order of the filter bar: "An asset class filter is active; some entries might be hidden.", "A profit/loss filter is active; some entries might be hidden.", and "A quote filter is active; some entries might be hidden."
+
+#### Scenario: Two filters
+
+- **GIVEN** a portfolio with the filter "Profit/Loss" at "Gains" and the filter "Quote" at "Outdated"
+- **WHEN** the user looks below the last row
+- **THEN** the lines read "A profit/loss filter is active; some entries might be hidden." and "A quote filter is active; some entries might be hidden."
+
+#### Scenario: No filter
+
+- **GIVEN** a portfolio with every filter at "Show All"
+- **WHEN** the user looks below the last row
+- **THEN** no line about a filter shows
 
 ### Requirement: Count of a filtered portfolio
 
@@ -206,29 +270,59 @@ The app SHALL show in the status line the number of shown positions of all posit
 
 ### Requirement: Portfolio filters across views
 
-The app SHALL keep the filters "Profit/Loss" and "Quote" when the user opens another portfolio or a group of portfolios, and the pin of the filter bar saves both with the other filters.
+The app SHALL keep the filters "Profit/Loss" and "Quote" and the option "Group by asset class" when the user opens another portfolio or a group of portfolios.
 
 #### Scenario: Another portfolio
 
-- **GIVEN** the filter "Profit/Loss" is at "Losses" in the portfolio "Depot"
+- **GIVEN** the filter "Profit/Loss" is at "Losses" and "Group by asset class" is on in the portfolio "Depot"
 - **WHEN** the user opens the portfolio "Zweitdepot"
-- **THEN** the filter "Profit/Loss" reads "Losses"
+- **THEN** the filter "Profit/Loss" reads "Losses" and "Group by asset class" is on
+
+### Requirement: The pin keeps the portfolio filters
+
+The app SHALL save the filters "Profit/Loss" and "Quote" and the option "Group by asset class" with the other filters while the pin of the filter bar is on. Turning the pin off sets both filters to "Show All" and turns "Group by asset class" off. The filter "Asset class" is never saved, because its entries depend on the view.
 
 #### Scenario: Restart with the pin on
 
-- **GIVEN** the pin is on and the filter "Quote" is at "Outdated"
+- **GIVEN** the pin is on, the filter "Quote" is at "Outdated", and "Group by asset class" is on
 - **WHEN** the user quits the app and opens it again
-- **THEN** the filter "Quote" reads "Outdated"
+- **THEN** the filter "Quote" reads "Outdated" and "Group by asset class" is on
 
-### Requirement: Color of an asset class
+#### Scenario: Unpin
 
-The app SHALL give each asset class a default color and let the user change it in the asset class settings, which "Asset Class Settings..." at the end of the submenu "Asset Class" opens. The ribbon of a class shows its color with white text in light and dark mode. "Restore Default Colors" gives every class its default color again.
+- **GIVEN** the pin is on, the filter "Profit/Loss" is at "Gains", and "Group by asset class" is on
+- **WHEN** the user turns the pin off
+- **THEN** the filter "Profit/Loss" reads "Show All" and "Group by asset class" is off
+
+#### Scenario: Restart with the pin off
+
+- **GIVEN** the pin is off and the filter "Quote" is at "Outdated"
+- **WHEN** the user quits the app and opens it again
+- **THEN** the filter "Quote" reads "Show All"
+
+### Requirement: Default colors of the asset classes
+
+The app SHALL give each asset class a default color on which white text reaches a contrast of 4.5:1 in light and dark mode, and show the ribbon of a class in the color of the class.
+
+#### Scenario: Ribbons of two classes
+
+- **GIVEN** the position "Musterwerke AG" of the class "Stocks" and the position "Bund 2,1 % 2031" of the class "Bonds"
+- **WHEN** the user opens the portfolio in dark mode
+- **THEN** the ribbons "STOCKS" and "BONDS" show two different colors with white text
+
+### Requirement: Change the color of an asset class
+
+The app SHALL let the user choose the color of each asset class in the asset class settings. "Asset Class Settings..." at the end of the submenu "Asset Class" of the context menu of a position opens them, and no other place does. A chosen color applies in light and dark mode.
 
 #### Scenario: Change the color of a class
 
 - **GIVEN** the class "Bonds" has its default color
-- **WHEN** the user chooses green for "Bonds" in the asset class settings
+- **WHEN** the user chooses "Asset Class Settings..." in the submenu "Asset Class" and chooses green for "Bonds"
 - **THEN** every ribbon "BONDS" shows green with white text
+
+### Requirement: Restore the default colors
+
+The app SHALL give every asset class its default color again when the user chooses "Restore Default Colors" in the asset class settings.
 
 #### Scenario: Restore the defaults
 
@@ -242,9 +336,9 @@ The app SHALL offer the option "Group by asset class" in the filter bar of a por
 
 #### Scenario: Two classes
 
-- **GIVEN** a portfolio with 2 positions of the class "Stocks" worth 180.230,00 € with a profit of 24.880,77 €, and 1 position of the class "Bonds" worth 4.955,00 € with a profit of 30,00 €
+- **GIVEN** a portfolio with 2 positions of the class "Stocks" worth 180.230,00 € with a profit of 24.877,38 €, and 1 position of the class "Bonds" worth 4.955,00 € with a profit of 30,00 €
 - **WHEN** the user turns on "Group by asset class"
-- **THEN** the list shows the heading "Stocks" with "2 Portfolio Items", 180.230,00 €, and "+24.880,77 €" above the two stock positions
+- **THEN** the list shows the heading "Stocks" with "2 Portfolio Items", 180.230,00 €, and "+24.877,38 €" above the two stock positions
 - **AND** the heading "Bonds" with "1 Portfolio Item", 4.955,00 €, and "+30,00 €" above the bond position
 
 #### Scenario: Back to the flat list
@@ -275,7 +369,7 @@ The app SHALL give the dragged positions the class of a heading of the grouped l
 
 ### Requirement: Allocation by asset class
 
-The app SHALL show the allocation of a portfolio view by asset class in a popover when the user clicks the allocation button above the switch "D" and "M" of the history chart. The popover shows a stacked bar and one line for each class with positions: its color, its name, its share of the value, and its value. The view shows no allocation before the click, and the history chart stays above the list.
+The app SHALL show the allocation of a portfolio view by asset class in a popover when the user clicks the allocation button above the switch "D" and "M" of the history chart. The popover shows a stacked bar and one line for each class with positions: its color, its name, its share of the value, and its value. The view shows no allocation before the click.
 
 #### Scenario: Three classes
 
@@ -289,6 +383,27 @@ The app SHALL show the allocation of a portfolio view by asset class in a popove
 - **WHEN** the user clicks the allocation button
 - **THEN** the popover says "No portfolio items."
 
+### Requirement: The allocation shows every position of the view
+
+The app SHALL count every position of the view in the allocation, whatever the filters "Asset class", "Profit/Loss", and "Quote" and the search show.
+
+#### Scenario: Class filter at ETFs
+
+- **GIVEN** the portfolio of the scenario "Three classes" with the filter "Asset class" at "ETFs"
+- **WHEN** the user clicks the allocation button
+- **THEN** the popover shows "Stocks", "ETFs", and "Bonds" with 59,97 %, 38,38 %, and 1,65 %
+
+### Requirement: An allocation for each currency
+
+The app SHALL show one stacked bar with its lines for each currency of the values in the view, and never convert a value into another currency.
+
+#### Scenario: Two currencies
+
+- **GIVEN** the group "Depots" with the portfolio "Depot" holding 3.000,00 € in "Stocks" and 1.000,00 € in "Bonds", and the portfolio "US Depot" holding 2.000,00 USD in "ETFs"
+- **WHEN** the user clicks the allocation button in "Depots"
+- **THEN** the popover shows a bar in euros with "Stocks" at 75,00 % and "Bonds" at 25,00 %
+- **AND** a bar in US dollars with "ETFs" at 100,00 %
+
 ### Requirement: The allocation sets the class filter
 
 The app SHALL set the filter "Asset class" to a class and close the popover when the user clicks the line of that class in the allocation.
@@ -299,25 +414,42 @@ The app SHALL set the filter "Asset class" to a class and close the popover when
 - **WHEN** the user clicks "ETFs"
 - **THEN** the filter "Asset class" reads "ETFs" and the list shows only the ETF positions
 
+### Requirement: View modes of a portfolio view
+
+The app SHALL show in a portfolio view no chart in the mode "List" (⌘1) and the history chart in the mode "Bar Chart" (⌘2). The mode "Pie Chart" (⌘3) is disabled there, because the allocation popover shows the split by class. While the mode of the account views is "Pie Chart", a portfolio view shows the history chart and the View menu marks "Bar Chart".
+
+#### Scenario: Pie chart in an account, then a portfolio
+
+- **GIVEN** the user chose "Pie Chart" in the account "Giro"
+- **WHEN** the user opens the portfolio "Depot"
+- **THEN** the view shows the history chart above the list, the View menu marks "Bar Chart", and "Pie Chart" is disabled
+- **AND** the account "Giro" shows its pie chart again when the user opens it
+
+#### Scenario: List
+
+- **GIVEN** the portfolio "Depot" shows the history chart
+- **WHEN** the user presses ⌘1
+- **THEN** the view shows the list without a chart
+
 ## MODIFIED Requirements
 
 ### Requirement: Position row content
 
-The app SHALL show each position in a row of five columns with two lines each: the day of the last quote over the asset class ribbon, the name in bold over the ISIN and the WKN, the quantity over its unit, the purchase price over the last quote, and the value in semibold over the profit or loss as an amount and a percentage. The row does not show the time of the quote.
+The app SHALL show each position in a row of five columns with two lines each: the day of the last quote over the asset class ribbon, the name in bold over the ISIN and the security number, the quantity over its unit, the purchase price over the last quote, and the value in semibold over the profit or loss as an amount and a percentage. The row does not show the time of the quote.
 
 #### Scenario: Row of a share
 
-- **GIVEN** a position of 646 units of "Musterwerke AG" with the ISIN DE000MUST001, the WKN MUST00, the class "Stocks", the purchase price 156,15 €, the last quote 77,60 € of 27.11.2026, and the value 50.129,60 €
+- **GIVEN** a position of 646 units of "Musterwerke AG" with the ISIN DE000MUST001, the security number MUST00, the class "Stocks", the purchase price 156,15 €, the last quote 77,60 € of 27.11.2026, and the value 50.129,60 €
 - **WHEN** the user opens the portfolio
 - **THEN** the first column shows "27.11.2026" over the ribbon "STOCKS"
 - **AND** the second column shows "Musterwerke AG" in bold over "ISIN DE000MUST001  WKN MUST00"
 - **AND** the third column shows "646" over "shares"
 - **AND** the fourth column shows 156,15 € over 77,60 €
-- **AND** the fifth column shows 50.129,60 € in semibold over "−50.741,27 € · −50,30 %" in red
+- **AND** the fifth column shows 50.129,60 € in semibold over "−50.743,30 € · −50,30 %" in red
 
 ### Requirement: Quantities as units or as a nominal amount
 
-The app SHALL show a quantity as a number of units with all decimal places that the source delivers and the word "shares" below it, or as a nominal amount with its currency and the word "nominal" below it when the source marks the quantity as nominal.
+The app SHALL show a quantity as a number of units with all decimal places that the source delivers and the word "shares" below it, for every kind of security, or as a nominal amount with its currency and the word "nominal" below it when the source marks the quantity as nominal.
 
 #### Scenario: Fractional units
 
@@ -330,6 +462,12 @@ The app SHALL show a quantity as a number of units with all decimal places that 
 - **GIVEN** a position with the quantity 646
 - **WHEN** the user opens the portfolio
 - **THEN** the row shows the quantity "646" over "shares"
+
+#### Scenario: Units of a cryptocurrency
+
+- **GIVEN** an extension returns the security "Bitcoin" with the quantity 0.5
+- **WHEN** the user opens the portfolio
+- **THEN** the row shows the quantity "0,5" over "shares"
 
 #### Scenario: Bond with a nominal amount
 
@@ -400,7 +538,7 @@ The app SHALL filter the positions of the current view while the user types in t
 
 ### Requirement: Filter by asset class
 
-The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class, and a line below the last row says "An asset class filter is active; some entries might be hidden." When no position of the view has the selected class any more, the filter goes back to "Show All".
+The app SHALL offer the filter "Asset class" in the filter bar above the positions, with "Show All" and one entry for each class that a position of the view has. While a class is selected, the list and the status line show only the positions of that class. When no position of the view has the selected class any more, the filter goes back to "Show All".
 
 #### Scenario: Show one class
 
@@ -408,19 +546,7 @@ The app SHALL offer the filter "Asset class" in the filter bar above the positio
 - **WHEN** the user selects "Stocks" in the filter "Asset class"
 - **THEN** the list shows the 2 stock positions
 - **AND** the status line reads "2 of 3 Portfolio Items" with the sum 3.000,00 €
-
-#### Scenario: Hint below the list
-
-- **GIVEN** a portfolio with 3 positions of the class "ETFs" and 2 positions of the class "Stocks"
-- **WHEN** the user selects "ETFs" in the filter "Asset class"
-- **THEN** the list shows the 3 ETF positions
 - **AND** a line below the last row says "An asset class filter is active; some entries might be hidden."
-
-#### Scenario: No hint without a filter
-
-- **GIVEN** the same portfolio with the filter "Asset class" at "Show All"
-- **WHEN** the user opens the portfolio
-- **THEN** the list shows 5 positions and no line about a filter
 
 #### Scenario: Entries of the filter
 
@@ -434,6 +560,28 @@ The app SHALL offer the filter "Asset class" in the filter bar above the positio
 - **WHEN** the user chooses "Stocks" in the submenu "Asset Class" of the bond position
 - **THEN** the filter "Asset class" reads "Show All"
 - **AND** the list shows 3 positions and no line about a filter
+
+### Requirement: Sum of the selected positions
+
+The app SHALL show the number and the sum of the selected positions in the status line when the user selects two or more positions, as the number of selected positions of the shown positions, such as "2 of 3 Portfolio Items". With one selected position or none, the status line shows the shown positions of the view, as the requirement "Count of a filtered portfolio" states.
+
+#### Scenario: Select two positions
+
+- **GIVEN** a portfolio with positions worth 1.000,00 €, 2.500,00 €, and 500,00 €
+- **WHEN** the user selects the first two rows
+- **THEN** the status line reads "2 of 3 Portfolio Items" with the sum 3.500,00 €
+
+#### Scenario: Select one position
+
+- **GIVEN** a portfolio with positions worth 1.000,00 €, 2.500,00 €, and 500,00 €
+- **WHEN** the user selects the first row
+- **THEN** the status line reads "3 Portfolio Items" with the sum 4.000,00 €
+
+#### Scenario: Selection under a filter
+
+- **GIVEN** a portfolio with 5 positions and the filter "Profit/Loss" at "Gains", which shows 3 of them
+- **WHEN** the user selects two of the shown rows
+- **THEN** the status line reads "2 of 3 Portfolio Items" with the sum of the two
 
 ## REMOVED Requirements
 
