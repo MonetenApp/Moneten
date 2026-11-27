@@ -352,6 +352,18 @@ final class AppModel {
 	@ObservationIgnored private var revealCount = 0
 	/// The number of selected rows of the table of positions, for the trail. The selection lives in that view.
 	@ObservationIgnored var selectedPositions = 0
+	/// The order that the header of the positions chose, nil for the order by name. It stays while the user moves between
+	/// portfolios and is not saved, so the app starts with the order by name.
+	var portfolioSort: PortfolioSort?
+	/// The position that a click opened, with the view of its table, so that a position of another view never shows as
+	/// open and nothing has to clear it when the view changes, as `revealedRow` keeps its view.
+	private(set) var openedPosition: OpenedPosition?
+
+	/// A plain click on a position: it opens the position, or closes it when it is open. Opening one closes the other.
+	func clickPosition(_ id: UUID, in key: TableKey) {
+		let clicked = OpenedPosition(id: id, key: key)
+		openedPosition = openedPosition == clicked ? nil : clicked
+	}
 
 	/// How far `apply(rule:of:mode:)` has come, or nil when no rule is applied.
 	private(set) var ruleProgress: (done: Int, total: Int)?
@@ -2249,6 +2261,12 @@ struct TableKey: Hashable {
 	var selection: SidebarSelection?
 	var filter = TransactionFilter()
 	var portfolios: [UUID]?
+}
+
+/// The open position of the table of `key`: `AppModel.clickPosition(_:in:)`.
+struct OpenedPosition: Equatable {
+	let id: UUID
+	let key: TableKey
 }
 
 /// A row that the table of `key` scrolls to.

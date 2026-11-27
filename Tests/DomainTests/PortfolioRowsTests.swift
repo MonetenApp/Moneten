@@ -148,6 +148,67 @@ struct PortfolioRowsTests {
 		#expect(filter.assetClass == nil)
 	}
 
+	/// The values of the spec: three positions with a value, a quote, and a purchase price, and one without a purchase price.
+	func sortable() -> (a: Holding, b: Holding, c: Holding, none: Holding) {
+		var a = position("Musterwerke AG", quantity: 646, quote: euros(Decimal(string: "77.6")!, on: Day(year: 2026, month: 11, day: 27)), value: 5_012_960)
+		a.purchasePrice = Quote(amount: Decimal(string: "156.15")!, currency: "EUR")
+		var b = position("Beispiel Chemie AG", quantity: 284, quote: euros(Decimal(string: "458.1")!, on: Day(year: 2026, month: 11, day: 27)), value: 13_010_040)
+		b.purchasePrice = Quote(amount: Decimal(string: "191.83")!, currency: "EUR")
+		var c = position("Bund 2,1 % 2031", quantity: 5000, isNominal: true, nominalCurrency: "EUR",
+			quote: Quote(amount: Decimal(string: "99.1")!, currency: nil, day: Day(year: 2026, month: 11, day: 26)), value: 495_500)
+		c.purchasePrice = Quote(amount: Decimal(string: "98.5")!, currency: nil)
+		let none = position("Ostsee Rohstoff ADR", quantity: 4760, quote: euros(0, on: Day(year: 2022, month: 3, day: 3)), value: 0)
+		return (a, b, c, none)
+	}
+
+	func names(_ holdings: [Holding]) -> [String] { holdings.map(\.security.name) }
+
+	@Test("Each header line sorts by its own value, ascending on the first click and descending on the next")
+	func sortByLine() {
+		let (a, b, c, none) = sortable()
+		let all = [a, b, c, none]
+		func sorted(_ key: PortfolioSort.Key, ascending: Bool = true) -> [String] {
+			names(PortfolioSort(key: key, isAscending: ascending).sorted(all) { _ in "EUR" })
+		}
+		#expect(sorted(.value) == ["Ostsee Rohstoff ADR", "Bund 2,1 % 2031", "Musterwerke AG", "Beispiel Chemie AG"])
+		#expect(sorted(.value, ascending: false) == ["Beispiel Chemie AG", "Musterwerke AG", "Bund 2,1 % 2031", "Ostsee Rohstoff ADR"])
+		// The two lines of one column sort apart: Musterwerke AG has the lower quote, Bund the lower purchase price.
+		#expect(sorted(.lastQuote) == ["Ostsee Rohstoff ADR", "Musterwerke AG", "Bund 2,1 % 2031", "Beispiel Chemie AG"])
+		#expect(sorted(.purchasePrice).prefix(3) == ["Bund 2,1 % 2031", "Musterwerke AG", "Beispiel Chemie AG"])
+		#expect(sorted(.name) == ["Beispiel Chemie AG", "Bund 2,1 % 2031", "Musterwerke AG", "Ostsee Rohstoff ADR"])
+		#expect(sorted(.name, ascending: false) == ["Ostsee Rohstoff ADR", "Musterwerke AG", "Bund 2,1 % 2031", "Beispiel Chemie AG"])
+		#expect(sorted(.quantity) == ["Beispiel Chemie AG", "Musterwerke AG", "Ostsee Rohstoff ADR", "Bund 2,1 % 2031"])
+		#expect(sorted(.quoteDay) == ["Ostsee Rohstoff ADR", "Bund 2,1 % 2031", "Beispiel Chemie AG", "Musterwerke AG"])
+		// The gain in the currency of the account: a loss, a profit of 30,00 €, a larger profit, and none without a purchase price.
+		#expect(sorted(.gain) == ["Musterwerke AG", "Bund 2,1 % 2031", "Beispiel Chemie AG", "Ostsee Rohstoff ADR"])
+	}
+
+	@Test("A position without the value comes last in both directions, and equal values keep the order by name")
+	func sortMissingAndEqual() {
+		let (a, b, c, none) = sortable()
+		let all = [none, c, b, a]
+		for ascending in [true, false] {
+			let sorted = PortfolioSort(key: .purchasePrice, isAscending: ascending).sorted(all) { _ in "EUR" }
+			#expect(sorted.last?.id == none.id)
+			#expect(PortfolioSort(key: .gain, isAscending: ascending).sorted(all) { _ in "EUR" }.last?.id == none.id)
+		}
+		// The same day for three positions: they keep the order by name in both directions.
+		let sameDay = [a, b, position("Anleihe Musterland", quote: euros(98, on: Day(year: 2026, month: 11, day: 27)))]
+		#expect(names(PortfolioSort(key: .quoteDay).sorted(sameDay) { _ in "EUR" }) == ["Anleihe Musterland", "Beispiel Chemie AG", "Musterwerke AG"])
+		#expect(names(PortfolioSort(key: .quoteDay, isAscending: false).sorted(sameDay) { _ in "EUR" })
+			== ["Anleihe Musterland", "Beispiel Chemie AG", "Musterwerke AG"])
+	}
+
+	@Test("A click on a header line sorts ascending, a second click on it descending, and a click on another line ascending")
+	func sortClicks() {
+		let first = PortfolioSort.after(clicking: .value, on: nil)
+		#expect(first == PortfolioSort(key: .value, isAscending: true))
+		let second = PortfolioSort.after(clicking: .value, on: first)
+		#expect(second == PortfolioSort(key: .value, isAscending: false))
+		#expect(PortfolioSort.after(clicking: .value, on: second) == first)
+		#expect(PortfolioSort.after(clicking: .lastQuote, on: second) == PortfolioSort(key: .lastQuote, isAscending: true))
+	}
+
 	@Test("Each class has its own name")
 	func names() {
 		#expect(AssetClass.allCases.map(\.name) == ["Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", "Others"])

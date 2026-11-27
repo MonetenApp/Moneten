@@ -136,7 +136,7 @@ struct FormatTests {
 		Holding(accountID: UUID(), security: Security(name: name), quantity: quantity, isNominal: isNominal, nominalCurrency: nominalCurrency)
 	}
 
-	@Test("A quantity of units shows without a word for the unit, a nominal amount with its currency")
+	@Test("A quantity of units shows as a plain number over shares, a nominal amount with its currency over nominal")
 	func quantity() {
 		#expect(Format.quantity(position("Musterwerke AG", quantity: 646), locale: germany) == "646")
 		#expect(Format.quantity(position("Musterwerke AG", quantity: 1), locale: germany) == "1")
@@ -144,6 +144,10 @@ struct FormatTests {
 		#expect(Format.quantity(position("Musterwerke AG", quantity: 1250), locale: unitedStates) == "1,250")
 		#expect(Format.quantity(position("Anleihe Musterland", quantity: 5000, isNominal: true, nominalCurrency: "EUR"), locale: germany) == "5.000,00\(nbsp)€")
 		#expect(Format.quantity(position("Anleihe Musterland", quantity: 5000, isNominal: true), locale: germany) == "5.000,00")
+		// The second line names the unit: "shares" for every number of units, "nominal" for a nominal amount.
+		#expect(Format.quantityUnit(position("Musterwerke AG", quantity: 1)) == "shares")
+		#expect(Format.quantityUnit(position("Beispiel Fonds", quantity: Decimal(string: "12.3456")!)) == "shares")
+		#expect(Format.quantityUnit(position("Anleihe Musterland", quantity: 5000, isNominal: true, nominalCurrency: "EUR")) == "nominal")
 	}
 
 	@Test("A quote of 0 shows a dash, any other quote its amount, and a percentage its sign")

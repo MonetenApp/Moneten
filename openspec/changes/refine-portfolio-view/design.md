@@ -74,9 +74,9 @@ The helper sends `wkn` as hbci4java gives it (`position` in `Tools/FinTSHelper/F
 
 ### Opening a position (part 1, the comment line in part 2)
 
-`AppModel.openedPosition` holds the table key and the ID of the open position, as `AppModel.revealedRow` holds its key, so a position of another view never shows as open, and nothing needs to clear it when the view changes. A plain click on a row opens its position, and a click on the open position closes it. A click with ⌘ or ⇧ changes only the selection. The table reports no click on a row that is selected already, so `PositionClicks`, a view behind the table, watches the clicks of the window on the `NSTableView` and asks it for the row at the pointer. The keyboard moves the selection and leaves the open position alone.
+`AppModel.openedPosition` holds the table key and the ID of the open position, as `AppModel.revealedRow` holds its key, so a position of another view never shows as open, and nothing needs to clear it when the view changes. A plain click on a row opens its position, and a click on the open position closes it. A click with ⌘ or ⇧ changes only the selection. The table reports no click on a row that is selected already, so `PositionClickWatcher`, a view behind the table with its frame, watches the clicks of the window with a local monitor and asks the `NSTableView` under it for the row at the pointer. The keyboard moves the selection and leaves the open position alone.
 
-Part 1 has no comments, so an open row looks like a closed one. The debug harness command `holdingclick <row>` clicks a row as a person does and logs the open position, so a check can see it. Part 2 adds the comment line in the name cell: below the two lines, after a gap of 7 points, it shows the speech bubble and the comment, and a negative trailing padding as wide as the four columns to the right lets the text run to the end of the row. The fixed widths of `PositionColumns` give that width without a geometry reader. The table measures the new height of the row from its cells.
+Part 1 has no comments, so an open row looks like a closed one. The debug harness command `holdingclick <row>` hands a click to the watcher and to the window and logs the open position, so a check can see it, and `holdingsort <line>` does what a click on a line of the header does. Part 2 adds the comment line in the name cell: below the two lines, after a gap of 7 points, it shows the speech bubble and the comment, and a negative trailing padding as wide as the four columns to the right lets the text run to the end of the row. The fixed widths of `PositionColumns` give that width without a geometry reader. The table measures the new height of the row from its cells.
 
 ### Comments (part 2)
 
@@ -103,7 +103,7 @@ Migration `v37` adds the table `assetClassColor` with the raw value of a class a
 ## Risks / Trade-offs
 
 - The columns of the positions can no longer be resized or moved, because the header is drawn outside the table. The draft has no resized columns, and the transaction table has hidden headers too.
-- `PositionClicks` reads the clicks of the window, which a future SwiftUI version could offer as a click action of a row. Until then it is the one place that knows about `NSTableView`.
+- `PositionClickWatcher` reads the clicks of the window, which a future SwiftUI version could offer as a click action of a row. Until then it is the one place that knows about `NSTableView`. A click that the debug harness sends never passes the monitor of the window, so the harness hands it to the watcher directly, and only a click of a person checks the monitor.
 - A bank that sends a foreign national number without an ISIN shows it as a WKN, because hbci4java keeps it as `wkn`. No recorded answer of a bank shows this. The bank tests of issue #11 can check it.
 - OpenSpec applies this delta only after `add-securities-accounts` and `redesign-portfolio-holdings` are archived, because it modifies their requirements.
 - Saved searches do not keep the portfolio filters, against the text of #612, because a saved search shows no positions. The owner confirms this before part 3.

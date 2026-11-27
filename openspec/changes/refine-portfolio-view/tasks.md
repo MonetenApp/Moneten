@@ -4,15 +4,15 @@ A task is checked only when a test or a check in the running app shows the behav
 
 ## 1. Part 1: rows, header, sorting, opening (#610)
 
-- [ ] 1.1 Test first, then `PortfolioSort`: each header line sorts by its own value in both directions, a position without the value comes last both times, and equal values keep the order by name. PortfolioRowsTests.
-- [ ] 1.2 `PositionColumns` and `HoldingsHeader`: the header of two lines above the table with the widths of the table, and the table without its own header. A click on a line sorts, and the line shows the direction. `AppModel.portfolioSort` keeps the order between portfolio views.
-- [ ] 1.3 Rows of the draft: the day over the ribbon, the name in bold over "ISIN" and "WKN", the quantity over "shares" or "nominal", the purchase price over the last quote, the value over the profit or loss in one line. The old day and its last quote in the warning color. PortfolioRowsTests for the texts of the second lines.
-- [ ] 1.4 The inset of 20 points for the rows, the header, and the filter bar. Screenshots.
-- [ ] 1.5 `AssetClassColors` with the default colors of the design, and the ribbon in the color of its class. Screenshots.
-- [ ] 1.6 The WKN only when the source sends it: checked in the bytecode of hbci4java 4.1.17 (design), and a row of the fake bank without a WKN shows none. Screenshots.
-- [ ] 1.7 `AppModel.openedPosition` and `PositionClicks`: a click opens, a second click or a click on another position closes, a click with ⌘ or ⇧ leaves it alone. The harness command `holdingclick`.
-- [ ] 1.8 A perf scenario in `App/Sources/PerfCheck.swift` for a new order of many positions, which must move the rows in place.
-- [ ] 1.9 Light and dark screenshots for the pull request.
+- [x] 1.1 Test first, then `PortfolioSort`: each header line sorts by its own value in both directions, a position without the value comes last both times, and equal values keep the order by name. PortfolioRowsTests "Each header line sorts by its own value, ascending on the first click and descending on the next", "A position without the value comes last in both directions, and equal values keep the order by name", and "A click on a header line sorts ascending, a second click on it descending, and a click on another line ascending".
+- [x] 1.2 `PositionColumns` and `HoldingsHeader`: the header of two lines above the table with the widths of the table, and the table without its own header. A click on a line sorts, and the line shows the direction. `AppModel.portfolioSort` keeps the order between portfolio views. The harness command `holdingsort` and the screenshots sorted by "Value" and "Last quote".
+- [x] 1.3 Rows of the draft: the day over the ribbon, the name in bold over "ISIN" and "WKN", the quantity over "shares" or "nominal", the purchase price over the last quote, the value over the profit or loss in one line. The old day and its last quote in the warning color. FormatTests "A quantity of units shows as a plain number over shares, a nominal amount with its currency over nominal", and the screenshots.
+- [x] 1.4 The inset of 20 points for the rows, the header, and the filter bar. Screenshots: the day, "Quote date", and "Asset class:" start 20 points from the edge of the list.
+- [x] 1.5 `AssetClassColors` with the default colors of the design, and the ribbon in the color of its class. Screenshots.
+- [x] 1.6 The WKN only when the source sends it: checked in the bytecode of hbci4java 4.1.17 (design), and a row of the fake bank without a WKN shows none. Screenshots.
+- [x] 1.7 `AppModel.openedPosition` and `PositionClickWatcher`: a click opens, a second click or a click on another position closes, a click with ⌘ or ⇧ leaves it alone. The harness command `holdingclick` opens, closes, and opens a position again, and moves the open position to another row.
+- [x] 1.8 A perf scenario in `App/Sources/PerfCheck.swift` for a new order of many positions, which must move the rows in place: "sort-many-positions".
+- [x] 1.9 Light and dark screenshots for the pull request.
 
 ## 2. Part 2: comments (#611)
 

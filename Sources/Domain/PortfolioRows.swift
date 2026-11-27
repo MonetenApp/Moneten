@@ -72,3 +72,61 @@ extension TransactionFilter {
 		assetClass == nil ? [] : [.assetClass]
 	}
 }
+
+/// The order that a click on a line of the header of the positions chooses: the value of that line and a direction.
+/// Nil in its place is the order by name of `Holding.isOrdered`.
+public struct PortfolioSort: Hashable, Sendable {
+	/// The seven lines of the header, each with a value of its own, so "Purchase price" and "Last quote" sort apart.
+	public enum Key: Hashable, Sendable {
+		case quoteDay, name, quantity, purchasePrice, lastQuote, value, gain
+	}
+
+	public var key: Key
+	public var isAscending: Bool
+
+	public init(key: Key, isAscending: Bool = true) {
+		self.key = key
+		self.isAscending = isAscending
+	}
+
+	/// The order after a click on the line of `key`: ascending, or the other direction when the list is sorted by that
+	/// line already.
+	public static func after(clicking key: Key, on current: PortfolioSort?) -> PortfolioSort {
+		guard let current, current.key == key else { return PortfolioSort(key: key) }
+		return PortfolioSort(key: key, isAscending: !current.isAscending)
+	}
+
+	/// `holdings` by the value of the key as the row shows it, with the value and the profit or loss in `currency`, the
+	/// currency of the account of each position. A position without the value comes last in both directions, because a
+	/// reversed list would otherwise open with empty rows. Equal values keep the order by name in both directions, so the
+	/// order never depends on the order of the database. Numbers in different currencies, and a percentage of a nominal
+	/// amount next to a price, compare as plain numbers, as in any table of mixed rows.
+	public func sorted(_ holdings: [Holding], currency: (Holding) -> String) -> [Holding] {
+		if key == .name {
+			let byName = holdings.sorted(by: Holding.isOrdered)
+			return isAscending ? byName : byName.reversed()
+		}
+		let keyed = holdings.map { (holding: $0, value: value(of: $0, currency: currency($0))) }
+		return keyed.sorted { a, b in
+			switch (a.value, b.value) {
+			case let (x?, y?) where x != y: return isAscending ? x < y : x > y
+			case (nil, _?): return false
+			case (_?, nil): return true
+			default: return Holding.isOrdered(a.holding, b.holding)
+			}
+		}
+		.map(\.holding)
+	}
+
+	private func value(of h: Holding, currency: String) -> Decimal? {
+		switch key {
+		case .quoteDay: h.quote?.day.map { Decimal($0.rawValue) }
+		case .name: nil
+		case .quantity: h.quantity
+		case .purchasePrice: h.purchasePrice?.amount
+		case .lastQuote: h.quote?.amount
+		case .value: h.value(in: currency)?.decimal
+		case .gain: h.gain(in: currency)?.amount.decimal
+		}
+	}
+}

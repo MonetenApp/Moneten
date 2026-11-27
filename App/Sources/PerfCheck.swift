@@ -327,6 +327,29 @@ struct PerfScenario {
 					c.fail("the refresh removed a shown position in place")
 				}
 			}),
+		// A click on a line of the header sorts 500 positions. The rows move inside the same table, because none leaves it,
+		// and the next click reverses the order (refine-portfolio-view, #610).
+		PerfScenario(name: "sort-many-positions", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Sort Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Sort Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 500)))
+				await c.select("Perf Sort Depot")
+			},
+			run: { c in
+				let table = c.harness.holdingsTables().first
+				if table?.numberOfRows != 500 { c.fail("the portfolio does not show its 500 positions") }
+				c.model.portfolioSort = PortfolioSort.after(clicking: .value, on: c.model.portfolioSort)
+				await c.settle()
+				c.model.portfolioSort = PortfolioSort.after(clicking: .value, on: c.model.portfolioSort)
+				await c.settle()
+				if c.model.portfolioSort != PortfolioSort(key: .value, isAscending: false) { c.fail("the second click did not reverse the order") }
+				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) != table.map(ObjectIdentifier.init) || table?.numberOfRows != 500 {
+					c.fail("a new order started the table over")
+				}
+				c.model.portfolioSort = nil
+				await c.settle()
+			}),
 		// A choice in the submenu "Asset Class" that takes a shown position out of the filter "Asset class" starts the table
 		// of positions over, as a refresh that drops a shown position does (issue #135).
 		PerfScenario(name: "asset-class-leaves-filter", budget: halfSecond,
