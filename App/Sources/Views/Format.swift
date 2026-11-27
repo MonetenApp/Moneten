@@ -184,8 +184,9 @@ enum Palette {
 	static let bandRed = dynamic("bandRed", light: rgb(0xC4262E), dark: rgb(0xF2706A), increasedContrast: rgb(0x8A1017))
 	/// The line where a month or a year starts in the balance chart.
 	static let bandLine = dynamic("bandLine", light: rgb(0xD2D2D7), dark: rgb(0x3A3A3C), increasedContrast: rgb(0x8E8E93))
-	/// The bars of the balance chart. With "Increase contrast" they reach 4.7:1 on the band.
-	static let bandBar = dynamic("bandBar", light: rgb(0xB9BEC4), dark: rgb(0xC9C9CC), increasedContrast: rgb(0x6E6E73))
+	/// The bars of the balance chart: 3.15:1 on the band in light mode, 10.2:1 in dark mode, and 4.7:1 with "Increase
+	/// contrast", so that the bars, which carry data, reach the 3:1 of non-text content.
+	static let bandBar = dynamic("bandBar", light: rgb(0x868B92), dark: rgb(0xC9C9CC), increasedContrast: rgb(0x6E6E73))
 	/// The column behind the bar under the pointer.
 	static let bandHover = dynamic("bandHover", light: NSColor(white: 0, alpha: 0.06), dark: NSColor(white: 1, alpha: 0.12))
 	/// The dashed line at zero behind the bars of the balance chart.
