@@ -49,7 +49,7 @@ The app SHALL draw the balance of an account over time as a bar chart, with one 
 
 ### Requirement: Look of the balance chart
 
-The app SHALL draw the balance chart with every bar 4 points wide with a gap of 2 points, white on the slate band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
+The app SHALL draw the balance chart with every bar 4 points wide with a gap of 2 points, light gray on the gray band behind the title, and red below zero, over a dashed line at zero. A thin line and the name of the month, such as "Oct 26", mark the first day of each month; in the monthly average the year marks January. The chart has no amount axis.
 
 #### Scenario: Month lines
 
@@ -59,13 +59,13 @@ The app SHALL draw the balance chart with every bar 4 points wide with a gap of 
 
 ### Requirement: Readable text on the band
 
-The app SHALL write the text on the slate band behind the title and the chart with a contrast of at least 4.5:1 in the light and the dark appearance, also with "Increase contrast". In the light appearance the text is dark slate, and negative amounts use a darker red.
+The app SHALL write the text on the gray band behind the title and the chart with a contrast of at least 4.5:1 in the light and the dark appearance, also with "Increase contrast". In the light appearance the text is dark gray, and negative amounts use a darker red.
 
 #### Scenario: Header in the light appearance
 
 - **GIVEN** the light appearance and the account "Giro" with a balance of -120,00 €
 - **WHEN** the user looks at the header
-- **THEN** the title is dark on the slate band and the balance is a dark red, each with at least 4.5:1
+- **THEN** the title is dark on the light gray band and the balance is a dark red, each with at least 4.5:1
 
 ### Requirement: Balances are computed from the transactions
 
@@ -460,7 +460,7 @@ The app SHALL show two pie charts in the mode "Pie Chart", one for the withdrawa
 
 ### Requirement: Look of the pie charts
 
-The app SHALL draw two full pie charts of 110 points, each in a rim of 6 points, side by side on the slate band with 300 points between their middles and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
+The app SHALL draw two full pie charts of 110 points, each in a rim of 6 points, side by side on the gray band with 300 points between their middles and no title. A thin line leads from the middle of each slice to its category name outside the pie, on the side of the slice. A slice below 3 % has no name, so that names do not overlap. Under the pointer a slice stands out, and the text below the pie shows its category, amount, and share.
 
 #### Scenario: Names outside the pie
 

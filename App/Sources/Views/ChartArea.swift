@@ -87,10 +87,10 @@ struct BalanceChart: View {
 		if bars.isEmpty {
 			let portfoliosOnly = !ids.isEmpty && ids.allSatisfy { model.ledger.account($0)?.kind == .portfolio }
 			Text(portfoliosOnly ? "No portfolio items; no bar chart." : "No transactions; no bar chart.")
-				.foregroundStyle(.secondary)
+				.foregroundStyle(Palette.bandLabel)
 				.frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
-			// As in MoneyMoney: a bar of 4 points and a gap of 2 for each day or month, white on the band, and red below zero.
+			// As in MoneyMoney: a bar of 4 points and a gap of 2 for each day or month, light gray on the band, and red below zero.
 			ScrollingBarChart(bars: bars, style: .separators, barWidth: 4, gap: 2, positive: Palette.bandBar, negative: Palette.red) { bar in
 				model.select(bar: PeriodChoice(bar: BalanceBar(start: bar.start, end: bar.end, minorUnits: bar.money.minorUnits), monthly: monthly))
 			}
@@ -146,7 +146,7 @@ struct CategoryBars: View {
 	@ViewBuilder
 	private func bars(_ sums: [PeriodSum], currency: String) -> some View {
 		if sums.isEmpty {
-			Text("No transactions; no bar chart.").foregroundStyle(.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
+			Text("No transactions; no bar chart.").foregroundStyle(Palette.bandLabel).frame(maxWidth: .infinity, maxHeight: .infinity)
 		} else {
 			// As in MoneyMoney: one bar of 40 points for each period with the sum of its
 			// transactions, in the color of the category, darker below zero.

@@ -32,6 +32,22 @@ The app SHALL draw the sidebar with the system sidebar material of macOS, Liquid
 - **WHEN** the user selects a transaction
 - **THEN** the row is slate blue with white text
 
+### Requirement: Neutral content colors
+
+The app SHALL draw the content view in fixed neutral grays in the light and the dark appearance: the list, the band behind the title and the chart, the filter bar, the status line, and the lines between the rows. These colors do not change with the desktop picture. Text that steps back, such as an empty state or a filter line, has a contrast of at least 4.5:1 on each of these backgrounds, also with "Increase contrast". The sidebar, the toolbar, and the window frame keep the system materials.
+
+#### Scenario: Dark list with a blue desktop picture
+
+- **GIVEN** the dark appearance and a blue desktop picture
+- **WHEN** the user looks at the transactions of "Girokonto"
+- **THEN** the list is #161618, the band is #1D1D1F, and the filter bar is #1A1A1C
+
+#### Scenario: Light list
+
+- **GIVEN** the light appearance
+- **WHEN** the user looks at the positions of the portfolio "Depot"
+- **THEN** the list is #FFFFFF, the band is #F5F5F7, and the filter bar is #FAFAFA
+
 ### Requirement: Whole amounts in the sidebar
 
 The app SHALL show each balance of an account and each sum of a group in the sidebar on one line and in full, and shorten a long name of the account or the group first. When the balances of an account do not all fit, the row shows the first balance and the number of the others. An amount that does not fit ends with an ellipsis and is never cut off at the edge of the row.
