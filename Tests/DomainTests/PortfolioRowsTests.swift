@@ -372,15 +372,15 @@ struct PortfolioRowsTests {
 		let share = position("Musterwerke AG")
 		var filter = TransactionFilter()
 		filter.searchText = "sparplan"
-		#expect(filter.positions(of: [plan, share]) == [plan])
+		#expect(filter.positions(of: [plan, share], currency: eur) == [plan])
 		filter.searchText = "xyz"
-		#expect(filter.positions(of: [plan, share]).isEmpty)
+		#expect(filter.positions(of: [plan, share], currency: eur).isEmpty)
 		// A position that the search shows by its comment leaves the list when the comment changes, so the table starts over.
 		filter.searchText = "sparplan"
 		var changed = plan
 		changed.comment = "Ziel 2.000 Anteile"
-		#expect(filter.hidesShownPositions(before: [plan, share], after: [changed, share]))
-		#expect(!TransactionFilter().hidesShownPositions(before: [plan, share], after: [changed, share]))
+		#expect(filter.hidesShownPositions(before: [plan, share], after: [changed, share], currency: eur))
+		#expect(!TransactionFilter().hidesShownPositions(before: [plan, share], after: [changed, share], currency: eur))
 	}
 
 	@Test("Each class has its own name")

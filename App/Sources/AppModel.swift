@@ -1159,7 +1159,7 @@ final class AppModel {
 		if let portfolios = tableKey.portfolios {
 			let before = ledger.holdings(of: portfolios)
 			let after = before.map { h in var h = h; if h.id == id { h.comment = value }; return h }
-			if tableKey.filter.hidesShownPositions(before: before, after: after) {
+			if tableKey.filter.hidesShownPositions(before: before, after: after, currency: { ledger.positionCurrency(of: $0) }) {
 				Task { await replacingTable { storeComment(value, ofPosition: id) } }
 				return
 			}
