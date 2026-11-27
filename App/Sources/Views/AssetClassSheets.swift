@@ -11,7 +11,7 @@ struct AssetClassSettingsSheet: View {
 	@State private var loaded = false
 
 	var body: some View {
-		SheetFrame(title: "Asset Class Settings", width: 620, onConfirm: {
+		SheetFrame(title: "Asset Class Settings", width: 560, onConfirm: {
 			model.setAssetClassColors(chosen)
 			return true
 		}, leading: {
@@ -24,7 +24,7 @@ struct AssetClassSettingsSheet: View {
 					LabeledContent {
 						ColorSwatches(selection: binding(c))
 					} label: {
-						SettingsRibbon(assetClass: c, color: colors[c] ?? AssetClassColors.defaultColor(of: c))
+						Ribbon(text: c.name, color: colors[c] ?? AssetClassColors.defaultColor(of: c)).accessibilityLabel(c.name)
 					}
 				}
 			}
@@ -53,26 +53,6 @@ struct AssetClassSettingsSheet: View {
 
 	private func binding(_ c: AssetClass) -> Binding<Color> {
 		Binding(get: { colors[c] ?? AssetClassColors.defaultColor(of: c) }, set: { colors[c] = $0 })
-	}
-}
-
-/// The ribbon of a class in the settings, with its name in capitals in white on its color, as a row shows it.
-private struct SettingsRibbon: View {
-	let assetClass: AssetClass
-	let color: Color
-
-	var body: some View {
-		Text(assetClass.name.uppercased())
-			.font(.system(size: 9, weight: .bold))
-			.kerning(0.45)
-			.foregroundStyle(.white)
-			.lineLimit(1)
-			.padding(.leading, 8)
-			.padding(.trailing, 14)
-			.frame(height: AssetClassRibbon.height)
-			.background(color, in: RibbonShape())
-			.fixedSize()
-			.accessibilityLabel(assetClass.name)
 	}
 }
 
@@ -121,7 +101,7 @@ struct AssetClassPickerSheet: View {
 								Text(title(of: c))
 							} icon: {
 								Circle()
-									.fill(c.map { AssetClassColors.color(of: $0, chosen: model.ledger.assetClassColors) } ?? Color.clear)
+									.fill(c.map { AnyShapeStyle(RibbonFill(color: AssetClassColors.color(of: $0, chosen: model.ledger.assetClassColors))) } ?? AnyShapeStyle(Color.clear))
 									.overlay(Circle().strokeBorder(c == nil ? Palette.secondaryText : .clear, lineWidth: 1))
 									.frame(width: 10, height: 10)
 							}

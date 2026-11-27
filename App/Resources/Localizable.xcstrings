@@ -2847,6 +2847,16 @@
         }
       }
     },
+    "Blue" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blau"
+          }
+        }
+      }
+    },
     "Bonds" : {
       "localizations" : {
         "de" : {
@@ -2957,6 +2967,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Übernehmen Sie Ihre Konten, Kategorien und Umsätze aus MoneyMoney, oder beginnen Sie mit einem Offline-Konto."
+          }
+        }
+      }
+    },
+    "Brown" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braun"
           }
         }
       }
@@ -4250,6 +4270,16 @@
       },
       "extractionState" : "manual"
     },
+    "Cyan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cyan"
+          }
+        }
+      }
+    },
     "D" : {
       "localizations" : {
         "de" : {
@@ -5476,6 +5506,16 @@
         }
       }
     },
+    "Green" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grün"
+          }
+        }
+      }
+    },
     "Group by asset class" : {
       "localizations" : {
         "de" : {
@@ -5954,6 +5994,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Falsches Passwort!"
+          }
+        }
+      }
+    },
+    "Indigo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indigo"
           }
         }
       }
@@ -6703,6 +6753,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "min. Betrag"
+          }
+        }
+      }
+    },
+    "Mint" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mint"
           }
         }
       }
@@ -7742,6 +7802,16 @@
         }
       }
     },
+    "No portfolio item has a value." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Depotposition hat einen Wert."
+          }
+        }
+      }
+    },
     "No portfolio items found." : {
       "localizations" : {
         "de" : {
@@ -8274,6 +8344,16 @@
         }
       }
     },
+    "Orange" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orange"
+          }
+        }
+      }
+    },
     "Original amount" : {
       "localizations" : {
         "de" : {
@@ -8483,6 +8563,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PIN"
+          }
+        }
+      }
+    },
+    "Pink" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pink"
           }
         }
       }
@@ -8725,6 +8815,16 @@
       },
       "extractionState" : "manual"
     },
+    "Purple" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lila"
+          }
+        }
+      }
+    },
     "Purpose" : {
       "localizations" : {
         "de" : {
@@ -8877,6 +8977,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Red" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rot"
+          }
+        }
+      }
     },
     "Reduce" : {
       "localizations" : {
@@ -9571,6 +9681,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wählen Sie ein Konto oder eine Kategorie."
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewählt"
           }
         }
       }
@@ -10389,6 +10509,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAN-Verfahren"
+          }
+        }
+      }
+    },
+    "Teal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blaugrün"
           }
         }
       }
@@ -14620,6 +14750,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jahresansicht"
+          }
+        }
+      }
+    },
+    "Yellow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelb"
           }
         }
       }

@@ -471,6 +471,21 @@ struct PortfolioRowsTests {
 		#expect(Allocation([shares, zero], currency: eur).bars[0].shares.map(\.percent) == [100, 0])
 	}
 
+	@Test("The shares of a bar add up to 100,00 %: the hundredths left by rounding down go to the largest remainders, in the order of the menu")
+	func allocationSumsToHundred() {
+		func percents(_ values: [(Int64, AssetClass)]) -> [Decimal] {
+			let holdings = values.enumerated().map { i, v in position("Position \(i)", value: v.0, source: v.1) }
+			return Allocation(holdings, currency: eur).bars[0].shares.map(\.percent)
+		}
+		// Three equal classes: 33,333... % each, which rounding alone shows as 99,99 %.
+		let thirds = percents([(100_000, .stocks), (100_000, .bonds), (100_000, .etfs)])
+		#expect(thirds == [Decimal(string: "33.34")!, Decimal(string: "33.33")!, Decimal(string: "33.33")!])
+		// 100, 100, 100, and 300: 16,666... % three times and 50 %, which rounding alone shows as 100,01 %.
+		let sixths = percents([(100_000, .stocks), (100_000, .funds), (100_000, .bonds), (300_000, .etfs)])
+		#expect(sixths == [Decimal(string: "16.67")!, Decimal(string: "16.67")!, Decimal(string: "16.66")!, 50])
+		for shares in [thirds, sixths] { #expect(shares.reduce(0, +) == 100) }
+	}
+
 	@Test("The allocation shows one bar for each currency and never converts a value")
 	func allocationByCurrency() {
 		let usDepot = UUID()

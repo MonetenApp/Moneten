@@ -1652,7 +1652,8 @@ final class DebugHarness {
 		// "<row>": a plain click on row <row> of the table of positions, handed to the watcher of the clicks and to the window
 		// as the mouse sends it: it opens the position of the row, or closes it when it is open. Then it logs whether a
 		// position is open, the hash of its name, and which rows are selected. The table of a window in the background takes
-		// no selection from such a click.
+		// no selection from such a click. "<row>|top" clicks near the top of the row, on the heading of a class, and
+		// "<row>|bottom" near its end.
 		case "holdingclick": holdingClick(argument)
 		// "classes ...": the checks of the asset classes of a portfolio view (refine-portfolio-view, #613). "state" logs the rows, the classes
 		// of the headings of "Group by asset class" with their counts, and whether the pin saved the filter bar.
@@ -2864,12 +2865,16 @@ final class DebugHarness {
 	}
 
 	private func holdingClick(_ argument: String) {
-		guard let model, let table = holdingsTables().first, let window = table.window, let row = Int(argument), (0..<table.numberOfRows).contains(row) else {
+		let parts = argument.components(separatedBy: "|")
+		guard let model, let table = holdingsTables().first, let window = table.window, let row = Int(parts[0]), (0..<table.numberOfRows).contains(row) else {
 			return log("holdingclick refused")
 		}
 		table.scrollRowToVisible(row)
 		let frame = table.rect(ofRow: row)
-		let point = table.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+		// "<row>|top" clicks 10 points below the top of the row, where the heading of a class stands under "Group by asset class",
+		// and "<row>|bottom" 10 points above its end, on the position below the heading.
+		let y = switch parts.dropFirst().first { case "top": frame.minY + 10; case "bottom": frame.maxY - 10; default: frame.midY }
+		let point = table.convert(NSPoint(x: frame.midX, y: y), to: nil)
 		func event(_ type: NSEvent.EventType) -> NSEvent? {
 			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
 				context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
@@ -2942,9 +2947,9 @@ final class DebugHarness {
 				model.sheet = .assetClassSettings
 			} else if words == ["restore"] {
 				model.setAssetClassColors([:])
-			} else if words.count == 2, let c = AssetClass(rawValue: words[0]), words[1].hasPrefix("#"), words[1].count == 7 {
+			} else if words.count == 2, let c = AssetClass(rawValue: words[0]), let color = HexColor(words[1]) {
 				var colors = model.ledger.assetClassColors
-				colors[c] = words[1]
+				colors[c] = color.text
 				model.setAssetClassColors(colors)
 			} else {
 				return log("classes refused")
@@ -3007,8 +3012,9 @@ final class DebugHarness {
 		guard let portfolios = model.tableKey.portfolios else { return log("classes no classes view") }
 		let ledger = model.ledger
 		let currency = { (h: Holding) in ledger.positionCurrency(of: h) }
-		let rows = model.tableKey.filter.shownPositions(of: ledger.holdings(of: portfolios), sort: model.portfolioSort, currency: currency)
-		let headings = model.tableKey.filter.groupsByAssetClass ? rows.compactMap { PortfolioSections(rows, currency: currency).headings[$0.id] } : []
+		let sections = model.tableKey.filter.shownSections(of: ledger.holdings(of: portfolios), sort: model.portfolioSort, currency: currency)
+		let rows = sections.holdings
+		let headings = rows.compactMap { sections.headings[$0.id] }
 		let table = holdingsTables().first
 		log("classes", ("grouped", .flag(model.filter.groupsByAssetClass)), ("rows", .count(table?.numberOfRows ?? 0)),
 			("classes", .list(rows.map { .state($0.assetClass) })), ("headings", .list(headings.map { .state($0.assetClass) })),

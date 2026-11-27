@@ -82,8 +82,9 @@ public final class Store: SavedPINStore {
 			assetClassColors: try assetClassColors(in: db))
 	}
 
-	/// The chosen colors of the asset classes. A class that this version does not know keeps its row and shows nowhere. A
-	/// database before `v37`, which the schema tests open, has no table and no chosen color.
+	/// The chosen colors of the asset classes. A class that this version does not know keeps its row and shows nowhere.
+	/// The app always opens a database migrated to the end. The guard is for the schema tests, which open a database
+	/// migrated only up to a version before `v37`, without the table, and load or import into it.
 	static func assetClassColors(in db: Database) throws -> [AssetClass: String] {
 		guard try db.tableExists("assetClassColor") else { return [:] }
 		var colors: [AssetClass: String] = [:]
@@ -100,7 +101,7 @@ public final class Store: SavedPINStore {
 	}
 
 	static func replaceAssetClassColors(_ colors: [AssetClass: String], in db: Database) throws {
-		// An import into a database before `v37` has no color to keep, so it writes none.
+		// Only for the schema tests, which import into a database migrated up to a version before `v37`, without the table.
 		if colors.isEmpty, try !db.tableExists("assetClassColor") { return }
 		try db.execute(sql: "DELETE FROM assetClassColor")
 		for c in AssetClass.allCases {

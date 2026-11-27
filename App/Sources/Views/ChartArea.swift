@@ -569,12 +569,15 @@ struct AllocationPopover: View {
 
 	var body: some View {
 		let ledger = model.ledger
-		let allocation = Allocation(ledger.holdings(of: accountIDs)) { ledger.positionCurrency(of: $0) }
+		let holdings = ledger.holdings(of: accountIDs)
+		let allocation = Allocation(holdings) { ledger.positionCurrency(of: $0) }
 		let colors = ledger.assetClassColors
 		VStack(alignment: .leading, spacing: 16) {
 			Text("Allocation by Asset Class").font(.headline)
 			if allocation.bars.isEmpty {
-				Text("No portfolio items.").foregroundStyle(Palette.secondaryText)
+				// Positions without a value, such as those of a bank that sends no prices, have nothing to share.
+				Text(holdings.isEmpty ? String(localized: "No portfolio items.") : String(localized: "No portfolio item has a value."))
+					.foregroundStyle(Palette.secondaryText)
 			}
 			ForEach(allocation.bars, id: \.currency) { bar in
 				VStack(alignment: .leading, spacing: 8) {
@@ -599,7 +602,7 @@ struct AllocationPopover: View {
 		} label: {
 			HStack(spacing: 8) {
 				RoundedRectangle(cornerRadius: 2)
-					.fill(AssetClassColors.color(of: share.assetClass, chosen: colors))
+					.fill(RibbonFill(color: AssetClassColors.color(of: share.assetClass, chosen: colors)))
 					.frame(width: 10, height: 10)
 				Text(share.assetClass.name).lineLimit(1)
 				Spacer(minLength: 12)
@@ -639,7 +642,8 @@ struct AllocationBar: View {
 			HStack(spacing: 1) {
 				ForEach(shares, id: \.assetClass) { share in
 					let fraction = total > 0 ? CGFloat(truncating: (share.percent / total) as NSDecimalNumber) : 0
-					AssetClassColors.color(of: share.assetClass, chosen: colors)
+					Rectangle()
+						.fill(RibbonFill(color: AssetClassColors.color(of: share.assetClass, chosen: colors)))
 						.frame(width: max(1, (geometry.size.width - CGFloat(max(0, shares.count - 1))) * fraction))
 				}
 			}

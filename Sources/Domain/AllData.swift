@@ -276,8 +276,7 @@ private struct File: Codable {
 	private func colors() throws -> [AssetClass: String] {
 		var colors: [AssetClass: String] = [:]
 		for (i, entry) in (assetClassColors ?? []).enumerated() {
-			let digits = entry.color.utf8.dropFirst()
-			guard entry.color.utf8.count == 7, entry.color.hasPrefix("#"), digits.allSatisfy({ (0x30...0x39).contains($0) || (0x41...0x46).contains($0) || (0x61...0x66).contains($0) }) else {
+			guard HexColor(entry.color) != nil else {
 				throw AllData.ReadError.damaged("at assetClassColors[\(i)], the color must be # and six hexadecimal digits")
 			}
 			guard colors.updateValue(entry.color, forKey: entry.assetClass) == nil else {

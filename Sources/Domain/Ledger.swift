@@ -741,14 +741,14 @@ public struct Ledger: Sendable {
 		return nil
 	}
 
-	/// Takes over the comment of the position `id`, which the database stored. Nil removes it. The order of the positions
-	/// does not depend on it.
 	/// The colors of the asset class settings, which replace every earlier choice. An empty list gives every class its
 	/// default color again.
 	public mutating func setAssetClassColors(_ colors: [AssetClass: String]) {
 		assetClassColors = colors
 	}
 
+	/// Takes over the comment of the position `id`, which the database stored. Nil removes it. The order of the positions
+	/// does not depend on it.
 	public mutating func setComment(_ comment: String?, of id: UUID) {
 		for (account, positions) in holdingsByAccount {
 			guard let i = positions.firstIndex(where: { $0.id == id }) else { continue }

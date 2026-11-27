@@ -177,9 +177,15 @@ extension TransactionFilter {
 	/// in the order of `holdings` for nil, and under "Group by asset class" by class in the order of the menu, each class in
 	/// that order. A new class of a shown position then moves it into another section.
 	public func shownPositions(of holdings: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> [Holding] {
+		shownSections(of: holdings, sort: sort, currency: currency).holdings
+	}
+
+	/// The rows of `shownPositions(of:sort:currency:)` with the headings of "Group by asset class", none without it, built
+	/// once for the table.
+	public func shownSections(of holdings: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> PortfolioSections {
 		let shown = positions(of: holdings, currency: currency)
 		let sorted = sort?.sorted(shown, currency: currency) ?? shown
-		return groupsByAssetClass ? PortfolioSections(sorted, currency: currency).holdings : sorted
+		return groupsByAssetClass ? PortfolioSections(sorted, currency: currency) : PortfolioSections(ungrouped: sorted)
 	}
 }
 
@@ -203,6 +209,12 @@ public struct PortfolioSections: Sendable {
 	public let holdings: [Holding]
 	/// The heading above a position, by the ID of the first position of each class.
 	public let headings: [UUID: Heading]
+
+	/// The flat list: `holdings` in their order, without a heading.
+	public init(ungrouped holdings: [Holding]) {
+		self.holdings = holdings
+		headings = [:]
+	}
 
 	/// The positions of `holdings` by class, each class in the order of `holdings`. `currency` gives the currency of the
 	/// account of a position, in which its row shows its value and its profit or loss.
@@ -231,7 +243,8 @@ public struct PortfolioSections: Sendable {
 /// view, whatever the filters and the search show, because it is an overview of the whole portfolio. It never converts a
 /// currency, so each currency of the values has a bar of its own.
 public struct Allocation: Equatable, Sendable {
-	/// One class of a bar: its value and its share of the total in percent, rounded half away from zero to two places.
+	/// One class of a bar: its value and its share of the total in percent with two places. The shares of a bar add up to
+	/// exactly 100 %, so each is rounded down and the hundredths that are left go to the largest remainders.
 	public struct Share: Equatable, Sendable {
 		public let assetClass: AssetClass
 		public let value: Money
@@ -258,21 +271,38 @@ public struct Allocation: Equatable, Sendable {
 		}
 		bars = sums.keys.sorted().map { code in
 			let classes = sums[code] ?? [:]
-			let total = classes.values.reduce(Int128(0), +)
-			let shares = AssetClass.allCases.compactMap { c -> Share? in
-				guard let minor = classes[c] else { return nil }
-				return Share(assetClass: c, value: Money(minorUnits: Int64(clampingSum: minor), currency: code), percent: Self.percent(minor, of: total))
+			let present = AssetClass.allCases.filter { classes[$0] != nil }
+			let parts = present.map { classes[$0] ?? 0 }
+			let total = parts.reduce(Int128(0), +)
+			let hundredths = Self.hundredths(of: parts, total: total)
+			let shares = present.enumerated().map { i, c in
+				Share(assetClass: c, value: Money(minorUnits: Int64(clampingSum: parts[i]), currency: code), percent: Decimal(string: String(hundredths[i]))! / 100)
 			}
 			return Bar(currency: code, total: Money(minorUnits: Int64(clampingSum: total), currency: code), shares: shares)
 		}
 	}
 
-	/// `part` of `total` in percent, rounded half away from zero to two places, and 0 of a total of 0.
-	private static func percent(_ part: Int128, of total: Int128) -> Decimal {
-		guard total != 0 else { return 0 }
-		var exact = Decimal(string: String(part))! / Decimal(string: String(total))! * 100
-		var rounded = Decimal()
-		NSDecimalRound(&rounded, &exact, 2, .plain)
-		return rounded
+	/// Each of `parts` as hundredths of a percent of `total`, which add up to 10,000: each share rounded down, and the
+	/// hundredths that are left, one each, to the shares with the largest remainders, the first in the order of `parts`
+	/// on a tie. A total of 0 gives 0 for each.
+	private static func hundredths(of parts: [Int128], total: Int128) -> [Int128] {
+		guard total != 0 else { return parts.map { _ in 0 } }
+		// A negative total, of positions worth less than nothing, shares as its magnitude does.
+		let sign: Int128 = total < 0 ? -1 : 1
+		let whole = total * sign
+		var shares: [Int128] = []
+		var remainders: [Int128] = []
+		for part in parts {
+			let scaled = part * sign * 10_000
+			var share = scaled / whole
+			// Down, also for a negative part, so every remainder lies between 0 and the total.
+			if scaled % whole < 0 { share -= 1 }
+			shares.append(share)
+			remainders.append(scaled - share * whole)
+		}
+		let left = 10_000 - shares.reduce(0, +)
+		let order = remainders.indices.sorted { remainders[$0] != remainders[$1] ? remainders[$0] > remainders[$1] : $0 < $1 }
+		for i in order.prefix(Int(left)) { shares[i] += 1 }
+		return shares
 	}
 }

@@ -266,13 +266,15 @@ struct RuleHelp: View {
 	}
 }
 
-/// The palette of category colors as swatches, with the system color panel for any other color.
+/// The palette of category colors as swatches, with the system color panel for any other color. Each swatch tells
+/// VoiceOver its color and whether it is the selected one, in the category settings and the asset class settings.
 struct ColorSwatches: View {
 	@Binding var selection: Color
 
 	var body: some View {
+		let names = CategoryColors.paletteNames
 		HStack(spacing: 6) {
-			ForEach(Array(CategoryColors.palette.enumerated()), id: \.offset) { _, color in
+			ForEach(Array(CategoryColors.palette.enumerated()), id: \.offset) { index, color in
 				let selected = color.hex == selection.hex
 				Button { selection = color } label: {
 					Circle()
@@ -284,10 +286,14 @@ struct ColorSwatches: View {
 				}
 				.buttonStyle(.plain)
 				.help(selected ? "Selected color" : "Choose this color")
+				.accessibilityLabel(names[index])
+				.accessibilityValue(selected ? Text("Selected") : Text(verbatim: ""))
+				.accessibilityAddTraits(selected ? .isSelected : [])
 				.accessibilityIdentifier("color-swatch")
 			}
 			OtherColorButton(selection: $selection)
 				.help("Other color")
+				.accessibilityLabel("Other color")
 		}
 	}
 }
@@ -399,6 +405,9 @@ struct OtherColorButton: View {
 				.contentShape(Circle())
 		}
 		.buttonStyle(.plain)
+		// A chosen color outside the palette shows on this swatch, which is then the selected one.
+		.accessibilityValue(custom ? Text("Selected") : Text(verbatim: ""))
+		.accessibilityAddTraits(custom ? .isSelected : [])
 	}
 }
 
