@@ -2365,6 +2365,16 @@
         }
       }
     },
+    "Ascending" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufsteigend"
+          }
+        }
+      }
+    },
     "Asset Class" : {
       "localizations" : {
         "de" : {
@@ -4368,6 +4378,16 @@
         }
       }
     },
+    "Descending" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Absteigend"
+          }
+        }
+      }
+    },
     "Details" : {
       "localizations" : {
         "de" : {
@@ -5971,6 +5991,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Geldanlage"
+          }
+        }
+      }
+    },
+    "ISIN" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ISIN"
           }
         }
       }
@@ -7678,6 +7708,17 @@
       },
       "extractionState" : "manual"
     },
+    "nominal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nominal"
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
     "None" : {
       "localizations" : {
         "de" : {
@@ -8591,6 +8632,16 @@
         }
       }
     },
+    "Quote date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kursdatum"
+          }
+        }
+      }
+    },
     "Reading %@..." : {
       "localizations" : {
         "de" : {
@@ -9490,6 +9541,17 @@
           }
         }
       }
+    },
+    "shares" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stück"
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "Shopping bag" : {
       "localizations" : {
@@ -14313,6 +14375,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zurückgezogen"
+          }
+        }
+      }
+    },
+    "WKN" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WKN"
           }
         }
       }

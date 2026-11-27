@@ -327,6 +327,55 @@ struct PerfScenario {
 					c.fail("the refresh removed a shown position in place")
 				}
 			}),
+		// A click on a line of the header sorts 500 positions, and the next click reverses the order. Each new order starts
+		// the table over: in place, SwiftUI moved every row and the reversal took 2.4 seconds (refine-portfolio-view, #610).
+		PerfScenario(name: "sort-many-positions", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Sort Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Sort Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.positions(depot.id, 500)))
+				await c.select("Perf Sort Depot")
+			},
+			run: { c in
+				let table = c.harness.holdingsTables().first
+				if table?.numberOfRows != 500 { c.fail("the portfolio does not show its 500 positions") }
+				await c.model.sortPositions(by: .value)
+				await c.settle()
+				await c.model.sortPositions(by: .value)
+				await c.settle()
+				if c.model.portfolioSort != PortfolioSort(key: .value, isAscending: false) { c.fail("the second click did not reverse the order") }
+				let sorted = c.harness.holdingsTables().first
+				if sorted.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) { c.fail("a new order moved the rows in place") }
+				if sorted?.numberOfRows != 500 { c.fail("the sorted table misses positions") }
+				await c.model.sortPositions(by: nil)
+				await c.settle()
+			}),
+		// A refresh with new quotes of 500 positions sorted by "Last quote" changes their order without removing a row. It
+		// starts the table over, as a new order of the header does, because SwiftUI would move every row in place.
+		PerfScenario(name: "refresh-reorders-sorted-positions", budget: halfSecond,
+			setUp: { c in
+				await c.select("Perf Sort Depot")
+				await c.model.sortPositions(by: .lastQuote)
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Sort Depot" }) else { return c.fail("the portfolio is missing") }
+				let table = c.harness.holdingsTables().first
+				if table?.numberOfRows != 500 { c.fail("the portfolio does not show its 500 positions") }
+				// The quotes in the reverse order of the delivery before.
+				let reversed = PerfScenario.positions(depot.id, 500).enumerated().map { i, h in
+					var h = h
+					h.quote = Quote(amount: Decimal(1_000 - i), currency: "EUR", day: Day.today())
+					return h
+				}
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: reversed))
+				await c.settle()
+				let sorted = c.harness.holdingsTables().first
+				if sorted.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) { c.fail("the refresh moved the sorted rows in place") }
+				if sorted?.numberOfRows != 500 { c.fail("the refreshed table misses positions") }
+				await c.model.sortPositions(by: nil)
+				await c.settle()
+			}),
 		// A choice in the submenu "Asset Class" that takes a shown position out of the filter "Asset class" starts the table
 		// of positions over, as a refresh that drops a shown position does (issue #135).
 		PerfScenario(name: "asset-class-leaves-filter", budget: halfSecond,

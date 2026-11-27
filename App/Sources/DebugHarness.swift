@@ -1634,6 +1634,21 @@ final class DebugHarness {
 		// mark. "<row>|<count>|<item>" also chooses the item of the submenu with that English title, "Automatic" or the name of a
 		// class, which changes only the database. Then "assetclass" with an empty argument reads the classes.
 		case "holdingmenu": holdingMenu(argument)
+		// "<row>": a plain click on row <row> of the table of positions, handed to the watcher of the clicks and to the window
+		// as the mouse sends it: it opens the position of the row, or closes it when it is open. Then it logs whether a
+		// position is open, the hash of its name, and which rows are selected. The table of a window in the background takes
+		// no selection from such a click.
+		case "holdingclick": holdingClick(argument)
+		// "<line>": what a click on that line of the header of the positions does, by the case of `PortfolioSort.Key`, such as
+		// "value" or "lastQuote"; an empty argument goes back to the order by name. Then it logs the order.
+		case "holdingsort":
+			let keys: [String: PortfolioSort.Key] = ["quoteDay": .quoteDay, "name": .name, "quantity": .quantity, "purchasePrice": .purchasePrice,
+				"lastQuote": .lastQuote, "value": .value, "gain": .gain]
+			guard argument.isEmpty || keys[argument] != nil else { return log("holdingsort refused") }
+			Task {
+				await model.sortPositions(by: keys[argument])
+				log("holdingsort", ("key", .state(model.portfolioSort?.key as Any)), ("ascending", .flag(model.portfolioSort?.isAscending ?? true)))
+			}
 		// The alert that waits for an answer in a modal session, such as the confirmation of a delete: its title, its text, and
 		// its buttons by their hashes. "<button>" clicks the button with that English title. In a save or open panel
 		// it clicks only "Cancel".
@@ -2798,6 +2813,37 @@ final class DebugHarness {
 				choose()
 				self.log("holdingmenu done")
 			}
+		}
+	}
+
+	private func holdingClick(_ argument: String) {
+		guard let model, let table = holdingsTables().first, let window = table.window, let row = Int(argument), (0..<table.numberOfRows).contains(row) else {
+			return log("holdingclick refused")
+		}
+		table.scrollRowToVisible(row)
+		let frame = table.rect(ofRow: row)
+		let point = table.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+		func event(_ type: NSEvent.EventType) -> NSEvent? {
+			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+				context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
+		}
+		guard let down = event(.leftMouseDown), let up = event(.leftMouseUp) else { return log("holdingclick refused") }
+		// The watcher reads the click first, as the monitor of the window does with the click of a person. The table tracks the
+		// mouse until the button goes up, so the up event waits in the queue.
+		func watchers(in view: NSView) -> [PositionClickWatcher] { (view as? PositionClickWatcher).map { [$0] } ?? view.subviews.flatMap(watchers) }
+		window.contentView.map(watchers)?.first?.handle(down)
+		NSApp.postEvent(up, atStart: false)
+		window.sendEvent(down)
+		Task { @MainActor in
+			try? await Task.sleep(for: .milliseconds(300))
+			// The open position of the table on screen, by the hash of its name, never by the name. A position that a click
+			// opened in another view does not count.
+			let portfolios = model.ledger.accounts.filter { $0.kind == .portfolio }.map(\.id)
+			let open = model.openedPosition.flatMap { opened in
+				opened.key == model.tableKey ? model.ledger.holdings(of: portfolios).first { $0.id == opened.id } : nil
+			}
+			self.log("holdingclick", ("open", .flag(open != nil)), ("name", open.map { .hash($0.security.name) } ?? .word("-")),
+				("selected", .list(table.selectedRowIndexes.map { .position($0) })))
 		}
 	}
 

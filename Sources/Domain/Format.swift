@@ -53,13 +53,19 @@ public enum Format {
 
 	/// The quantity of a position: a number of units without a word for the unit, such as "646" or "12,3456", or a
 	/// nominal amount such as "5.000,00 €" or "5.000,00 USDC", or "5.000,00" without a known currency. Each keeps
-	/// every decimal place of the source. The column header names the unit.
+	/// every decimal place of the source. `quantityUnit(_:)` names the unit in the line below.
 	public static func quantity(_ h: Holding, locale: Locale = .autoupdatingCurrent) -> String {
 		let places = decimalPlaces(of: h.quantity)
 		guard h.isNominal else { return number(h.quantity, places: 0...places, locale: locale) }
 		let nominalPlaces = 2...max(2, places)
 		guard let currency = h.nominalCurrency else { return number(h.quantity, places: nominalPlaces, locale: locale) }
 		return money(h.quantity, currency: currency, places: nominalPlaces, locale: locale)
+	}
+
+	/// The word below the quantity of a position: "shares" for every number of units, also for one or a fraction, and
+	/// "nominal" for a nominal amount. The number above it says how many, so the word names only the kind of quantity.
+	public static func quantityUnit(_ h: Holding) -> String {
+		h.isNominal ? String(localized: "nominal", comment: "Below the quantity of a bond that the bank counts as a nominal amount") : String(localized: "shares", comment: "Below the quantity of a position in units")
 	}
 
 	/// Whether a profit or loss is a profit or a loss as its text shows it. Nil for a value that shows as zero, which has

@@ -232,8 +232,28 @@ enum Palette {
 		})
 	}
 
-	private static func rgb(_ hex: Int) -> NSColor {
+	fileprivate static func rgb(_ hex: Int) -> NSColor {
 		NSColor(srgbRed: CGFloat(hex >> 16 & 0xFF) / 255, green: CGFloat(hex >> 8 & 0xFF) / 255, blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+	}
+}
+
+/// The color of each asset class, for its ribbon: one color for light and dark mode, as a color that the user chooses is,
+/// on which white text of the ribbon reaches 4.5:1. Stocks, funds, real estate, and cryptocurrencies keep the light color
+/// of the draft that the owner approved on 27 November 2026, and the others are darkened at their hue until white text
+/// reaches 4.6:1 (design of `refine-portfolio-view`).
+enum AssetClassColors {
+	static func color(of assetClass: AssetClass) -> Color {
+		let hex = switch assetClass {
+		case .stocks: 0x2F6FD6
+		case .funds: 0x7B4FC4
+		case .bonds: 0x996C10
+		case .realEstate: 0xB0553A
+		case .commodities: 0x588027
+		case .etfs: 0x168377
+		case .cryptocurrencies: 0xB8407A
+		case .others: 0x747479
+		}
+		return Color(nsColor: Palette.rgb(hex))
 	}
 }
 
