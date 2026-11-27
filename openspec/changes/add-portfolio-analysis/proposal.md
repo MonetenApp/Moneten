@@ -1,12 +1,12 @@
-# Proposal: Analyze a portfolio by asset class and over time
+# Proposal: Analyze a portfolio over time
 
 ## Why
 
-A list of positions answers what the user owns. It does not answer how the money is spread across kinds of assets or how the portfolio developed. Asset classes, a pie chart, and a history chart answer both, and an export hands the positions to a spreadsheet or a tax tool.
+A list of positions answers what the user owns. It does not answer how the money is spread across kinds of assets or how the portfolio developed. A history chart answers the second, and the allocation of the change `refine-portfolio-view` the first, and an export hands the positions to a spreadsheet or a tax tool.
 
 ## What Changes
 
-- The portfolio view gets a pie chart of the value by asset class, and its charts follow the filter "Asset class".
+- The pie chart of the value by asset class moved to the change `refine-portfolio-view` on 27 November 2026 as the allocation popover, with the owner's decision that the history chart stays above the list.
 - The asset classes of a position, the user's choice of a class, and the filter "Asset class" moved to the change `redesign-portfolio-holdings` on 26 November 2026, with the owner's decisions: the class comes from the bank, or else is "Others", and it belongs to the position.
 - A bar chart shows the history of the portfolio value from the daily records.
 - The user can export positions as a CSV file.
@@ -20,14 +20,14 @@ None.
 
 ### Modified Capabilities
 
-- `securities-accounts`: adds the portfolio charts, the export of positions, and manual positions. The change `add-securities-accounts` introduces the capability.
+- `securities-accounts`: adds the history chart, the export of positions, and manual positions. The change `add-securities-accounts` introduces the capability.
 
 ## Impact
 
 - Milestone: later
 - Issues: none yet
 - Modules: `Domain` owns the history of the portfolio value. `App` owns the charts and the export.
-- Depends on the change `add-securities-accounts` for positions and the daily record, `redesign-portfolio-holdings` for asset classes and their filter, `add-charts` for the view switch and the chart behavior that all views share, `add-main-window` for the filter bar and its pin, `add-offline-accounts` for accounts without a bank access, `add-printing` for "Print Portfolio Items...", and `add-applescript-automation` for the scripted export.
+- Depends on the change `add-securities-accounts` for positions and the daily record, `redesign-portfolio-holdings` for asset classes and their filter, `refine-portfolio-view` for the allocation by asset class, `add-charts` for the view switch and the chart behavior that all views share, `add-main-window` for the filter bar and its pin, `add-offline-accounts` for accounts without a bank access, `add-printing` for "Print Portfolio Items...", and `add-applescript-automation` for the scripted export.
 - Decisions: none apply.
 
 ## Reference behavior

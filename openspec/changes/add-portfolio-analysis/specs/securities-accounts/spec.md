@@ -2,40 +2,14 @@
 
 ## ADDED Requirements
 
-### Requirement: The charts follow the asset class filter
-
-The app SHALL draw the charts of a portfolio view from the positions that the filter "Asset class" shows.
-
-#### Scenario: Pie chart of one class
-
-- **GIVEN** a portfolio with 2 positions of the class "Stocks" worth 3.000,00 € and 1 position of the class "Bonds" worth 1.000,00 €
-- **WHEN** the user selects "Stocks" in the filter "Asset class" and then "Pie Chart"
-- **THEN** the chart shows one slice "Stocks" with 3.000,00 € and 100 %
-
-### Requirement: Pie chart by asset class
-
-The app SHALL show a pie chart of the portfolio value by asset class when the user selects "Pie Chart" in a portfolio view. Each class has one slice with its name, its value, and its share.
-
-#### Scenario: Two classes
-
-- **GIVEN** a portfolio with 3.000,00 € in "Stocks" and 1.000,00 € in "Bonds"
-- **WHEN** the user selects "Pie Chart"
-- **THEN** the chart shows the slice "Stocks" with 3.000,00 € and 75 %, and the slice "Bonds" with 1.000,00 € and 25 %
-
-#### Scenario: No positions
-
-- **GIVEN** an empty portfolio
-- **WHEN** the user selects "Pie Chart"
-- **THEN** the chart area shows "No portfolio items; no pie chart."
-
 ### Requirement: Bar chart of the portfolio history
 
-The app SHALL show a bar chart of the recorded portfolio value over time when the user selects "Bar Chart" in a portfolio view. The switch "Daily balance" shows one value for each day, and "Monthly average balance" shows the average of each month.
+The app SHALL show a bar chart of the recorded portfolio value over time in the chart area of a portfolio view, above the list of positions. The switch "Daily balance" shows one value for each day, and "Monthly average balance" shows the average of each month.
 
 #### Scenario: Daily values
 
 - **GIVEN** value records of 4.000,00 € on 5 November 2026 and 4.100,00 € on 6 November 2026
-- **WHEN** the user selects "Bar Chart" with "Daily balance"
+- **WHEN** the user selects "Daily balance"
 - **THEN** the chart shows a bar of 4.000,00 € for 5 November and a bar of 4.100,00 € for 6 November
 
 #### Scenario: Day without a refresh
@@ -47,7 +21,7 @@ The app SHALL show a bar chart of the recorded portfolio value over time when th
 #### Scenario: No positions
 
 - **GIVEN** an empty portfolio without records
-- **WHEN** the user selects "Bar Chart"
+- **WHEN** the user opens the portfolio
 - **THEN** the chart area shows "No portfolio items; no bar chart."
 
 ### Requirement: The history starts with the first record
@@ -89,7 +63,7 @@ The app SHALL state in the portfolio view that it records a snapshot of the port
 #### Scenario: First visit
 
 - **GIVEN** a portfolio with one value record
-- **WHEN** the user selects "Bar Chart" for the first time
+- **WHEN** the user opens the portfolio for the first time
 - **THEN** the chart area contains the note about the daily snapshot
 
 ### Requirement: Export positions as CSV
