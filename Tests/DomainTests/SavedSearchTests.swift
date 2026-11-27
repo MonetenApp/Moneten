@@ -120,6 +120,32 @@ struct SavedSearchTests {
 		#expect(try #require(SavedFilterBar(data: data)).filter(in: l, today: today).account == .group(group.id))
 	}
 
+	@Test("The pin keeps the filters Profit/Loss and Quote, and a saved search never holds them")
+	func portfolioFilters() throws {
+		let l = ledger()
+		var f = TransactionFilter()
+		f.status = .unchecked
+		f.gain = .losses
+		f.quote = .outdated
+		f.assetClass = .stocks
+		let pinned = try #require(SavedFilterBar(data: SavedFilterBar(period: .all, filter: f).data)).filter(in: l, today: today)
+		#expect(pinned.gain == .losses && pinned.quote == .outdated && pinned.status == .unchecked)
+		// The entries of the filter "Asset class" depend on the view, so it is never saved.
+		#expect(pinned.assetClass == nil)
+		// A filter bar of a version before these filters, and one at "Show All", write and read no key for them.
+		let written = #"{"period":{"all":{}},"status":{"unchecked":{}},"amount":{"all":{}}}"#
+		let old = try #require(SavedFilterBar(data: Data(written.utf8))).filter(in: l, today: today)
+		#expect(old.gain == .all && old.quote == .all)
+		let plain = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: TransactionFilter()).data) as? [String: Any]
+		#expect(plain?["gain"] == nil && plain?["quote"] == nil)
+		// A saved search shows transactions, which have neither, so it saves neither, and opening it keeps those of the bar.
+		let search = SavedSearch(name: "Unchecked", position: 0, period: .all, filter: f)
+		#expect(search.bar == SavedFilterBar(period: .all, filter: { var g = f; g.gain = .all; g.quote = .all; return g }()))
+		let opened = search.filter(in: l, today: today).keepingPositionFilters(of: f)
+		#expect(opened.gain == .losses && opened.quote == .outdated && opened.status == .unchecked)
+		#expect(search.filter(in: l, today: today).keepingPositionFilters(of: TransactionFilter()).gain == .all)
+	}
+
 	@Test("Saving needs a search text, a period, or a filter")
 	func canSave() {
 		var f = TransactionFilter()

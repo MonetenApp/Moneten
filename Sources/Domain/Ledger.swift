@@ -940,6 +940,13 @@ public struct TransactionFilter: Hashable, Sendable {
 	/// The filter "Asset class" of the positions of a portfolio, nil for "Show All". Transactions have no asset class,
 	/// so it hides none of them.
 	public var assetClass: AssetClass?
+	/// The filter "Profit/Loss" of the positions of a portfolio. Transactions have no profit, so it hides none of them.
+	public var gain = GainFilter.all
+	/// The filter "Quote" of the positions of a portfolio. Transactions have no quote, so it hides none of them.
+	public var quote = QuoteFilter.all
+
+	public enum GainFilter: String, Hashable, Sendable, Codable { case all, gains, losses }
+	public enum QuoteFilter: String, Hashable, Sendable, Codable { case all, outdated }
 
 	public init() {}
 
@@ -949,7 +956,7 @@ public struct TransactionFilter: Hashable, Sendable {
 
 	/// A kind of filter that hides rows. The list shows one line for each active kind.
 	public enum Hint: Hashable, Sendable {
-		case period, status, amount, category, account, assetClass
+		case period, status, amount, category, account, assetClass, gain, quote
 
 		public var text: String {
 			switch self {
@@ -959,6 +966,8 @@ public struct TransactionFilter: Hashable, Sendable {
 			case .category: String(localized: "A category filter is active; some entries might be hidden.")
 			case .account: String(localized: "An account filter is active; some entries might be hidden.")
 			case .assetClass: String(localized: "An asset class filter is active; some entries might be hidden.")
+			case .gain: String(localized: "A profit/loss filter is active; some entries might be hidden.")
+			case .quote: String(localized: "A quote filter is active; some entries might be hidden.")
 			}
 		}
 	}
@@ -979,7 +988,8 @@ public struct TransactionFilter: Hashable, Sendable {
 	/// kept filter without its menu would hide rows with no control to clear it. A saved search shows both menus.
 	///
 	/// The filter "Asset class" goes back to "Show All" in every view, because the next view can lack its class, and its
-	/// menu lists only the classes of the view.
+	/// menu lists only the classes of the view. The filters "Profit/Loss" and "Quote" stay, because every portfolio has
+	/// their entries.
 	public mutating func resetHidden(in scope: LedgerScope) {
 		assetClass = nil
 		switch scope {

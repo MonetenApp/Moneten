@@ -43,7 +43,8 @@ public enum PeriodChoice: Hashable, Sendable, Codable {
 	}
 }
 
-/// The filter bar that the pin saves for the next launch: the period choice and every filter but the search text.
+/// The filter bar that the pin saves for the next launch: the period choice and every filter but the search text and
+/// the filter "Asset class", whose entries depend on the view.
 public struct SavedFilterBar: Hashable, Sendable, Codable {
 	public private(set) var period: PeriodChoice
 	let status: TransactionFilter.Status
@@ -54,12 +55,18 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 	/// The account group of the "Account" menu, in its own key, so a version that knows only `accountID` reads
 	/// "Show All" instead of a group it would take for an account.
 	let accountGroupID: UUID?
+	/// The filters "Profit/Loss" and "Quote" of the positions, nil for "Show All", so a filter bar without them writes
+	/// what a version before them wrote, and a filter bar of that version reads "Show All".
+	let gain: TransactionFilter.GainFilter?
+	let quote: TransactionFilter.QuoteFilter?
 
 	public init(period: PeriodChoice, filter: TransactionFilter) {
 		self.period = period
 		status = filter.status
 		amount = filter.amount
 		categoryID = filter.categoryID
+		gain = filter.gain == .all ? nil : filter.gain
+		quote = filter.quote == .all ? nil : filter.quote
 		switch filter.account {
 		case let .account(id): (accountID, accountGroupID) = (id, nil)
 		case let .group(id): (accountID, accountGroupID) = (nil, id)
@@ -89,6 +96,8 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		f.amount = amount
 		f.categoryID = categoryID
 		f.account = accountID.map { .account($0) } ?? accountGroupID.map { .group($0) }
+		f.gain = gain ?? .all
+		f.quote = quote ?? .all
 		f.dropMissing(in: ledger)
 		return f
 	}
@@ -113,9 +122,14 @@ public struct SavedSearch: Identifiable, Hashable, Sendable {
 		self.bar = bar
 	}
 
-	/// The search text and the filters of the filter bar, with the period choice that `filter` shows.
+	/// The search text and the filters of the filter bar, with the period choice that `filter` shows. A saved search
+	/// shows transactions of all accounts and never positions, so it leaves out the filters "Profit/Loss" and "Quote",
+	/// which the pin keeps instead.
 	public init(id: UUID = UUID(), name: String, position: Int, period: PeriodChoice, filter: TransactionFilter) {
-		self.init(id: id, name: name, position: position, searchText: filter.searchText, bar: SavedFilterBar(period: period, filter: filter))
+		var transactions = filter
+		transactions.gain = .all
+		transactions.quote = .all
+		self.init(id: id, name: name, position: position, searchText: filter.searchText, bar: SavedFilterBar(period: period, filter: transactions))
 	}
 
 	/// The search field and the filter bar on `today`. A category, an account, or an account group that `ledger`

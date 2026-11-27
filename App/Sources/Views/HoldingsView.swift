@@ -17,11 +17,11 @@ struct HoldingsView: View {
 
 	var body: some View {
 		let all = model.ledger.holdings(of: accountIDs)
-		// The search and the filter "Asset class" of the key, as for the transaction table. The parent starts this view
-		// over for a new search or class, instead of removing shown rows in place. A new order of the header starts the
-		// table over too: `AppModel.sortPositions(by:)`.
-		let filtered = key.filter.positions(of: all)
+		// The search and the filters of the key, as for the transaction table. The parent starts this view over for a new
+		// search or filter, instead of removing shown rows in place. A new order of the header starts the table over too:
+		// `AppModel.sortPositions(by:)`.
 		let ledger = model.ledger
+		let filtered = key.filter.positions(of: all) { ledger.positionCurrency(of: $0) }
 		let rows = model.portfolioSort?.sorted(filtered) { ledger.positionCurrency(of: $0) } ?? filtered
 		VStack(spacing: 0) {
 			HoldingsFilterBar(entries: AssetClass.entries(of: all))
@@ -38,7 +38,7 @@ struct HoldingsView: View {
 						if scrollerInset != width { scrollerInset = width }
 						if commentLine.scroller != width { commentLine.scroller = width }
 					}
-						// One line below the last row while the filter "Asset class" hides positions, on the table and not on its rows.
+						// One line below the last row for each active filter, on the table and not on its rows.
 						.background(FilterHintsFooter(hints: key.filter.positionHints, rowCount: rows.count))
 				}
 			}
@@ -51,7 +51,7 @@ struct HoldingsView: View {
 						.foregroundStyle(Palette.secondaryText)
 				}
 			}
-			HoldingsStatusLine(rows: rows, selection: selection)
+			HoldingsStatusLine(rows: rows, total: all.count, selection: selection)
 		}
 		.onChange(of: selection, initial: true) { _, ids in if model.selectedPositions != ids { model.selectedPositions = ids } }
 	}
@@ -64,7 +64,7 @@ struct HoldingsView: View {
 }
 
 /// The filter bar above the positions, built like the one of the transactions: "Asset class" with "Show All" and the
-/// classes that the positions of the view have.
+/// classes that the positions of the view have, "Profit/Loss", and "Quote".
 struct HoldingsFilterBar: View {
 	@Environment(AppModel.self) private var model
 	let entries: [AssetClass]
@@ -76,6 +76,19 @@ struct HoldingsFilterBar: View {
 				Divider()
 				ForEach(entries, id: \.self) { c in Button(c.name) { model.filter.assetClass = c } }
 			}
+			separator
+			FilterMenu("Profit/Loss:", title: gainTitle) {
+				Button("Show All") { model.filter.gain = .all }
+				Divider()
+				Button("Gains") { model.filter.gain = .gains }
+				Button("Losses") { model.filter.gain = .losses }
+			}
+			separator
+			FilterMenu("Quote:", title: model.filter.quote == .outdated ? String(localized: "Outdated") : String(localized: "Show All")) {
+				Button("Show All") { model.filter.quote = .all }
+				Divider()
+				Button("Outdated") { model.filter.quote = .outdated }
+			}
 			Spacer()
 		}
 		// As high as the filter bar of the transactions, whose pin is 22 points high, so the list does not move.
@@ -86,6 +99,18 @@ struct HoldingsFilterBar: View {
 		.padding(.trailing, 10)
 		.padding(.vertical, 6)
 		.background(Palette.filterBar)
+	}
+
+	private var separator: some View {
+		Rectangle().fill(Palette.filterSeparator).frame(width: 1, height: 16)
+	}
+
+	private var gainTitle: String {
+		switch model.filter.gain {
+		case .all: String(localized: "Show All")
+		case .gains: String(localized: "Gains")
+		case .losses: String(localized: "Losses")
+		}
 	}
 }
 
@@ -576,9 +601,12 @@ struct AssetClassMenu: View {
 }
 
 /// The number of positions and their sum, or of the selected ones, as the status line of the transactions shows them.
+/// While the filters or the search hide positions, the number counts the shown ones of all.
 struct HoldingsStatusLine: View {
 	@Environment(AppModel.self) private var model
 	let rows: [Holding]
+	/// The number of positions of the view, also those that the filters and the search hide.
+	let total: Int
 	let selection: Set<UUID>
 
 	var body: some View {
@@ -603,7 +631,7 @@ struct HoldingsStatusLine: View {
 			}
 			.frame(maxWidth: .infinity, alignment: .leading)
 			HStack(spacing: 12) {
-				Text(selected.count > 1 ? "\(selected.count) of \(rows.count) Portfolio Items" : (rows.count == 1 ? "1 Portfolio Item" : "\(rows.count) Portfolio Items"))
+				Text(Format.positionCount(selected: selected.count, shown: rows.count, of: total))
 					.foregroundStyle(Palette.detail)
 				Text("Sum: \(Format.sums(sums.shownAmounts(viewCurrency: model.selectedCurrency, firstRowCurrency: firstRowCurrency)))")
 					.monospacedDigit()

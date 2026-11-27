@@ -68,6 +68,15 @@ public enum Format {
 		h.isNominal ? String(localized: "nominal", comment: "Below the quantity of a bond that the bank counts as a nominal amount") : String(localized: "shares", comment: "Below the quantity of a position in units")
 	}
 
+	/// The count in the status line of a portfolio view: "2 of 3 Portfolio Items" for two or more selected of three shown
+	/// positions, "3 of 5 Portfolio Items" while the filters or the search hide two of five, and "5 Portfolio Items"
+	/// otherwise. One selected position counts as none, as in the status line of the transactions.
+	public static func positionCount(selected: Int, shown: Int, of all: Int) -> String {
+		if selected > 1 { return String(localized: "\(selected) of \(shown) Portfolio Items") }
+		if shown < all { return String(localized: "\(shown) of \(all) Portfolio Items") }
+		return shown == 1 ? String(localized: "1 Portfolio Item") : String(localized: "\(shown) Portfolio Items")
+	}
+
 	/// Whether a profit or loss is a profit or a loss as its text shows it. Nil for a value that shows as zero, which has
 	/// neither a sign nor a color.
 	public enum GainSign: Sendable { case profit, loss }

@@ -17,6 +17,9 @@ struct PortfolioRowsTests {
 
 	func euros(_ amount: Decimal, on day: Day) -> Quote { Quote(amount: amount, currency: "EUR", day: day) }
 
+	/// The currency of the account of every position of these tests.
+	func eur(_: Holding) -> String { "EUR" }
+
 	@Test("Only a quote older than the newest quote day of its own portfolio shows its day")
 	func oldQuoteDays() {
 		let current = Day(year: 2026, month: 11, day: 25)
@@ -49,17 +52,17 @@ struct PortfolioRowsTests {
 		let b = position("Muster Inc.", value: 100_000, source: .stocks)
 		let bond = position("Anleihe Musterland", value: 100_000, source: .bonds)
 		var filter = TransactionFilter()
-		#expect(filter.positions(of: [a, b, bond]) == [a, b, bond])
+		#expect(filter.positions(of: [a, b, bond], currency: eur) == [a, b, bond])
 		#expect(filter.positionHints.isEmpty)
 		filter.assetClass = .stocks
-		let shown = filter.positions(of: [a, b, bond])
+		let shown = filter.positions(of: [a, b, bond], currency: eur)
 		#expect(shown == [a, b])
 		let sum = shown.reduce(into: MoneySums()) { sums, h in if let value = h.value(in: "EUR") { sums.add(value) } }
 		#expect(sum.amounts == [Money(minorUnits: 300_000, currency: "EUR")])
 		#expect(filter.positionHints.map(\.text) == ["An asset class filter is active; some entries might be hidden."])
 		// The search narrows within the class.
 		filter.searchText = "inc"
-		#expect(filter.positions(of: [a, b, bond]) == [b])
+		#expect(filter.positions(of: [a, b, bond], currency: eur) == [b])
 		// The transactions have no asset class, so their lines and their filter state leave it out.
 		#expect(filter.hints.isEmpty)
 		#expect(!filter.isActive)
@@ -84,36 +87,36 @@ struct PortfolioRowsTests {
 		}
 		// A refresh with the same classes keeps every row, also with new quantities.
 		let same = delivered([(shares, .stocks), (fund, .funds), (bond, .bonds)])
-		#expect(!all.hidesShownPositions(before: stored, after: same))
-		#expect(!stocks.hidesShownPositions(before: stored, after: same))
+		#expect(!all.hidesShownPositions(before: stored, after: same, currency: eur))
+		#expect(!stocks.hidesShownPositions(before: stored, after: same, currency: eur))
 		// A sold position leaves every list that shows it.
 		let sold = delivered([(fund, .funds), (bond, .bonds)])
-		#expect(all.hidesShownPositions(before: stored, after: sold))
-		#expect(stocks.hidesShownPositions(before: stored, after: sold))
+		#expect(all.hidesShownPositions(before: stored, after: sold, currency: eur))
+		#expect(stocks.hidesShownPositions(before: stored, after: sold, currency: eur))
 		let bondSold = delivered([(shares, .stocks), (fund, .funds)])
-		#expect(all.hidesShownPositions(before: stored, after: bondSold))
-		#expect(!stocks.hidesShownPositions(before: stored, after: bondSold))
+		#expect(all.hidesShownPositions(before: stored, after: bondSold, currency: eur))
+		#expect(!stocks.hidesShownPositions(before: stored, after: bondSold, currency: eur))
 		// The bank sends another class for the shown share while the filter is on "Stocks": the share leaves the list.
 		let reclassed = delivered([(shares, .etfs), (fund, .funds), (bond, .bonds)])
-		#expect(stocks.hidesShownPositions(before: stored, after: reclassed))
-		#expect(!all.hidesShownPositions(before: stored, after: reclassed))
+		#expect(stocks.hidesShownPositions(before: stored, after: reclassed, currency: eur))
+		#expect(!all.hidesShownPositions(before: stored, after: reclassed, currency: eur))
 		// Another class for a hidden position, or a hidden position that comes into the filter, removes no row.
-		#expect(!stocks.hidesShownPositions(before: stored, after: delivered([(shares, .stocks), (fund, .etfs), (bond, .stocks)])))
+		#expect(!stocks.hidesShownPositions(before: stored, after: delivered([(shares, .stocks), (fund, .etfs), (bond, .stocks)]), currency: eur))
 		// The user's choice of the stored share survives the refresh, so the new class of the bank does not move it.
 		let chosen = Holding.settingUserAssetClass(.stocks, of: [shares.id], in: stored)
 		let kept = Holding.identify([Holding(accountID: depot, security: shares.security, quantity: 41, sourceAssetClass: .etfs)], stored: chosen)
-		#expect(!stocks.hidesShownPositions(before: chosen, after: kept))
+		#expect(!stocks.hidesShownPositions(before: chosen, after: kept, currency: eur))
 		// A choice in the submenu that moves the shown share out of "Stocks" hides it; "Automatic" back to its source does not.
-		#expect(stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored)))
-		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(nil, of: [shares.id], in: stored)))
-		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.stocks, of: [fund.id], in: stored)))
-		#expect(!all.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored)))
+		#expect(stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored), currency: eur))
+		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(nil, of: [shares.id], in: stored), currency: eur))
+		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.stocks, of: [fund.id], in: stored), currency: eur))
+		#expect(!all.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored), currency: eur))
 		// A position that the search hides leaves no shown row when it changes its class.
 		stocks.searchText = "inc"
-		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored)))
+		#expect(!stocks.hidesShownPositions(before: stored, after: Holding.settingUserAssetClass(.funds, of: [shares.id], in: stored), currency: eur))
 		all.searchText = "fonds"
-		#expect(all.hidesShownPositions(before: stored, after: sold) == false)
-		#expect(all.hidesShownPositions(before: stored, after: delivered([(shares, .stocks), (bond, .bonds)])))
+		#expect(all.hidesShownPositions(before: stored, after: sold, currency: eur) == false)
+		#expect(all.hidesShownPositions(before: stored, after: delivered([(shares, .stocks), (bond, .bonds)]), currency: eur))
 	}
 
 	@Test("The filter Asset class goes back to Show All when no position of the view has its class any more")
@@ -128,7 +131,7 @@ struct PortfolioRowsTests {
 		let moved = Holding.settingUserAssetClass(.stocks, of: [bond.id], in: [shares, bond])
 		filter.dropAssetClass(absentFrom: moved)
 		#expect(filter.assetClass == nil)
-		#expect(filter.positions(of: moved).count == 2)
+		#expect(filter.positions(of: moved, currency: eur).count == 2)
 		#expect(filter.positionHints.isEmpty)
 		// The search stays, and "Show All" stays "Show All".
 		filter.searchText = "muster"
@@ -146,6 +149,121 @@ struct PortfolioRowsTests {
 		filter.assetClass = .bonds
 		filter.resetHidden(in: .all)
 		#expect(filter.assetClass == nil)
+	}
+
+	/// A position worth `value` in minor units of euros with `quantity` units bought at `purchase` euros each, nil for none.
+	func bought(_ name: String, quantity: Decimal, at purchase: Decimal?, value: Int64, in account: UUID? = nil) -> Holding {
+		var h = position(name, in: account, quantity: quantity, value: value)
+		h.purchasePrice = purchase.map { Quote(amount: $0, currency: "EUR") }
+		return h
+	}
+
+	/// The five positions of the spec: three in profit worth 250.399,40 € together, one with a loss, and one without a
+	/// purchase price.
+	func fivePositions() -> [Holding] {
+		[bought("Musterwerke AG", quantity: 646, at: Decimal(string: "56.15")!, value: 5_012_960),
+			bought("Beispiel Chemie AG", quantity: 284, at: Decimal(string: "191.83")!, value: 13_010_040),
+			bought("Weltindex UCITS ETF", quantity: 700, at: 80, value: 7_016_940),
+			bought("Ostsee Rohstoff ADR", quantity: 1000, at: 25, value: 2_013_000),
+			bought("Bund 2,1 % 2031", quantity: 300, at: nil, value: 2_999_960)]
+	}
+
+	@Test("Gains shows a profit above 0,00 and Losses a loss, and neither shows a profit of 0,00 or a position without a purchase price")
+	func filterByGain() {
+		let five = fivePositions()
+		var filter = TransactionFilter()
+		#expect(filter.positions(of: five, currency: eur) == five)
+		filter.gain = .gains
+		let gains = filter.positions(of: five, currency: eur)
+		#expect(names(gains) == ["Musterwerke AG", "Beispiel Chemie AG", "Weltindex UCITS ETF"])
+		let sum = gains.reduce(into: MoneySums()) { sums, h in if let value = h.value(in: "EUR") { sums.add(value) } }
+		#expect(sum.amounts == [Money(minorUnits: 25_039_940, currency: "EUR")])
+		filter.gain = .losses
+		#expect(names(filter.positions(of: five, currency: eur)) == ["Ostsee Rohstoff ADR"])
+		// The value 800,00 € and the purchase value 800,00 €, and a difference of 0,0001 € that shows as 0,00 €.
+		let even = bought("Musterfonds", quantity: 10, at: 80, value: 80_000)
+		let almost = bought("Beispiel Rente", quantity: 3, at: Decimal(string: "266.66670")!, value: 80_000)
+		for choice in [TransactionFilter.GainFilter.gains, .losses] {
+			filter.gain = choice
+			#expect(filter.positions(of: [even, almost], currency: eur).isEmpty)
+		}
+	}
+
+	@Test("Outdated shows the positions with a quote older than the newest of their portfolio and the quotes of 0")
+	func filterByQuote() {
+		let current = Day(year: 2026, month: 11, day: 27)
+		let a = position("Musterwerke AG", quote: euros(Decimal(string: "77.6")!, on: current))
+		let b = position("Beispiel Chemie AG", quote: euros(Decimal(string: "458.1")!, on: current))
+		let c = position("Weltindex UCITS ETF", quote: euros(100, on: current))
+		let old = position("Ostsee Rohstoff ADR", quote: euros(12, on: Day(year: 2022, month: 3, day: 3)))
+		let zero = position("Optionsschein Muster", quote: euros(0, on: current))
+		// No quote and a quote without a day have no day to be old.
+		let noQuote = position("Garantiezertifikat Muster")
+		let noDay = position("Bitcoin", quote: Quote(amount: 60000, currency: "EUR"))
+		// The newest quote of a second portfolio of a group is older than those of the first, but not old in its own portfolio.
+		let second = position("Schuldschein Muster", in: other, quote: euros(100, on: Day(year: 2026, month: 11, day: 20)))
+		var filter = TransactionFilter()
+		filter.quote = .outdated
+		#expect(names(filter.positions(of: [a, b, c, old, zero, noQuote, noDay, second], currency: eur)) == ["Ostsee Rohstoff ADR", "Optionsschein Muster"])
+		filter.quote = .all
+		#expect(filter.positions(of: [a, b, c, old, zero], currency: eur).count == 5)
+	}
+
+	@Test("Each active portfolio filter has its line below the list, in the order of the filter bar")
+	func portfolioHints() {
+		var filter = TransactionFilter()
+		#expect(filter.positionHints.isEmpty)
+		filter.gain = .gains
+		filter.quote = .outdated
+		#expect(filter.positionHints.map(\.text) == ["A profit/loss filter is active; some entries might be hidden.", "A quote filter is active; some entries might be hidden."])
+		filter.assetClass = .stocks
+		filter.gain = .losses
+		#expect(filter.positionHints == [.assetClass, .gain, .quote])
+		// The transactions have no profit and no quote, so their lines and their filter state leave both out.
+		#expect(filter.hints.isEmpty)
+		#expect(!filter.isActive)
+		#expect(!SavedSearch.canSave(period: .all, filter: filter))
+	}
+
+	@Test("A refresh that turns a shown gain into a loss under Gains hides a shown position")
+	func gainHidesShownPositions() {
+		let five = fivePositions()
+		var gains = TransactionFilter()
+		gains.gain = .gains
+		var turned = five
+		turned[0].marketValue = Money(minorUnits: 3_000_000, currency: "EUR")
+		#expect(gains.hidesShownPositions(before: five, after: turned, currency: eur))
+		#expect(!TransactionFilter().hidesShownPositions(before: five, after: turned, currency: eur))
+		// A loss that turns into a gain comes onto the list and removes no row.
+		var losses = TransactionFilter()
+		losses.gain = .losses
+		#expect(!losses.hidesShownPositions(before: five, after: turned, currency: eur))
+		#expect(losses.hidesShownPositions(before: turned, after: five, currency: eur))
+	}
+
+	@Test("The filters Profit/Loss and Quote stay when the view changes")
+	func portfolioFiltersStay() {
+		var filter = TransactionFilter()
+		filter.gain = .losses
+		filter.quote = .outdated
+		for scope in [LedgerScope.account(depot), .accountGroup(UUID()), .all, .category(UUID())] {
+			filter.resetHidden(in: scope)
+			#expect(filter.gain == .losses && filter.quote == .outdated)
+		}
+		// Turning the pin off starts from a new filter, which shows all.
+		#expect(TransactionFilter().gain == .all && TransactionFilter().quote == .all)
+	}
+
+	@Test("The status line counts the shown positions of all, and a selection of two or more of the shown positions")
+	func positionCount() {
+		#expect(Format.positionCount(selected: 0, shown: 3, of: 5) == "3 of 5 Portfolio Items")
+		#expect(Format.positionCount(selected: 1, shown: 3, of: 5) == "3 of 5 Portfolio Items")
+		#expect(Format.positionCount(selected: 2, shown: 3, of: 5) == "2 of 3 Portfolio Items")
+		#expect(Format.positionCount(selected: 2, shown: 3, of: 3) == "2 of 3 Portfolio Items")
+		#expect(Format.positionCount(selected: 1, shown: 3, of: 3) == "3 Portfolio Items")
+		#expect(Format.positionCount(selected: 0, shown: 1, of: 1) == "1 Portfolio Item")
+		#expect(Format.positionCount(selected: 0, shown: 0, of: 0) == "0 Portfolio Items")
+		#expect(Format.positionCount(selected: 0, shown: 1, of: 5) == "1 of 5 Portfolio Items")
 	}
 
 	/// The values of the spec: three positions with a value, a quote, and a purchase price, and one without a purchase price.
