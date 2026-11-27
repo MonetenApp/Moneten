@@ -42,22 +42,35 @@ extension Holding {
 }
 
 extension TransactionFilter {
-	/// The positions of `holdings` that the list shows: those of the selected asset class whose name, ISIN, or security
-	/// number contains the search text.
-	public func positions(of holdings: [Holding]) -> [Holding] {
+	/// The positions of `holdings`, all those of the view, that the list shows: those of the selected asset class, profit
+	/// or loss, and quote whose name, ISIN, or security number contains the search text. `currency` gives the currency of
+	/// the account of a position, in which the row shows its profit or loss.
+	public func positions(of holdings: [Holding], currency: (Holding) -> String) -> [Holding] {
 		let search = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+		let oldDays = quote == .outdated ? Holding.oldQuoteDays(in: holdings) : [:]
 		return holdings.filter { h in
-			(assetClass == nil || h.assetClass == assetClass) && (search.isEmpty || h.matches(search))
+			(assetClass == nil || h.assetClass == assetClass) && shows(gainOf: h, in: currency(h))
+				&& (quote == .all || oldDays[h.id] != nil || h.quote?.amount == 0) && (search.isEmpty || h.matches(search))
 		}
 	}
 
+	/// Whether the filter "Profit/Loss" shows `h`, by the sign of its profit or loss as the row shows it in `currency`. A
+	/// profit or loss that shows as 0,00 has no sign, and a position without a purchase price has no profit or loss, so
+	/// "Gains" and "Losses" both hide them.
+	private func shows(gainOf h: Holding, in currency: String) -> Bool {
+		guard gain != .all else { return true }
+		let sign = h.gain(in: currency).flatMap { Format.gainSign($0.amount) }
+		return sign == (gain == .gains ? .profit : .loss)
+	}
+
 	/// Whether a change of the positions from `before` to `after` takes a position off the list that the filters show: a
-	/// refresh that drops a position or sends another class for it, or a choice in the submenu "Asset Class". Such a
+	/// refresh that drops a position, sends another class for it, or turns its profit into a loss under "Gains", or a
+	/// choice in the submenu "Asset Class". Such a
 	/// change must start the table over instead of removing rows in place (#135, #151). A position that comes onto the
 	/// list, or that changes while the filters hide it, removes no row.
-	public func hidesShownPositions(before: [Holding], after: [Holding]) -> Bool {
-		let kept = Set(positions(of: after).map(\.id))
-		return positions(of: before).contains { !kept.contains($0.id) }
+	public func hidesShownPositions(before: [Holding], after: [Holding], currency: (Holding) -> String) -> Bool {
+		let kept = Set(positions(of: after, currency: currency).map(\.id))
+		return positions(of: before, currency: currency).contains { !kept.contains($0.id) }
 	}
 
 	/// Sets the filter "Asset class" back to "Show All" when no position of `holdings`, those of the view, has its class
@@ -67,9 +80,23 @@ extension TransactionFilter {
 		if let shown = assetClass, !holdings.contains(where: { $0.assetClass == shown }) { assetClass = nil }
 	}
 
-	/// The lines below the list of positions. Only the filter "Asset class" hides positions, so only it gets a line.
+	/// The lines below the list of positions, one for each active filter of its bar, in the order of the bar. The search
+	/// text gets no line, because the search field shows it.
 	public var positionHints: [Hint] {
-		assetClass == nil ? [] : [.assetClass]
+		var hints: [Hint] = []
+		if assetClass != nil { hints.append(.assetClass) }
+		if gain != .all { hints.append(.gain) }
+		if quote != .all { hints.append(.quote) }
+		return hints
+	}
+
+	/// `self` with the filters "Profit/Loss" and "Quote" of `current`. A saved search holds neither, because it shows
+	/// transactions, so opening it keeps those of the filter bar for the next portfolio.
+	public func keepingPositionFilters(of current: TransactionFilter) -> TransactionFilter {
+		var f = self
+		f.gain = current.gain
+		f.quote = current.quote
+		return f
 	}
 }
 
@@ -139,8 +166,10 @@ extension TransactionFilter {
 	/// and measures each moved row, which took seconds for hundreds of positions, so such a change starts the table over.
 	/// The order by name, nil, changes only with a name.
 	public func movesShownPositions(before: [Holding], after: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> Bool {
-		let old = (sort?.sorted(positions(of: before), currency: currency) ?? positions(of: before).sorted(by: Holding.isOrdered)).map(\.id)
-		let new = (sort?.sorted(positions(of: after), currency: currency) ?? positions(of: after).sorted(by: Holding.isOrdered)).map(\.id)
+		let shownBefore = positions(of: before, currency: currency)
+		let shownAfter = positions(of: after, currency: currency)
+		let old = (sort?.sorted(shownBefore, currency: currency) ?? shownBefore.sorted(by: Holding.isOrdered)).map(\.id)
+		let new = (sort?.sorted(shownAfter, currency: currency) ?? shownAfter.sorted(by: Holding.isOrdered)).map(\.id)
 		let both = Set(old).intersection(new)
 		return old.filter(both.contains) != new.filter(both.contains)
 	}

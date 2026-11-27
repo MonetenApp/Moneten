@@ -2662,10 +2662,14 @@ final class DebugHarness {
 		case "pin": model.isFilterBarPinned = value == "on"
 		// The filter "Asset class" of a portfolio: the raw value of `AssetClass`, or anything else for "Show All".
 		case "assetclass": model.filter.assetClass = AssetClass(rawValue: value)
+		// The filters "Profit/Loss" and "Quote" of a portfolio: "gains", "losses", or "outdated", or anything else for "Show All".
+		case "gain": model.filter.gain = TransactionFilter.GainFilter(rawValue: value) ?? .all
+		case "quote": model.filter.quote = TransactionFilter.QuoteFilter(rawValue: value) ?? .all
 		default: return log("filterbar rejected")
 		}
-		log(LogLine("filterbar", values: [("", .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "group", "custom", "pin", "assetclass"]))]
-			+ Self.filterTargets(model) + [("assetClass", .state(model.filter.assetClass as Any))]))
+		let command: LogValue = .choice(parts.first ?? "", of: ["status", "amount", "category", "account", "group", "custom", "pin", "assetclass", "gain", "quote"])
+		log(LogLine("filterbar", values: [("", command)] + Self.filterTargets(model)
+			+ [("assetClass", .state(model.filter.assetClass as Any)), ("gain", .state(model.filter.gain)), ("quote", .state(model.filter.quote))]))
 	}
 
 	private func savedSearch(_ argument: String) {

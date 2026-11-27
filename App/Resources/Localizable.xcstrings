@@ -880,7 +880,8 @@
             "value" : "%1$lld von %2$lld Depotpositionen"
           }
         }
-      }
+      },
+      "extractionState" : "manual"
     },
     "%lld of %lld transactions" : {
       "localizations" : {
@@ -900,7 +901,8 @@
             "value" : "%lld Depotpositionen"
           }
         }
-      }
+      },
+      "extractionState" : "manual"
     },
     "%lld source accounts, %@, were merged into \"%@\". Each line shows the source balance; only transactions are compared." : {
       "localizations" : {
@@ -1044,7 +1046,8 @@
             "value" : "1 Depotposition"
           }
         }
-      }
+      },
+      "extractionState" : "manual"
     },
     "1 transaction" : {
       "localizations" : {
@@ -1295,6 +1298,28 @@
           }
         }
       }
+    },
+    "A profit/loss filter is active; some entries might be hidden." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Gewinn/Verlust-Filter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      },
+      "extractionState" : "manual"
+    },
+    "A quote filter is active; some entries might be hidden." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Kursfilter ist aktiv, manche Einträge sind vielleicht ausgeblendet."
+          }
+        }
+      },
+      "extractionState" : "manual"
     },
     "A regular expression between slashes" : {
       "localizations" : {
@@ -5260,6 +5285,16 @@
         }
       }
     },
+    "Gains" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gewinne"
+          }
+        }
+      }
+    },
     "Games" : {
       "localizations" : {
         "de" : {
@@ -6405,6 +6440,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verlust"
+          }
+        }
+      }
+    },
+    "Losses" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verluste"
           }
         }
       }
@@ -8170,6 +8215,16 @@
       },
       "extractionState" : "manual"
     },
+    "Outdated" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veraltet"
+          }
+        }
+      }
+    },
     "Parcel" : {
       "localizations" : {
         "de" : {
@@ -8518,6 +8573,16 @@
         }
       }
     },
+    "Profit/Loss:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gewinn/Verlust:"
+          }
+        }
+      }
+    },
     "Protection" : {
       "localizations" : {
         "de" : {
@@ -8638,6 +8703,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Kursdatum"
+          }
+        }
+      }
+    },
+    "Quote:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kurs:"
           }
         }
       }

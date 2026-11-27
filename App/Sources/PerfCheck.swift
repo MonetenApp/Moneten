@@ -376,6 +376,29 @@ struct PerfScenario {
 				await c.model.sortPositions(by: nil)
 				await c.settle()
 			}),
+		// A refresh of 500 positions in the filter "Profit/Loss" at "Gains" whose new quotes turn half of them into losses
+		// starts the table over, as a refresh that drops shown positions does (#135, #151), and the filter keeps the rest.
+		PerfScenario(name: "refresh-turns-gains-into-losses", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Gain Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Gain Depot" }) else { return }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.bought(depot.id, 500, losses: 0)))
+				await c.select("Perf Gain Depot")
+				c.model.filter.gain = .gains
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Gain Depot" }) else { return c.fail("the portfolio is missing") }
+				let table = c.harness.holdingsTables().first
+				if table?.numberOfRows != 500 { c.fail("the filter Gains does not show the 500 positions in profit") }
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: PerfScenario.bought(depot.id, 500, losses: 250)))
+				await c.settle()
+				let refreshed = c.harness.holdingsTables().first
+				if refreshed.map(ObjectIdentifier.init) == table.map(ObjectIdentifier.init) { c.fail("the refresh removed shown positions in place") }
+				if refreshed?.numberOfRows != 250 { c.fail("the filter Gains does not show the 250 positions still in profit") }
+				c.model.filter.gain = .all
+				await c.settle()
+			}),
 		// A choice in the submenu "Asset Class" that takes a shown position out of the filter "Asset class" starts the table
 		// of positions over, as a refresh that drops a shown position does (issue #135).
 		PerfScenario(name: "asset-class-leaves-filter", budget: halfSecond,
@@ -837,6 +860,17 @@ struct PerfScenario {
 		(0..<count).map { i in
 			Holding(accountID: account, security: Security(name: "Fonds \(i)", isin: "DE000000000\(i)"), quantity: Decimal(10 + i),
 				quote: Quote(amount: Decimal(100 + i), currency: "EUR", day: Day.today()))
+		}
+	}
+
+	/// `positions(_:_:)` bought at 90 euros each below their quotes of 100 euros or more, so each of them is in profit, except
+	/// the first `losses`, quoted at 50 euros.
+	static func bought(_ account: UUID, _ count: Int, losses: Int) -> [Holding] {
+		positions(account, count).enumerated().map { i, h in
+			var h = h
+			h.purchasePrice = Quote(amount: 90, currency: "EUR")
+			if i < losses { h.quote = Quote(amount: 50, currency: "EUR", day: Day.today()) }
+			return h
 		}
 	}
 
