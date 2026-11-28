@@ -38,32 +38,23 @@ Measures of the draft, in points:
 
 | Part | Measure |
 |---|---|
-| Columns | 92, the rest, 70, 104, 132, with a gap of 16 (the table gives 17), and 20 at the right end |
+| Columns | 92, the rest, 70, 104, 132, with a gap of 16 (the table gives 17), and 20 at the right end. The first column is 95 since part 4, as the date column of a transaction. |
 | Inset | 20 from the left edge for the day, the name of the header, and the first filter of the filter bar |
 | Row | 9 above the first line, 10 below the second, 6 between the lines |
-| Fonts | 11.5 for the text, 12.5 bold for the name, 14 semibold for the value, 10.5 for the second lines and the header, 9 bold with a spacing of 0.45 for the ribbon |
-| Ribbon | 16 high from the left edge of the row to the end of the first column, with a notch of 7, its text 20 from the edge |
+| Fonts | 11.5 for the text, 12.5 bold for the name, 14 semibold for the value, 10.5 for the second lines and the header |
+| Ribbon | The category ribbon of a transaction: 113 wide and 14 high from the left edge of the row, with a notch of 7, its text 10 bold with a spacing of 0.2 and 4 from the edge (part 4, the owner's request of 27 November 2026) |
 
-The table starts its first cell 6 points from the edge of the row (`DateCell.cellInset`), so the first cell adds 14 points before the day, and the ribbon reaches back to the edge with a negative padding, as `CategoryRibbon` does. The ribbon uses `RibbonShape` of the transaction list. The second lines use the color `Palette.detail` of the app, and the profit, the loss, and the old day use `Palette.green`, `Palette.red`, and `Palette.warning`, whose values are the light values of the draft. The dark values of the draft differ a little from the system colors that these colors keep in dark mode, which measured with enough contrast in #607.
+The table starts its first cell 6 points from the edge of the row (`DateCell.cellInset`), so the first cell adds 14 points before the day, and the ribbon reaches back to the edge with a negative padding, as `CategoryRibbon` does. Since part 4 both use one view, `Ribbon`, with one size, one font, and one fill, and the first column of the positions is as wide as the date column of a transaction, 95 points, so the ribbon ends in the gap before the name and the name starts 118 points from the edge, as in the transaction list. The second lines use the color `Palette.detail` of the app, and the profit, the loss, and the old day use `Palette.green`, `Palette.red`, and `Palette.warning`, whose values are the light values of the draft. The dark values of the draft differ a little from the system colors that these colors keep in dark mode, which measured with enough contrast in #607.
 
 Every modifier sits in a cell, never on a row (#519). The header is outside the table.
 
 ### Default colors of the asset classes (part 1, editable in part 4)
 
-Each class has one default color for light and dark mode, as a color that the user chooses in part 4 is one color for both. White text of 9 points on the ribbon must reach 4.5:1 in both modes, so every color has a relative luminance of at most 0.18. The light colors of the draft for stocks, funds, real estate, and cryptocurrencies reach it. Those of bonds, commodities, ETFs, and others are darkened at the same hue until they reach 4.6:1. The lighter dark-mode colors of the draft fall below 4.5:1 and are not used.
+Part 1 gave each class a color of the draft. In part 4 the owner asked that the ribbon of a position look exactly like the category ribbon of a transaction, so the defaults are the first eight colors of `CategoryColors.palette`, one for each class in the order of the menu: blue, orange, green, pink, purple, teal, yellow, and indigo. They are system colors, a little lighter in dark mode, as the colors of the categories are.
 
-| Class | Color | White text |
-|---|---|---|
-| Stocks | #2F6FD6 | 4.81:1 |
-| Funds | #7B4FC4 | 5.59:1 |
-| Bonds | #996C10 | 4.66:1 |
-| Real estate | #B0553A | 4.99:1 |
-| Commodities | #588027 | 4.63:1 |
-| ETFs | #168377 | 4.62:1 |
-| Cryptocurrencies | #B8407A | 5.18:1 |
-| Others | #747479 | 4.65:1 |
+Every ribbon mutes its color toward gray, `color.mix(with: Color(white: 0.6), by: 0.5)` as the category ribbon did before, and so do the dot of a class in its heading and its share in the allocation, so a class looks the same everywhere. `RibbonColor.fill(of:)` in `Domain` computes this mix in OKLab, the space in which SwiftUI mixes two colors. The text of every ribbon is white at 0.95, as the category ribbon had it, for every color, by the owner's decision of 28 November 2026. The settings accept any color, as the category settings do, so a very light color that the user chose, such as #FFFFFF or #FFD60A, gives white text a low contrast, and that is the choice of the user.
 
-`AssetClassColors` in `App/Sources/Views/Format.swift` holds them next to `CategoryColors`. Part 4 adds the color that the user chooses, which wins over the default. The settings check no contrast of a chosen color, as the category settings check none.
+`AssetClassColors` in `App/Sources/Views/Format.swift` holds the defaults next to `CategoryColors`. The color that the user chooses in part 4 wins over the default.
 
 ### The security number comes from the source (part 1)
 
@@ -93,7 +84,7 @@ A refresh of a sorted list can change the order without removing a row, such as 
 
 Part 1 has no comments, so an open row looks like a closed one. The debug harness command `holdingclick <row>` hands a click to the watcher and to the window and logs the open position, so a check can see it, and `holdingsort <line>` does what a click on a line of the header does. Part 2 adds the comment line in the name cell: below the two lines, after a gap of 7 points, it shows the speech bubble and the comment, which runs over the columns to the right to the end of the value. The table measures a row with the ideal width of its cells and shows one line in a cell by default, so the line has a width of its own and no line limit. `CommentLine` gives the width: the width of the table less a classic scroll bar, the fixed columns before the name, and the insets. Only the open row reads it, so a new width of the window redraws that row and not the table. The table measures the new height of the row from its cells.
 
-The watcher opens a position on the mouse-down. Part 4 adds dragging positions onto a heading. If a drag then opens the position it starts on, part 4 moves the opening to the mouse-up within the same row.
+Part 1 opened a position on the mouse-down. Part 4 adds dragging positions onto a heading, and a drag would then open the position it starts on, so the opening moves to the mouse-up within the same row. The table tracks the mouse in a loop of its own until the button goes up or a drag starts, and a monitor of the window sees no event of that loop. So the watcher notes the row on the mouse-down and looks again when the run loop is back in its default mode: a drag that started in between counts in `AppModel.positionDrags` and opens nothing, a mouse-up over another row opens nothing, and when no loop took the mouse, a monitor waits for the mouse-up.
 
 ### Comments (part 2)
 
@@ -117,7 +108,7 @@ Migration `v37` adds the table `assetClassColor` with the raw value of a class a
 
 ⌘K opens a picker of the classes in a portfolio view, the same command that opens the category picker elsewhere.
 
-`Allocation` in `Sources/Domain/PortfolioRows.swift` sums the values of all positions of the view by class and by currency, whatever the filters and the search show, with the share of each class rounded to two places, and never converts a currency. The popover shows one stacked bar for each currency. Its button sits above the switch "D" and "M" in `App/Sources/Views/ChartArea.swift`, so the history chart keeps its place.
+`Allocation` in `Sources/Domain/PortfolioRows.swift` sums the values of all positions of the view by class and by currency, whatever the filters and the search show, with the share of each class in two places, and never converts a currency. The shares of a bar add up to exactly 100 %: each is rounded down, and the hundredths that are left go to the largest remainders, the first class in the order of the menu on a tie. The popover shows one stacked bar for each currency. Its button sits above the switch "D" and "M" in `App/Sources/Views/ChartArea.swift`, so the history chart keeps its place.
 
 In a portfolio view "Pie Chart" is disabled in the View menu and in the toolbar, and the mode "Pie Chart" of the account views shows the history chart there. The view does not change the mode that the app remembers for account views, so "Giro" still shows its pie chart.
 

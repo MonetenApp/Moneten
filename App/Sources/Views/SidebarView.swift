@@ -507,12 +507,20 @@ struct DraggedTreeItem: Codable, Transferable {
 	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenTreeItem) }
 }
 
+/// Positions of a portfolio on their way to a heading of "Group by asset class".
+struct DraggedPositions: Codable, Transferable {
+	let ids: Set<UUID>
+
+	static var transferRepresentation: some TransferRepresentation { CodableRepresentation(contentType: .monetenPositions) }
+}
+
 /// Declared in Info.plist. One type for each kind of drag, so that a row of the sidebar takes only the kind it can use,
 /// and a row never lands in another section.
 extension UTType {
 	static let monetenTransactions = UTType(exportedAs: "io.github.moneten.transactions")
 	static let monetenCategory = UTType(exportedAs: "io.github.moneten.category")
 	static let monetenTreeItem = UTType(exportedAs: "io.github.moneten.account")
+	static let monetenPositions = UTType(exportedAs: "io.github.moneten.positions")
 }
 
 /// A drop of a group or an account on a group row puts it at the end of that group. A group refuses itself and

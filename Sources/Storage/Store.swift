@@ -78,7 +78,35 @@ public final class Store: SavedPINStore {
 			transactions: try Transaction.fetchAll(db),
 			portfolioValues: try PortfolioValue.order(Column("day")).fetchAll(db),
 			holdings: try HoldingRecord.fetchAll(db).compactMap(\.holding),
-			parts: try SplitPart.fetchAll(db))
+			parts: try SplitPart.fetchAll(db),
+			assetClassColors: try assetClassColors(in: db))
+	}
+
+	/// The chosen colors of the asset classes. A class that this version does not know keeps its row and shows nowhere.
+	/// The app always opens a database migrated to the end. The guard is for the schema tests, which open a database
+	/// migrated only up to a version before `v37`, without the table, and load or import into it.
+	static func assetClassColors(in db: Database) throws -> [AssetClass: String] {
+		guard try db.tableExists("assetClassColor") else { return [:] }
+		var colors: [AssetClass: String] = [:]
+		for row in try Row.fetchAll(db, sql: "SELECT assetClass, color FROM assetClassColor ORDER BY rowid") {
+			if let c = AssetClass(rawValue: row["assetClass"]) { colors[c] = row["color"] }
+		}
+		return colors
+	}
+
+	/// Stores the colors of the asset class settings in place of every earlier choice. An empty list gives every class its
+	/// default color again.
+	public func setAssetClassColors(_ colors: [AssetClass: String]) throws {
+		try write { db in try Self.replaceAssetClassColors(colors, in: db) }
+	}
+
+	static func replaceAssetClassColors(_ colors: [AssetClass: String], in db: Database) throws {
+		// Only for the schema tests, which import into a database migrated up to a version before `v37`, without the table.
+		if colors.isEmpty, try !db.tableExists("assetClassColor") { return }
+		try db.execute(sql: "DELETE FROM assetClassColor")
+		for c in AssetClass.allCases {
+			if let color = colors[c] { try db.execute(sql: "INSERT INTO assetClassColor(assetClass, color) VALUES (?, ?)", arguments: [c.rawValue, color]) }
+		}
 	}
 
 	public func save(_ group: AccountGroup) throws { try write { db in try group.save(db) } }

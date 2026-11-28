@@ -22,10 +22,13 @@ public struct AllData: Sendable, Equatable {
 	public var holdings: [Holding]
 	public var csvProfiles: [CSVProfileData]
 	public var savedSearches: [SavedSearch]
+	/// The colors that the user chose for asset classes, as `Ledger.assetClassColors` holds them.
+	public var assetClassColors: [AssetClass: String]
 
 	public init(exportedAt: Date = Date(), groups: [AccountGroup] = [], accounts: [Account] = [], accesses: [Access] = [], categories: [Category] = [],
 		transactions: [Transaction] = [], deletedTransactions: [DeletedTransaction] = [], portfolioValues: [PortfolioValue] = [], holdings: [Holding] = [], csvProfiles: [CSVProfileData] = [], splitParts: [SplitPart] = [],
-		savedSearches: [SavedSearch] = []) {
+		savedSearches: [SavedSearch] = [], assetClassColors: [AssetClass: String] = [:]) {
+		self.assetClassColors = assetClassColors
 		self.exportedAt = exportedAt
 		self.groups = groups
 		self.accounts = accounts
@@ -223,6 +226,7 @@ private struct File: Codable {
 	var holdings: [HoldingEntry]
 	var csvProfiles: [CSVProfileData]?
 	var savedSearches: [SavedSearchEntry]?
+	var assetClassColors: [AssetClassColorEntry]?
 
 	init(_ d: AllData) {
 		exportedAt = d.exportedAt
@@ -239,6 +243,9 @@ private struct File: Codable {
 		holdings = d.holdings.map(HoldingEntry.init)
 		csvProfiles = d.csvProfiles.isEmpty ? nil : d.csvProfiles
 		savedSearches = d.savedSearches.isEmpty ? nil : d.savedSearches.map(SavedSearchEntry.init)
+		// In the order of the submenu "Asset Class", so the file does not depend on the order of a dictionary.
+		let colors = AssetClass.allCases.compactMap { c in d.assetClassColors[c].map { AssetClassColorEntry(assetClass: c, color: $0) } }
+		assetClassColors = colors.isEmpty ? nil : colors
 	}
 
 	func allData() throws -> AllData {
@@ -261,7 +268,22 @@ private struct File: Codable {
 				guard let original = originals[entry.transactionID] else { throw AllData.ReadError.damaged("the original is missing") }
 				return try entry.part(currency: original.currency)
 			},
-			savedSearches: try each("savedSearches", savedSearches ?? []) { try $0.savedSearch() })
+			savedSearches: try each("savedSearches", savedSearches ?? []) { try $0.savedSearch() },
+			assetClassColors: try colors())
+	}
+
+	/// The chosen colors by class. A class twice, or a color that is not "#" and six hexadecimal digits, is refused.
+	private func colors() throws -> [AssetClass: String] {
+		var colors: [AssetClass: String] = [:]
+		for (i, entry) in (assetClassColors ?? []).enumerated() {
+			guard HexColor(entry.color) != nil else {
+				throw AllData.ReadError.damaged("at assetClassColors[\(i)], the color must be # and six hexadecimal digits")
+			}
+			guard colors.updateValue(entry.color, forKey: entry.assetClass) == nil else {
+				throw AllData.ReadError.damaged("at assetClassColors[\(i)], the asset class has a color twice")
+			}
+		}
+		return colors
 	}
 
 	/// Converts the entries of one list and names the entry of the first value that cannot be read.
@@ -762,6 +784,12 @@ private struct HoldingEntry: Codable {
 			marketValue: try marketValue?.money(), accruedInterest: try accruedInterest?.money(), purchasePrice: try purchasePrice?.quote(),
 			exchangeRate: try exchangeRate?.exchangeRate(), sourceAssetClass: sourceAssetClass, userAssetClass: userAssetClass, comment: comment)
 	}
+}
+
+/// The color that the user chose for an asset class.
+private struct AssetClassColorEntry: Codable {
+	var assetClass: AssetClass
+	var color: String
 }
 
 /// A saved search with its period, status, and amount filter as named kinds, and the ends of an amount range as

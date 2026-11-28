@@ -387,4 +387,116 @@ struct PortfolioRowsTests {
 	func names() {
 		#expect(AssetClass.allCases.map(\.name) == ["Stocks", "Funds", "Bonds", "Real estate", "Commodities", "ETFs", "Cryptocurrencies", "Others"])
 	}
+
+	/// The three positions of the spec "Two classes": two stocks worth 180.230,00 € with a profit of 24.877,38 €, and one
+	/// bond worth 4.955,00 € with a profit of 30,00 €.
+	func twoClasses() -> (bond: Holding, shares: Holding, chemie: Holding) {
+		var bond = bought("Bund 2,1 % 2031", quantity: 1, at: 4925, value: 495_500)
+		bond.sourceAssetClass = .bonds
+		var shares = bought("Musterwerke AG", quantity: 100, at: 400, value: 5_012_960)
+		shares.sourceAssetClass = .stocks
+		var chemie = bought("Beispiel Chemie AG", quantity: 1, at: Decimal(string: "115352.62")!, value: 13_010_040)
+		chemie.sourceAssetClass = .stocks
+		return (bond, shares, chemie)
+	}
+
+	@Test("Group by asset class puts each class with positions under a heading in the order of the menu, with its count, value, and profit")
+	func sections() {
+		let (bond, shares, chemie) = twoClasses()
+		let grouped = PortfolioSections([bond, chemie, shares], currency: eur)
+		#expect(names(grouped.holdings) == ["Beispiel Chemie AG", "Musterwerke AG", "Bund 2,1 % 2031"])
+		let stocks = grouped.headings[chemie.id]
+		#expect(stocks?.assetClass == .stocks && stocks?.count == 2 && stocks?.isFirst == true)
+		#expect(stocks?.value.amounts == [Money(minorUnits: 18_023_000, currency: "EUR")])
+		#expect(stocks?.gain.amounts == [Money(minorUnits: 2_487_738, currency: "EUR")])
+		let bonds = grouped.headings[bond.id]
+		#expect(bonds?.assetClass == .bonds && bonds?.count == 1 && bonds?.isFirst == false)
+		#expect(bonds?.value.amounts == [Money(minorUnits: 495_500, currency: "EUR")])
+		#expect(bonds?.gain.amounts == [Money(minorUnits: 3_000, currency: "EUR")])
+		#expect(grouped.headings[shares.id] == nil && grouped.headings.count == 2)
+		#expect(Format.positionCount(selected: 0, shown: 2, of: 2) == "2 Portfolio Items")
+		#expect(Format.positionCount(selected: 0, shown: 1, of: 1) == "1 Portfolio Item")
+		// A position without a purchase price counts in the value of its class and not in its profit.
+		let none = bought("Musterwelt ETF", quantity: 1, at: nil, value: 10_000)
+		let others = PortfolioSections([none], currency: eur).headings[none.id]
+		#expect(others?.assetClass == .others && others?.value.amounts == [Money(minorUnits: 10_000, currency: "EUR")] && others?.gain.isEmpty == true)
+		#expect(PortfolioSections([], currency: eur).holdings.isEmpty)
+	}
+
+	@Test("The sections keep the order of the header inside each class, and the list without the option has no headings")
+	func sortedSections() {
+		let (bond, shares, chemie) = twoClasses()
+		var filter = TransactionFilter()
+		let byValue = PortfolioSort(key: .value)
+		#expect(names(filter.shownPositions(of: [bond, chemie, shares], sort: byValue, currency: eur)) == ["Bund 2,1 % 2031", "Musterwerke AG", "Beispiel Chemie AG"])
+		filter.groupsByAssetClass = true
+		#expect(names(filter.shownPositions(of: [bond, chemie, shares], sort: byValue, currency: eur)) == ["Musterwerke AG", "Beispiel Chemie AG", "Bund 2,1 % 2031"])
+		#expect(names(filter.shownPositions(of: [bond, chemie, shares], sort: PortfolioSort(key: .value, isAscending: false), currency: eur))
+			== ["Beispiel Chemie AG", "Musterwerke AG", "Bund 2,1 % 2031"])
+		// The filters apply before the grouping.
+		filter.assetClass = .bonds
+		#expect(names(filter.shownPositions(of: [bond, chemie, shares], sort: nil, currency: eur)) == ["Bund 2,1 % 2031"])
+	}
+
+	@Test("A new class for a shown position moves it into another section, which moves shown positions only under Group by asset class")
+	func movesBetweenSections() {
+		let (bond, shares, chemie) = twoClasses()
+		let before = [bond, chemie, shares]
+		let after = Holding.settingUserAssetClass(.bonds, of: [chemie.id], in: before)
+		var filter = TransactionFilter()
+		#expect(!filter.movesShownPositions(before: before, after: after, sort: nil, currency: eur))
+		filter.groupsByAssetClass = true
+		#expect(filter.movesShownPositions(before: before, after: after, sort: nil, currency: eur))
+		#expect(!filter.movesShownPositions(before: before, after: Holding.settingUserAssetClass(.stocks, of: [shares.id], in: before), sort: nil, currency: eur))
+	}
+
+	@Test("The allocation shares every position of the view by class in the order of the menu, rounded to two places, whatever the filters show")
+	func allocation() {
+		var shares = position("Musterwerke AG", value: 18_023_000, source: .stocks)
+		shares.purchasePrice = Quote(amount: 1, currency: "EUR")
+		let etf = position("Weltindex UCITS ETF", value: 11_534_400, source: .etfs)
+		let bond = position("Bund 2,1 % 2031", value: 495_500, source: .bonds)
+		let allocation = Allocation([etf, bond, shares], currency: eur)
+		#expect(allocation.bars.count == 1)
+		let bar = allocation.bars[0]
+		#expect(bar.currency == "EUR" && bar.total == Money(minorUnits: 30_052_900, currency: "EUR"))
+		#expect(bar.shares.map(\.assetClass) == [.stocks, .bonds, .etfs])
+		#expect(bar.shares.map(\.percent) == [Decimal(string: "59.97")!, Decimal(string: "1.65")!, Decimal(string: "38.38")!])
+		#expect(bar.shares.map(\.value) == [Money(minorUnits: 18_023_000, currency: "EUR"), Money(minorUnits: 495_500, currency: "EUR"), Money(minorUnits: 11_534_400, currency: "EUR")])
+		#expect(Format.share(Decimal(string: "59.97")!, locale: Locale(identifier: "de_DE")) == "59,97 %")
+		#expect(Format.share(Decimal(string: "1.65")!, locale: Locale(identifier: "de_DE")) == "1,65 %")
+		#expect(Allocation([], currency: eur).bars.isEmpty)
+		// A position of value 0 keeps its class in the list with 0,00 %.
+		let zero = position("Ostsee Rohstoff ADR", value: 0, source: .others)
+		#expect(Allocation([shares, zero], currency: eur).bars[0].shares.map(\.percent) == [100, 0])
+	}
+
+	@Test("The shares of a bar add up to 100,00 %: the hundredths left by rounding down go to the largest remainders, in the order of the menu")
+	func allocationSumsToHundred() {
+		func percents(_ values: [(Int64, AssetClass)]) -> [Decimal] {
+			let holdings = values.enumerated().map { i, v in position("Position \(i)", value: v.0, source: v.1) }
+			return Allocation(holdings, currency: eur).bars[0].shares.map(\.percent)
+		}
+		// Three equal classes: 33,333... % each, which rounding alone shows as 99,99 %.
+		let thirds = percents([(100_000, .stocks), (100_000, .bonds), (100_000, .etfs)])
+		#expect(thirds == [Decimal(string: "33.34")!, Decimal(string: "33.33")!, Decimal(string: "33.33")!])
+		// 100, 100, 100, and 300: 16,666... % three times and 50 %, which rounding alone shows as 100,01 %.
+		let sixths = percents([(100_000, .stocks), (100_000, .funds), (100_000, .bonds), (300_000, .etfs)])
+		#expect(sixths == [Decimal(string: "16.67")!, Decimal(string: "16.67")!, Decimal(string: "16.66")!, 50])
+		for shares in [thirds, sixths] { #expect(shares.reduce(0, +) == 100) }
+	}
+
+	@Test("The allocation shows one bar for each currency and never converts a value")
+	func allocationByCurrency() {
+		let usDepot = UUID()
+		let stocks = position("Musterwerke AG", value: 300_000, source: .stocks)
+		let bonds = position("Bund 2,1 % 2031", value: 100_000, source: .bonds)
+		var etf = position("US Welt ETF", in: usDepot, value: 200_000, source: .etfs)
+		etf.marketValue = Money(minorUnits: 200_000, currency: "USD")
+		let bars = Allocation([etf, stocks, bonds]) { $0.accountID == usDepot ? "USD" : "EUR" }.bars
+		#expect(bars.map(\.currency) == ["EUR", "USD"])
+		#expect(bars[0].shares.map(\.assetClass) == [.stocks, .bonds] && bars[0].shares.map(\.percent) == [75, 25])
+		#expect(bars[1].shares.map(\.assetClass) == [.etfs] && bars[1].shares.map(\.percent) == [100])
+		#expect(bars[1].total == Money(minorUnits: 200_000, currency: "USD"))
+	}
 }

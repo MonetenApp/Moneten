@@ -146,6 +146,23 @@ struct SavedSearchTests {
 		#expect(search.filter(in: l, today: today).keepingPositionFilters(of: TransactionFilter()).gain == .all)
 	}
 
+	@Test("The pin keeps Group by asset class, a saved search never holds it, and a filter bar without it reads it as off")
+	func groupByAssetClass() throws {
+		let l = ledger()
+		var f = TransactionFilter()
+		f.groupsByAssetClass = true
+		#expect(!f.isActive)
+		let data = SavedFilterBar(period: .all, filter: f).data
+		#expect(try #require(SavedFilterBar(data: data)).filter(in: l, today: today).groupsByAssetClass)
+		let plain = try JSONSerialization.jsonObject(with: SavedFilterBar(period: .all, filter: TransactionFilter()).data) as? [String: Any]
+		#expect(plain?["groupsByAssetClass"] == nil)
+		let written = #"{"period":{"all":{}},"status":{"all":{}},"amount":{"all":{}}}"#
+		#expect(try #require(SavedFilterBar(data: Data(written.utf8))).filter(in: l, today: today).groupsByAssetClass == false)
+		let search = SavedSearch(name: "Alle", position: 0, period: .all, filter: f)
+		#expect(search.filter(in: l, today: today).groupsByAssetClass == false)
+		#expect(search.filter(in: l, today: today).keepingPositionFilters(of: f).groupsByAssetClass)
+	}
+
 	@Test("Saving needs a search text, a period, or a filter")
 	func canSave() {
 		var f = TransactionFilter()

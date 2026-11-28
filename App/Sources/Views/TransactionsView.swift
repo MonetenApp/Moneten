@@ -918,7 +918,7 @@ struct DateCell: View {
 			// The ribbon is wider than the column and reaches into the gap before the name. As an
 			// overlay it leaves the cell as wide as the column, so the backgrounds of the cells meet.
 			Color.clear
-				.frame(height: 14)
+				.frame(height: Ribbon.height)
 				.overlay(alignment: .leading) { CategoryRibbon(transaction: transaction, model: model).padding(.leading, -DateCell.cellInset) }
 		}
 	}
@@ -953,12 +953,13 @@ struct CategoryRibbon: View {
 		} label: {
 			Group {
 				if let category {
-					ribbon(category.name.uppercased(), CategoryColors.color(of: category, in: ledger).mix(with: Color(white: 0.6), by: 0.5))
+					Ribbon(text: category.name, color: CategoryColors.color(of: category, in: ledger))
 						// The pointer lightens the ribbon, so that it reads as a control.
 						.overlay { RibbonShape().fill(.white.opacity(hovered ? 0.18 : 0)) }
 				} else {
-					// An uncategorized row shows a gray ribbon only under the pointer.
-					ribbon(String(localized: "Category").uppercased(), Color(white: 0.55))
+					// An uncategorized row shows a gray ribbon only under the pointer. Muted toward the gray 0.6, the gray 0.5
+					// gives about the gray 0.55 of before.
+					Ribbon(text: String(localized: "Category"), color: Color(white: 0.5))
 						.opacity(hovered ? 0.6 : 0)
 				}
 			}
@@ -972,36 +973,6 @@ struct CategoryRibbon: View {
 		// VoiceOver reads the category of the row, also where an uncategorized row shows no ribbon.
 		.accessibilityLabel(category.map { ledger.categoryPath($0.id) } ?? ledger.defaultCategory?.name ?? String(localized: "Uncategorized"))
 		.accessibilityHint("Assign Category")
-	}
-}
-
-extension CategoryRibbon {
-	/// Muted toward gray like the ribbons of MoneyMoney, so that white text stays readable.
-	fileprivate func ribbon(_ text: String, _ color: Color) -> some View {
-		Text(text)
-			.font(.system(size: 10, weight: .bold))
-			.kerning(0.2)
-			.foregroundStyle(.white.opacity(0.95))
-			.lineLimit(1)
-			.padding(.leading, 4)
-			.padding(.trailing, 10)
-			.frame(width: 113, height: 14, alignment: .leading)
-			.background(color, in: RibbonShape())
-	}
-}
-
-/// A band with a notch at its trailing end.
-struct RibbonShape: Shape {
-	func path(in rect: CGRect) -> Path {
-		let notch: CGFloat = 7
-		var path = Path()
-		path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-		path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-		path.addLine(to: CGPoint(x: rect.maxX - notch, y: rect.midY))
-		path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-		path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-		path.closeSubpath()
-		return path
 	}
 }
 

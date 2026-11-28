@@ -1906,6 +1906,26 @@
         }
       }
     },
+    "Allocation by Asset Class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung nach Anlageklasse"
+          }
+        }
+      }
+    },
+    "Allocation by asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aufteilung nach Anlageklasse"
+          }
+        }
+      }
+    },
     "Allow" : {
       "localizations" : {
         "de" : {
@@ -2410,6 +2430,36 @@
         }
       }
     },
+    "Asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse"
+          }
+        }
+      }
+    },
+    "Asset Class Settings" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen der Anlageklassen"
+          }
+        }
+      }
+    },
+    "Asset Class Settings..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einstellungen der Anlageklassen..."
+          }
+        }
+      }
+    },
     "Asset class:" : {
       "localizations" : {
         "de" : {
@@ -2436,6 +2486,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordnen Sie %@ eine Spalte zu."
+          }
+        }
+      }
+    },
+    "Assign Asset Class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse zuweisen"
+          }
+        }
+      }
+    },
+    "Assign Asset Class..." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anlageklasse zuweisen..."
           }
         }
       }
@@ -2777,6 +2847,16 @@
         }
       }
     },
+    "Blue" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blau"
+          }
+        }
+      }
+    },
     "Bonds" : {
       "localizations" : {
         "de" : {
@@ -2887,6 +2967,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Übernehmen Sie Ihre Konten, Kategorien und Umsätze aus MoneyMoney, oder beginnen Sie mit einem Offline-Konto."
+          }
+        }
+      }
+    },
+    "Brown" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Braun"
           }
         }
       }
@@ -4180,6 +4270,16 @@
       },
       "extractionState" : "manual"
     },
+    "Cyan" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cyan"
+          }
+        }
+      }
+    },
     "D" : {
       "localizations" : {
         "de" : {
@@ -5406,6 +5506,26 @@
         }
       }
     },
+    "Green" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grün"
+          }
+        }
+      }
+    },
+    "Group by asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Anlageklasse gruppieren"
+          }
+        }
+      }
+    },
     "Group transactions by account" : {
       "localizations" : {
         "de" : {
@@ -5874,6 +5994,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Falsches Passwort!"
+          }
+        }
+      }
+    },
+    "Indigo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indigo"
           }
         }
       }
@@ -6623,6 +6753,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "min. Betrag"
+          }
+        }
+      }
+    },
+    "Mint" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mint"
           }
         }
       }
@@ -7469,6 +7609,16 @@
         }
       }
     },
+    "No asset class matches" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Anlageklasse passt"
+          }
+        }
+      }
+    },
     "No bank matches “%@”." : {
       "localizations" : {
         "de" : {
@@ -7652,12 +7802,32 @@
         }
       }
     },
+    "No portfolio item has a value." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Depotposition hat einen Wert."
+          }
+        }
+      }
+    },
     "No portfolio items found." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Keine Depotpositionen gefunden."
+          }
+        }
+      }
+    },
+    "No portfolio items." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Depotpositionen."
           }
         }
       }
@@ -8174,6 +8344,16 @@
         }
       }
     },
+    "Orange" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orange"
+          }
+        }
+      }
+    },
     "Original amount" : {
       "localizations" : {
         "de" : {
@@ -8383,6 +8563,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "PIN"
+          }
+        }
+      }
+    },
+    "Pink" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pink"
           }
         }
       }
@@ -8625,6 +8815,16 @@
       },
       "extractionState" : "manual"
     },
+    "Purple" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lila"
+          }
+        }
+      }
+    },
     "Purpose" : {
       "localizations" : {
         "de" : {
@@ -8777,6 +8977,16 @@
         }
       },
       "extractionState" : "manual"
+    },
+    "Red" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rot"
+          }
+        }
+      }
     },
     "Reduce" : {
       "localizations" : {
@@ -9211,6 +9421,16 @@
         }
       }
     },
+    "Restore Default Colors" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Standardfarben wiederherstellen"
+          }
+        }
+      }
+    },
     "Restrict to" : {
       "localizations" : {
         "de" : {
@@ -9461,6 +9681,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wählen Sie ein Konto oder eine Kategorie."
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ausgewählt"
           }
         }
       }
@@ -9784,6 +10014,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Über neue Versionen von Moneten benachrichtigen"
+          }
+        }
+      }
+    },
+    "Show only %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur %@ anzeigen"
           }
         }
       }
@@ -10269,6 +10509,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "TAN-Verfahren"
+          }
+        }
+      }
+    },
+    "Teal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blaugrün"
           }
         }
       }
@@ -13895,6 +14145,16 @@
         }
       }
     },
+    "Type to find an asset class" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippen, um eine Anlageklasse zu finden"
+          }
+        }
+      }
+    },
     "Uncategorized" : {
       "localizations" : {
         "de" : {
@@ -14490,6 +14750,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jahresansicht"
+          }
+        }
+      }
+    },
+    "Yellow" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gelb"
           }
         }
       }

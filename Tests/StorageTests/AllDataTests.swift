@@ -280,6 +280,7 @@ struct AllDataTests {
 				exchangeRate: ExchangeRate(base: "EUR", quoted: "USD", rate: Decimal(string: "1.0832")!), sourceAssetClass: .funds, userAssetClass: .etfs,
 				comment: "Nachkaufen unter 70 €.")).insert(db)
 		}
+		try store.setAssetClassColors([.bonds: "#2E7D32"])
 		var power = TransactionFilter()
 		power.searchText = "name:Stadtwerke"
 		power.status = .checked
@@ -328,6 +329,7 @@ struct AllDataTests {
 		#expect(Set(try target.deletedTransactions()) == Set(try source.deletedTransactions()))
 		#expect(try target.savedSearches() == source.savedSearches())
 		#expect(try target.savedSearches().map(\.name) == ["Strom", "Last 30 days"])
+		#expect(after.assetClassColors == [.bonds: "#2E7D32"] && after.assetClassColors == before.assetClassColors)
 	}
 
 	@Test("A saved search keeps its period, its filters, and the ends of its amount range as decimal text")
@@ -903,6 +905,30 @@ struct AllDataTests {
 		json["holdings"] = rows
 		let earlier = try AllData(json: JSONSerialization.data(withJSONObject: json))
 		#expect(earlier.holdings[0].comment == nil)
+	}
+
+	@Test("The colors of the asset classes travel with the file, a file without them reads with the defaults, and a broken color is refused")
+	func assetClassColors() throws {
+		let file = try filledStore().exportAllData().json()
+		var json = try JSONSerialization.jsonObject(with: file) as! [String: Any]
+		#expect(json["assetClassColors"] as? [[String: String]] == [["assetClass": "bonds", "color": "#2E7D32"]])
+		let target = try emptyStore("target")
+		try target.importAllData(try AllData(json: file))
+		#expect(try target.loadLedger().assetClassColors == [.bonds: "#2E7D32"])
+		// A database without a chosen color writes no key.
+		let plain = try JSONSerialization.jsonObject(with: try emptyStore("plain").exportAllData().json()) as! [String: Any]
+		#expect(plain["assetClassColors"] == nil)
+		json["assetClassColors"] = nil
+		#expect(try AllData(json: JSONSerialization.data(withJSONObject: json)).assetClassColors.isEmpty)
+		for (entries, place) in [([["assetClass": "bonds", "color": "green"]], "at assetClassColors[0]"),
+			([["assetClass": "bonds", "color": "#2E7D32"], ["assetClass": "bonds", "color": "#000000"]], "at assetClassColors[1]")] {
+			json["assetClassColors"] = entries
+			#expect {
+				try AllData(json: JSONSerialization.data(withJSONObject: json))
+			} throws: { "\($0)".contains(place) }
+		}
+		json["assetClassColors"] = [["assetClass": "warrants", "color": "#2E7D32"]]
+		#expect(throws: AllData.ReadError.self) { try AllData(json: JSONSerialization.data(withJSONObject: json)) }
 	}
 
 	@Test("An import refuses a holding value in a code that is no currency")

@@ -122,6 +122,11 @@ struct AppCommands: Commands {
 	/// stores holds the database, so no command may read or change it until the migration ends.
 	var unlocked: Bool { model.phase == .unlocked && !model.isApplyingRule && !model.isStoringMigration }
 
+	/// The mark of one view mode in the View menu. A click chooses it, also on a marked item, as a menu item does.
+	private func viewMode(_ mode: ViewMode) -> Binding<Bool> {
+		Binding(get: { model.viewMode == mode }, set: { _ in model.viewMode = mode })
+	}
+
 	var body: some Commands {
 		CommandGroup(replacing: .appInfo) {
 			Button("About Moneten") { AboutPanel.show() }
@@ -171,13 +176,11 @@ struct AppCommands: Commands {
 			Button("Back") { model.goBack() }.keyboardShortcut("[").disabled(!unlocked || !model.canGoBack)
 			Button("Forward") { model.goForward() }.keyboardShortcut("]").disabled(!unlocked || !model.canGoForward)
 			Divider()
-			Picker("View", selection: Binding(get: { model.viewMode }, set: { model.viewMode = $0 })) {
-				Text("List").keyboardShortcut("1").tag(ViewMode.list)
-				Text("Bar Chart").keyboardShortcut("2").tag(ViewMode.barChart)
-				Text("Pie Chart").keyboardShortcut("3").tag(ViewMode.pieChart)
-			}
-			.pickerStyle(.inline)
-			.disabled(!unlocked)
+			// Three marked items and no inline picker, because a picker cannot disable one of its items: a portfolio view has
+			// no pie chart, since the allocation popover shows the split by class.
+			Toggle("List", isOn: viewMode(.list)).keyboardShortcut("1").disabled(!unlocked)
+			Toggle("Bar Chart", isOn: viewMode(.barChart)).keyboardShortcut("2").disabled(!unlocked)
+			Toggle("Pie Chart", isOn: viewMode(.pieChart)).keyboardShortcut("3").disabled(!unlocked || model.isPortfolioView)
 			Divider()
 			Toggle("Daily Balance", isOn: Binding(get: { model.showsDailyBalance }, set: { model.showsDailyBalance = $0 }))
 				.disabled(!unlocked || model.selectedAccount == nil)
@@ -196,9 +199,10 @@ struct AppCommands: Commands {
 				.keyboardShortcut("+")
 				.disabled(!unlocked || model.selectedManualAccount == nil)
 			// A bank dialog shows only while no other sheet is open, so ⌘K or ⌘⇧K would close it and drop a half-typed PIN.
-			Button("Assign Category...") { model.openCategoryPicker() }
+			// In a portfolio view the same command assigns the asset class of the selected positions.
+			Button(model.assignTitle) { model.openCategoryPicker() }
 				.keyboardShortcut("k")
-				.disabled(!unlocked || model.selectedTransactions.isEmpty || model.sheet != nil || model.sync.broker.sheet != nil)
+				.disabled(!unlocked || !model.canAssign || model.sheet != nil || model.sync.broker.sheet != nil)
 			Button("Add Comment...") { model.openCommentSheet() }
 				.keyboardShortcut("k", modifiers: [.command, .shift])
 				.disabled(!unlocked || !model.canComment || model.sheet != nil || model.sync.broker.sheet != nil)

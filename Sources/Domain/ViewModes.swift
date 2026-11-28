@@ -12,6 +12,9 @@ public struct ViewModes: Equatable, Sendable {
 		case accounts
 		/// A category, a category group, or a saved search, which draws the categories.
 		case categories
+		/// A portfolio or a group of portfolios, which shows positions. It shares the mode of the account views but has no
+		/// pie chart, because the allocation popover shows the split by class, so it shows the bar chart in its place.
+		case portfolios
 	}
 
 	private var accounts: ViewMode
@@ -21,7 +24,7 @@ public struct ViewModes: Equatable, Sendable {
 	/// earlier versions, so the mode the user chose there stays.
 	public static func key(of kind: Kind) -> String {
 		switch kind {
-		case .accounts: "viewMode"
+		case .accounts, .portfolios: "viewMode"
 		case .categories: "categoryViewMode"
 		}
 	}
@@ -41,12 +44,23 @@ public struct ViewModes: Equatable, Sendable {
 	}
 
 	public subscript(kind: Kind) -> ViewMode {
-		kind == .accounts ? accounts : categories
+		switch kind {
+		case .accounts: accounts
+		case .categories: categories
+		case .portfolios: accounts == .pieChart ? .barChart : accounts
+		}
 	}
 
-	/// Sets the mode of `kind` and hands it to `store` for the next launch.
+	/// Sets the mode of `kind` and hands it to `store` for the next launch. A portfolio view sets the mode of the account
+	/// views and refuses the pie chart, so the account views keep a pie chart that the user chose there.
 	public mutating func set(_ mode: ViewMode, for kind: Kind, store: (_ key: String, _ value: String) -> Void) {
-		if kind == .accounts { accounts = mode } else { categories = mode }
+		switch kind {
+		case .accounts: accounts = mode
+		case .categories: categories = mode
+		case .portfolios:
+			guard mode != .pieChart else { return }
+			accounts = mode
+		}
 		store(Self.key(of: kind), mode.rawValue)
 	}
 }

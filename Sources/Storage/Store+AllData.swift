@@ -31,7 +31,8 @@ extension Store {
 				csvProfiles: try Row.fetchAll(db, sql: "SELECT name, version, payload FROM csvProfile ORDER BY rowid").map {
 					CSVProfileData(name: $0["name"], version: $0["version"], payload: $0["payload"])
 				}, splitParts: try SplitPart.order(Column.rowID).fetchAll(db),
-				savedSearches: try Row.fetchAll(db, sql: "SELECT id, name, position, searchText, filterBar FROM savedSearch ORDER BY rowid").map(Self.savedSearch))
+				savedSearches: try Row.fetchAll(db, sql: "SELECT id, name, position, searchText, filterBar FROM savedSearch ORDER BY rowid").map(Self.savedSearch),
+				assetClassColors: try Self.assetClassColors(in: db))
 		}
 	}
 
@@ -96,6 +97,8 @@ extension Store {
 			for d in data.deletedTransactions { try d.insert(db) }
 			for v in data.portfolioValues { try v.insert(db) }
 			for h in data.holdings { try HoldingRecord(h).insert(db) }
+			// The colors of the file replace those of the database, which holds no other data.
+			try Self.replaceAssetClassColors(data.assetClassColors, in: db)
 			for profile in data.csvProfiles {
 				try db.execute(sql: "INSERT INTO csvProfile(name, version, payload) VALUES (?, ?, ?)", arguments: [profile.name, profile.version, profile.payload])
 			}

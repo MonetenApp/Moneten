@@ -90,12 +90,13 @@ extension TransactionFilter {
 		return hints
 	}
 
-	/// `self` with the filters "Profit/Loss" and "Quote" of `current`. A saved search holds neither, because it shows
-	/// transactions, so opening it keeps those of the filter bar for the next portfolio.
+	/// `self` with the filters "Profit/Loss" and "Quote" and "Group by asset class" of `current`. A saved search holds none
+	/// of them, because it shows transactions, so opening it keeps those of the filter bar for the next portfolio.
 	public func keepingPositionFilters(of current: TransactionFilter) -> TransactionFilter {
 		var f = self
 		f.gain = current.gain
 		f.quote = current.quote
+		f.groupsByAssetClass = current.groupsByAssetClass
 		return f
 	}
 }
@@ -166,11 +167,142 @@ extension TransactionFilter {
 	/// and measures each moved row, which took seconds for hundreds of positions, so such a change starts the table over.
 	/// The order by name, nil, changes only with a name.
 	public func movesShownPositions(before: [Holding], after: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> Bool {
-		let shownBefore = positions(of: before, currency: currency)
-		let shownAfter = positions(of: after, currency: currency)
-		let old = (sort?.sorted(shownBefore, currency: currency) ?? shownBefore.sorted(by: Holding.isOrdered)).map(\.id)
-		let new = (sort?.sorted(shownAfter, currency: currency) ?? shownAfter.sorted(by: Holding.isOrdered)).map(\.id)
+		let old = shownPositions(of: before.sorted(by: Holding.isOrdered), sort: sort, currency: currency).map(\.id)
+		let new = shownPositions(of: after.sorted(by: Holding.isOrdered), sort: sort, currency: currency).map(\.id)
 		let both = Set(old).intersection(new)
 		return old.filter(both.contains) != new.filter(both.contains)
+	}
+
+	/// The rows of the list in their order: the positions of `holdings` that the filters show, in the order of `sort`, or
+	/// in the order of `holdings` for nil, and under "Group by asset class" by class in the order of the menu, each class in
+	/// that order. A new class of a shown position then moves it into another section.
+	public func shownPositions(of holdings: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> [Holding] {
+		shownSections(of: holdings, sort: sort, currency: currency).holdings
+	}
+
+	/// The rows of `shownPositions(of:sort:currency:)` with the headings of "Group by asset class", none without it, built
+	/// once for the table.
+	public func shownSections(of holdings: [Holding], sort: PortfolioSort?, currency: (Holding) -> String) -> PortfolioSections {
+		let shown = positions(of: holdings, currency: currency)
+		let sorted = sort?.sorted(shown, currency: currency) ?? shown
+		return groupsByAssetClass ? PortfolioSections(sorted, currency: currency) : PortfolioSections(ungrouped: sorted)
+	}
+}
+
+/// The rows of "Group by asset class": the positions of each class in the order of the submenu "Asset Class", with a
+/// heading above the first position of each class. The heading belongs to that row and is no row of its own, as the
+/// heading of "Group transactions by account" (`GroupedTransactions`, #519), so the table keeps one row for each position.
+public struct PortfolioSections: Sendable {
+	public struct Heading: Equatable, Sendable {
+		public let assetClass: AssetClass
+		/// The number of positions of the class that the list shows.
+		public let count: Int
+		/// The sums of their values and of their profits or losses, one for each currency, never converted. A position
+		/// without a purchase price adds only to the value.
+		public let value: MoneySums
+		public let gain: MoneySums
+		/// The heading at the top. The others stand apart from the rows above them.
+		public let isFirst: Bool
+	}
+
+	/// The positions in the order of the table.
+	public let holdings: [Holding]
+	/// The heading above a position, by the ID of the first position of each class.
+	public let headings: [UUID: Heading]
+
+	/// The flat list: `holdings` in their order, without a heading.
+	public init(ungrouped holdings: [Holding]) {
+		self.holdings = holdings
+		headings = [:]
+	}
+
+	/// The positions of `holdings` by class, each class in the order of `holdings`. `currency` gives the currency of the
+	/// account of a position, in which its row shows its value and its profit or loss.
+	public init(_ holdings: [Holding], currency: (Holding) -> String) {
+		let byClass = Dictionary(grouping: holdings, by: \.assetClass)
+		var ordered: [Holding] = []
+		ordered.reserveCapacity(holdings.count)
+		var headings: [UUID: Heading] = [:]
+		for assetClass in AssetClass.allCases {
+			guard let rows = byClass[assetClass], let first = rows.first else { continue }
+			var value = MoneySums(), gain = MoneySums()
+			for h in rows {
+				let c = currency(h)
+				if let v = h.value(in: c) { value.add(v) }
+				if let g = h.gain(in: c) { gain.add(g.amount) }
+			}
+			headings[first.id] = Heading(assetClass: assetClass, count: rows.count, value: value, gain: gain, isFirst: ordered.isEmpty)
+			ordered += rows
+		}
+		self.holdings = ordered
+		self.headings = headings
+	}
+}
+
+/// The split of the value of a portfolio view by asset class, for the allocation popover. It counts every position of the
+/// view, whatever the filters and the search show, because it is an overview of the whole portfolio. It never converts a
+/// currency, so each currency of the values has a bar of its own.
+public struct Allocation: Equatable, Sendable {
+	/// One class of a bar: its value and its share of the total in percent with two places. The shares of a bar add up to
+	/// exactly 100 %, so each is rounded down and the hundredths that are left go to the largest remainders.
+	public struct Share: Equatable, Sendable {
+		public let assetClass: AssetClass
+		public let value: Money
+		public let percent: Decimal
+	}
+
+	/// The classes of one currency, in the order of the submenu "Asset Class", with their total.
+	public struct Bar: Equatable, Sendable {
+		public let currency: String
+		public let total: Money
+		public let shares: [Share]
+	}
+
+	/// The bars by currency code. Empty when no position has a value.
+	public let bars: [Bar]
+
+	/// `holdings` are all positions of the view. `currency` gives the currency of the account of a position, in which its
+	/// row shows its value. A position without a value has nothing to share.
+	public init(_ holdings: [Holding], currency: (Holding) -> String) {
+		var sums: [String: [AssetClass: Int128]] = [:]
+		for h in holdings {
+			guard let value = h.value(in: currency(h)) else { continue }
+			sums[value.currency, default: [:]][h.assetClass, default: 0] += Int128(value.minorUnits)
+		}
+		bars = sums.keys.sorted().map { code in
+			let classes = sums[code] ?? [:]
+			let present = AssetClass.allCases.filter { classes[$0] != nil }
+			let parts = present.map { classes[$0] ?? 0 }
+			let total = parts.reduce(Int128(0), +)
+			let hundredths = Self.hundredths(of: parts, total: total)
+			let shares = present.enumerated().map { i, c in
+				Share(assetClass: c, value: Money(minorUnits: Int64(clampingSum: parts[i]), currency: code), percent: Decimal(string: String(hundredths[i]))! / 100)
+			}
+			return Bar(currency: code, total: Money(minorUnits: Int64(clampingSum: total), currency: code), shares: shares)
+		}
+	}
+
+	/// Each of `parts` as hundredths of a percent of `total`, which add up to 10,000: each share rounded down, and the
+	/// hundredths that are left, one each, to the shares with the largest remainders, the first in the order of `parts`
+	/// on a tie. A total of 0 gives 0 for each.
+	private static func hundredths(of parts: [Int128], total: Int128) -> [Int128] {
+		guard total != 0 else { return parts.map { _ in 0 } }
+		// A negative total, of positions worth less than nothing, shares as its magnitude does.
+		let sign: Int128 = total < 0 ? -1 : 1
+		let whole = total * sign
+		var shares: [Int128] = []
+		var remainders: [Int128] = []
+		for part in parts {
+			let scaled = part * sign * 10_000
+			var share = scaled / whole
+			// Down, also for a negative part, so every remainder lies between 0 and the total.
+			if scaled % whole < 0 { share -= 1 }
+			shares.append(share)
+			remainders.append(scaled - share * whole)
+		}
+		let left = 10_000 - shares.reduce(0, +)
+		let order = remainders.indices.sorted { remainders[$0] != remainders[$1] ? remainders[$0] > remainders[$1] : $0 < $1 }
+		for i in order.prefix(Int(left)) { shares[i] += 1 }
+		return shares
 	}
 }

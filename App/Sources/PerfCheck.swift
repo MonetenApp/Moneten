@@ -425,6 +425,40 @@ struct PerfScenario {
 				c.model.setAssetClass(nil, of: [moved.id])
 				await c.settle()
 			}),
+		// "Group by asset class" for 500 positions of eight classes starts the table over with a heading above the first position
+		// of each class, and a drop on a heading that moves a position into another section starts it over again: in place,
+		// SwiftUI would move the rows (refine-portfolio-view, #613).
+		PerfScenario(name: "group-many-positions", budget: halfSecond,
+			setUp: { c in
+				await c.model.addOfflineAccount(name: "Perf Group Depot", kind: .portfolio, currency: "EUR", groupID: nil)
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Group Depot" }) else { return }
+				let classes = AssetClass.allCases
+				let holdings = PerfScenario.bought(depot.id, 500, losses: 100).enumerated().map { i, h in
+					var h = h
+					h.sourceAssetClass = classes[i % classes.count]
+					return h
+				}
+				try? await c.model.sync.deliver(depot.id, RefreshResult(balance: nil, transactions: nil, isPortfolio: true, holdings: holdings))
+				await c.select("Perf Group Depot")
+				await c.settle()
+			},
+			run: { c in
+				guard let depot = c.model.ledger.accounts.first(where: { $0.name == "Perf Group Depot" }) else { return c.fail("the portfolio is missing") }
+				let flat = c.harness.holdingsTables().first
+				c.model.filter.groupsByAssetClass = true
+				await c.settle()
+				let grouped = c.harness.holdingsTables().first
+				if grouped.map(ObjectIdentifier.init) == flat.map(ObjectIdentifier.init) { c.fail("the grouping changed the rows in place") }
+				if grouped?.numberOfRows != 500 { c.fail("the grouped list does not show the 500 positions") }
+				guard let moved = c.model.ledger.holdings(of: [depot.id]).first(where: { $0.assetClass == .stocks }) else { return c.fail("no stock position") }
+				c.model.drop(positions: [moved.id], on: .bonds)
+				await c.settle()
+				if c.model.ledger.holdings(of: [depot.id]).first(where: { $0.id == moved.id })?.assetClass != .bonds { c.fail("the drop did not reach the ledger") }
+				if c.harness.holdingsTables().first.map(ObjectIdentifier.init) == grouped.map(ObjectIdentifier.init) { c.fail("the drop moved a row in place") }
+				c.model.setAssetClass(nil, of: [moved.id])
+				c.model.filter.groupsByAssetClass = false
+				await c.settle()
+			}),
 		// A refresh in which the bank sends another class for a shown position, while the filter "Asset class" is on, starts
 		// the table of positions over. When the class of the filter loses its last position, the filter goes back to "Show
 		// All" with the same new table.

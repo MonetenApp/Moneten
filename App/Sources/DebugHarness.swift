@@ -1652,8 +1652,20 @@ final class DebugHarness {
 		// "<row>": a plain click on row <row> of the table of positions, handed to the watcher of the clicks and to the window
 		// as the mouse sends it: it opens the position of the row, or closes it when it is open. Then it logs whether a
 		// position is open, the hash of its name, and which rows are selected. The table of a window in the background takes
-		// no selection from such a click.
+		// no selection from such a click. "<row>|top" clicks near the top of the row, on the heading of a class, and
+		// "<row>|bottom" near its end.
 		case "holdingclick": holdingClick(argument)
+		// "classes ...": the checks of the asset classes of a portfolio view (refine-portfolio-view, #613). "state" logs the rows, the classes
+		// of the headings of "Group by asset class" with their counts, and whether the pin saved the filter bar.
+		// "group on|off" sets the switch of the filter bar. "cmdk <n>" selects the first n rows and presses ⌘K as the keyboard
+		// does, then logs the sheet. "drop <name>|<class>" drags the positions with that name onto the heading of the class (the
+		// raw value of `AssetClass`), with the payload sent through an item provider as a drag sends it; the harness cannot drag
+		// with the mouse. "colors open", "colors restore", and "colors <class> <#RRGGBB>" open the asset class settings or set
+		// the colors as their OK does. "allocation" presses the allocation button and logs the lines of the popover,
+		// "allocationpick <class>" presses the line of the class, and "allocationsnapshot <name>" draws the popover
+		// offscreen. "pie" logs whether "Pie Chart" is enabled in the View menu and in the toolbar and the mode of the
+		// view, and "pie key" runs ⌘3 first.
+		case "classes": classes(argument)
 		// "<line>": what a click on that line of the header of the positions does, by the case of `PortfolioSort.Key`, such as
 		// "value" or "lastQuote"; an empty argument goes back to the order by name. Then it logs the order.
 		case "holdingsort":
@@ -2853,12 +2865,16 @@ final class DebugHarness {
 	}
 
 	private func holdingClick(_ argument: String) {
-		guard let model, let table = holdingsTables().first, let window = table.window, let row = Int(argument), (0..<table.numberOfRows).contains(row) else {
+		let parts = argument.components(separatedBy: "|")
+		guard let model, let table = holdingsTables().first, let window = table.window, let row = Int(parts[0]), (0..<table.numberOfRows).contains(row) else {
 			return log("holdingclick refused")
 		}
 		table.scrollRowToVisible(row)
 		let frame = table.rect(ofRow: row)
-		let point = table.convert(NSPoint(x: frame.midX, y: frame.midY), to: nil)
+		// "<row>|top" clicks 10 points below the top of the row, where the heading of a class stands under "Group by asset class",
+		// and "<row>|bottom" 10 points above its end, on the position below the heading.
+		let y = switch parts.dropFirst().first { case "top": frame.minY + 10; case "bottom": frame.maxY - 10; default: frame.midY }
+		let point = table.convert(NSPoint(x: frame.midX, y: y), to: nil)
 		func event(_ type: NSEvent.EventType) -> NSEvent? {
 			NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
 				context: nil, eventNumber: 0, clickCount: 1, pressure: type == .leftMouseUp ? 0 : 1)
@@ -2881,6 +2897,145 @@ final class DebugHarness {
 			self.log("holdingclick", ("open", .flag(open != nil)), ("name", open.map { .hash($0.security.name) } ?? .word("-")),
 				("selected", .list(table.selectedRowIndexes.map { .position($0) })))
 		}
+	}
+
+	private func classes(_ argument: String) {
+		guard let model else { return }
+		let parts = argument.split(separator: " ", maxSplits: 1).map(String.init)
+		let value = parts.count == 2 ? parts[1] : ""
+		let later = { (work: @escaping @MainActor () -> Void) in DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { MainActor.assumeIsolated(work) } }
+		switch parts.first {
+		case "state": logPortfolio()
+		case "group":
+			model.filter.groupsByAssetClass = value == "on"
+			later { self.logPortfolio() }
+		case "cmdk":
+			guard let table = holdingsTables().first, let window = table.window, let count = Int(value) else { return log("classes refused") }
+			table.selectRowIndexes(IndexSet(0..<max(0, min(count, table.numberOfRows))), byExtendingSelection: false)
+			// The app in the background shows the items of the menu bar disabled, so a key event finds no item to run. The
+			// check runs the action of the item that carries ⌘K, as the key does in the active app.
+			later {
+				let items = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items) ?? []
+				let item = items.first { $0.keyEquivalent == "k" && $0.keyEquivalentModifierMask == .command }
+				let titled = item?.title == Self.localized("Assign Asset Class...")
+				if let menu = item?.menu { menu.delegate?.menuNeedsUpdate?(menu) }
+				item?.menu?.update()
+				let enabled = item?.isEnabled ?? false
+				if let item, let menu = item.menu { menu.performActionForItem(at: menu.index(of: item)) }
+				later {
+					var picked: Int?
+					if case let .assignAssetClass(ids)? = model.sheet { picked = ids.count }
+					self.log("classes cmdk", ("item", .flag(item != nil)), ("title", .flag(titled)), ("enabled", .flag(enabled)), ("picker", .flag(picked != nil)),
+						("positions", .position(picked)), ("selected", .count(model.selectedPositions.count)), ("window", .flag(window.isVisible)))
+				}
+			}
+		case "drop":
+			let names = value.components(separatedBy: "|")
+			guard names.count == 2, let target = AssetClass(rawValue: names[1]), let portfolios = model.tableKey.portfolios else { return log("classes refused") }
+			let ids = Set(model.ledger.holdings(of: portfolios).filter { $0.security.name == names[0] }.map(\.id))
+			handOver(model.startDrag(positions: ids)) { item in
+				let accepted = model.drop(positions: item?.ids ?? [], on: target)
+				later {
+					let classes = model.ledger.holdings(of: portfolios).filter { ids.contains($0.id) }.map { LogValue.state($0.assetClass) }
+					self.log("classes drop", ("accepted", .flag(accepted)), ("classes", .list(classes)))
+					self.logPortfolio()
+				}
+			}
+		case "colors":
+			let words = value.split(separator: " ").map(String.init)
+			if words == ["open"] {
+				model.sheet = .assetClassSettings
+			} else if words == ["restore"] {
+				model.setAssetClassColors([:])
+			} else if words.count == 2, let c = AssetClass(rawValue: words[0]), let color = HexColor(words[1]) {
+				var colors = model.ledger.assetClassColors
+				colors[c] = color.text
+				model.setAssetClassColors(colors)
+			} else {
+				return log("classes refused")
+			}
+			later {
+				self.log("classes colors", ("chosen", .list(AssetClass.allCases.filter { model.ledger.assetClassColors[$0] != nil }.map { .state($0) })),
+					("sheet", .state(model.sheet)))
+			}
+		case "allocation":
+			guard let main = NSApp.windows.first(where: { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }) else { return log("classes refused") }
+			let label = String(localized: "Allocation by asset class")
+			let button = accessibility(in: main).first { ($0 as AnyObject).accessibilityLabel?() == label }
+			let pressed = (button as AnyObject?)?.accessibilityPerformPress?() ?? false
+			later { self.logAllocation(pressed: pressed) }
+		case "allocationpick":
+			guard let c = AssetClass(rawValue: value), let popover = allocationWindow else { return log("classes refused") }
+			let line = accessibility(in: popover).first { (($0 as AnyObject).accessibilityLabel?() ?? "").hasPrefix(c.name) && ($0 as AnyObject).accessibilityRole?() == .button }
+			let pressed = (line as AnyObject?)?.accessibilityPerformPress?() ?? false
+			later {
+				self.log("classes allocationpick", ("pressed", .flag(pressed)), ("filter", .state(model.filter.assetClass as Any)),
+					("open", .flag(self.allocationWindow != nil)), ("rows", .count(self.holdingsTables().first?.numberOfRows ?? 0)))
+			}
+		// The popover itself draws on glass, which a snapshot of its window does not show, so this draws its content offscreen.
+		case "allocationsnapshot":
+			guard let portfolios = model.tableKey.portfolios else { return log("classes refused") }
+			offscreenSnapshot(AllocationPopover(model: model, accountIDs: portfolios) {}, width: 340, name: value, kind: "allocation")
+		case "pie":
+			// "key" runs the item of ⌘3 as the key would, but only while it is enabled, as a disabled item takes no key.
+			if value == "key" {
+				let items = NSApp.mainMenu?.items.compactMap(\.submenu).flatMap(\.items) ?? []
+				if let item = items.first(where: { $0.keyEquivalent == "3" && $0.keyEquivalentModifierMask == .command }), let menu = item.menu {
+					menu.delegate?.menuNeedsUpdate?(menu)
+					menu.update()
+					if item.isEnabled { menu.performActionForItem(at: menu.index(of: item)) }
+				}
+			}
+			later { self.logPie() }
+		default: log("classes refused")
+		}
+	}
+
+	/// The popover of the allocation, while it shows.
+	private var allocationWindow: NSWindow? {
+		NSApp.windows.first { $0.isVisible && $0.className.contains("Popover") }
+	}
+
+	private func logAllocation(pressed: Bool) {
+		guard let popover = allocationWindow else { return log("classes allocation", ("pressed", .flag(pressed)), ("open", .flag(false))) }
+		let buttons = accessibility(in: popover).filter { ($0 as AnyObject).accessibilityRole?() == .button }
+		let names = AssetClass.allCases.filter { c in buttons.contains { (($0 as AnyObject).accessibilityLabel?() ?? "").hasPrefix(c.name) } }
+		let empty = accessibility(in: popover).contains { element in
+			let text = (element as AnyObject).accessibilityLabel?() ?? (element.accessibilityAttributeValue(.value) as? String)
+			return text == String(localized: "No portfolio items.")
+		}
+		log("classes allocation", ("pressed", .flag(pressed)), ("open", .flag(true)), ("classes", .list(names.map { .state($0) })), ("empty", .flag(empty)))
+	}
+
+	private func logPortfolio() {
+		guard let model else { return }
+		guard let portfolios = model.tableKey.portfolios else { return log("classes no classes view") }
+		let ledger = model.ledger
+		let currency = { (h: Holding) in ledger.positionCurrency(of: h) }
+		let sections = model.tableKey.filter.shownSections(of: ledger.holdings(of: portfolios), sort: model.portfolioSort, currency: currency)
+		let rows = sections.holdings
+		let headings = rows.compactMap { sections.headings[$0.id] }
+		let table = holdingsTables().first
+		log("classes", ("grouped", .flag(model.filter.groupsByAssetClass)), ("rows", .count(table?.numberOfRows ?? 0)),
+			("classes", .list(rows.map { .state($0.assetClass) })), ("headings", .list(headings.map { .state($0.assetClass) })),
+			("counts", .list(headings.map { .count($0.count) })),
+			("saved", .flag(AppSettings.defaults.data(forKey: Preference.savedFilterBar).flatMap(SavedFilterBar.init(data:)) == SavedFilterBar(period: model.period, filter: model.filter))))
+	}
+
+	private func logPie() {
+		guard let model else { return }
+		let view = NSApp.mainMenu?.items.first { $0.title == Self.localized("View") }?.submenu
+		// SwiftUI updates the items of a menu when it is about to open, as the command "menu" does.
+		if let view { view.delegate?.menuNeedsUpdate?(view) }
+		view?.update()
+		let item = view?.items.first { $0.title == Self.localized("Pie Chart") }
+		let bar = view?.items.first { $0.title == Self.localized("Bar Chart") }
+		let main = NSApp.windows.first { $0.isVisible && $0.identifier?.rawValue.hasPrefix("main") == true }
+		func segments(in view: NSView) -> [NSSegmentedControl] { ((view as? NSSegmentedControl).map { [$0] } ?? []) + view.subviews.flatMap(segments) }
+		let control = (main?.contentView?.superview).map(segments)?.first { $0.segmentCount == 3 }
+		log("classes pie", ("menu", .flag(item?.isEnabled ?? false)), ("found", .flag(control != nil)), ("toolbar", .flag(control?.isEnabled(forSegment: 2) ?? false)),
+			("marked", .flag(bar?.state == .on)), ("mode", .state(model.viewMode)), ("portfolio", .flag(model.isPortfolioView)),
+			("accounts", .choice(AppSettings.defaults.string(forKey: ViewModes.key(of: .accounts)) ?? "", of: ["list", "barChart", "pieChart"], otherwise: "-")))
 	}
 
 	/// The titles of the submenu "Asset Class" in the language of the app, which change only the class of positions in the

@@ -134,6 +134,38 @@ struct HoldingStoreTests {
 		#expect(try Store(queue: queue).loadLedger().holdings(of: [depot.id]).map(\.comment) == [nil])
 	}
 
+	@Test("A chosen color of an asset class survives reopening, in the database and in the ledger, and an empty choice restores every default")
+	func assetClassColors() throws {
+		let store = try makeStore()
+		var ledger = try store.loadLedger()
+		#expect(ledger.assetClassColors.isEmpty)
+		let colors: [AssetClass: String] = [.bonds: "#2E7D32", .etfs: "#123456"]
+		try store.setAssetClassColors(colors)
+		ledger.setAssetClassColors(colors)
+		#expect(try store.loadLedger().assetClassColors == colors)
+		#expect(ledger.assetClassColors == colors)
+		// The settings replace every earlier choice.
+		try store.setAssetClassColors([.bonds: "#00FF00"])
+		#expect(try store.loadLedger().assetClassColors == [.bonds: "#00FF00"])
+		try store.setAssetClassColors([:])
+		#expect(try store.loadLedger().assetClassColors.isEmpty)
+	}
+
+	@Test("v37 starts without a chosen color, so every class shows its default, and a class that this version does not know is left out")
+	func noColorsAfterV37() throws {
+		let queue = try DatabaseQueue()
+		defer { try? queue.close() }
+		try Schema.migrator.migrate(queue, upTo: "v36")
+		try Store(queue: queue).save(depot)
+		try queue.write { db in try HoldingRecord(bond).insertOld(db) }
+		try Schema.migrator.migrate(queue)
+		let store = Store(queue: queue)
+		#expect(try store.loadLedger().assetClassColors.isEmpty)
+		#expect(try store.loadLedger().holdings(of: [depot.id]) == [bond])
+		try queue.write { db in try db.execute(sql: "INSERT INTO assetClassColor(assetClass, color) VALUES ('warrants', '#FF0000'), ('funds', '#7B4FC4')") }
+		#expect(try store.loadLedger().assetClassColors == [.funds: "#7B4FC4"])
+	}
+
 	@Test("The positions go with their account")
 	func removedWithAccount() throws {
 		let store = try makeStore()

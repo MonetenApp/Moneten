@@ -62,9 +62,10 @@ extension Format {
 }
 
 extension Color {
+	/// A color of the form "#RRGGBB", read as `HexColor` reads one, nil for any other text.
 	init?(hex: String?) {
-		guard let hex, hex.hasPrefix("#"), hex.count == 7, let v = Int(hex.dropFirst(), radix: 16) else { return nil }
-		self.init(red: Double(v >> 16 & 0xFF) / 255, green: Double(v >> 8 & 0xFF) / 255, blue: Double(v & 0xFF) / 255)
+		guard let color = hex.flatMap(HexColor.init) else { return nil }
+		self.init(color.srgb)
 	}
 
 	var hex: String? {
@@ -241,23 +242,18 @@ enum Palette {
 	}
 }
 
-/// The color of each asset class, for its ribbon: one color for light and dark mode, as a color that the user chooses is,
-/// on which white text of the ribbon reaches 4.5:1. Stocks, funds, real estate, and cryptocurrencies keep the light color
-/// of the draft that the owner approved on 27 November 2026, and the others are darkened at their hue until white text
-/// reaches 4.6:1 (design of `refine-portfolio-view`).
+/// The color of each asset class, for its ribbon, its heading, and the allocation, which all show it muted as a ribbon
+/// does (`RibbonFill`): the color that the user chose in the asset class settings, else the default of the class. The
+/// defaults are the colors of the palette of the categories, one for each class in the order of the submenu
+/// "Asset Class", so a class looks like a category.
 enum AssetClassColors {
-	static func color(of assetClass: AssetClass) -> Color {
-		let hex = switch assetClass {
-		case .stocks: 0x2F6FD6
-		case .funds: 0x7B4FC4
-		case .bonds: 0x996C10
-		case .realEstate: 0xB0553A
-		case .commodities: 0x588027
-		case .etfs: 0x168377
-		case .cryptocurrencies: 0xB8407A
-		case .others: 0x747479
-		}
-		return Color(nsColor: Palette.rgb(hex))
+	/// The chosen color of `chosen`, `Ledger.assetClassColors`, or the default when there is none or it cannot be read.
+	static func color(of assetClass: AssetClass, chosen: [AssetClass: String]) -> Color {
+		Color(hex: chosen[assetClass]) ?? defaultColor(of: assetClass)
+	}
+
+	static func defaultColor(of assetClass: AssetClass) -> Color {
+		CategoryColors.palette[(AssetClass.allCases.firstIndex(of: assetClass) ?? 0) % CategoryColors.palette.count]
 	}
 }
 
@@ -265,6 +261,12 @@ enum AssetClassColors {
 /// palette, so that the sidebar and the pie chart show the same color for the same category.
 enum CategoryColors {
 	static let palette: [Color] = [.blue, .orange, .green, .pink, .purple, .teal, .yellow, .indigo, .mint, .brown, .cyan, .red]
+	/// The name of each color of `palette`, in its order, which VoiceOver reads for its swatch.
+	static var paletteNames: [String] {
+		[String(localized: "Blue"), String(localized: "Orange"), String(localized: "Green"), String(localized: "Pink"), String(localized: "Purple"),
+			String(localized: "Teal"), String(localized: "Yellow"), String(localized: "Indigo"), String(localized: "Mint"), String(localized: "Brown"),
+			String(localized: "Cyan"), String(localized: "Red")]
+	}
 
 	static func color(of category: Domain.Category, in ledger: Ledger) -> Color {
 		if let own = Color(hex: category.color) { return own }

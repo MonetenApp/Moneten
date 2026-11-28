@@ -14,13 +14,14 @@ The app SHALL start the text of the rows, of the column header, and of the filte
 
 ### Requirement: Asset class ribbon
 
-The app SHALL show the asset class of a position as a ribbon below the day of the quote, from the left edge of the row, with the name of the class in capitals in white on the color of the class.
+The app SHALL show the asset class of a position as a ribbon below the day of the quote, from the left edge of the row, that looks like the category ribbon of a transaction: the same size, the color of the class muted toward gray as the color of a category is, and the name of the class in capitals in white, as the name of a category is.
 
 #### Scenario: Ribbon of a share
 
 - **GIVEN** the position "Musterwerke AG" with the class "Stocks"
 - **WHEN** the user opens the portfolio
-- **THEN** the row shows the ribbon "STOCKS" in the color of "Stocks" below the day of the quote
+- **THEN** the row shows the ribbon "STOCKS" in the muted color of "Stocks" below the day of the quote
+- **AND** the ribbon is as wide and as high as the ribbon of a category in the transaction list
 
 ### Requirement: Day of the last quote
 
@@ -302,23 +303,29 @@ The app SHALL save the filters "Profit/Loss" and "Quote" and the option "Group b
 
 ### Requirement: Default colors of the asset classes
 
-The app SHALL give each asset class a default color on which white text reaches a contrast of 4.5:1 in light and dark mode, and show the ribbon of a class in the color of the class.
+The app SHALL give each asset class a default color from the colors of the categories, one for each class in the order of the submenu "Asset Class", and show the ribbon of a class, its heading under "Group by asset class", and its share in the allocation in the muted color of the class.
 
 #### Scenario: Ribbons of two classes
 
 - **GIVEN** the position "Musterwerke AG" of the class "Stocks" and the position "Bund 2,1 % 2031" of the class "Bonds"
 - **WHEN** the user opens the portfolio in dark mode
-- **THEN** the ribbons "STOCKS" and "BONDS" show two different colors with white text
+- **THEN** the ribbon "STOCKS" shows the muted blue and the ribbon "BONDS" the muted green of the colors of the categories
 
 ### Requirement: Change the color of an asset class
 
-The app SHALL let the user choose the color of each asset class in the asset class settings. "Asset Class Settings..." at the end of the submenu "Asset Class" of the context menu of a position opens them, and no other place does. A chosen color applies in light and dark mode.
+The app SHALL let the user choose any color for each asset class in the asset class settings. "Asset Class Settings..." at the end of the submenu "Asset Class" of the context menu of a position opens them, and no other place does. A chosen color applies in light and dark mode. The ribbon shows the chosen color muted toward gray with white text, also for a very light color, whose low contrast is the choice of the user.
 
 #### Scenario: Change the color of a class
 
 - **GIVEN** the class "Bonds" has its default color
-- **WHEN** the user chooses "Asset Class Settings..." in the submenu "Asset Class" and chooses green for "Bonds"
-- **THEN** every ribbon "BONDS" shows green with white text
+- **WHEN** the user chooses "Asset Class Settings..." in the submenu "Asset Class" and chooses the green #2E7D32 for "Bonds"
+- **THEN** every ribbon "BONDS" shows #2E7D32 muted toward gray with white text
+
+#### Scenario: A light color
+
+- **GIVEN** the class "Bonds" has its default color
+- **WHEN** the user chooses the white #FFFFFF or the yellow #FFD60A for "Bonds" in the asset class settings
+- **THEN** every ribbon "BONDS" shows that color muted toward gray, and its text stays white
 
 ### Requirement: Restore the default colors
 
@@ -369,13 +376,19 @@ The app SHALL give the dragged positions the class of a heading of the grouped l
 
 ### Requirement: Allocation by asset class
 
-The app SHALL show the allocation of a portfolio view by asset class in a popover when the user clicks the allocation button above the switch "D" and "M" of the history chart. The popover shows a stacked bar and one line for each class with positions: its color, its name, its share of the value, and its value. The view shows no allocation before the click.
+The app SHALL show the allocation of a portfolio view by asset class in a popover when the user clicks the allocation button above the switch "D" and "M" of the history chart. The popover shows a stacked bar and one line for each class with positions: its color, its name, its share of the value, and its value. The shares of a bar have two decimal places and add up to 100,00 %. The view shows no allocation before the click.
 
 #### Scenario: Three classes
 
 - **GIVEN** a portfolio with 180.230,00 € in "Stocks", 115.344,00 € in "ETFs", and 4.955,00 € in "Bonds"
 - **WHEN** the user clicks the allocation button
 - **THEN** the popover shows "Stocks" with 59,97 % and 180.230,00 €, "ETFs" with 38,38 % and 115.344,00 €, and "Bonds" with 1,65 % and 4.955,00 €
+
+#### Scenario: Three equal classes
+
+- **GIVEN** a portfolio with 1.000,00 € each in "Stocks", "Bonds", and "ETFs"
+- **WHEN** the user clicks the allocation button
+- **THEN** the popover shows "Stocks" with 33,34 %, "Bonds" with 33,33 %, and "ETFs" with 33,33 %
 
 #### Scenario: Empty portfolio
 

@@ -59,6 +59,8 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 	/// what a version before them wrote, and a filter bar of that version reads "Show All".
 	let gain: TransactionFilter.GainFilter?
 	let quote: TransactionFilter.QuoteFilter?
+	/// "Group by asset class", nil when it is off, for the same reason.
+	let groupsByAssetClass: Bool?
 
 	public init(period: PeriodChoice, filter: TransactionFilter) {
 		self.period = period
@@ -67,6 +69,7 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		categoryID = filter.categoryID
 		gain = filter.gain == .all ? nil : filter.gain
 		quote = filter.quote == .all ? nil : filter.quote
+		groupsByAssetClass = filter.groupsByAssetClass ? true : nil
 		switch filter.account {
 		case let .account(id): (accountID, accountGroupID) = (id, nil)
 		case let .group(id): (accountID, accountGroupID) = (nil, id)
@@ -98,6 +101,7 @@ public struct SavedFilterBar: Hashable, Sendable, Codable {
 		f.account = accountID.map { .account($0) } ?? accountGroupID.map { .group($0) }
 		f.gain = gain ?? .all
 		f.quote = quote ?? .all
+		f.groupsByAssetClass = groupsByAssetClass ?? false
 		f.dropMissing(in: ledger)
 		return f
 	}
@@ -123,12 +127,13 @@ public struct SavedSearch: Identifiable, Hashable, Sendable {
 	}
 
 	/// The search text and the filters of the filter bar, with the period choice that `filter` shows. A saved search
-	/// shows transactions of all accounts and never positions, so it leaves out the filters "Profit/Loss" and "Quote",
-	/// which the pin keeps instead.
+	/// shows transactions of all accounts and never positions, so it leaves out the filters "Profit/Loss" and "Quote" and
+	/// "Group by asset class", which the pin keeps instead.
 	public init(id: UUID = UUID(), name: String, position: Int, period: PeriodChoice, filter: TransactionFilter) {
 		var transactions = filter
 		transactions.gain = .all
 		transactions.quote = .all
+		transactions.groupsByAssetClass = false
 		self.init(id: id, name: name, position: position, searchText: filter.searchText, bar: SavedFilterBar(period: period, filter: transactions))
 	}
 
