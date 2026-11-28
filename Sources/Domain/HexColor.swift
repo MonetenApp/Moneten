@@ -38,10 +38,6 @@ public struct SRGBColor: Equatable, Sendable {
 	public let green: Double
 	public let blue: Double
 
-	public static let white = SRGBColor(red: 1, green: 1, blue: 1)
-	/// The near-black of the text of the rows, #1D1D1F.
-	public static let nearBlack = SRGBColor(red: 0x1D / 255.0, green: 0x1D / 255.0, blue: 0x1F / 255.0)
-
 	/// Each component held between 0 and 1, because a resolved color of the extended range can lie outside.
 	public init(red: Double, green: Double, blue: Double) {
 		self.red = min(1, max(0, red))
@@ -49,34 +45,18 @@ public struct SRGBColor: Equatable, Sendable {
 		self.blue = min(1, max(0, blue))
 	}
 
-	/// The relative luminance of WCAG 2, from 0 for black to 1 for white.
-	public var luminance: Double {
-		0.2126 * Self.linear(red) + 0.7152 * Self.linear(green) + 0.0722 * Self.linear(blue)
-	}
-
-	/// The contrast ratio of WCAG 2 between the two colors, from 1 to 21.
-	public func contrast(with other: SRGBColor) -> Double {
-		let (a, b) = (luminance, other.luminance)
-		return (max(a, b) + 0.05) / (min(a, b) + 0.05)
-	}
-
 	static func linear(_ c: Double) -> Double { c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
 	static func encoded(_ c: Double) -> Double { c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1 / 2.4) - 0.055 }
 }
 
-/// The colors of a ribbon, the category of a transaction and the asset class of a position alike: the color of the
-/// category or class muted toward gray, and a text that stays readable on it, also on a light color that the user chose.
+/// The fill of a ribbon, the category of a transaction and the asset class of a position alike: the color of the
+/// category or class muted toward gray. The text on it is always white, by the owner's decision of 28 November 2026.
 public enum RibbonColor {
 	/// `color` mixed half with the gray 0.6 in OKLab, which is what `Color.mix(with: Color(white: 0.6), by: 0.5)` of
-	/// SwiftUI gives, so the fill and the choice of its text come from the same numbers.
+	/// SwiftUI gives, so the fill resolves to one color in light and in dark mode.
 	public static func fill(of color: SRGBColor) -> SRGBColor {
 		let a = OKLab(color), g = OKLab(SRGBColor(red: 0.6, green: 0.6, blue: 0.6))
 		return OKLab(l: (a.l + g.l) / 2, a: (a.a + g.a) / 2, b: (a.b + g.b) / 2).srgb
-	}
-
-	/// White or near-black, whichever has the higher contrast ratio of WCAG on `fill`, white when both have the same.
-	public static func text(on fill: SRGBColor) -> SRGBColor {
-		fill.contrast(with: .nearBlack) > fill.contrast(with: .white) ? .nearBlack : .white
 	}
 }
 

@@ -14,7 +14,7 @@ The app SHALL start the text of the rows, of the column header, and of the filte
 
 ### Requirement: Asset class ribbon
 
-The app SHALL show the asset class of a position as a ribbon below the day of the quote, from the left edge of the row, that looks like the category ribbon of a transaction: the same size, the color of the class muted toward gray as the color of a category is, and the name of the class in capitals in white or in near-black, whichever has the higher contrast on the muted color. The category ribbon of a transaction takes its text color by the same rule.
+The app SHALL show the asset class of a position as a ribbon below the day of the quote, from the left edge of the row, that looks like the category ribbon of a transaction: the same size, the color of the class muted toward gray as the color of a category is, and the name of the class in capitals in white, as the name of a category is.
 
 #### Scenario: Ribbon of a share
 
@@ -313,19 +313,19 @@ The app SHALL give each asset class a default color from the colors of the categ
 
 ### Requirement: Change the color of an asset class
 
-The app SHALL let the user choose any color for each asset class in the asset class settings. "Asset Class Settings..." at the end of the submenu "Asset Class" of the context menu of a position opens them, and no other place does. A chosen color applies in light and dark mode. The ribbon shows its text in white or in near-black, whichever has the higher contrast on the chosen color.
+The app SHALL let the user choose any color for each asset class in the asset class settings. "Asset Class Settings..." at the end of the submenu "Asset Class" of the context menu of a position opens them, and no other place does. A chosen color applies in light and dark mode. The ribbon shows the chosen color muted toward gray with white text, also for a very light color, whose low contrast is the choice of the user.
 
 #### Scenario: Change the color of a class
 
 - **GIVEN** the class "Bonds" has its default color
 - **WHEN** the user chooses "Asset Class Settings..." in the submenu "Asset Class" and chooses the green #2E7D32 for "Bonds"
-- **THEN** every ribbon "BONDS" shows #2E7D32 muted toward gray, with the text color of the higher contrast
+- **THEN** every ribbon "BONDS" shows #2E7D32 muted toward gray with white text
 
 #### Scenario: A light color
 
 - **GIVEN** the class "Bonds" has its default color
 - **WHEN** the user chooses the white #FFFFFF or the yellow #FFD60A for "Bonds" in the asset class settings
-- **THEN** every ribbon "BONDS" shows that color muted toward gray with near-black text
+- **THEN** every ribbon "BONDS" shows that color muted toward gray, and its text stays white
 
 ### Requirement: Restore the default colors
 

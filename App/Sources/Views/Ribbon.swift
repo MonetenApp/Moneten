@@ -2,9 +2,9 @@ import Domain
 import SwiftUI
 
 /// The ribbon of a row: the category of a transaction and the asset class of a position look the same. It starts at the
-/// edge of the row, 113 points wide and 14 high, with the name in capitals on the color muted toward gray, as the ribbons
-/// of MoneyMoney. The text is white or near-black, whichever reads better on the muted color (`RibbonColor`), so a light
-/// color that the user chose, such as white or yellow, still shows its name.
+/// edge of the row, 113 points wide and 14 high, with the name in capitals in white on the color muted toward gray, as
+/// the ribbons of MoneyMoney. The text stays white for every color, also a very light one that the user chose, by the
+/// owner's decision of 28 November 2026.
 struct Ribbon: View {
 	static let width: CGFloat = 113
 	static let height: CGFloat = 14
@@ -16,7 +16,7 @@ struct Ribbon: View {
 		Text(text.uppercased())
 			.font(.system(size: 10, weight: .bold))
 			.kerning(0.2)
-			.foregroundStyle(RibbonText(color: color))
+			.foregroundStyle(.white.opacity(0.95))
 			.lineLimit(1)
 			.padding(.leading, 4)
 			.padding(.trailing, 10)
@@ -33,16 +33,6 @@ struct RibbonFill: ShapeStyle {
 
 	func resolve(in environment: EnvironmentValues) -> Color {
 		Color(RibbonColor.fill(of: SRGBColor(color.resolve(in: environment))))
-	}
-}
-
-/// The text of a ribbon on `RibbonFill`: white, a little transparent as before, or near-black (`RibbonColor.text(on:)`).
-struct RibbonText: ShapeStyle {
-	let color: Color
-
-	func resolve(in environment: EnvironmentValues) -> Color {
-		let text = RibbonColor.text(on: RibbonColor.fill(of: SRGBColor(color.resolve(in: environment))))
-		return text == .white ? Color.white.opacity(0.95) : Color(text)
 	}
 }
 
